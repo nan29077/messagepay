@@ -1,3 +1,6 @@
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
+
 -- CreateEnum
 CREATE TYPE "user_role" AS ENUM ('DONOR', 'CREATOR', 'ADMIN');
 
@@ -480,7 +483,7 @@ CREATE TABLE "donation_limit_policy" (
 CREATE TABLE "donation_counter" (
     "id" TEXT NOT NULL,
     "donor_id" TEXT NOT NULL,
-    "creator_id" TEXT,
+    "creator_id" TEXT NOT NULL DEFAULT 'ALL',
     "period_type" TEXT NOT NULL,
     "period_key" TEXT NOT NULL,
     "count" INTEGER NOT NULL DEFAULT 0,
@@ -1033,10 +1036,10 @@ CREATE INDEX "risk_detection_level_resolved_idx" ON "risk_detection"("level", "r
 CREATE INDEX "risk_detection_created_at_idx" ON "risk_detection"("created_at");
 
 -- CreateIndex
-CREATE INDEX "banned_word_scope_active_idx" ON "banned_word"("scope", "active");
+CREATE INDEX "banned_word_word_idx" ON "banned_word"("word");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "banned_word_word_creator_id_key" ON "banned_word"("word", "creator_id");
+CREATE INDEX "banned_word_scope_active_idx" ON "banned_word"("scope", "active");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "youtube_connection_creator_id_key" ON "youtube_connection"("creator_id");
@@ -1268,3 +1271,4 @@ ALTER TABLE "notification" ADD CONSTRAINT "notification_user_id_fkey" FOREIGN KE
 
 -- AddForeignKey
 ALTER TABLE "admin_audit_log" ADD CONSTRAINT "admin_audit_log_admin_id_fkey" FOREIGN KEY ("admin_id") REFERENCES "admin_profile"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+

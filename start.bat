@@ -2,12 +2,19 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-title 토네이도 - 개발 서버
+title 토네이도 - 개발 서버 (포트 3025)
+
+set TORNADO_PORT=3025
+set TORNADO_URL=http://localhost:%TORNADO_PORT%
 
 echo.
 echo ==========================================
 echo   토네이도 TORNADO - 개발 서버
+echo   %TORNADO_URL%
 echo ==========================================
+echo.
+echo   이 방식은 별도 PostgreSQL 이 필요합니다.
+echo   설치 없이 바로 보시려면 창을 닫고 preview.bat 을 실행하세요.
 echo.
 
 where node >nul 2>nul
@@ -16,25 +23,66 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-
-if not exist "node_modules" (
-  echo [안내] 아직 설치가 되지 않았습니다. setup.bat 을 먼저 실행합니다.
-  echo.
-  call "%~dp0setup.bat"
-  if errorlevel 1 exit /b 1
-)
+for /f "tokens=*" %%v in ('node -v') do echo [확인] Node.js %%v
 
 if not exist ".env" copy /y ".env.example" ".env" >nul
 
-echo [안내] 잠시 후 브라우저가 자동으로 열립니다.
+call "%~dp0ensure-deps.bat"
+if errorlevel 1 (
+  pause
+  exit /b 1
+)
+
+if not exist "src\generated\prisma" (
+  echo [작업] Prisma 클라이언트 생성
+  if not exist "logs" mkdir "logs"
+  call npm run db:generate 2>&1
+  if errorlevel 1 (
+    echo.
+    echo [오류] Prisma 클라이언트 생성에 실패했습니다.
+    echo        원인을 확인하려면 diag.bat 을 실행해 주세요.
+    echo        (logs\diag.log 에 상세 로그가 저장됩니다)
+    echo.
+    pause
+    exit /b 1
+  )
+)
+
+echo [확인] 데이터베이스 연결
+call npm run check:db
+if errorlevel 1 (
+  echo.
+  echo [중단] 데이터베이스가 준비되지 않아 서버를 시작하지 않습니다.
+  echo        이 상태로 실행하면 화면이 계속 로딩만 됩니다.
+  echo.
+  echo        db-up.bat 을 실행한 뒤 다시 시도하시거나,
+  echo        설치 없이 보시려면 preview.bat 을 실행하세요.
+  echo.
+  pause
+  exit /b 1
+)
+
+netstat -ano | findstr /r /c:":%TORNADO_PORT% .*LISTENING" >nul 2>nul
+if not errorlevel 1 (
+  echo.
+  echo [경고] 포트 %TORNADO_PORT% 를 이미 사용 중입니다.
+  echo        이전에 실행한 서버 창이 열려 있는지 확인해 주세요.
+  echo.
+  pause
+)
+
+echo.
+echo [안내] 서버 준비가 끝나면 브라우저가 자동으로 열립니다.
+echo        첫 실행은 화면 컴파일 때문에 20~60초 정도 걸립니다.
 echo        서버를 끄려면 이 창에서 Ctrl+C 를 누르세요.
 echo.
-echo   메인        http://localhost:3000
-echo   크리에이터  http://localhost:3000/studio   (creator1@tornado.kr / tornado1234!)
-echo   관리자      http://localhost:3000/admin    (admin@tornado.kr / tornado1234!)
+echo   메인        %TORNADO_URL%
+echo   크리에이터  %TORNADO_URL%/studio   creator1@tornado.kr / tornado1234!
+echo   관리자      %TORNADO_URL%/admin    admin@tornado.kr / tornado1234!
 echo.
 
-start "" cmd /c "timeout /t 8 >nul && start http://localhost:3000"
+start "" powershell -NoProfile -ExecutionPolicy Bypass -Command "$u='%TORNADO_URL%/api/health'; for($i=0;$i -lt 150;$i++){ try{ $r=Invoke-WebRequest -Uri $u -UseBasicParsing -TimeoutSec 5; if($r.StatusCode -eq 200){ Start-Process '%TORNADO_URL%'; exit } }catch{}; Start-Sleep -Seconds 2 }"
+
 call npm run dev
 
 endlocal

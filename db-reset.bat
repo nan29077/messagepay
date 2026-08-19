@@ -18,7 +18,21 @@ if /i not "%CONFIRM%"=="Y" (
   exit /b 0
 )
 
-call npx prisma migrate reset --force --skip-seed
+call "%~dp0ensure-deps.bat"
+if errorlevel 1 (
+  pause
+  exit /b 1
+)
+
+call npm run check:db
+if errorlevel 1 (
+  echo.
+  echo [중단] 데이터베이스에 연결하지 못했습니다. db-up.bat 을 먼저 실행해 주세요.
+  pause
+  exit /b 1
+)
+
+call npx prisma migrate reset --force
 if errorlevel 1 goto :fail
 call npm run db:seed
 if errorlevel 1 goto :fail

@@ -38,3 +38,9 @@ yarn-error.log*
 # 에이전트 도구가 생성하는 항목
 .claude/
 _to_delete/
+
+# 미리보기 내장 DB
+.pglite/
+
+# 진단 로그
+logs/

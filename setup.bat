@@ -7,6 +7,7 @@ title 토네이도 - 최초 설치
 echo.
 echo ==========================================
 echo   토네이도 TORNADO - 최초 설치
+echo   서비스 포트: 3025
 echo ==========================================
 echo.
 
@@ -20,6 +21,14 @@ if errorlevel 1 (
 )
 for /f "tokens=*" %%v in ('node -v') do echo [확인] Node.js %%v
 
+node -e "const v=process.versions.node.split('.').map(Number); if(v[0]<20||(v[0]===20&&v[1]<19)) process.exit(1)"
+if errorlevel 1 (
+  echo [오류] Node.js 20.19 이상이 필요합니다. 최신 LTS 로 업데이트해 주세요.
+  echo.
+  pause
+  exit /b 1
+)
+
 if not exist ".env" (
   echo [작업] .env 파일이 없어 .env.example 을 복사합니다.
   copy /y ".env.example" ".env" >nul
@@ -27,7 +36,11 @@ if not exist ".env" (
 
 echo.
 echo [1/4] 의존성 설치 (npm install)
-call npm install
+echo       패키지가 700개 이상이라 첫 설치는 3~7분 걸립니다.
+echo       화면이 멈춘 것처럼 보여도 정상이니 창을 닫지 마세요.
+echo       EBADENGINE 경고는 사용하지 않는 부가 패키지 경고이므로 무시해도 됩니다.
+echo.
+call "%~dp0ensure-deps.bat"
 if errorlevel 1 goto :fail
 
 echo.
@@ -36,17 +49,18 @@ call npx prisma generate
 if errorlevel 1 goto :fail
 
 echo.
-echo [3/4] 데이터베이스 마이그레이션
-call npx prisma migrate deploy
+echo [3/4] 데이터베이스 연결 확인 및 마이그레이션
+call npm run check:db
 if errorlevel 1 (
   echo.
-  echo [오류] 데이터베이스에 연결하지 못했습니다.
-  echo        1) Docker Desktop 사용 중이면 db-up.bat 을 먼저 실행하세요.
-  echo        2) 별도 PostgreSQL 을 쓰신다면 .env 의 DATABASE_URL 을 수정하세요.
+  echo [중단] 데이터베이스에 연결하지 못해 설치를 멈춥니다.
+  echo        db-up.bat 을 먼저 실행한 뒤 setup.bat 을 다시 실행해 주세요.
   echo.
   pause
   exit /b 1
 )
+call npx prisma migrate deploy
+if errorlevel 1 goto :fail
 
 echo.
 echo [4/4] 시드 데이터 생성
@@ -59,8 +73,9 @@ echo   설치가 완료되었습니다.
 echo   start.bat 을 실행하면 앱이 열립니다.
 echo ==========================================
 echo.
-echo   관리자     : admin@tornado.kr / tornado1234!
-echo   크리에이터 : creator1@tornado.kr / tornado1234!
+echo   주소       http://localhost:3025
+echo   관리자     admin@tornado.kr / tornado1234!
+echo   크리에이터 creator1@tornado.kr / tornado1234!
 echo.
 pause
 exit /b 0
@@ -68,6 +83,7 @@ exit /b 0
 :fail
 echo.
 echo [오류] 설치 중 문제가 발생했습니다. 위 메시지를 확인해 주세요.
+echo        원인을 자동 점검하려면 doctor.bat 을 실행하세요.
 echo.
 pause
 exit /b 1

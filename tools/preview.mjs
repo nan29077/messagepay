@@ -1,0 +1,225 @@
+/**
+ * 간편 미리보기 실행기.
+ *
+ * 하나의 Node 프로세스에서
+ *   1) 내장 데이터베이스(PGlite) 를 PostgreSQL 통신 규약으로 기동
+ *   2) 처음이면 마이그레이션 + 시드
+ *   3) Next.js 개발 서버 실행
+ * 을 순서대로 수행한다.
+ *
+ * 셸(cmd/PowerShell/bash)의 따옴표 처리 차이에 영향을 받지 않도록
+ * 모든 단계를 이 스크립트 안에서 직접 실행한다.
+ */
+import 'dotenv/config';
+
+// .env 에 NODE_ENV 가 들어 있으면 빌드/실행 모드가 뒤섞여 React 오류가 난다.
+// Next.js 가 스스로 결정하도록 여기서 제거한다.
+delete process.env.NODE_ENV;
+import path from 'node:path';
+import fs from 'node:fs';
+import net from 'node:net';
+import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { PGlite } from '@electric-sql/pglite';
+import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
+
+const DB_PORT = Number(process.env.PGLITE_PORT ?? 5433);
+const APP_PORT = Number(process.env.PORT ?? 3025);
+const DATA_DIR = path.resolve(process.cwd(), '.pglite');
+const DATABASE_URL = `postgresql://postgres:postgres@127.0.0.1:${DB_PORT}/postgres`;
+
+const require = createRequire(import.meta.url);
+/**
+ * 기본은 프로덕션 빌드 방식(production).
+ * Next 16 의 개발 서버(Turbopack)는 환경에 따라 내부 오류로 중단되는 사례가 있어
+ * 미리보기 기본값으로 쓰지 않는다. 코드 수정을 즉시 반영하려면 PREVIEW_MODE=dev.
+ */
+const MODE = (process.env.PREVIEW_MODE ?? 'production').toLowerCase();
+let socketServer = null;
+let child = null;
+let shuttingDown = false;
+
+function log(msg) {
+  console.log(msg);
+}
+
+async function portInUse(port) {
+  return new Promise((resolve) => {
+    const socket = net.connect({ port, host: '127.0.0.1' });
+    socket.setTimeout(700);
+    socket.on('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.on('error', () => resolve(false));
+  });
+}
+
+/** 자식 프로세스를 실행하고 종료 코드를 기다린다. */
+function run(command, args, extraEnv = {}) {
+  return new Promise((resolve, reject) => {
+    // 셸을 거치지 않는다. Windows 의 "C:\\Program Files\\nodejs\\node.exe" 처럼
+    // 경로에 공백이 있으면 셸이 명령을 잘라먹기 때문이다.
+    const proc = spawn(command, args, {
+      stdio: 'inherit',
+      shell: false,
+      env: { ...process.env, ...extraEnv },
+    });
+    proc.on('error', reject);
+    proc.on('exit', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`실행 실패 (코드 ${code})`));
+    });
+  });
+}
+
+/** 로컬 node_modules 안의 실행 스크립트 경로를 얻는다.
+ *  패키지의 exports 제한을 우회하기 위해 실제 파일 경로를 우선 사용한다. */
+function localScript(relPath, specifier) {
+  const direct = path.resolve(process.cwd(), 'node_modules', relPath);
+  if (fs.existsSync(direct)) return direct;
+  return require.resolve(specifier);
+}
+
+/** 서버가 응답할 때까지 기다렸다가 기본 브라우저로 연다. */
+async function openBrowserWhenReady(url) {
+  if (process.env.PREVIEW_OPEN === '0') return;
+  for (let i = 0; i < 180; i += 1) {
+    if (shuttingDown) return;
+    if (await portInUse(APP_PORT)) {
+      try {
+        if (process.platform === 'win32') {
+          spawn('cmd', ['/c', 'start', '""', url], { stdio: 'ignore', detached: true, windowsHide: true }).unref();
+        } else if (process.platform === 'darwin') {
+          spawn('open', [url], { stdio: 'ignore', detached: true }).unref();
+        } else {
+          spawn('xdg-open', [url], { stdio: 'ignore', detached: true }).unref();
+        }
+      } catch {
+        /* 브라우저를 못 열어도 서버는 계속 동작한다 */
+      }
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+
+/** 소스가 마지막 빌드보다 새로우면 다시 빌드해야 한다. */
+function needsBuild() {
+  const buildId = path.join(process.cwd(), '.next', 'BUILD_ID');
+  if (!fs.existsSync(buildId)) return true;
+  const builtAt = fs.statSync(buildId).mtimeMs;
+
+  const watch = ['src', 'prisma', 'public', 'package.json', 'next.config.ts', 'postcss.config.mjs'];
+  let newest = 0;
+  const visit = (target) => {
+    if (!fs.existsSync(target)) return;
+    const st = fs.statSync(target);
+    if (st.isDirectory()) {
+      if (path.basename(target) === 'generated') return;
+      for (const e of fs.readdirSync(target)) visit(path.join(target, e));
+    } else if (st.mtimeMs > newest) {
+      newest = st.mtimeMs;
+    }
+  };
+  for (const w of watch) visit(path.resolve(process.cwd(), w));
+  return newest > builtAt;
+}
+
+async function shutdown(code = 0) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  if (child && !child.killed) {
+    try {
+      child.kill();
+    } catch {
+      /* ignore */
+    }
+  }
+  if (socketServer) {
+    try {
+      await socketServer.stop();
+    } catch {
+      /* ignore */
+    }
+  }
+  process.exit(code);
+}
+
+process.on('SIGINT', () => shutdown(0));
+process.on('SIGTERM', () => shutdown(0));
+
+async function main() {
+  if (await portInUse(DB_PORT)) {
+    console.error(`[중단] 내장 데이터베이스 포트 ${DB_PORT} 가 이미 사용 중입니다.`);
+    console.error('       이전 미리보기 창이 열려 있는지 확인하고 닫아 주세요.');
+    process.exit(1);
+  }
+  if (await portInUse(APP_PORT)) {
+    console.error(`[중단] 앱 포트 ${APP_PORT} 가 이미 사용 중입니다.`);
+    console.error(`       이전 서버 창을 닫거나, 그대로 쓰시려면 http://localhost:${APP_PORT} 로 접속하세요.`);
+    process.exit(1);
+  }
+
+  const firstRun = !fs.existsSync(DATA_DIR);
+  log(`[1/3] 내장 데이터베이스 기동 (${firstRun ? '새로 생성' : '기존 데이터 사용'})`);
+
+  const db = await PGlite.create({ dataDir: DATA_DIR });
+  socketServer = new PGLiteSocketServer({
+    db,
+    port: DB_PORT,
+    host: '127.0.0.1',
+    maxConnections: 20,
+  });
+  await socketServer.start();
+  log(`      준비 완료 (127.0.0.1:${DB_PORT})`);
+
+  process.env.DATABASE_URL = DATABASE_URL;
+
+  log('[2/3] 스키마 및 시드 데이터 확인');
+  await run(process.execPath, [path.join('tools', 'pglite-init.mjs')], { DATABASE_URL });
+
+  // npx/셸을 거치지 않고 next 실행 파일을 직접 호출한다 (Windows 따옴표 문제 회피)
+  const nextBin = localScript('next/dist/bin/next', 'next/dist/bin/next');
+
+  if (MODE === 'dev') {
+    log(`[3/3] 개발 서버 시작 (http://localhost:${APP_PORT})`);
+    child = spawn(process.execPath, [nextBin, 'dev', '-p', String(APP_PORT)], {
+      stdio: 'inherit',
+      env: { ...process.env, DATABASE_URL, NODE_ENV: 'development' },
+    });
+  } else {
+    if (needsBuild()) {
+      log('[3/4] 화면 빌드 (처음에는 1~3분 걸립니다)');
+      await run(process.execPath, [nextBin, 'build'], { DATABASE_URL, NODE_ENV: 'production' });
+    } else {
+      log('[3/4] 이전 빌드 결과를 재사용합니다');
+    }
+    log(`[4/4] 서버 시작 (http://localhost:${APP_PORT})`);
+    child = spawn(process.execPath, [nextBin, 'start', '-p', String(APP_PORT)], {
+      stdio: 'inherit',
+      env: { ...process.env, DATABASE_URL, NODE_ENV: 'production' },
+    });
+  }
+
+  openBrowserWhenReady(`http://localhost:${APP_PORT}`);
+
+  child.on('error', async (e) => {
+    console.error(`[오류] 개발 서버를 시작하지 못했습니다: ${e.message}`);
+    await shutdown(1);
+  });
+  child.on('exit', async (code) => {
+    await shutdown(code ?? 0);
+  });
+}
+
+main().catch(async (e) => {
+  console.error('');
+  console.error(`[오류] 미리보기 실행에 실패했습니다: ${e?.message ?? e}`);
+  if (e?.stack) console.error(e.stack);
+  await shutdown(1);
+});

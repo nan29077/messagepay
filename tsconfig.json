@@ -37,6 +37,11 @@
     "**/*.mts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    ".next",
+    "_to_delete",
+    "logs",
+    ".pglite",
+    "src/generated"
   ]
 }

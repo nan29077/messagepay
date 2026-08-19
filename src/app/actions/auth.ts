@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
 import { createSession, hashPassword } from '@/server/auth';
+import { env } from '@/lib/env';
 
 /**
  * 후원자 회원가입.
@@ -86,4 +87,54 @@ export async function signupDonor(_prev: SignupFormState, formData: FormData): P
   await createSession(userId);
 
   redirect('/my');
+}
+
+/* ---------------------------------------------------------------------------
+ * 테스트 로그인 (개발·검수 전용)
+ *
+ * 비밀번호 없이 시드 계정으로 바로 로그인한다.
+ * 운영(APP_ENV=prod)에서는 화면과 서버 액션 양쪽에서 차단된다.
+ * ------------------------------------------------------------------------- */
+
+export interface TestLoginState {
+  message?: string;
+}
+
+/** 테스트 로그인이 허용되는 환경인지 */
+export async function isTestLoginAllowed(): Promise<boolean> {
+  return env.appEnv !== 'prod';
+}
+
+const TEST_ACCOUNTS = {
+  admin: { email: 'admin@tornado.kr', label: '최고관리자', redirect: '/admin' },
+  creator: { email: 'creator1@tornado.kr', label: '크리에이터', redirect: '/studio' },
+} as const;
+
+export type TestAccountKey = keyof typeof TEST_ACCOUNTS;
+
+export async function testLogin(_prev: TestLoginState, formData: FormData): Promise<TestLoginState> {
+  if (env.appEnv === 'prod') {
+    return { message: '운영 환경에서는 테스트 로그인을 사용할 수 없습니다.' };
+  }
+
+  const key = String(formData.get('account') ?? '') as TestAccountKey;
+  const account = TEST_ACCOUNTS[key];
+  if (!account) return { message: '알 수 없는 테스트 계정입니다.' };
+
+  const user = await prisma.user.findUnique({
+    where: { email: account.email },
+    select: { id: true, status: true, role: true },
+  });
+
+  if (!user) {
+    return {
+      message: `${account.label} 시드 계정(${account.email})이 없습니다. preview-reset.bat 또는 db-reset.bat 으로 시드를 다시 생성해 주세요.`,
+    };
+  }
+  if (user.status !== 'ACTIVE') {
+    return { message: `${account.label} 계정이 활성 상태가 아닙니다.` };
+  }
+
+  await createSession(user.id);
+  redirect(account.redirect);
 }

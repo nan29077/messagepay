@@ -1,6 +1,7 @@
 -- ---------------------------------------------------------------------------
 -- 토네이도 무결성 가드 및 인덱스 보강
 -- Amazon RDS / Aurora PostgreSQL 에서 그대로 적용 가능한 표준 SQL 만 사용한다.
+-- (PGlite 로컬 미리보기 환경에서도 동일하게 적용된다)
 -- ---------------------------------------------------------------------------
 
 -- 1) 정산 원장 APPEND ONLY 강제
@@ -17,10 +18,9 @@ CREATE TRIGGER settlement_ledger_append_only
   BEFORE UPDATE OR DELETE ON "settlement_ledger"
   FOR EACH ROW EXECUTE FUNCTION tornado_block_ledger_mutation();
 
--- 2) 금칙어 유니크 제약 정정
---    PostgreSQL 은 NULL 을 서로 다른 값으로 취급하므로 (word, creator_id) 유니크가
---    전역 금칙어(creator_id IS NULL)에는 적용되지 않는다. 부분 유니크 인덱스로 교체한다.
-DROP INDEX IF EXISTS "banned_word_word_creator_id_key";
+-- 2) 금칙어 유니크 (부분 인덱스)
+--    PostgreSQL 은 NULL 을 서로 다른 값으로 취급하므로 (word, creator_id) 단순 유니크로는
+--    전역 금칙어(creator_id IS NULL)의 중복을 막지 못한다.
 CREATE UNIQUE INDEX IF NOT EXISTS "banned_word_global_uniq"
   ON "banned_word" ("word") WHERE "creator_id" IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS "banned_word_creator_uniq"

@@ -1,9 +1,13 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { LogIn, KeyRound } from 'lucide-react';
+import { LogIn } from 'lucide-react';
 import { PublicShell } from '@/components/layout/public-shell';
 import { PageHeader } from '@/components/public/page-header';
 import { Button, Card, CardTitle, Field, Input, Notice, LinkButton } from '@/components/ui';
+import { SocialAuthButtons } from '@/components/public/social-auth';
+import { TestLoginPanel } from '@/components/public/test-login';
+import { SOCIAL_LABEL, type SocialProvider } from '@/server/adapters/social';
+import { env } from '@/lib/env';
 
 export const metadata: Metadata = {
   title: '로그인 | 토네이도',
@@ -16,16 +20,28 @@ const ERROR_MESSAGES: Record<string, string> = {
   suspended: '이용이 제한된 계정입니다. 고객센터로 문의해 주세요.',
   ratelimit: '로그인 시도가 많습니다. 잠시 후 다시 시도해 주세요.',
   session: '로그인이 필요한 페이지입니다. 로그인 후 다시 시도해 주세요.',
+  social_unknown: '지원하지 않는 간편 로그인입니다.',
+  social_error: '간편 로그인 처리 중 문제가 발생했습니다.',
 };
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; next?: string }>;
+  searchParams: Promise<{ error?: string; next?: string; provider?: string; detail?: string }>;
 }) {
   const sp = await searchParams;
-  const errorText = sp.error ? (ERROR_MESSAGES[sp.error] ?? decodeURIComponent(sp.error)) : null;
-  const isDev = process.env.NODE_ENV !== 'production';
+  const providerLabel =
+    sp.provider && sp.provider in SOCIAL_LABEL ? SOCIAL_LABEL[sp.provider as SocialProvider] : null;
+
+  const errorText =
+    sp.error === 'social_not_ready'
+      ? `${providerLabel ?? '소셜'} 간편 로그인은 연동 준비 중입니다. 이메일로 로그인해 주세요.`
+      : sp.error
+        ? (ERROR_MESSAGES[sp.error] ?? decodeURIComponent(sp.error))
+        : null;
+
+  // 테스트 로그인과 시드 계정 안내는 운영 환경에서 노출하지 않는다.
+  const showTestLogin = env.appEnv !== 'prod';
 
   return (
     <PublicShell aside={<LoginAside />}>
@@ -70,6 +86,10 @@ export default async function LoginPage({
           </Button>
         </form>
 
+        <div className="mt-5">
+          <SocialAuthButtons mode="login" />
+        </div>
+
         <p className="mt-4 text-center text-[13px] text-ink-500">
           아직 계정이 없으신가요{' '}
           <Link href="/signup" className="font-semibold text-brand-600">
@@ -85,27 +105,17 @@ export default async function LoginPage({
         </Notice>
       </div>
 
-      {isDev ? (
+      {showTestLogin ? (
         <div className="mt-4">
-          <Card className="border border-warning-500/30 bg-warning-50">
-            <div className="flex gap-3">
-              <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white text-warning-500">
-                <KeyRound size={17} strokeWidth={1.7} />
-              </span>
-              <div>
-                <CardTitle>개발 환경 시드 계정</CardTitle>
-                <p className="mt-1 text-[12.5px] leading-relaxed text-ink-700">
-                  아래 계정은 로컬 개발 환경에서만 표시됩니다. 운영 환경에서는 노출되지 않습니다.
-                </p>
-                <ul className="mt-2 space-y-1 font-mono text-[12.5px] text-ink-900">
-                  <li>admin@tornado.kr / tornado1234!</li>
-                  <li>creator1@tornado.kr / tornado1234!</li>
-                </ul>
-              </div>
-            </div>
-          </Card>
+          <TestLoginPanel
+            seedAccounts={[
+              { email: 'admin@tornado.kr', password: 'tornado1234!' },
+              { email: 'creator1@tornado.kr', password: 'tornado1234!' },
+            ]}
+          />
         </div>
       ) : null}
+
     </PublicShell>
   );
 }

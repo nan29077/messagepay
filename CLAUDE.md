@@ -31,16 +31,35 @@ tests/             핵심 흐름 통합 테스트
 docs/              분석·설계 보고서, 운영 문서
 ```
 
+## 실행 방법
+
+- **간편 미리보기**: `preview.bat` (또는 `npm run preview`) — Docker/PostgreSQL 설치 없이 내장 DB(PGlite)로 실행. 포트 3025.
+  - 기본은 프로덕션 빌드 방식이다. Next 16 개발 서버(Turbopack)가 내부 오류로 중단되는 사례가 있어 미리보기 기본값으로 쓰지 않는다.
+  - 코드 수정을 즉시 반영하려면 `PREVIEW_MODE=dev` 로 실행한다.
+  - `.env` 에 `NODE_ENV` 를 넣지 않는다. 빌드/실행 모드가 뒤섞여 React 오류가 난다.
+  - `src/app/error.tsx` 등 에러 바운더리에서 훅(useEffect 등)을 쓰지 않는다. `/_global-error` 프리렌더가 실패한다.
+- **정식 개발 환경**: `db-up.bat` -> `setup.bat` -> `start.bat` — 실제 PostgreSQL + Redis 사용.
+- 문제가 생기면 `doctor.bat` 으로 원인을 먼저 점검한다.
+- 서비스 포트는 **3025** 로 고정한다. 변경 시 package.json 의 dev/start, .env 의 PORT·APP_BASE_URL, 배치 파일을 함께 수정한다.
+
+## 마이그레이션 주의
+
+- 마이그레이션은 `init_tornado` + `guards_and_indexes` 두 개다. 순서에 의존하는 DROP 문을 넣지 말 것.
+- 스키마를 바꾼 뒤에는 반드시 **빈 DB 에서 `npm run db:reset`** 으로 처음부터 적용되는지 확인한다.
+- `prisma migrate reset` 대신 `npm run db:reset`(tools/db-reset.mjs)을 사용한다.
+
 ## 자주 쓰는 명령
 
 ```bash
-npm run dev          # 개발 서버
+npm run preview      # 내장 DB(PGlite)로 미리보기 (설치 불필요)
+npm run dev          # 개발 서버 (외부 PostgreSQL 필요)
 npm run build        # 프로덕션 빌드
 npm run typecheck    # tsc --noEmit
 npm test             # Vitest (DB 를 비우므로 실행 후 db:seed 필요)
 npm run db:migrate   # prisma migrate dev
 npm run db:seed      # 시드 데이터
 npm run db:reset     # 초기화 + 시드
+npm run check:db     # DB 연결 점검
 ```
 
 ## 공용 파일 수정 시 주의

@@ -4,6 +4,7 @@ import { PublicShell } from '@/components/layout/public-shell';
 import { PageHeader } from '@/components/public/page-header';
 import { SignupForm } from '@/components/public/signup-form';
 import { Card, CardTitle, Notice, LinkButton } from '@/components/ui';
+import { SocialAuthButtons } from '@/components/public/social-auth';
 
 export const metadata: Metadata = {
   title: '후원자 회원가입 | 토네이도',
@@ -28,6 +29,11 @@ export default function SignupPage() {
 
       <Card>
         <SignupForm />
+
+        <div className="mt-5">
+          <SocialAuthButtons mode="signup" />
+        </div>
+
         <p className="mt-4 text-center text-[13px] text-ink-500">
           이미 계정이 있으신가요{' '}
           <Link href="/login" className="font-semibold text-brand-600">

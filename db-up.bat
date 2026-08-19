@@ -20,17 +20,43 @@ if errorlevel 1 (
   exit /b 1
 )
 
-docker compose up -d
+docker info >nul 2>nul
+if errorlevel 1 (
+  echo [오류] Docker Desktop 이 실행 중이 아닙니다.
+  echo        Docker Desktop 을 먼저 켠 뒤 다시 실행해 주세요.
+  echo.
+  pause
+  exit /b 1
+)
+
+rem 폴더명이 한글이면 Compose 가 프로젝트 이름을 자동 생성하지 못하므로 -p 로 지정한다.
+docker compose -p tornado up -d
 if errorlevel 1 (
   echo.
-  echo [오류] 컨테이너를 시작하지 못했습니다. Docker Desktop 이 실행 중인지 확인해 주세요.
+  echo [오류] 컨테이너를 시작하지 못했습니다.
+  echo        Docker Desktop 이 실행 중인지, 5432/6379 포트가 비어 있는지 확인해 주세요.
+  echo.
   pause
   exit /b 1
 )
 
 echo.
-echo [완료] PostgreSQL(5432), Redis(6379) 가 실행 중입니다.
-echo        컨테이너를 내리려면: docker compose down
+echo [대기] 데이터베이스가 준비될 때까지 확인합니다.
+for /l %%i in (1,1,30) do (
+  docker exec tornado-postgres pg_isready -U tornado -d tornado >nul 2>nul
+  if not errorlevel 1 goto :ready
+  timeout /t 2 >nul
+)
+echo [경고] 준비 확인에 실패했습니다. docker ps 로 상태를 확인해 주세요.
+goto :done
+
+:ready
+echo [완료] PostgreSQL(5432), Redis(6379) 준비 완료
+
+:done
+echo.
+echo   컨테이너를 내리려면: docker compose -p tornado down
+echo   다음 단계: setup.bat 실행
 echo.
 pause
 endlocal

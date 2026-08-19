@@ -14,6 +14,9 @@ function createClient() {
     connectionString: env.databaseUrl,
     // 서버리스/다중 인스턴스 환경에서는 RDS Proxy 를 함께 사용한다.
     max: Number(process.env.DB_POOL_MAX ?? 10),
+    // DB 가 떠 있지 않을 때 요청이 무한 대기하지 않도록 짧게 끊는다.
+    // (연결 실패는 화면에 안내로 표시된다)
+    connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS ?? 5000),
   });
   return new PrismaClient({
     adapter,

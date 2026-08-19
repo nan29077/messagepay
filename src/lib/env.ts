@@ -80,6 +80,20 @@ export const env = {
     insertQuotaCost: num('YOUTUBE_INSERT_QUOTA_COST', 50),
   },
 
+  /** 소셜 간편 로그인 (카카오 / 네이버). 키가 없으면 준비 중 상태로 표시된다. */
+  social: {
+    kakao: {
+      clientId: str('KAKAO_CLIENT_ID'),
+      clientSecret: str('KAKAO_CLIENT_SECRET'),
+      redirectUri: str('KAKAO_REDIRECT_URI'),
+    },
+    naver: {
+      clientId: str('NAVER_CLIENT_ID'),
+      clientSecret: str('NAVER_CLIENT_SECRET'),
+      redirectUri: str('NAVER_REDIRECT_URI'),
+    },
+  },
+
   tts: {
     provider: str('TTS_PROVIDER', 'mock') as ProviderMode,
     apiKey: str('TTS_API_KEY'),

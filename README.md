@@ -8,37 +8,58 @@
 
 ## 빠른 시작 (Windows)
 
-배치 파일을 순서대로 더블클릭하면 됩니다.
+### A. 간편 미리보기 — `preview.bat` 하나만 실행 (권장)
 
-| 순서 | 파일 | 설명 |
-|---|---|---|
-| 1 | `db-up.bat` | PostgreSQL + Redis 컨테이너 시작 (Docker Desktop 필요) |
-| 2 | `setup.bat` | 의존성 설치 → Prisma 생성 → 마이그레이션 → 시드 |
-| 3 | `start.bat` | 개발 서버 실행 + 브라우저 자동 열기 |
-
-그 외
+**Node.js LTS 만 있으면 됩니다.** Docker 도, PostgreSQL 설치도 필요 없습니다.
+내장 데이터베이스(PGlite — PostgreSQL 을 WASM 으로 빌드한 임베디드 엔진)를 사용하며, 실제 PostgreSQL 과 동일한 스키마·마이그레이션·트리거가 그대로 적용됩니다.
 
 | 파일 | 설명 |
 |---|---|
-| `start-prod.bat` | 프로덕션 빌드 후 실행 (실제 배포와 동일한 조건 미리보기) |
-| `db-reset.bat` | DB 초기화 + 시드 재생성 |
+| `preview.bat` | 설치 → 내장 DB 기동 → 마이그레이션 → 시드 → 빌드 → 서버 실행 → 브라우저 자동 열기 |
+| `preview-reset.bat` | 미리보기 데이터 초기화 (`.pglite` 폴더 삭제) |
+
+주소는 **http://localhost:3025** 입니다. 데이터는 `.pglite` 폴더에 보관되어 다음 실행에도 유지됩니다.
+
+> 첫 실행은 `npm install` 3~7분 + 화면 빌드 1~3분이 걸립니다. 멈춘 것처럼 보여도 정상이며, 두 번째부터는 30초 내외입니다.
+> 코드 수정을 즉시 반영하려면 `PREVIEW_MODE=dev` 환경변수를 주고 `npm run preview` 를 실행하세요.
+> `EBADENGINE` 경고는 사용하지 않는 부가 패키지 경고이므로 무시해도 됩니다.
+
+### B. 정식 개발 환경 — 실제 PostgreSQL 사용
+
+운영과 동일한 조건으로 개발할 때 사용합니다. Docker Desktop 이 필요합니다.
+
+| 순서 | 파일 | 설명 |
+|---|---|---|
+| 1 | `db-up.bat` | PostgreSQL + Redis 컨테이너 시작 |
+| 2 | `setup.bat` | 의존성 설치 → Prisma 생성 → 마이그레이션 → 시드 |
+| 3 | `start.bat` | 개발 서버 실행 + 준비 완료 후 브라우저 자동 열기 |
+
+> Docker 없이 직접 설치한 PostgreSQL 을 쓰셔도 됩니다. `.env` 의 `DATABASE_URL` 만 바꾸고 `setup.bat` 을 실행하세요.
+> Redis 는 없어도 동작합니다. 연결에 실패하면 개발 환경에서는 인메모리로 자동 전환됩니다.
+
+### 그 외
+
+| 파일 | 설명 |
+|---|---|
+| `doctor.bat` | 환경 자동 점검 (Node·Docker·포트·DB 연결) — 문제가 생기면 이것부터 |
+| `repair.bat` | 깨진 node_modules 복구 (npm ci + 무결성 검사) |
+| `diag.bat` | 상세 진단 로그 생성 (`logs\diag.log`) |
+| `start-prod.bat` | 프로덕션 빌드 후 실행 |
+| `db-reset.bat` | 정식 개발 환경 DB 초기화 + 시드 |
 | `test.bat` | 통합 테스트 27개 실행 후 시드 재생성 |
 | `git-push.bat` | GitHub(`nan29077/tornado`)에 커밋·푸시 |
 
-> **Docker 없이 쓰려면**: 직접 설치한 PostgreSQL 을 쓰셔도 됩니다. `.env` 의 `DATABASE_URL` 만 해당 서버 주소로 바꾸고 `setup.bat` 을 실행하세요.
-> **Redis 없이도 동작합니다.** `ALLOW_INMEMORY_FALLBACK=true` 이면 인메모리로 대체됩니다(개발 전용).
-
-**필요한 사전 설치**: [Node.js LTS](https://nodejs.org) · [Docker Desktop](https://www.docker.com/products/docker-desktop/)(선택) · [Git](https://git-scm.com)(선택)
+**필요한 사전 설치**: [Node.js LTS](https://nodejs.org) (필수) · [Docker Desktop](https://www.docker.com/products/docker-desktop/) (B 방식만) · [Git](https://git-scm.com) (선택)
 
 ## 빠른 시작 (macOS / Linux)
 
 ```bash
 npm install
 cp .env.example .env
-docker compose up -d      # PostgreSQL + Redis
+docker compose -p tornado up -d   # PostgreSQL + Redis
 npm run db:deploy
 npm run db:seed
-npm run dev               # http://localhost:3000
+npm run dev                       # http://localhost:3025
 ```
 
 ### 시드 계정
@@ -68,7 +89,7 @@ MO Webhook 을 직접 호출하려면 HMAC 서명이 필요합니다.
 ```bash
 BODY='{"messageId":"MO-1","to":"15881001","from":"01012345678","text":"오늘 방송 재미있어요","type":"SMS"}'
 SIG=$(node -e "const c=require('crypto');process.stdout.write(c.createHmac('sha256',process.env.MO_WEBHOOK_SECRET).update(process.argv[1]).digest('hex'))" "$BODY")
-curl -X POST http://localhost:3000/api/webhooks/mo \
+curl -X POST http://localhost:3025/api/webhooks/mo \
   -H 'Content-Type: application/json' \
   -H "x-tornado-signature: sha256=$SIG" \
   -d "$BODY"
@@ -88,6 +109,8 @@ curl -X POST http://localhost:3000/api/webhooks/mo \
 | `npm run db:deploy` | 마이그레이션 적용 (배포) |
 | `npm run db:seed` | 시드 데이터 |
 | `npm run db:reset` | DB 초기화 + 시드 |
+| `npm run preview` | 내장 DB(PGlite) 로 미리보기 실행 |
+| `npm run check:db` | DB 연결 점검 |
 
 > `npm test` 는 실행 전후로 DB 를 비웁니다. 테스트 후에는 `npm run db:seed` 로 다시 채우세요.
 
