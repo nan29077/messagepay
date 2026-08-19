@@ -59,31 +59,74 @@ class MemoryStore implements KvStore {
   }
 }
 
+/**
+ * Redis 스토어.
+ * 개발 환경에서 Redis 가 떠 있지 않아도 앱이 죽지 않도록,
+ * 명령 실패 시 인메모리 스토어로 자동 강등한다(운영에서는 폴백 금지).
+ */
 class RedisStore implements KvStore {
+  private fallback: MemoryStore | null = null;
+
   constructor(private client: Redis) {}
 
-  get(key: string) {
-    return this.client.get(key);
+  private degrade(e: unknown): MemoryStore {
+    if (!env.allowInMemoryFallback) throw e;
+    if (!this.fallback) {
+      logger.warn('Redis 명령 실패. 인메모리 폴백으로 전환합니다(개발 전용).', {
+        message: (e as Error)?.message,
+      });
+      this.fallback = new MemoryStore();
+    }
+    return this.fallback;
+  }
+
+  async get(key: string) {
+    if (this.fallback) return this.fallback.get(key);
+    try {
+      return await this.client.get(key);
+    } catch (e) {
+      return this.degrade(e).get(key);
+    }
   }
 
   async set(key: string, value: string, ttlSec?: number) {
-    if (ttlSec) await this.client.set(key, value, 'EX', ttlSec);
-    else await this.client.set(key, value);
+    if (this.fallback) return this.fallback.set(key, value, ttlSec);
+    try {
+      if (ttlSec) await this.client.set(key, value, 'EX', ttlSec);
+      else await this.client.set(key, value);
+    } catch (e) {
+      await this.degrade(e).set(key, value, ttlSec);
+    }
   }
 
   async incr(key: string, ttlSec?: number) {
-    const n = await this.client.incr(key);
-    if (n === 1 && ttlSec) await this.client.expire(key, ttlSec);
-    return n;
+    if (this.fallback) return this.fallback.incr(key, ttlSec);
+    try {
+      const n = await this.client.incr(key);
+      if (n === 1 && ttlSec) await this.client.expire(key, ttlSec);
+      return n;
+    } catch (e) {
+      return this.degrade(e).incr(key, ttlSec);
+    }
   }
 
   async del(key: string) {
-    await this.client.del(key);
+    if (this.fallback) return this.fallback.del(key);
+    try {
+      await this.client.del(key);
+    } catch (e) {
+      await this.degrade(e).del(key);
+    }
   }
 
   async setnx(key: string, value: string, ttlSec: number) {
-    const r = await this.client.set(key, value, 'EX', ttlSec, 'NX');
-    return r === 'OK';
+    if (this.fallback) return this.fallback.setnx(key, value, ttlSec);
+    try {
+      const r = await this.client.set(key, value, 'EX', ttlSec, 'NX');
+      return r === 'OK';
+    } catch (e) {
+      return this.degrade(e).setnx(key, value, ttlSec);
+    }
   }
 }
 
@@ -99,7 +142,9 @@ function build(): KvStore {
     const client = new Redis(env.redisUrl, {
       maxRetriesPerRequest: 2,
       lazyConnect: false,
-      enableOfflineQueue: true,
+      // 오프라인 큐를 끄면 연결 불가 시 즉시 에러가 나므로 폴백이 빠르게 동작한다
+      enableOfflineQueue: !env.allowInMemoryFallback,
+      retryStrategy: (times) => (times > 5 ? null : Math.min(times * 300, 2000)),
     });
     client.on('error', (e: Error) => logger.warn('redis error', { message: e.message }));
     globalForKv.redis = client;
