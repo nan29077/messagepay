@@ -34,3 +34,7 @@ yarn-error.log*
 # 임시
 /tmp
 /logs
+
+# 에이전트 도구가 생성하는 항목
+.claude/
+_to_delete/
