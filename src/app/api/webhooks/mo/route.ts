@@ -1,0 +1,79 @@
+import { NextResponse } from 'next/server';
+import { prisma } from '@/server/db';
+import { newId } from '@/lib/id';
+import { logger, scrub } from '@/lib/logger';
+import { getMoAdapter } from '@/server/adapters/mo';
+import { handleMoInbound } from '@/server/services/donation-flow';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+/**
+ * MO 사업자 Webhook 수신 엔드포인트.
+ *
+ * 처리 순서
+ *  1) 원문 보존 + 서명/IP 검증
+ *  2) 사업자 payload 정규화
+ *  3) 후원 흐름 실행 (중복/미등록/한도/금칙어 처리 포함)
+ *  4) 항상 200 으로 응답해 사업자 재전송 폭주를 막고, 실패는 내부 상태로 관리한다.
+ *     (단 서명 실패는 401 로 명확히 거절한다)
+ */
+export async function POST(req: Request) {
+  const started = Date.now();
+  const raw = await req.text();
+  const headerMap: Record<string, string> = {};
+  req.headers.forEach((v, k) => {
+    headerMap[k.toLowerCase()] = v;
+  });
+  const ip = (headerMap['x-forwarded-for'] ?? '').split(',')[0]?.trim() || undefined;
+
+  const adapter = getMoAdapter();
+  const verified = adapter.verify(raw, headerMap, ip);
+
+  let parsedBody: unknown = null;
+  try {
+    parsedBody = JSON.parse(raw);
+  } catch {
+    parsedBody = { _raw: raw.slice(0, 2000) };
+  }
+
+  const logRow = await prisma.webhookLog.create({
+    data: {
+      id: newId(),
+      source: 'MO',
+      endpoint: '/api/webhooks/mo',
+      headersMask: scrub(headerMap) as object,
+      bodyMasked: scrub(parsedBody) as object,
+      signatureOk: verified.ok,
+      ip: ip ?? null,
+    },
+  });
+
+  const finish = async (statusCode: number, note: string, body: Record<string, unknown>) => {
+    await prisma.webhookLog.update({
+      where: { id: logRow.id },
+      data: { statusCode, responseNote: note, latencyMs: Date.now() - started },
+    });
+    return NextResponse.json(body, { status: statusCode });
+  };
+
+  if (!verified.ok) {
+    logger.warn('MO Webhook 서명 검증 실패', { reason: verified.reason, ip });
+    return finish(401, verified.reason ?? '서명 검증 실패', { ok: false, message: '인증되지 않은 요청입니다.' });
+  }
+
+  try {
+    const inbound = adapter.parse(parsedBody);
+    const result = await handleMoInbound(inbound);
+    return finish(200, result.result, {
+      ok: true,
+      result: result.result,
+      status: result.status ?? null,
+      message: result.message,
+    });
+  } catch (e) {
+    logger.error('MO 처리 오류', { message: (e as Error).message });
+    // 사업자에게는 200 으로 응답하되 내부적으로 오류를 남긴다(재전송 폭주 방지).
+    return finish(200, `ERROR: ${(e as Error).message}`, { ok: false, message: '수신은 되었으나 처리에 실패했습니다.' });
+  }
+}

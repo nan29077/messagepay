@@ -1,0 +1,1298 @@
+// ---------------------------------------------------------------------------
+// TORNADO (토네이도) - 문자후원 플랫폼 데이터 모델
+// Target: PostgreSQL 16 (Amazon RDS / Aurora PostgreSQL 호환)
+//
+// 설계 원칙
+//  - ID 는 애플리케이션에서 생성(ULID 문자열). DB 함수 의존 제거
+//  - 모든 시각은 timestamptz(UTC) 저장, 표시 시점에 Asia/Seoul 변환
+//  - 금액은 BigInt (원 단위 정수). 부동소수점 금지
+//  - 요율은 Decimal(10,6)
+//  - 개인정보/금융정보는 해시 + 봉투암호화 + 마스킹 3분리 저장
+//  - 정산 원장(settlement_ledger)은 append-only (수정/삭제 금지, 정정은 반대분개)
+//  - 테이블/컬럼명은 snake_case (DBA 인수인계 고려)
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ===========================================================================
+// ENUMS
+// ===========================================================================
+
+enum UserRole {
+  DONOR
+  CREATOR
+  ADMIN
+
+  @@map("user_role")
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  WITHDRAWN
+
+  @@map("user_status")
+}
+
+enum CreatorStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+
+  @@map("creator_status")
+}
+
+enum MoNumberStatus {
+  AVAILABLE
+  RESERVED
+  ASSIGNED
+  RECLAIMED
+  DISABLED
+
+  @@map("mo_number_status")
+}
+
+/// DEDICATED     : 크리에이터 전용 수신번호
+/// SHARED_PREFIX : 대표번호 공유 + 문자 앞 키워드로 크리에이터 식별
+enum MoRouteMode {
+  DEDICATED
+  SHARED_PREFIX
+
+  @@map("mo_route_mode")
+}
+
+enum MessageType {
+  SMS
+  LMS
+  MMS
+
+  @@map("message_type")
+}
+
+enum MoProcessResult {
+  PENDING
+  ROUTED
+  UNKNOWN_ROUTE
+  DUPLICATE
+  UNREGISTERED_DONOR
+  BLOCKED
+  ERROR
+
+  @@map("mo_process_result")
+}
+
+/// 후원 거래 상태머신
+enum DonationStatus {
+  RECEIVED
+  UNREGISTERED
+  LIMIT_BLOCKED
+  CONTENT_BLOCKED
+  PENDING_CONFIRM
+  PENDING_PAYMENT
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  BROADCAST_PENDING
+  BROADCASTED
+  PARTIAL_DELIVERY_FAILED
+  REFUND_REQUESTED
+  REFUNDED
+  SETTLEMENT_PENDING
+  SETTLED
+
+  @@map("donation_status")
+}
+
+enum PaymentMode {
+  DIRECT_TRIGGER
+  CONFIRM_LINK
+
+  @@map("payment_mode")
+}
+
+enum PaymentTxStatus {
+  REQUESTED
+  APPROVED
+  FAILED
+  CANCELED
+  TIMEOUT
+  UNKNOWN
+
+  @@map("payment_tx_status")
+}
+
+enum PaymentTokenStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+
+  @@map("payment_token_status")
+}
+
+enum RegistrationStatus {
+  STARTED
+  AUTH_DONE
+  COMPLETED
+  FAILED
+  EXPIRED
+
+  @@map("registration_status")
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+
+  @@map("delivery_status")
+}
+
+enum RefundStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  DONE
+  FAILED
+
+  @@map("refund_status")
+}
+
+enum SecureLinkPurpose {
+  REGISTER_ACCOUNT
+  CONFIRM_PAYMENT
+  MANAGE_DONOR
+
+  @@map("secure_link_purpose")
+}
+
+enum PolicyScope {
+  GLOBAL
+  CREATOR
+  DONOR
+
+  @@map("policy_scope")
+}
+
+enum LedgerEntryType {
+  DONATION_GROSS
+  PG_FEE
+  PLATFORM_FEE
+  REFUND
+  REFUND_FEE_RETURN
+  ADJUSTMENT
+  PAYOUT
+  PAYOUT_WITHHOLDING
+
+  @@map("ledger_entry_type")
+}
+
+enum SettlementRequestStatus {
+  REQUESTED
+  REVIEWING
+  APPROVED
+  PAID
+  REJECTED
+
+  @@map("settlement_request_status")
+}
+
+enum ConsentType {
+  TERMS_SERVICE
+  PRIVACY
+  E_FINANCE
+  WITHDRAWAL_AGREE
+  AGE_CONFIRM
+  MARKETING
+
+  @@map("consent_type")
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+
+  @@map("risk_level")
+}
+
+enum RiskType {
+  VELOCITY
+  DAILY_LIMIT
+  MONTHLY_LIMIT
+  REPEATED_FAILURE
+  NEW_DONOR
+  MANUAL_REVIEW
+  DUPLICATE_WEBHOOK
+  ABNORMAL_AMOUNT
+
+  @@map("risk_type")
+}
+
+enum ContentAction {
+  BLOCK
+  MASK
+  FLAG
+
+  @@map("content_action")
+}
+
+enum YouTubeConnectionStatus {
+  CONNECTED
+  EXPIRED
+  REVOKED
+  ERROR
+
+  @@map("youtube_connection_status")
+}
+
+enum StreamKeyStatus {
+  ACTIVE
+  REVOKED
+
+  @@map("stream_key_status")
+}
+
+enum ReportStatus {
+  OPEN
+  REVIEWING
+  RESOLVED
+  DISMISSED
+
+  @@map("report_status")
+}
+
+enum NotificationChannel {
+  MT_SMS
+  EMAIL
+  IN_APP
+
+  @@map("notification_channel")
+}
+
+enum AdminPermission {
+  SUPER_ADMIN
+  OPERATION
+  FINANCE
+  SUPPORT
+  READ_ONLY
+
+  @@map("admin_permission")
+}
+
+// ===========================================================================
+// 계정 / 사용자
+// ===========================================================================
+
+model User {
+  id              String     @id
+  email           String?    @unique
+  passwordHash    String?    @map("password_hash")
+  role            UserRole   @default(DONOR)
+  status          UserStatus @default(ACTIVE)
+  name            String?
+  /// 검색용 HMAC-SHA256 해시 (키는 KMS 관리)
+  phoneHash       String?    @unique @map("phone_hash")
+  /// KMS 봉투암호화 결과 (원문 저장 금지)
+  phoneEnc        String?    @map("phone_enc")
+  /// 010-****-1234
+  phoneMasked     String?    @map("phone_masked")
+  ageVerified     Boolean    @default(false) @map("age_verified")
+  lastLoginAt     DateTime?  @map("last_login_at") @db.Timestamptz(3)
+  twoFactorSecret String?    @map("two_factor_secret")
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt       DateTime?  @map("deleted_at") @db.Timestamptz(3)
+
+  donorProfile   DonorProfile?
+  creatorProfile CreatorProfile?
+  adminProfile   AdminProfile?
+  sessions       UserSession[]
+  consents       ConsentRecord[]
+  notifications  Notification[]
+
+  @@index([role, status])
+  @@map("app_user")
+}
+
+model UserSession {
+  id        String    @id
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  ip        String?
+  userAgent String?   @map("user_agent")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("user_session")
+}
+
+model AdminProfile {
+  id         String          @id
+  userId     String          @unique @map("user_id")
+  permission AdminPermission @default(READ_ONLY)
+  memo       String?
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  auditLogs AdminAuditLog[]
+
+  @@map("admin_profile")
+}
+
+// ===========================================================================
+// 후원자
+// ===========================================================================
+
+model DonorProfile {
+  id            String    @id
+  userId        String?   @unique @map("user_id")
+  /// 후원자 식별의 기준. 회원가입 없이 문자만으로도 생성됨
+  phoneHash     String    @unique @map("phone_hash")
+  phoneEnc      String    @map("phone_enc")
+  phoneMasked   String    @map("phone_masked")
+  displayName   String?   @map("display_name")
+  ageVerified   Boolean   @default(false) @map("age_verified")
+  /// 후원자 개인 한도 (미설정 시 전역 정책 적용)
+  dailyLimit    BigInt?   @map("daily_limit")
+  monthlyLimit  BigInt?   @map("monthly_limit")
+  failCount     Int       @default(0) @map("fail_count")
+  lockedUntil   DateTime? @map("locked_until") @db.Timestamptz(3)
+  blockedAt     DateTime? @map("blocked_at") @db.Timestamptz(3)
+  blockedReason String?   @map("blocked_reason")
+  firstSeenAt   DateTime  @default(now()) @map("first_seen_at") @db.Timestamptz(3)
+  registeredAt  DateTime? @map("registered_at") @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user          User?                 @relation(fields: [userId], references: [id])
+  paymentTokens PaymentMethodToken[]
+  registrations PaymentRegistration[]
+  creatorLinks  DonorCreatorLink[]
+  donations     Donation[]
+  counters      DonationCounter[]
+  risks         RiskDetection[]
+  blockedBy     BlockedDonor[]
+
+  @@index([lockedUntil])
+  @@map("donor_profile")
+}
+
+/// 후원자 x 크리에이터 관계 (동의/차단/누적)
+model DonorCreatorLink {
+  id            String    @id
+  donorId       String    @map("donor_id")
+  creatorId     String    @map("creator_id")
+  consentedAt   DateTime? @map("consented_at") @db.Timestamptz(3)
+  blockedAt     DateTime? @map("blocked_at") @db.Timestamptz(3)
+  dailyLimit    BigInt?   @map("daily_limit")
+  totalAmount   BigInt    @default(0) @map("total_amount")
+  totalCount    Int       @default(0) @map("total_count")
+  lastDonatedAt DateTime? @map("last_donated_at") @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  donor   DonorProfile   @relation(fields: [donorId], references: [id], onDelete: Cascade)
+  creator CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@unique([donorId, creatorId])
+  @@index([creatorId])
+  @@map("donor_creator_link")
+}
+
+model BlockedDonor {
+  id        String   @id
+  creatorId String   @map("creator_id")
+  donorId   String   @map("donor_id")
+  reason    String?
+  blockedBy String?  @map("blocked_by")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  creator CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  donor   DonorProfile   @relation(fields: [donorId], references: [id], onDelete: Cascade)
+
+  @@unique([creatorId, donorId])
+  @@map("blocked_donor")
+}
+
+// ===========================================================================
+// 크리에이터
+// ===========================================================================
+
+model CreatorProfile {
+  id             String        @id
+  userId         String        @unique @map("user_id")
+  /// 현재 활성 코드 (이력은 creator_code 테이블)
+  code           String        @unique
+  displayName    String        @map("display_name")
+  channelName    String?       @map("channel_name")
+  avatarUrl      String?       @map("avatar_url")
+  description    String?
+  status         CreatorStatus @default(PENDING)
+  /// 문자 1건당 후원금 (원)
+  donationAmount BigInt        @default(3000) @map("donation_amount")
+  minAmount      BigInt        @default(1000) @map("min_amount")
+  maxAmount      BigInt        @default(50000) @map("max_amount")
+  /// 크리에이터별 결제 모드 오버라이드 (null 이면 전역 설정)
+  paymentMode    PaymentMode?  @map("payment_mode")
+  businessNo     String?       @map("business_no")
+  approvedAt     DateTime?     @map("approved_at") @db.Timestamptz(3)
+  suspendedAt    DateTime?     @map("suspended_at") @db.Timestamptz(3)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codes              CreatorCode[]
+  moRoutes           CreatorMoNumber[]
+  donations          Donation[]
+  donorLinks         DonorCreatorLink[]
+  blockedDonors      BlockedDonor[]
+  overlaySetting     OverlaySetting?
+  ttsSetting         TtsSetting?
+  youtubeConnection  YouTubeConnection?
+  youtubeBroadcasts  YouTubeBroadcast[]
+  streamChannel      StreamChannel?
+  settlementAccount  SettlementAccount?
+  ledgerEntries      SettlementLedger[]
+  settlementRequests SettlementRequest[]
+  feePolicies        FeePolicy[]
+  limitPolicies      DonationLimitPolicy[]
+  bannedWords        BannedWord[]
+  moMessages         MoInboundMessage[]
+
+  @@index([status])
+  @@map("creator_profile")
+}
+
+model CreatorCode {
+  id        String    @id
+  creatorId String    @map("creator_id")
+  code      String    @unique
+  active    Boolean   @default(true)
+  issuedAt  DateTime  @default(now()) @map("issued_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  creator CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@index([creatorId])
+  @@map("creator_code")
+}
+
+/// MO 수신 경로. DEDICATED = 전용번호, SHARED_PREFIX = 대표번호 + 키워드
+model CreatorMoNumber {
+  id          String         @id
+  phoneNumber String         @map("phone_number")
+  /// SHARED_PREFIX 모드에서 문자 맨 앞 키워드 (대문자 정규화 저장)
+  keyword     String?
+  mode        MoRouteMode    @default(DEDICATED)
+  status      MoNumberStatus @default(AVAILABLE)
+  providerId  String?        @map("provider_id")
+  creatorId   String?        @map("creator_id")
+  monthlyCost BigInt         @default(0) @map("monthly_cost")
+  assignedAt  DateTime?      @map("assigned_at") @db.Timestamptz(3)
+  releasedAt  DateTime?      @map("released_at") @db.Timestamptz(3)
+  memo        String?
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  creator CreatorProfile? @relation(fields: [creatorId], references: [id])
+
+  @@unique([phoneNumber, keyword])
+  @@index([status])
+  @@index([creatorId])
+  @@map("creator_mo_number")
+}
+
+// ===========================================================================
+// 문자 (MO 수신 / MT 발송)
+// 운영환경에서는 created_at 기준 월 단위 파티셔닝 적용 (별도 SQL 마이그레이션)
+// ===========================================================================
+
+model MoInboundMessage {
+  id                String          @id
+  /// MO 사업자 메시지 ID. 중복 수신 차단의 1차 방어선
+  providerMessageId String          @unique @map("provider_message_id")
+  providerCode      String          @map("provider_code")
+  receivedNumber    String          @map("received_number")
+  phoneHash         String          @map("phone_hash")
+  phoneEnc          String          @map("phone_enc")
+  phoneMasked       String          @map("phone_masked")
+  messageType       MessageType     @default(SMS) @map("message_type")
+  /// 원문은 개인정보가 포함될 수 있어 암호화 저장
+  contentEnc        String          @map("content_enc")
+  /// 필터링 후 방송 노출용 텍스트
+  contentFiltered   String?         @map("content_filtered")
+  attachmentInfo    Json?           @map("attachment_info")
+  creatorId         String?         @map("creator_id")
+  matchedKeyword    String?         @map("matched_keyword")
+  result            MoProcessResult @default(PENDING)
+  resultDetail      String?         @map("result_detail")
+  receivedAt        DateTime        @map("received_at") @db.Timestamptz(3)
+  processedAt       DateTime?       @map("processed_at") @db.Timestamptz(3)
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  creator  CreatorProfile? @relation(fields: [creatorId], references: [id])
+  donation Donation?
+
+  @@index([creatorId, receivedAt])
+  @@index([phoneHash, receivedAt])
+  @@index([result])
+  @@map("mo_inbound_message")
+}
+
+model MtOutboundMessage {
+  id                String         @id
+  phoneHash         String         @map("phone_hash")
+  phoneEnc          String         @map("phone_enc")
+  phoneMasked       String         @map("phone_masked")
+  fromNumber        String         @map("from_number")
+  messageType       MessageType    @default(SMS) @map("message_type")
+  templateCode      String?        @map("template_code")
+  /// 발송 본문. 보안링크 토큰 원문은 포함하지 않고 마스킹 저장
+  bodyMasked        String         @map("body_masked")
+  status            DeliveryStatus @default(PENDING)
+  providerCode      String?        @map("provider_code")
+  providerMessageId String?        @map("provider_message_id")
+  resultCode        String?        @map("result_code")
+  resultMessage     String?        @map("result_message")
+  donationId        String?        @map("donation_id")
+  creatorId         String?        @map("creator_id")
+  attempts          Int            @default(0)
+  sentAt            DateTime?      @map("sent_at") @db.Timestamptz(3)
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  donation Donation? @relation(fields: [donationId], references: [id])
+
+  @@index([phoneHash, createdAt])
+  @@index([status])
+  @@index([donationId])
+  @@map("mt_outbound_message")
+}
+
+/// MT 로 전송되는 1회용 보안 링크
+model SecureLink {
+  id         String            @id
+  tokenHash  String            @unique @map("token_hash")
+  purpose    SecureLinkPurpose
+  phoneHash  String            @map("phone_hash")
+  creatorId  String?           @map("creator_id")
+  donationId String?           @unique @map("donation_id")
+  payload    Json?
+  expiresAt  DateTime          @map("expires_at") @db.Timestamptz(3)
+  usedAt     DateTime?         @map("used_at") @db.Timestamptz(3)
+  usedIp     String?           @map("used_ip")
+  usedAgent  String?           @map("used_agent")
+  createdAt  DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  donation Donation? @relation(fields: [donationId], references: [id])
+
+  @@index([phoneHash])
+  @@index([expiresAt])
+  @@map("secure_link")
+}
+
+// ===========================================================================
+// 결제
+// ===========================================================================
+
+model PaymentRegistration {
+  id            String             @id
+  donorId       String             @map("donor_id")
+  creatorId     String?            @map("creator_id")
+  provider      String             @default("HECTO")
+  providerTid   String?            @map("provider_tid")
+  status        RegistrationStatus @default(STARTED)
+  resultCode    String?            @map("result_code")
+  resultMessage String?            @map("result_message")
+  /// 민감값 제거된 응답 스냅샷
+  rawMasked     Json?              @map("raw_masked")
+  startedAt     DateTime           @default(now()) @map("started_at") @db.Timestamptz(3)
+  completedAt   DateTime?          @map("completed_at") @db.Timestamptz(3)
+
+  donor DonorProfile @relation(fields: [donorId], references: [id], onDelete: Cascade)
+
+  @@index([donorId])
+  @@index([status])
+  @@map("payment_registration")
+}
+
+model PaymentMethodToken {
+  id           String             @id
+  donorId      String             @map("donor_id")
+  provider     String             @default("HECTO")
+  /// 빌키 암호문. 복호화는 결제 워커에서만 수행하며 로그 출력 금지
+  billKeyEnc   String             @map("bill_key_enc")
+  billKeyHint  String             @map("bill_key_hint")
+  bankCode     String?            @map("bank_code")
+  bankName     String?            @map("bank_name")
+  /// 계좌 원문 저장 금지. 끝 4자리만 보관
+  accountTail4 String?            @map("account_tail4")
+  status       PaymentTokenStatus @default(ACTIVE)
+  registeredAt DateTime           @default(now()) @map("registered_at") @db.Timestamptz(3)
+  revokedAt    DateTime?          @map("revoked_at") @db.Timestamptz(3)
+  updatedAt    DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  donor DonorProfile @relation(fields: [donorId], references: [id], onDelete: Cascade)
+
+  @@index([donorId, status])
+  @@map("payment_method_token")
+}
+
+model Donation {
+  id            String         @id
+  /// 대외 노출용 거래번호
+  transactionNo String         @unique @map("transaction_no")
+  creatorId     String         @map("creator_id")
+  donorId       String?        @map("donor_id")
+  moMessageId   String?        @unique @map("mo_message_id")
+  amount        BigInt
+  displayName   String         @map("display_name")
+  /// 필터링 완료된 방송 노출용 메시지
+  message       String
+  /// 원문 암호화 보관 (분쟁 대응)
+  messageRawEnc String?        @map("message_raw_enc")
+  status        DonationStatus @default(RECEIVED)
+  statusReason  String?        @map("status_reason")
+  paymentMode   PaymentMode    @default(CONFIRM_LINK) @map("payment_mode")
+  isTest        Boolean        @default(false) @map("is_test")
+  anonymous     Boolean        @default(false)
+
+  pgFee       BigInt @default(0) @map("pg_fee")
+  platformFee BigInt @default(0) @map("platform_fee")
+  netAmount   BigInt @default(0) @map("net_amount")
+
+  mtStatus      DeliveryStatus @default(PENDING) @map("mt_status")
+  youtubeStatus DeliveryStatus @default(PENDING) @map("youtube_status")
+  overlayStatus DeliveryStatus @default(PENDING) @map("overlay_status")
+
+  receivedAt    DateTime  @default(now()) @map("received_at") @db.Timestamptz(3)
+  paidAt        DateTime? @map("paid_at") @db.Timestamptz(3)
+  broadcastedAt DateTime? @map("broadcasted_at") @db.Timestamptz(3)
+  refundedAt    DateTime? @map("refunded_at") @db.Timestamptz(3)
+  settledAt     DateTime? @map("settled_at") @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  creator        CreatorProfile        @relation(fields: [creatorId], references: [id])
+  donor          DonorProfile?         @relation(fields: [donorId], references: [id])
+  moMessage      MoInboundMessage?     @relation(fields: [moMessageId], references: [id])
+  transactions   PaymentTransaction[]
+  refunds        Refund[]
+  mtMessages     MtOutboundMessage[]
+  chatDeliveries YouTubeChatDelivery[]
+  overlayEvents  OverlayEvent[]
+  ledgerEntries  SettlementLedger[]
+  secureLink     SecureLink?
+  statusLogs     DonationStatusLog[]
+
+  @@index([creatorId, receivedAt])
+  @@index([donorId, receivedAt])
+  @@index([status])
+  @@index([receivedAt])
+  @@map("donation")
+}
+
+model DonationStatusLog {
+  id         String          @id
+  donationId String          @map("donation_id")
+  fromStatus DonationStatus? @map("from_status")
+  toStatus   DonationStatus  @map("to_status")
+  reason     String?
+  actor      String?
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  donation Donation @relation(fields: [donationId], references: [id], onDelete: Cascade)
+
+  @@index([donationId])
+  @@map("donation_status_log")
+}
+
+model PaymentTransaction {
+  id            String          @id
+  donationId    String          @map("donation_id")
+  /// 가맹점 주문번호. PG 멱등키로 재사용
+  orderNo       String          @unique @map("order_no")
+  provider      String          @default("HECTO")
+  providerTid   String?         @map("provider_tid")
+  amount        BigInt
+  status        PaymentTxStatus @default(REQUESTED)
+  resultCode    String?         @map("result_code")
+  resultMessage String?         @map("result_message")
+  rawMasked     Json?           @map("raw_masked")
+  requestedAt   DateTime        @default(now()) @map("requested_at") @db.Timestamptz(3)
+  approvedAt    DateTime?       @map("approved_at") @db.Timestamptz(3)
+  canceledAt    DateTime?       @map("canceled_at") @db.Timestamptz(3)
+  updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  donation Donation         @relation(fields: [donationId], references: [id], onDelete: Cascade)
+  attempts PaymentAttempt[]
+
+  @@index([donationId])
+  @@index([status])
+  @@index([providerTid])
+  @@map("payment_transaction")
+}
+
+model PaymentAttempt {
+  id             String   @id
+  transactionId  String   @map("transaction_id")
+  attemptNo      Int      @map("attempt_no")
+  operation      String
+  requestMasked  Json?    @map("request_masked")
+  responseMasked Json?    @map("response_masked")
+  latencyMs      Int?     @map("latency_ms")
+  errorCode      String?  @map("error_code")
+  errorMessage   String?  @map("error_message")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  transaction PaymentTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([transactionId])
+  @@map("payment_attempt")
+}
+
+model Refund {
+  id            String       @id
+  donationId    String       @map("donation_id")
+  amount        BigInt
+  reason        String?
+  status        RefundStatus @default(REQUESTED)
+  requestedBy   String?      @map("requested_by")
+  approvedBy    String?      @map("approved_by")
+  providerTid   String?      @map("provider_tid")
+  resultCode    String?      @map("result_code")
+  resultMessage String?      @map("result_message")
+  requestedAt   DateTime     @default(now()) @map("requested_at") @db.Timestamptz(3)
+  processedAt   DateTime?    @map("processed_at") @db.Timestamptz(3)
+
+  donation Donation @relation(fields: [donationId], references: [id], onDelete: Cascade)
+
+  @@index([donationId])
+  @@index([status])
+  @@map("refund")
+}
+
+/// 결제/거래 생성 멱등성 보장
+model IdempotencyKey {
+  id         String   @id
+  scope      String
+  key        String
+  resourceId String?  @map("resource_id")
+  status     String   @default("IN_PROGRESS")
+  resultHash String?  @map("result_hash")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(3)
+
+  @@unique([scope, key])
+  @@index([expiresAt])
+  @@map("idempotency_key")
+}
+
+// ===========================================================================
+// 한도 / 리스크 / 콘텐츠
+// ===========================================================================
+
+model DonationLimitPolicy {
+  id                    String      @id
+  scope                 PolicyScope @default(GLOBAL)
+  creatorId             String?     @map("creator_id")
+  donorId               String?     @map("donor_id")
+  defaultAmount         BigInt      @default(3000) @map("default_amount")
+  minAmount             BigInt      @default(1000) @map("min_amount")
+  maxAmount             BigInt      @default(50000) @map("max_amount")
+  donorDailyLimit       BigInt      @default(100000) @map("donor_daily_limit")
+  donorMonthlyLimit     BigInt      @default(1000000) @map("donor_monthly_limit")
+  perCreatorDailyLimit  BigInt      @default(50000) @map("per_creator_daily_limit")
+  velocityWindowSec     Int         @default(60) @map("velocity_window_sec")
+  velocityMaxCount      Int         @default(3) @map("velocity_max_count")
+  cooldownAfterCount    Int         @default(5) @map("cooldown_after_count")
+  cooldownSec           Int         @default(300) @map("cooldown_sec")
+  failureLockThreshold  Int         @default(3) @map("failure_lock_threshold")
+  newDonorFirstDayLimit BigInt      @default(30000) @map("new_donor_first_day_limit")
+  manualReviewAmount    BigInt      @default(200000) @map("manual_review_amount")
+  ttsMinAmount          BigInt      @default(3000) @map("tts_min_amount")
+  active                Boolean     @default(true)
+  effectiveFrom         DateTime    @default(now()) @map("effective_from") @db.Timestamptz(3)
+  effectiveTo           DateTime?   @map("effective_to") @db.Timestamptz(3)
+  createdAt             DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  creator CreatorProfile? @relation(fields: [creatorId], references: [id])
+
+  @@index([scope, active])
+  @@map("donation_limit_policy")
+}
+
+/// 기간별 후원 집계 (Redis 캐시의 영속 원본)
+model DonationCounter {
+  id         String   @id
+  donorId    String   @map("donor_id")
+  /// 전체 합계 행은 'ALL' 센티널 사용.
+  /// (PostgreSQL 은 NULL 을 서로 다른 값으로 취급하므로 UNIQUE 제약이 무력화된다)
+  creatorId  String   @default("ALL") @map("creator_id")
+  periodType String   @map("period_type")
+  periodKey  String   @map("period_key")
+  count      Int      @default(0)
+  amount     BigInt   @default(0)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  donor DonorProfile @relation(fields: [donorId], references: [id], onDelete: Cascade)
+
+  @@unique([donorId, creatorId, periodType, periodKey])
+  @@index([periodKey])
+  @@map("donation_counter")
+}
+
+model RiskDetection {
+  id         String    @id
+  donorId    String?   @map("donor_id")
+  creatorId  String?   @map("creator_id")
+  donationId String?   @map("donation_id")
+  type       RiskType
+  level      RiskLevel @default(LOW)
+  detail     Json?
+  resolved   Boolean   @default(false)
+  resolvedBy String?   @map("resolved_by")
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  donor DonorProfile? @relation(fields: [donorId], references: [id])
+
+  @@index([level, resolved])
+  @@index([createdAt])
+  @@map("risk_detection")
+}
+
+model BannedWord {
+  id        String        @id
+  word      String
+  action    ContentAction @default(MASK)
+  scope     PolicyScope   @default(GLOBAL)
+  creatorId String?       @map("creator_id")
+  active    Boolean       @default(true)
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  creator CreatorProfile? @relation(fields: [creatorId], references: [id])
+
+  // 유니크는 부분 인덱스(banned_word_global_uniq / banned_word_creator_uniq)로 DB 레벨에서 강제한다
+  @@index([word])
+  @@index([scope, active])
+  @@map("banned_word")
+}
+
+// ===========================================================================
+// 유튜브 / 방송 / 오버레이
+// ===========================================================================
+
+model YouTubeConnection {
+  id              String                  @id
+  creatorId       String                  @unique @map("creator_id")
+  channelId       String                  @map("channel_id")
+  channelTitle    String?                 @map("channel_title")
+  channelThumb    String?                 @map("channel_thumb")
+  accessTokenEnc  String                  @map("access_token_enc")
+  refreshTokenEnc String                  @map("refresh_token_enc")
+  scope           String
+  expiresAt       DateTime                @map("expires_at") @db.Timestamptz(3)
+  status          YouTubeConnectionStatus @default(CONNECTED)
+  lastError       String?                 @map("last_error")
+  lastCheckedAt   DateTime?               @map("last_checked_at") @db.Timestamptz(3)
+  createdAt       DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  creator CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@map("youtube_connection")
+}
+
+model YouTubeBroadcast {
+  id          String    @id
+  creatorId   String    @map("creator_id")
+  broadcastId String    @map("broadcast_id")
+  liveChatId  String?   @map("live_chat_id")
+  title       String?
+  lifeCycle   String?   @map("life_cycle")
+  chatEnabled Boolean   @default(true) @map("chat_enabled")
+  startedAt   DateTime? @map("started_at") @db.Timestamptz(3)
+  endedAt     DateTime? @map("ended_at") @db.Timestamptz(3)
+  detectedAt  DateTime  @default(now()) @map("detected_at") @db.Timestamptz(3)
+
+  creator    CreatorProfile        @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  deliveries YouTubeChatDelivery[]
+
+  @@unique([creatorId, broadcastId])
+  @@index([creatorId, detectedAt])
+  @@map("youtube_broadcast")
+}
+
+model YouTubeChatDelivery {
+  id                String         @id
+  donationId        String         @map("donation_id")
+  broadcastId       String?        @map("broadcast_id")
+  liveChatId        String?        @map("live_chat_id")
+  status            DeliveryStatus @default(PENDING)
+  attempts          Int            @default(0)
+  providerMessageId String?        @map("provider_message_id")
+  quotaUnits        Int            @default(0) @map("quota_units")
+  errorCode         String?        @map("error_code")
+  errorMessage      String?        @map("error_message")
+  sentAt            DateTime?      @map("sent_at") @db.Timestamptz(3)
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  donation  Donation          @relation(fields: [donationId], references: [id], onDelete: Cascade)
+  broadcast YouTubeBroadcast? @relation(fields: [broadcastId], references: [id])
+
+  @@index([donationId])
+  @@index([status])
+  @@map("youtube_chat_delivery")
+}
+
+model StreamChannel {
+  id          String    @id
+  creatorId   String    @unique @map("creator_id")
+  ingestUrl   String    @map("ingest_url")
+  playbackUrl String?   @map("playback_url")
+  live        Boolean   @default(false)
+  lastLiveAt  DateTime? @map("last_live_at") @db.Timestamptz(3)
+  simulcast   Boolean   @default(false)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  creator CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  keys    StreamKey[]
+
+  @@map("stream_channel")
+}
+
+model StreamKey {
+  id        String          @id
+  channelId String          @map("channel_id")
+  /// 원문 저장 금지. 해시 + 마스킹만 보관
+  keyHash   String          @unique @map("key_hash")
+  keyMasked String          @map("key_masked")
+  status    StreamKeyStatus @default(ACTIVE)
+  issuedAt  DateTime        @default(now()) @map("issued_at") @db.Timestamptz(3)
+  revokedAt DateTime?       @map("revoked_at") @db.Timestamptz(3)
+
+  channel StreamChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, status])
+  @@map("stream_key")
+}
+
+model OverlaySetting {
+  id            String   @id
+  creatorId     String   @unique @map("creator_id")
+  /// 오버레이 접근 토큰 해시
+  tokenHash     String   @unique @map("token_hash")
+  tokenMasked   String   @map("token_masked")
+  enabled       Boolean  @default(true)
+  showAmount    Boolean  @default(true) @map("show_amount")
+  showMessage   Boolean  @default(true) @map("show_message")
+  maxMessageLen Int      @default(80) @map("max_message_len")
+  anonymize     Boolean  @default(false)
+  position      String   @default("BOTTOM_CENTER")
+  durationMs    Int      @default(7000) @map("duration_ms")
+  theme         String   @default("TORNADO")
+  stickerSet    String   @default("DEFAULT") @map("sticker_set")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  creator CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@map("overlay_setting")
+}
+
+model OverlayEvent {
+  id         String         @id
+  creatorId  String         @map("creator_id")
+  donationId String?        @map("donation_id")
+  payload    Json
+  status     DeliveryStatus @default(PENDING)
+  isTest     Boolean        @default(false) @map("is_test")
+  playedAt   DateTime?      @map("played_at") @db.Timestamptz(3)
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  donation Donation? @relation(fields: [donationId], references: [id])
+
+  @@index([creatorId, createdAt])
+  @@index([status])
+  @@map("overlay_event")
+}
+
+model TtsSetting {
+  id         String   @id
+  creatorId  String   @unique @map("creator_id")
+  enabled    Boolean  @default(true)
+  voice      String   @default("ko-KR-Standard-A")
+  speed      Float    @default(1.0)
+  volume     Float    @default(1.0)
+  readAmount Boolean  @default(true) @map("read_amount")
+  readName   Boolean  @default(true) @map("read_name")
+  minAmount  BigInt   @default(3000) @map("min_amount")
+  maxChars   Int      @default(80) @map("max_chars")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  creator CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@map("tts_setting")
+}
+
+// ===========================================================================
+// 정산
+// ===========================================================================
+
+model FeePolicy {
+  id              String      @id
+  scope           PolicyScope @default(GLOBAL)
+  creatorId       String?     @map("creator_id")
+  pgFeeRate       Decimal     @default(0.018) @map("pg_fee_rate") @db.Decimal(10, 6)
+  pgFixedFee      BigInt      @default(0) @map("pg_fixed_fee")
+  platformFeeRate Decimal     @default(0.15) @map("platform_fee_rate") @db.Decimal(10, 6)
+  smsCost         BigInt      @default(0) @map("sms_cost")
+  vatIncluded     Boolean     @default(true) @map("vat_included")
+  active          Boolean     @default(true)
+  effectiveFrom   DateTime    @default(now()) @map("effective_from") @db.Timestamptz(3)
+  effectiveTo     DateTime?   @map("effective_to") @db.Timestamptz(3)
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  creator CreatorProfile? @relation(fields: [creatorId], references: [id])
+
+  @@index([scope, active])
+  @@map("fee_policy")
+}
+
+model SettlementAccount {
+  id            String    @id
+  creatorId     String    @unique @map("creator_id")
+  bankCode      String    @map("bank_code")
+  bankName      String    @map("bank_name")
+  accountEnc    String    @map("account_enc")
+  accountTail4  String    @map("account_tail4")
+  holderNameEnc String    @map("holder_name_enc")
+  holderMasked  String    @map("holder_masked")
+  verified      Boolean   @default(false)
+  verifiedAt    DateTime? @map("verified_at") @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  creator CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@map("settlement_account")
+}
+
+/// APPEND ONLY. 어떤 경로로도 UPDATE/DELETE 하지 않는다. 정정은 반대분개로 처리.
+model SettlementLedger {
+  id            String          @id
+  creatorId     String          @map("creator_id")
+  entryType     LedgerEntryType @map("entry_type")
+  /// 부호 있는 금액. 크리에이터 수취 증가는 +, 차감은 -
+  amount        BigInt
+  donationId    String?         @map("donation_id")
+  refundId      String?         @map("refund_id")
+  requestId     String?         @map("request_id")
+  memo          String?
+  occurredAt    DateTime        @map("occurred_at") @db.Timestamptz(3)
+  settlementKey String          @map("settlement_key")
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  creator  CreatorProfile     @relation(fields: [creatorId], references: [id])
+  donation Donation?          @relation(fields: [donationId], references: [id])
+  request  SettlementRequest? @relation(fields: [requestId], references: [id])
+
+  @@index([creatorId, occurredAt])
+  @@index([settlementKey])
+  @@index([donationId])
+  @@map("settlement_ledger")
+}
+
+model SettlementRequest {
+  id           String                  @id
+  creatorId    String                  @map("creator_id")
+  amount       BigInt
+  status       SettlementRequestStatus @default(REQUESTED)
+  withholding  BigInt                  @default(0)
+  payoutAmount BigInt                  @default(0) @map("payout_amount")
+  memo         String?
+  adminId      String?                 @map("admin_id")
+  requestedAt  DateTime                @default(now()) @map("requested_at") @db.Timestamptz(3)
+  approvedAt   DateTime?               @map("approved_at") @db.Timestamptz(3)
+  paidAt       DateTime?               @map("paid_at") @db.Timestamptz(3)
+  rejectedAt   DateTime?               @map("rejected_at") @db.Timestamptz(3)
+
+  creator CreatorProfile     @relation(fields: [creatorId], references: [id])
+  entries SettlementLedger[]
+
+  @@index([creatorId, requestedAt])
+  @@index([status])
+  @@map("settlement_request")
+}
+
+// ===========================================================================
+// 약관 / 동의 / 알림 / 운영
+// ===========================================================================
+
+model TermsVersion {
+  id            String      @id
+  type          ConsentType
+  version       String
+  title         String
+  content       String
+  required      Boolean     @default(true)
+  effectiveFrom DateTime    @map("effective_from") @db.Timestamptz(3)
+  active        Boolean     @default(true)
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  consents ConsentRecord[]
+
+  @@unique([type, version])
+  @@index([type, active])
+  @@map("terms_version")
+}
+
+model ConsentRecord {
+  id        String      @id
+  userId    String?     @map("user_id")
+  phoneHash String?     @map("phone_hash")
+  termsId   String      @map("terms_id")
+  type      ConsentType
+  agreed    Boolean
+  ip        String?
+  userAgent String?     @map("user_agent")
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user  User?        @relation(fields: [userId], references: [id])
+  terms TermsVersion @relation(fields: [termsId], references: [id])
+
+  @@index([phoneHash])
+  @@index([userId])
+  @@map("consent_record")
+}
+
+model Notification {
+  id        String              @id
+  userId    String?             @map("user_id")
+  channel   NotificationChannel @default(IN_APP)
+  title     String
+  body      String
+  linkUrl   String?             @map("link_url")
+  readAt    DateTime?           @map("read_at") @db.Timestamptz(3)
+  createdAt DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@map("notification")
+}
+
+model Report {
+  id           String       @id
+  donationId   String?      @map("donation_id")
+  creatorId    String?      @map("creator_id")
+  reporterHash String?      @map("reporter_hash")
+  category     String
+  content      String
+  status       ReportStatus @default(OPEN)
+  handledBy    String?      @map("handled_by")
+  handledAt    DateTime?    @map("handled_at") @db.Timestamptz(3)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([status, createdAt])
+  @@map("report")
+}
+
+model AdminAuditLog {
+  id          String   @id
+  adminId     String?  @map("admin_id")
+  action      String
+  targetType  String   @map("target_type")
+  targetId    String?  @map("target_id")
+  beforeValue Json?    @map("before_value")
+  afterValue  Json?    @map("after_value")
+  ip          String?
+  userAgent   String?  @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  admin AdminProfile? @relation(fields: [adminId], references: [id])
+
+  @@index([adminId, createdAt])
+  @@index([targetType, targetId])
+  @@map("admin_audit_log")
+}
+
+model WebhookLog {
+  id           String   @id
+  source       String
+  endpoint     String
+  method       String   @default("POST")
+  headersMask  Json?    @map("headers_mask")
+  bodyMasked   Json?    @map("body_masked")
+  signatureOk  Boolean  @default(false) @map("signature_ok")
+  ip           String?
+  statusCode   Int?     @map("status_code")
+  responseNote String?  @map("response_note")
+  latencyMs    Int?     @map("latency_ms")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([source, createdAt])
+  @@index([signatureOk])
+  @@map("webhook_log")
+}
+
+model SystemSetting {
+  key       String   @id
+  value     Json
+  memo      String?
+  updatedBy String?  @map("updated_by")
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("system_setting")
+}
+
+model Banner {
+  id        String    @id
+  position  String
+  title     String
+  subtitle  String?
+  imageUrl  String?   @map("image_url")
+  linkUrl   String?   @map("link_url")
+  sortOrder Int       @default(0) @map("sort_order")
+  active    Boolean   @default(true)
+  startsAt  DateTime? @map("starts_at") @db.Timestamptz(3)
+  endsAt    DateTime? @map("ends_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([position, active])
+  @@map("banner")
+}
+
+model ContentPost {
+  id        String   @id
+  type      String
+  title     String
+  body      String
+  category  String?
+  pinned    Boolean  @default(false)
+  published Boolean  @default(true)
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([type, published])
+  @@map("content_post")
+}

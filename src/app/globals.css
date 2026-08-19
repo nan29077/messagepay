@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   토네이도 디자인 토큰
+   - 모바일 우선. PC 에서도 중앙 콘텐츠 폭을 앱과 유사하게 유지
+   - 이모지 미사용. 아이콘은 라인형 스트로크(lucide) 1.5px
+   - 결제/출금 관련 정보는 대비를 높여 명확히 표기
+--------------------------------------------------------------------------- */
+
+@theme {
+  --color-brand-50: #f2efff;
+  --color-brand-100: #e5dfff;
+  --color-brand-200: #cbc0ff;
+  --color-brand-300: #a894ff;
+  --color-brand-400: #8a6ffa;
+  --color-brand-500: #6c4cf1;
+  --color-brand-600: #5836d6;
+  --color-brand-700: #4529ab;
+  --color-brand-800: #342080;
+  --color-brand-900: #241757;
+
+  --color-accent-400: #ff8b8b;
+  --color-accent-500: #ff6b6b;
+  --color-accent-600: #e94f4f;
+
+  --color-ink-900: #131a3a;
+  --color-ink-700: #2c3563;
+  --color-ink-500: #5a628c;
+  --color-ink-400: #858cb5;
+  --color-ink-300: #b7bbd6;
+  --color-ink-200: #dcdeeb;
+  --color-ink-100: #eceef6;
+  --color-ink-50: #f6f5fb;
+
+  --color-success-500: #10b981;
+  --color-success-50: #e8f8f2;
+  --color-warning-500: #f59e0b;
+  --color-warning-50: #fdf3e2;
+  --color-danger-500: #e5484d;
+  --color-danger-50: #fdecec;
+
+  --font-sans: var(--font-pretendard), "Pretendard", -apple-system, BlinkMacSystemFont,
+    "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+
+  --radius-card: 20px;
+
+  --shadow-soft: 0 2px 8px rgba(19, 26, 58, 0.05), 0 12px 32px rgba(19, 26, 58, 0.06);
+  --shadow-lift: 0 4px 14px rgba(19, 26, 58, 0.08), 0 20px 48px rgba(19, 26, 58, 0.1);
+}
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  background: var(--color-ink-50);
+  color: var(--color-ink-900);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  word-break: keep-all;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* 앱 폭: PC 에서도 넓게 벌리지 않는다 */
+.app-column {
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.card {
+  background: #fff;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-soft);
+}
+
+/* 오버레이 전용 (OBS/PRISM 브라우저 소스) */
+.overlay-root {
+  background: transparent !important;
+}
+
+@keyframes tornado-in {
+  0% { opacity: 0; transform: translateY(24px) scale(0.96); }
+  60% { opacity: 1; transform: translateY(-4px) scale(1.01); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes tornado-out {
+  0% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-16px) scale(0.98); }
+}
+
+@keyframes tornado-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-tornado-in { animation: tornado-in 480ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-tornado-out { animation: tornado-out 360ms ease-in both; }
+.animate-tornado-spin { animation: tornado-spin 9s linear infinite; }
+
+/* 스크롤바 정리 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--color-ink-200); border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }

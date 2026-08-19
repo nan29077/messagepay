@@ -1,0 +1,193 @@
+import Link from 'next/link';
+import { Badge, Card, EmptyState, Notice, Table, Td, Th } from '@/components/ui';
+import { PageHeader } from '@/components/layout/console-shell';
+import { InlineActionForm } from '@/components/studio/action-form';
+import { PAID_STATUSES, one, type SearchParamsRecord } from '@/components/studio/shared';
+import { blockDonorAction } from '@/app/actions/studio';
+import { requireCreator } from '@/server/auth';
+import { prisma } from '@/server/db';
+import { formatNumber, formatWon } from '@/lib/money';
+import { formatKst } from '@/lib/datetime';
+import { donationStatusLabel, moResultLabel } from '@/lib/labels';
+import type { Prisma } from '@/generated/prisma/client';
+
+export const dynamic = 'force-dynamic';
+
+const TAKE = 50;
+
+const TABS = [
+  { value: 'all', label: '전체 수신' },
+  { value: 'success', label: '후원 성공' },
+  { value: 'failed', label: '결제 실패' },
+  { value: 'unregistered', label: '미등록 사용자' },
+  { value: 'blocked', label: '차단됨' },
+  { value: 'filtered', label: '금칙어 포함' },
+  { value: 'youtube_failed', label: '유튜브 전송 실패' },
+] as const;
+
+type TabValue = (typeof TABS)[number]['value'];
+
+function tabWhere(tab: TabValue): Prisma.MoInboundMessageWhereInput {
+  switch (tab) {
+    case 'success':
+      return { donation: { status: { in: PAID_STATUSES } } };
+    case 'failed':
+      return { donation: { status: 'PAYMENT_FAILED' } };
+    case 'unregistered':
+      return { OR: [{ result: 'UNREGISTERED_DONOR' }, { donation: { status: 'UNREGISTERED' } }] };
+    case 'blocked':
+      return { OR: [{ result: 'BLOCKED' }, { donation: { status: { in: ['LIMIT_BLOCKED', 'CONTENT_BLOCKED'] } } }] };
+    case 'filtered':
+      return { OR: [{ donation: { status: 'CONTENT_BLOCKED' } }, { contentFiltered: { contains: '*' } }] };
+    case 'youtube_failed':
+      return { donation: { youtubeStatus: 'FAILED' } };
+    default:
+      return {};
+  }
+}
+
+export default async function StudioMessagesPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParamsRecord>;
+}) {
+  const { creatorId } = await requireCreator();
+  const sp = await searchParams;
+
+  const raw = one(sp.tab) as TabValue;
+  const tab: TabValue = TABS.some((t) => t.value === raw) ? raw : 'all';
+
+  const where: Prisma.MoInboundMessageWhereInput = { creatorId, ...tabWhere(tab) };
+
+  const [total, rows, blockedRows] = await Promise.all([
+    prisma.moInboundMessage.count({ where }),
+    prisma.moInboundMessage.findMany({
+      where,
+      orderBy: { receivedAt: 'desc' },
+      take: TAKE,
+      select: {
+        id: true,
+        receivedAt: true,
+        phoneMasked: true,
+        matchedKeyword: true,
+        messageType: true,
+        contentFiltered: true,
+        result: true,
+        resultDetail: true,
+        donation: {
+          select: { id: true, transactionNo: true, status: true, amount: true, donorId: true, youtubeStatus: true },
+        },
+      },
+    }),
+    prisma.blockedDonor.findMany({ where: { creatorId }, select: { donorId: true } }),
+  ]);
+
+  const blockedSet = new Set(blockedRows.map((b) => b.donorId));
+
+  return (
+    <>
+      <PageHeader
+        title="문자 관리"
+        description={`수신된 문자 ${formatNumber(total)}건 중 최근 ${formatNumber(Math.min(total, TAKE))}건을 표시합니다.`}
+      />
+
+      <div className="space-y-4">
+        <Notice tone="neutral" title="문자 원문은 표시되지 않습니다">
+          방송 노출용으로 필터링된 내용만 확인할 수 있습니다. 개인정보가 포함될 수 있는 원문과 후원자 전화번호 전체는
+          크리에이터에게 제공되지 않습니다.
+        </Notice>
+
+        <Card padded={false}>
+          <div className="flex flex-wrap gap-1.5 p-2">
+            {TABS.map((t) => (
+              <Link
+                key={t.value}
+                href={t.value === 'all' ? '/studio/messages' : `/studio/messages?tab=${t.value}`}
+                className={
+                  t.value === tab
+                    ? 'rounded-lg bg-brand-50 px-3 py-2 text-[13px] font-bold text-brand-600'
+                    : 'rounded-lg px-3 py-2 text-[13px] font-medium text-ink-500 hover:bg-ink-50 hover:text-ink-900'
+                }
+              >
+                {t.label}
+              </Link>
+            ))}
+          </div>
+        </Card>
+
+        {rows.length === 0 ? (
+          <EmptyState title="해당 조건의 문자가 없습니다" description="다른 탭을 선택해 보세요." />
+        ) : (
+          <Table className="min-w-full">
+            <thead>
+              <tr>
+                <Th>수신시각</Th>
+                <Th>후원자</Th>
+                <Th>키워드</Th>
+                <Th>내용(필터링됨)</Th>
+                <Th>처리 결과</Th>
+                <Th>후원 상태</Th>
+                <Th className="text-right">후원금</Th>
+                <Th>조치</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((m) => {
+                const res = moResultLabel[m.result];
+                const donation = m.donation;
+                const ds = donation ? donationStatusLabel[donation.status] : null;
+                const donorId = donation?.donorId ?? null;
+                const isBlocked = donorId ? blockedSet.has(donorId) : false;
+                return (
+                  <tr key={m.id} className="hover:bg-ink-50">
+                    <Td className="whitespace-nowrap tabular-nums">{formatKst(m.receivedAt, false)}</Td>
+                    <Td className="whitespace-nowrap tabular-nums">{m.phoneMasked}</Td>
+                    <Td className="whitespace-nowrap">{m.matchedKeyword ?? '-'}</Td>
+                    <Td className="max-w-[320px]">
+                      <span className="line-clamp-2">{m.contentFiltered ?? '(표시할 내용 없음)'}</span>
+                    </Td>
+                    <Td>
+                      <Badge tone={res.tone}>{res.text}</Badge>
+                      {m.resultDetail ? (
+                        <span className="mt-1 block text-[11.5px] text-ink-400">{m.resultDetail}</span>
+                      ) : null}
+                    </Td>
+                    <Td>
+                      {donation && ds ? (
+                        <Link href={`/studio/donations/${donation.id}`} className="inline-block">
+                          <Badge tone={ds.tone}>{ds.text}</Badge>
+                        </Link>
+                      ) : (
+                        <span className="text-ink-300">-</span>
+                      )}
+                    </Td>
+                    <Td className="whitespace-nowrap text-right tabular-nums">
+                      {donation ? formatWon(donation.amount) : '-'}
+                    </Td>
+                    <Td>
+                      {donorId ? (
+                        isBlocked ? (
+                          <Badge tone="danger">차단됨</Badge>
+                        ) : (
+                          <InlineActionForm
+                            action={blockDonorAction}
+                            submitLabel="후원자 차단"
+                            variant="danger"
+                            confirmMessage="이 후원자를 차단하시겠습니까? 이후 문자는 후원으로 접수되지 않습니다."
+                            fields={{ donorId, reason: '문자 관리 화면에서 차단' }}
+                          />
+                        )
+                      ) : (
+                        <span className="text-[12px] text-ink-300">후원자 미확인</span>
+                      )}
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        )}
+      </div>
+    </>
+  );
+}

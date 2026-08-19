@@ -1,0 +1,40 @@
+# 토네이도 로컬 개발용 PostgreSQL + Redis
+# Docker Desktop 이 설치되어 있으면 db-up.bat 으로 한 번에 띄울 수 있습니다.
+# 이미 PostgreSQL 을 쓰고 계시면 이 파일을 쓰지 않고 .env 의 DATABASE_URL 만 바꾸면 됩니다.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tornado-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tornado
+      POSTGRES_PASSWORD: tornado
+      POSTGRES_DB: tornado
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+      TZ: UTC
+    ports:
+      - "5432:5432"
+    volumes:
+      - tornado-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tornado -d tornado"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: tornado-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  tornado-pgdata:
