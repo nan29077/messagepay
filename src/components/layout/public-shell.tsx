@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Search, HelpCircle, User, Menu, X } from 'lucide-react';
+import { Home, Compass, HelpCircle, User, Menu, X, Sparkles, Headphones, LogIn, Bell } from 'lucide-react';
 import { Logo } from '@/components/brand/logo';
 import { cx } from '@/components/ui';
 
@@ -14,15 +14,18 @@ import { cx } from '@/components/ui';
  */
 
 const MENU = [
-  { href: '/how-it-works', label: '이용방법' },
-  { href: '/creator-apply', label: '크리에이터 신청' },
-  { href: '/faq', label: 'FAQ' },
-  { href: '/support', label: '고객센터' },
+  { href: '/', label: '홈', icon: Home },
+  { href: '/how-it-works', label: '이용방법', icon: Compass },
+  { href: '/creator-apply', label: '크리에이터', icon: Sparkles },
+  { href: '/notice', label: '공지', icon: Bell },
+  { href: '/faq', label: 'FAQ', icon: HelpCircle },
+  { href: '/support', label: '고객센터', icon: Headphones },
+  { href: '/login', label: '로그인', icon: LogIn },
 ];
 
 const TABS = [
   { href: '/', label: '홈', icon: Home },
-  { href: '/how-it-works', label: '이용방법', icon: Search },
+  { href: '/how-it-works', label: '이용방법', icon: Compass },
   { href: '/faq', label: 'FAQ', icon: HelpCircle },
   { href: '/my', label: '내 후원', icon: User },
 ];
@@ -38,39 +41,20 @@ export function PublicShell({
   const [open, setOpen] = React.useState(false);
 
   return (
-    <div className="min-h-dvh bg-ink-50 pb-20 lg:pb-0">
-      <header className="sticky top-0 z-40 border-b border-ink-100 bg-white/85 backdrop-blur">
-        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4">
+    <div className="public-canvas min-h-dvh pb-20 lg:pb-0">
+      <div className="mx-auto flex w-full max-w-[744px] items-start justify-center">
+        <div className="min-h-dvh w-full min-w-0 max-w-[640px] bg-white shadow-[0_0_60px_rgba(27,22,62,0.11)]">
+      <header className="sticky top-0 z-40 border-b border-ink-100/80 bg-white/88 backdrop-blur-xl">
+        <div className="flex h-[68px] w-full items-center justify-between px-4 sm:px-6">
           <Link href="/" aria-label="토네이도 홈">
             <Logo />
           </Link>
-
-          <nav className="hidden items-center gap-1 lg:flex">
-            {MENU.map((m) => (
-              <Link
-                key={m.href}
-                href={m.href}
-                className={cx(
-                  'rounded-lg px-3 py-2 text-[14px] font-semibold transition-colors',
-                  pathname === m.href ? 'text-brand-600' : 'text-ink-500 hover:text-ink-900',
-                )}
-              >
-                {m.label}
-              </Link>
-            ))}
-            <Link
-              href="/login"
-              className="ml-2 rounded-xl border border-ink-200 px-4 py-2 text-[14px] font-semibold text-ink-900 hover:bg-ink-50"
-            >
-              로그인
-            </Link>
-          </nav>
 
           <button
             type="button"
             aria-label="메뉴"
             onClick={() => setOpen((v) => !v)}
-            className="grid h-10 w-10 place-items-center rounded-xl border border-ink-200 text-ink-700 lg:hidden"
+            className="grid h-10 w-10 place-items-center rounded-full border border-ink-200 bg-white text-ink-700 shadow-sm lg:hidden"
           >
             {open ? <X size={18} strokeWidth={1.6} /> : <Menu size={18} strokeWidth={1.6} />}
           </button>
@@ -78,7 +62,7 @@ export function PublicShell({
 
         {open ? (
           <div className="border-t border-ink-100 bg-white px-4 py-3 lg:hidden">
-            {[...MENU, { href: '/login', label: '로그인' }].map((m) => (
+            {MENU.map((m) => (
               <Link
                 key={m.href}
                 href={m.href}
@@ -92,15 +76,43 @@ export function PublicShell({
         ) : null}
       </header>
 
-      <div className="mx-auto flex w-full max-w-6xl gap-8 px-4 py-6">
-        <main className="app-column flex-1">{children}</main>
-        {aside ? <aside className="hidden w-[300px] shrink-0 lg:block">{aside}</aside> : null}
-      </div>
+      <main className="public-content px-4 py-5 sm:px-6 sm:py-7">{children}</main>
+      {aside ? <div className="sr-only">{aside}</div> : null}
 
       <Footer />
+        </div>
+
+        <aside className="sticky top-5 hidden w-[96px] shrink-0 self-start pl-2 lg:block" aria-label="PC 메뉴">
+          <nav className="flex w-full flex-col items-center gap-0.5 rounded-[24px] border border-white/80 bg-white/90 px-2 py-3 shadow-[0_16px_42px_rgba(25,18,66,0.13)] ring-1 ring-brand-100/35 backdrop-blur-xl">
+            <div className="mb-1.5 grid h-8 w-8 place-items-center rounded-xl bg-brand-50 text-brand-600">
+              <span className="h-2.5 w-2.5 rounded-full border-2 border-brand-400 shadow-[0_0_0_4px_rgba(114,72,245,0.10)]" />
+            </div>
+            {MENU.map((item) => {
+              const Icon = item.icon;
+              const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={active ? 'page' : undefined}
+                  className={cx(
+                    'group flex w-full flex-col items-center gap-0.5 rounded-[14px] py-2 text-[9.5px] font-bold transition-all',
+                    active ? 'bg-brand-50 text-brand-600 shadow-[inset_0_0_0_1px_rgba(114,72,245,0.08)]' : 'text-ink-400 hover:bg-ink-50 hover:text-ink-900',
+                  )}
+                >
+                  <Icon size={18} strokeWidth={active ? 2 : 1.65} className="transition-transform group-hover:-translate-y-0.5" />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+            <div className="mt-1.5 h-px w-8 bg-ink-100" />
+            <p className="mt-2 text-[8px] font-extrabold tracking-[0.16em] text-ink-300">TORNADO</p>
+          </nav>
+        </aside>
+      </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-ink-100 bg-white/95 backdrop-blur lg:hidden">
-        <div className="mx-auto grid max-w-md grid-cols-4">
+        <div className="mx-auto grid max-w-[640px] grid-cols-4">
           {TABS.map((t) => {
             const Icon = t.icon;
             const active = pathname === t.href;
@@ -109,7 +121,7 @@ export function PublicShell({
                 key={t.href}
                 href={t.href}
                 className={cx(
-                  'flex flex-col items-center gap-1 py-2.5 text-[11px] font-semibold',
+                  'flex min-h-16 flex-col items-center justify-center gap-1 py-2 text-[11px] font-semibold',
                   active ? 'text-brand-600' : 'text-ink-400',
                 )}
               >

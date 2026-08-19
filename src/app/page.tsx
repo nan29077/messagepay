@@ -6,44 +6,24 @@ import {
 } from 'lucide-react';
 import { PublicShell } from '@/components/layout/public-shell';
 import { CreatorCodeForm } from '@/components/creator-code-form';
-import { Card, CardTitle, SectionTitle, LinkButton, Notice, Badge } from '@/components/ui';
+import { HeroSlider } from '@/components/public/hero-slider';
+import { Card, CardTitle, SectionTitle, LinkButton, Notice } from '@/components/ui';
 import { prisma } from '@/server/db';
 
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
+  // 공개 메인은 DB가 재기동되는 짧은 순간에도 전체 화면이 무너지지 않게 한다.
+  // FAQ만 비워서 렌더링하고, 서버 상태는 /api/health에서 별도로 확인한다.
   const faqs = await prisma.contentPost.findMany({
     where: { type: 'FAQ', published: true },
     orderBy: { sortOrder: 'asc' },
     take: 5,
-  });
+  }).catch(() => []);
 
   return (
     <PublicShell aside={<HomeAside />}>
-      {/* 2. 메인 배너 */}
-      <section className="overflow-hidden rounded-[24px] bg-white shadow-[var(--shadow-soft)]">
-        <div className="relative">
-          <Image
-            src="/assets/hero-tornado.svg"
-            alt="문자 메시지가 회오리처럼 모여 방송으로 전달되는 이미지"
-            width={720}
-            height={420}
-            priority
-            className="h-auto w-full"
-          />
-        </div>
-        <div className="px-5 pb-6 pt-5">
-          <Badge tone="brand">문자 후원 플랫폼</Badge>
-          <h1 className="mt-3 text-[26px] font-extrabold leading-[1.25] tracking-tight text-ink-900">
-            문자 한 통이
-            <br />
-            방송을 움직입니다.
-          </h1>
-          <p className="mt-2.5 text-[14px] leading-relaxed text-ink-500">
-            크리에이터에게 메시지를 보내고, 실시간으로 응원과 후원을 전달하세요.
-          </p>
-        </div>
-      </section>
+      <HeroSlider />
 
       {/* 3. 크리에이터 코드 입력 */}
       <section className="mt-4">
@@ -132,11 +112,11 @@ export default async function HomePage() {
         <SectionTitle title="유튜브·OBS·PRISM 연동" description="결제가 완료된 후원만 방송에 노출됩니다." />
         <Card padded={false} className="overflow-hidden">
           <Image
-            src="/assets/section-broadcast.svg"
-            alt="방송 화면과 오버레이 알림이 연결된 이미지"
-            width={640}
-            height={320}
-            className="h-auto w-full"
+            src="/assets/tornado-hero-studio-v1.png"
+            alt="라이브 방송을 진행하는 크리에이터 스튜디오"
+            width={1536}
+            height={1024}
+            className="h-[230px] w-full object-cover object-center sm:h-[270px]"
           />
           <div className="space-y-2.5 p-5">
             <FeatureLine icon={<PlayCircle size={17} strokeWidth={1.7} />} title="유튜브 라이브 채팅 등록" body="후원 메시지가 라이브 채팅에 자동으로 올라갑니다. 유튜브 공식 슈퍼챗이 아닌 외부 후원으로 표시됩니다." />
@@ -170,7 +150,7 @@ export default async function HomePage() {
       <section className="mt-8">
         <SectionTitle title="후원자 보호와 이용 한도" description="과도한 후원을 막기 위한 안전장치가 기본으로 적용됩니다." />
         <Card padded={false} className="overflow-hidden">
-          <Image src="/assets/section-protect.svg" alt="후원자 보호를 상징하는 이미지" width={640} height={280} className="h-auto w-full" />
+          <Image src="/assets/tornado-hero-viewer-v1.png" alt="안전하게 문자 후원을 보내는 시청자" width={1536} height={1024} className="h-[210px] w-full object-cover object-center sm:h-[250px]" />
           <div className="grid grid-cols-2 gap-3 p-5 text-[13px]">
             <Guard label="문자 1건당" value="3,000원" />
             <Guard label="1일 최대" value="100,000원" />
@@ -187,14 +167,16 @@ export default async function HomePage() {
 
       {/* 9. 크리에이터 가입 신청 */}
       <section className="mt-8">
-        <Card className="bg-brand-500 text-white">
-          <p className="text-[13px] font-semibold opacity-90">크리에이터라면</p>
-          <p className="mt-1 text-[19px] font-extrabold leading-snug">
+        <Card className="creator-cta relative overflow-hidden text-white">
+          <span className="absolute -right-6 -top-7 h-24 w-24 rounded-full border border-white/15" aria-hidden />
+          <span className="absolute right-5 top-5 h-10 w-10 rounded-full border border-white/10" aria-hidden />
+          <p className="relative text-[13px] font-bold text-white/85">크리에이터라면</p>
+          <p className="relative mt-1 text-[21px] font-black leading-snug tracking-[-0.025em] text-white">
             문자 후원을 방송에
             <br />
             바로 연결해 보세요.
           </p>
-          <LinkButton href="/creator-apply" variant="secondary" size="lg" className="mt-4">
+          <LinkButton href="/creator-apply" variant="secondary" size="lg" className="relative mt-5 border-white/70 bg-white text-brand-700">
             크리에이터로 시작하기
             <ArrowRight size={16} strokeWidth={1.8} />
           </LinkButton>

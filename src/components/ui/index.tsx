@@ -17,20 +17,20 @@ type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent';
 type ButtonSize = 'sm' | 'md' | 'lg';
 
 const buttonBase =
-  'inline-flex items-center justify-center gap-2 font-semibold transition-colors disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500';
+  'inline-flex items-center justify-center gap-2 font-extrabold transition-all disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 active:scale-[0.985]';
 
 const buttonVariants: Record<ButtonVariant, string> = {
-  primary: 'bg-brand-500 text-white hover:bg-brand-600 active:bg-brand-700',
-  accent: 'bg-accent-500 text-white hover:bg-accent-600',
-  secondary: 'bg-white text-ink-900 border border-ink-200 hover:bg-ink-50',
+  primary: 'bg-brand-500 text-white shadow-[0_8px_20px_rgba(114,72,245,0.22)] hover:-translate-y-0.5 hover:bg-brand-600 active:bg-brand-700',
+  accent: 'bg-accent-500 text-white shadow-[0_8px_20px_rgba(255,107,107,0.2)] hover:-translate-y-0.5 hover:bg-accent-600',
+  secondary: 'bg-white text-ink-900 border border-ink-200 shadow-sm hover:-translate-y-0.5 hover:bg-ink-50',
   ghost: 'bg-transparent text-ink-500 hover:bg-ink-100',
   danger: 'bg-danger-500 text-white hover:opacity-90',
 };
 
 const buttonSizes: Record<ButtonSize, string> = {
-  sm: 'h-9 px-3 text-[13px] rounded-lg',
-  md: 'h-11 px-4 text-[15px] rounded-xl',
-  lg: 'h-14 px-6 text-[16px] rounded-2xl w-full',
+  sm: 'h-9 px-3.5 text-[12.5px] rounded-xl',
+  md: 'h-11 px-4.5 text-[14px] rounded-xl',
+  lg: 'h-14 px-6 text-[15px] rounded-2xl w-full',
 };
 
 export function Button({
@@ -64,7 +64,7 @@ export function Card({
   padded = true,
   ...props
 }: React.HTMLAttributes<HTMLDivElement> & { padded?: boolean }) {
-  return <div className={cx('card', padded && 'p-5', className)} {...props} />;
+  return <div className={cx('card', padded && 'p-5 sm:p-6', className)} {...props} />;
 }
 
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
@@ -81,9 +81,9 @@ export function SectionTitle({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-3 flex items-end justify-between gap-3">
+    <div className="mb-3.5 flex items-end justify-between gap-3">
       <div>
-        <h2 className="text-[17px] font-extrabold tracking-tight text-ink-900">{title}</h2>
+        <h2 className="text-[18px] font-black tracking-[-0.025em] text-ink-900 sm:text-[19px]">{title}</h2>
         {description ? <p className="mt-1 text-[13px] leading-relaxed text-ink-500">{description}</p> : null}
       </div>
       {action}
@@ -225,10 +225,10 @@ export function StatTile({
     : tone === 'warning' ? 'text-warning-500'
     : 'text-ink-900';
   return (
-    <div className="card p-4">
-      <p className="text-[12px] font-medium text-ink-400">{label}</p>
-      <p className={cx('mt-1 text-[20px] font-extrabold tracking-tight tabular-nums', valueTone)}>{value}</p>
-      {sub ? <p className="mt-0.5 text-[11px] text-ink-400">{sub}</p> : null}
+    <div className="card min-h-[112px] p-4 transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-lift)] sm:p-5">
+      <p className="text-[11.5px] font-bold text-ink-400">{label}</p>
+      <p className={cx('mt-2 text-[23px] font-black tracking-[-0.035em] tabular-nums', valueTone)}>{value}</p>
+      {sub ? <p className="mt-1 text-[11px] leading-relaxed text-ink-400">{sub}</p> : null}
     </div>
   );
 }
@@ -276,7 +276,7 @@ export function DataRow({ label, value }: { label: string; value: React.ReactNod
 
 export function Table({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cx('overflow-x-auto rounded-2xl border border-ink-100 bg-white', className)}>
+    <div className={cx('overflow-x-auto rounded-[20px] border border-ink-100 bg-white shadow-[0_10px_30px_rgba(23,20,45,0.05)]', className)}>
       <table className="w-full min-w-[720px] border-collapse text-[13px]">{children}</table>
     </div>
   );
@@ -284,12 +284,12 @@ export function Table({ children, className }: { children: React.ReactNode; clas
 
 export function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
   return (
-    <th className={cx('whitespace-nowrap border-b border-ink-100 px-3 py-2.5 text-left font-semibold text-ink-500', className)}>
+    <th className={cx('whitespace-nowrap border-b border-ink-100 bg-ink-50/70 px-3 py-3 text-left text-[11.5px] font-extrabold text-ink-500', className)}>
       {children}
     </th>
   );
 }
 
 export function Td({ children, className }: { children?: React.ReactNode; className?: string }) {
-  return <td className={cx('border-b border-ink-100 px-3 py-2.5 align-top text-ink-700', className)}>{children}</td>;
+  return <td className={cx('border-b border-ink-100 px-3 py-3 align-top text-ink-700', className)}>{children}</td>;
 }

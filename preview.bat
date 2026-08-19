@@ -60,10 +60,13 @@ if not exist "src\generated\prisma" (
 netstat -ano | findstr /r /c:":3025 .*LISTENING" >nul 2>nul
 if not errorlevel 1 (
   echo.
-  echo [경고] 포트 3025 를 이미 사용 중입니다. 이전 서버 창이 열려 있는지 확인해 주세요.
-  echo        기존 서버를 그대로 쓰시려면 %TORNADO_URL% 로 접속하세요.
+  echo [안내] 토네이도 서버가 이미 실행 중입니다.
+  echo        새 코드가 보이지 않거나 오류 화면이면 기존 서버 창을 닫은 뒤
+  echo        preview.bat 을 다시 실행해 주세요.
   echo.
+  start "" "%TORNADO_URL%"
   pause
+  exit /b 0
 )
 
 echo.

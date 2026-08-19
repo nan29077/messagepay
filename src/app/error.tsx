@@ -13,7 +13,7 @@ export default function ErrorPage({
 }) {
   const message = error?.message ?? '';
   const looksLikeDb =
-    /database|prisma|ECONNREFUSED|connect|P1001|P2021|relation .* does not exist/i.test(message);
+    /database|prisma|ECONNREFUSED|connect|P1000|P1001|P2021|authentication|can't reach|relation .* does not exist/i.test(message);
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-[#f6f5fb] p-6">
@@ -26,8 +26,12 @@ export default function ErrorPage({
         </p>
 
         <ol className="mt-4 space-y-2 text-[13px] leading-relaxed text-[#2c3563]">
+          <li className="rounded-xl bg-[#f2efff] px-3 py-2.5 text-[#5836d6]">
+            <span className="font-bold">간편 미리보기 사용 시:</span> 열려 있는 토네이도 서버 창을 모두 닫고{' '}
+            <span className="font-bold">preview.bat</span> 하나만 다시 실행해 주세요.
+          </li>
           <li>
-            <span className="font-bold">1.</span> <span className="font-bold">db-up.bat</span> 을 실행해
+            <span className="font-bold">1.</span> 별도 PostgreSQL 방식이라면 <span className="font-bold">db-up.bat</span> 을 실행해
             PostgreSQL 컨테이너가 켜져 있는지 확인
           </li>
           <li>

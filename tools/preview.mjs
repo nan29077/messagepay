@@ -92,6 +92,12 @@ async function openBrowserWhenReady(url) {
     if (shuttingDown) return;
     if (await portInUse(APP_PORT)) {
       try {
+        const health = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(3000) });
+        const body = await health.json();
+        if (!health.ok || body?.checks?.database !== 'ok') {
+          await new Promise((r) => setTimeout(r, 1000));
+          continue;
+        }
         if (process.platform === 'win32') {
           spawn('cmd', ['/c', 'start', '""', url], { stdio: 'ignore', detached: true, windowsHide: true }).unref();
         } else if (process.platform === 'darwin') {
@@ -100,7 +106,8 @@ async function openBrowserWhenReady(url) {
           spawn('xdg-open', [url], { stdio: 'ignore', detached: true }).unref();
         }
       } catch {
-        /* 브라우저를 못 열어도 서버는 계속 동작한다 */
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
       }
       return;
     }
@@ -173,15 +180,23 @@ async function main() {
     db,
     port: DB_PORT,
     host: '127.0.0.1',
-    maxConnections: 20,
+    // Next 빌드/페이지 수집 워커가 동시에 연결하더라도 새 요청을 거부하지 않게 한다.
+    // 실제 앱의 연결 풀은 아래 previewEnv에서 2개로 제한한다.
+    maxConnections: 100,
   });
   await socketServer.start();
   log(`      준비 완료 (127.0.0.1:${DB_PORT})`);
 
-  process.env.DATABASE_URL = DATABASE_URL;
+  const previewEnv = {
+    DATABASE_URL,
+    DB_POOL_MAX: '2',
+    DB_CONNECT_TIMEOUT_MS: '10000',
+    ALLOW_INMEMORY_FALLBACK: 'true',
+  };
+  Object.assign(process.env, previewEnv);
 
   log('[2/3] 스키마 및 시드 데이터 확인');
-  await run(process.execPath, [path.join('tools', 'pglite-init.mjs')], { DATABASE_URL });
+  await run(process.execPath, [path.join('tools', 'pglite-init.mjs')], previewEnv);
 
   // npx/셸을 거치지 않고 next 실행 파일을 직접 호출한다 (Windows 따옴표 문제 회피)
   const nextBin = localScript('next/dist/bin/next', 'next/dist/bin/next');
@@ -190,19 +205,19 @@ async function main() {
     log(`[3/3] 개발 서버 시작 (http://localhost:${APP_PORT})`);
     child = spawn(process.execPath, [nextBin, 'dev', '-p', String(APP_PORT)], {
       stdio: 'inherit',
-      env: { ...process.env, DATABASE_URL, NODE_ENV: 'development' },
+      env: { ...process.env, ...previewEnv, NODE_ENV: 'development' },
     });
   } else {
     if (needsBuild()) {
       log('[3/4] 화면 빌드 (처음에는 1~3분 걸립니다)');
-      await run(process.execPath, [nextBin, 'build'], { DATABASE_URL, NODE_ENV: 'production' });
+      await run(process.execPath, [nextBin, 'build'], { ...previewEnv, NODE_ENV: 'production' });
     } else {
       log('[3/4] 이전 빌드 결과를 재사용합니다');
     }
     log(`[4/4] 서버 시작 (http://localhost:${APP_PORT})`);
     child = spawn(process.execPath, [nextBin, 'start', '-p', String(APP_PORT)], {
       stdio: 'inherit',
-      env: { ...process.env, DATABASE_URL, NODE_ENV: 'production' },
+      env: { ...process.env, ...previewEnv, NODE_ENV: 'production' },
     });
   }
 
