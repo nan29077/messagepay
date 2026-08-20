@@ -19,6 +19,8 @@ export interface EffectivePolicy {
   donorDailyLimit: bigint;
   donorMonthlyLimit: bigint;
   perCreatorDailyLimit: bigint;
+  /** 1인(후원자) 1일 최대 후원 건수 */
+  donorDailyMaxCount: number;
   velocityWindowSec: number;
   velocityMaxCount: number;
   cooldownAfterCount: number;
@@ -36,6 +38,7 @@ export const FALLBACK_POLICY: EffectivePolicy = {
   donorDailyLimit: 100000n,
   donorMonthlyLimit: 1000000n,
   perCreatorDailyLimit: 50000n,
+  donorDailyMaxCount: 30,
   velocityWindowSec: 60,
   velocityMaxCount: 3,
   cooldownAfterCount: 5,
@@ -49,7 +52,7 @@ export const FALLBACK_POLICY: EffectivePolicy = {
 type PolicyRow = {
   defaultAmount: bigint; minAmount: bigint; maxAmount: bigint;
   donorDailyLimit: bigint; donorMonthlyLimit: bigint; perCreatorDailyLimit: bigint;
-  velocityWindowSec: number; velocityMaxCount: number; cooldownAfterCount: number; cooldownSec: number;
+  donorDailyMaxCount: number; velocityWindowSec: number; velocityMaxCount: number; cooldownAfterCount: number; cooldownSec: number;
   failureLockThreshold: number; newDonorFirstDayLimit: bigint; manualReviewAmount: bigint; ttsMinAmount: bigint;
 };
 
@@ -61,6 +64,7 @@ function pick(row: PolicyRow): EffectivePolicy {
     donorDailyLimit: row.donorDailyLimit,
     donorMonthlyLimit: row.donorMonthlyLimit,
     perCreatorDailyLimit: row.perCreatorDailyLimit,
+    donorDailyMaxCount: row.donorDailyMaxCount,
     velocityWindowSec: row.velocityWindowSec,
     velocityMaxCount: row.velocityMaxCount,
     cooldownAfterCount: row.cooldownAfterCount,
@@ -93,6 +97,7 @@ export async function resolvePolicy(creatorId?: string | null, donorId?: string 
 export type LimitDenyCode =
   | 'AMOUNT_RANGE'
   | 'DONOR_DAILY'
+  | 'DONOR_DAILY_COUNT'
   | 'DONOR_MONTHLY'
   | 'CREATOR_DAILY'
   | 'VELOCITY'
@@ -153,6 +158,11 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
   const donorDay = await readCounter(input.donor.id, ALL, 'DAY', dayKey);
   if (donorDay.amount + input.amount > donorDaily) {
     return deny('DONOR_DAILY', '일일 후원 한도를 초과했습니다.');
+  }
+
+  // 1인 1일 최대 건수 (금액과 별개로 건수 자체를 제한)
+  if (donorDay.count + 1 > policy.donorDailyMaxCount) {
+    return deny('DONOR_DAILY_COUNT', `하루 최대 ${policy.donorDailyMaxCount}건까지 후원할 수 있습니다.`);
   }
 
   const donorMonth = await readCounter(input.donor.id, ALL, 'MONTH', monthKey);

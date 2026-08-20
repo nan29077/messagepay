@@ -133,7 +133,7 @@ export default async function AdminDonorsPage({
                   return (
                     <tr key={d.id}>
                       <Td>
-                        <Link href={`/admin/donors/${d.id}`} className="font-semibold text-brand-600">
+                        <Link href={`/admin/donors/${d.id}`} className="font-semibold text-brand-700">
                           {d.phoneMasked}
                         </Link>
                         {d.displayName ? (
@@ -172,7 +172,7 @@ export default async function AdminDonorsPage({
                       </Td>
                       <Td className="text-[12px]">
                         <details>
-                          <summary className="cursor-pointer text-brand-600">
+                          <summary className="cursor-pointer text-brand-700">
                             {d.dailyLimit != null || d.monthlyLimit != null ? '개별 설정됨' : '정책 기본값'}
                           </summary>
                           <div className="mt-2 w-52">

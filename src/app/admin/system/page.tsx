@@ -241,7 +241,7 @@ export default async function AdminSystemPage() {
         <div className="grid gap-3 lg:grid-cols-3">
           <Card>
             <div className="mb-2 flex items-center gap-2">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-50 text-brand-600">
+              <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-50 text-brand-700">
                 <Database size={16} strokeWidth={1.7} />
               </span>
               <CardTitle>데이터베이스</CardTitle>
@@ -252,7 +252,7 @@ export default async function AdminSystemPage() {
           </Card>
           <Card>
             <div className="mb-2 flex items-center gap-2">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-50 text-brand-600">
+              <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-50 text-brand-700">
                 <Server size={16} strokeWidth={1.7} />
               </span>
               <CardTitle>캐시</CardTitle>
@@ -264,7 +264,7 @@ export default async function AdminSystemPage() {
           </Card>
           <Card>
             <div className="mb-2 flex items-center gap-2">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-50 text-brand-600">
+              <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-50 text-brand-700">
                 <Signal size={16} strokeWidth={1.7} />
               </span>
               <CardTitle>유튜브 할당량</CardTitle>

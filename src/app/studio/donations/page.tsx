@@ -148,7 +148,7 @@ export default async function StudioDonationsPage({
                     <Td>
                       <Link
                         href={`/studio/donations/${d.id}`}
-                        className="font-mono text-[12px] font-semibold text-brand-600 underline-offset-2 hover:underline"
+                        className="font-mono text-[12px] font-semibold text-brand-700 underline-offset-2 hover:underline"
                       >
                         {d.transactionNo}
                       </Link>

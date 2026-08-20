@@ -1,10 +1,10 @@
 import Link from 'next/link';
 import { PageHeader } from '@/components/layout/console-shell';
-import { Badge, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
+import { Badge, Card, CardTitle, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
 import { AdminField, AdminInput, AdminSelect, FilterBar, Pager } from '@/components/admin/controls';
-import { SelectActionForm } from '@/components/admin/action-form';
+import { ActionForm, SelectActionForm } from '@/components/admin/action-form';
 import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
-import { updateCreatorStatus } from '@/app/actions/admin/accounts';
+import { updateCreatorStatus, applyGlobalAmountBounds } from '@/app/actions/admin/accounts';
 import { prisma } from '@/server/db';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
@@ -59,7 +59,7 @@ function CreatorRows({
       {creators.map((c) => (
         <tr key={c.id}>
           <Td>
-            <Link href={`/admin/creators/${c.id}`} className="font-semibold text-brand-600">
+            <Link href={`/admin/creators/${c.id}`} className="font-semibold text-brand-700">
               {c.displayName}
             </Link>
             <span className="mt-0.5 block text-[11px] text-ink-400">{c.channelName ?? '채널명 미등록'}</span>
@@ -181,6 +181,34 @@ export default async function AdminCreatorsPage({
         <StatTile label="정지" value={formatNumber(count('SUSPENDED'))} tone={count('SUSPENDED') > 0 ? 'danger' : 'neutral'} />
       </div>
 
+      <section className="mb-5">
+        <Card>
+          <div className="flex flex-wrap items-center gap-2">
+            <CardTitle>1건 후원금 허용 범위 공통 적용</CardTitle>
+            <Badge tone="warning">전체 크리에이터 일괄 변경</Badge>
+          </div>
+          <p className="mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-500">
+            모든 크리에이터의 문자 1건당 후원금 최소·최대 허용 범위를 한 번에 변경합니다. 크리에이터는 이 범위 안에서만
+            1건 후원금을 정할 수 있으며, 현재 설정 금액이 새 범위를 벗어난 크리에이터는 범위 안으로 자동 보정됩니다.
+            개별 크리에이터의 범위는 상세 화면에서 따로 조정할 수 있습니다.
+          </p>
+          <ActionForm
+            action={applyGlobalAmountBounds}
+            submitLabel="전체 적용"
+            confirm="모든 크리에이터에게 새 허용 범위를 일괄 적용합니다. 범위를 벗어난 1건 후원금은 자동 보정되며 감사로그에 기록됩니다. 계속할까요?"
+          >
+            <div className="grid max-w-xl grid-cols-2 gap-2">
+              <AdminField label="1건 최소 (원)">
+                <AdminInput name="minAmount" inputMode="numeric" defaultValue="1000" required />
+              </AdminField>
+              <AdminField label="1건 최대 (원)">
+                <AdminInput name="maxAmount" inputMode="numeric" defaultValue="50000" required />
+              </AdminField>
+            </div>
+          </ActionForm>
+        </Card>
+      </section>
+
       {pending.length > 0 ? (
         <section className="mb-6">
           <SectionTitle
@@ -208,7 +236,7 @@ export default async function AdminCreatorsPage({
 
       <FilterBar action="/admin/creators" resetHref="/admin/creators">
         <AdminField label="검색 (이름/채널/코드/이메일)" className="w-64">
-          <AdminInput name="q" defaultValue={q} placeholder="토네이도 또는 TOR-8K2M" />
+          <AdminInput name="q" defaultValue={q} placeholder="도네이도 또는 TOR-8K2M" />
         </AdminField>
         <AdminField label="상태" className="w-36">
           <AdminSelect name="status" defaultValue={status ?? ''}>

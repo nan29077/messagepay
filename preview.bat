@@ -15,6 +15,9 @@ echo.
 echo   Docker 나 PostgreSQL 설치 없이 실행됩니다.
 echo   내장 데이터베이스(PGlite)를 사용하며 데이터는 .pglite 폴더에 보관됩니다.
 echo.
+echo   코드를 고치면서 바로 확인하려면 dev.bat 을 쓰세요.
+echo   (dev.bat 은 저장 즉시 화면에 반영되어 재빌드를 기다리지 않습니다)
+echo.
 
 where node >nul 2>nul
 if errorlevel 1 (
@@ -59,20 +62,14 @@ if not exist "src\generated\prisma" (
 
 netstat -ano | findstr /r /c:":3025 .*LISTENING" >nul 2>nul
 if not errorlevel 1 (
-  echo.
-  echo [안내] 토네이도 서버가 이미 실행 중입니다.
-  echo        새 코드가 보이지 않거나 오류 화면이면 기존 서버 창을 닫은 뒤
-  echo        preview.bat 을 다시 실행해 주세요.
-  echo.
-  start "" "%TORNADO_URL%"
-  pause
-  exit /b 0
+  echo [정리] 이전에 실행된 서버가 남아 있습니다. 정리한 뒤 새로 시작합니다.
 )
 
 echo.
 echo [안내] 서버 준비가 끝나면 브라우저가 자동으로 열립니다.
 echo        처음에는 화면 빌드에 1~3분 걸립니다. 두 번째부터는 30초 내외입니다.
-echo        종료하려면 이 창에서 Ctrl+C 를 누르세요.
+echo        종료하려면 이 창에서 Ctrl+C 를 누르거나 창을 닫으세요.
+echo        (창을 닫으면 서버도 함께 종료됩니다)
 echo.
 echo   메인        %TORNADO_URL%
 echo   크리에이터  %TORNADO_URL%/studio   creator1@tornado.kr / tornado1234!

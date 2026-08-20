@@ -1,12 +1,14 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { getSessionUser } from '@/server/auth';
+import { getSessionUser, destroySession } from '@/server/auth';
 import { revokePaymentMethod } from '@/server/services/donor-registration';
 import { requestRefund } from '@/server/services/refund';
 import { resolvePolicy } from '@/server/services/limits';
+import { newId } from '@/lib/id';
 
 /**
  * 후원자 마이페이지 서버 액션.
@@ -183,4 +185,134 @@ export async function requestDonationRefund(
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : '환불 요청에 실패했습니다.' };
   }
+}
+
+// ---------------------------------------------------------------- 마케팅 수신 동의/철회
+
+/**
+ * 마케팅 수신 동의는 선택 동의이므로 마이페이지에서 직접 동의/철회할 수 있다.
+ * ConsentRecord 는 이력형(append-only 성격)이므로 새 레코드를 추가하는 방식으로 기록한다.
+ */
+export async function setMarketingConsent(
+  _prev: DonorActionState,
+  formData: FormData,
+): Promise<DonorActionState> {
+  const user = await getSessionUser();
+  if (!user) return { ok: false, message: NO_SESSION };
+
+  const agree = String(formData.get('agree') ?? '') === 'on';
+
+  const terms = await prisma.termsVersion.findFirst({
+    where: { type: 'MARKETING', effectiveFrom: { lte: new Date() } },
+    orderBy: { effectiveFrom: 'desc' },
+    select: { id: true },
+  });
+  if (!terms) return { ok: false, message: '마케팅 동의 약관을 찾을 수 없습니다. 고객센터로 문의해 주세요.' };
+
+  const donor = await prisma.donorProfile.findUnique({
+    where: { userId: user.id },
+    select: { phoneHash: true },
+  });
+
+  await prisma.consentRecord.create({
+    data: {
+      id: newId(),
+      userId: user.id,
+      phoneHash: donor?.phoneHash ?? null,
+      termsId: terms.id,
+      type: 'MARKETING',
+      agreed: agree,
+    },
+  });
+
+  revalidatePath('/my/consents');
+  return {
+    ok: true,
+    message: agree
+      ? '마케팅 정보 수신에 동의했습니다.'
+      : '마케팅 정보 수신 동의를 철회했습니다. 처리에 최대 1영업일이 걸릴 수 있습니다.',
+  };
+}
+
+// ---------------------------------------------------------------- 회원 탈퇴
+
+/**
+ * 후원자 회원 탈퇴.
+ *
+ * 처리 원칙
+ *  - 거래·정산 기록은 법정 보존 대상이므로 삭제하지 않는다. 계정과의 연결만 끊는다.
+ *  - 자동출금(빌키)은 반드시 먼저 폐기한다. 남겨두면 탈퇴 후에도 출금될 수 있다.
+ *  - 계정은 WITHDRAWN 상태로 바꾸고 로그인 수단(이메일·비밀번호)을 무효화한다.
+ *  - 진행 중인 환불 요청이 있으면 처리 후 탈퇴하도록 막는다.
+ */
+export async function withdrawAccount(_prev: DonorActionState, formData: FormData): Promise<DonorActionState> {
+  const user = await getSessionUser();
+  if (!user) return { ok: false, message: NO_SESSION };
+
+  // 후원자 전용 절차다. 크리에이터는 정산·MO 번호 정리가, 관리자는 권한 이관이 선행돼야 하므로
+  // 이 경로로 탈퇴하면 프로필과 배정 자원이 고아 상태로 남는다.
+  if (user.role !== 'DONOR') {
+    return {
+      ok: false,
+      message:
+        user.role === 'CREATOR'
+          ? '크리에이터 계정은 정산과 후원 번호 정리가 필요해 이 화면에서 탈퇴할 수 없습니다. 고객센터로 요청해 주세요.'
+          : '관리자 계정은 이 화면에서 탈퇴할 수 없습니다. 다른 최고관리자에게 권한 이관 후 처리해 주세요.',
+    };
+  }
+
+  if (String(formData.get('confirm') ?? '').trim() !== '탈퇴합니다') {
+    return { ok: false, message: '확인 문구를 정확히 입력해 주세요. (탈퇴합니다)' };
+  }
+
+  const donor = await prisma.donorProfile.findUnique({
+    where: { userId: user.id },
+    select: { id: true },
+  });
+
+  if (donor) {
+    const openRefund = await prisma.refund.count({
+      where: { donation: { donorId: donor.id }, status: { in: ['REQUESTED', 'APPROVED'] } },
+    });
+    if (openRefund > 0) {
+      return {
+        ok: false,
+        message: `처리 중인 환불 요청이 ${openRefund}건 있습니다. 환불이 완료된 뒤에 탈퇴할 수 있습니다.`,
+      };
+    }
+
+    // 자동출금 수단 폐기 (탈퇴 후 출금 방지)
+    try {
+      await revokePaymentMethod(donor.id);
+    } catch {
+      return { ok: false, message: '결제수단 해지 중 오류가 발생했습니다. 고객센터로 문의해 주세요.' };
+    }
+  }
+
+  try {
+    await prisma.$transaction([
+      // 후원자 프로필은 남기고 계정 연결만 끊는다 (거래 이력 보존)
+      prisma.donorProfile.updateMany({ where: { userId: user.id }, data: { userId: null } }),
+      prisma.user.update({
+        where: { id: user.id },
+        data: {
+          status: 'WITHDRAWN',
+          // 같은 이메일로 재가입할 수 있도록 로그인 수단을 비운다
+          email: `withdrawn+${user.id}@invalid.local`,
+          passwordHash: null,
+          name: null,
+          phoneHash: null,
+          phoneEnc: null,
+          phoneMasked: null,
+          deletedAt: new Date(),
+        },
+      }),
+      prisma.userSession.deleteMany({ where: { userId: user.id } }),
+    ]);
+  } catch {
+    return { ok: false, message: '탈퇴 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.' };
+  }
+
+  await destroySession();
+  redirect('/?withdrawn=1');
 }

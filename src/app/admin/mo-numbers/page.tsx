@@ -83,11 +83,11 @@ export default async function AdminMoNumbersPage({
             사업자에게 발급받은 수신번호를 재고로 등록합니다. 대표번호 공유 모드는 키워드가 반드시 필요합니다.
           </p>
           <ActionForm action={createMoNumber} submitLabel="재고 등록">
-            <AdminField label="수신번호" hint="숫자만 입력 (예: 15880000)">
-              <AdminInput name="phoneNumber" inputMode="numeric" placeholder="15880000" required />
+            <AdminField label="수신번호" hint="숫자만 입력 (예: 05051234567)">
+              <AdminInput name="phoneNumber" inputMode="numeric" placeholder="05051234567" required />
             </AdminField>
             <AdminField label="키워드" hint="대표번호 공유 모드에서 문자 맨 앞에 붙는 식별 키워드">
-              <AdminInput name="keyword" placeholder="TORNADO" />
+              <AdminInput name="keyword" placeholder="DONAIDO" />
             </AdminField>
             <AdminField label="수신 모드">
               <AdminSelect name="mode" defaultValue="DEDICATED">
@@ -113,7 +113,7 @@ export default async function AdminMoNumbersPage({
           <div className="mt-3">
             <FilterBar action="/admin/mo-numbers" resetHref="/admin/mo-numbers">
               <AdminField label="번호·키워드 검색" className="w-52">
-                <AdminInput name="q" defaultValue={q} placeholder="15880000 또는 TORNADO" />
+                <AdminInput name="q" defaultValue={q} placeholder="0505... 또는 DONAIDO" />
               </AdminField>
               <AdminField label="상태" className="w-40">
                 <AdminSelect name="status" defaultValue={status ?? ''}>
@@ -161,7 +161,7 @@ export default async function AdminMoNumbersPage({
                 </Td>
                 <Td>
                   {n.creator ? (
-                    <Link href={`/admin/creators/${n.creator.id}`} className="font-semibold text-brand-600">
+                    <Link href={`/admin/creators/${n.creator.id}`} className="font-semibold text-brand-700">
                       {n.creator.displayName}
                     </Link>
                   ) : (

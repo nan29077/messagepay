@@ -1,6 +1,6 @@
 import { prisma } from '@/server/db';
 import { resolveSecureLink, consumeSecureLink } from './secure-link';
-import { executePayment } from './donation-flow';
+import { executePayment, setStatus } from './donation-flow';
 
 /**
  * CONFIRM_LINK 모드: 후원자가 MT 로 받은 링크에서 직접 확인 버튼을 눌러야 결제가 진행된다.
@@ -78,10 +78,8 @@ export async function expireStaleConfirmations(now = new Date()) {
     if (!s.donationId) continue;
     const d = await prisma.donation.findUnique({ where: { id: s.donationId }, select: { status: true } });
     if (d?.status !== 'PENDING_CONFIRM') continue;
-    await prisma.donation.update({
-      where: { id: s.donationId },
-      data: { status: 'PAYMENT_FAILED', statusReason: '확인 시간 초과로 자동 취소' },
-    });
+    // setStatus 를 거쳐야 DonationStatusLog 감사 이력이 남는다
+    await setStatus(s.donationId, 'PAYMENT_FAILED', '확인 시간 초과로 자동 취소');
     count += 1;
   }
   return count;

@@ -44,3 +44,6 @@ _to_delete/
 
 # 진단 로그
 logs/
+
+# 서버 실행 잠금 파일
+.tornado-server.lock

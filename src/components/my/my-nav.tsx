@@ -3,34 +3,36 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cx } from '@/components/ui';
+import { HeartHandshake, ReceiptText, UserRound } from 'lucide-react';
 
+/**
+ * 마이페이지 탭.
+ * 자주 보는 3개만 노출하고, 한도·차단·동의 같은 설정은 "내 정보" 안에서 이동한다.
+ */
 const TABS = [
-  { href: '/my', label: '후원 내역' },
-  { href: '/my/payments', label: '결제 내역' },
-  { href: '/my/account', label: '등록 계좌' },
-  { href: '/my/limits', label: '한도 설정' },
-  { href: '/my/blocks', label: '후원 차단' },
-  { href: '/my/consents', label: '동의 이력' },
+  { href: '/my', label: '후원 내역', icon: HeartHandshake, match: ['/my'] },
+  { href: '/my/payments', label: '결제 내역', icon: ReceiptText, match: ['/my/payments'] },
+  { href: '/my/account', label: '내 정보', icon: UserRound, match: ['/my/account', '/my/limits', '/my/blocks', '/my/consents'] },
 ];
 
 export function MyNav() {
   const pathname = usePathname();
   return (
-    <nav className="mb-5 -mx-4 overflow-x-auto px-4">
-      <div className="flex w-max gap-1.5">
+    <nav className="mb-4">
+      <div className="flex gap-1 rounded-2xl bg-ink-100 p-1">
         {TABS.map((t) => {
-          const active = pathname === t.href;
+          const active = t.match.includes(pathname);
+          const Icon = t.icon;
           return (
             <Link
               key={t.href}
               href={t.href}
               className={cx(
-                'whitespace-nowrap rounded-xl border px-3.5 py-2 text-[13.5px] font-semibold transition-colors',
-                active
-                  ? 'border-brand-500 bg-brand-500 text-white'
-                  : 'border-ink-200 bg-white text-ink-500 hover:text-ink-900',
+                'flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-center text-[13px] font-bold transition-colors',
+                active ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-900',
               )}
             >
+              <Icon size={15} strokeWidth={1.85} />
               {t.label}
             </Link>
           );

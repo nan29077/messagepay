@@ -89,7 +89,7 @@ export default async function StudioReportsPage() {
                         {r.donationId && txNo ? (
                           <Link
                             href={`/studio/donations/${r.donationId}`}
-                            className="font-mono text-[12px] font-semibold text-brand-600 underline-offset-2 hover:underline"
+                            className="font-mono text-[12px] font-semibold text-brand-700 underline-offset-2 hover:underline"
                           >
                             {txNo}
                           </Link>

@@ -18,6 +18,7 @@ interface LimitValues {
   donorDailyLimit: string;
   donorMonthlyLimit: string;
   perCreatorDailyLimit: string;
+  donorDailyMaxCount: string;
   velocityWindowSec: string;
   velocityMaxCount: string;
   cooldownAfterCount: string;
@@ -35,6 +36,7 @@ const fallbackValues: LimitValues = {
   donorDailyLimit: FALLBACK_POLICY.donorDailyLimit.toString(),
   donorMonthlyLimit: FALLBACK_POLICY.donorMonthlyLimit.toString(),
   perCreatorDailyLimit: FALLBACK_POLICY.perCreatorDailyLimit.toString(),
+  donorDailyMaxCount: String(FALLBACK_POLICY.donorDailyMaxCount),
   velocityWindowSec: String(FALLBACK_POLICY.velocityWindowSec),
   velocityMaxCount: String(FALLBACK_POLICY.velocityMaxCount),
   cooldownAfterCount: String(FALLBACK_POLICY.cooldownAfterCount),
@@ -65,6 +67,9 @@ function LimitFields({ v }: { v: LimitValues }) {
       </AdminField>
       <AdminField label="크리에이터별 1일 한도 (원)">
         <AdminInput name="perCreatorDailyLimit" inputMode="numeric" defaultValue={v.perCreatorDailyLimit} required />
+      </AdminField>
+      <AdminField label="1인 1일 최대 건수" hint="금액과 별개로 하루 후원 건수를 제한">
+        <AdminInput name="donorDailyMaxCount" inputMode="numeric" defaultValue={v.donorDailyMaxCount} required />
       </AdminField>
       <AdminField label="속도 제한 구간 (초)" hint="이 시간 안의 건수를 제한">
         <AdminInput name="velocityWindowSec" inputMode="numeric" defaultValue={v.velocityWindowSec} required />
@@ -103,7 +108,7 @@ export default async function AdminPoliciesPage() {
         id: true, scope: true, creatorId: true, donorId: true, active: true,
         effectiveFrom: true, effectiveTo: true, updatedAt: true,
         defaultAmount: true, minAmount: true, maxAmount: true,
-        donorDailyLimit: true, donorMonthlyLimit: true, perCreatorDailyLimit: true,
+        donorDailyLimit: true, donorMonthlyLimit: true, perCreatorDailyLimit: true, donorDailyMaxCount: true,
         velocityWindowSec: true, velocityMaxCount: true, cooldownAfterCount: true, cooldownSec: true,
         failureLockThreshold: true, newDonorFirstDayLimit: true, manualReviewAmount: true, ttsMinAmount: true,
         creator: { select: { id: true, displayName: true, code: true } },
@@ -202,12 +207,12 @@ export default async function AdminPoliciesPage() {
                     </CardTitle>
                     <Badge tone={p.active ? 'success' : 'neutral'}>{p.active ? '활성' : '비활성'}</Badge>
                     {p.scope === 'CREATOR' && p.creator ? (
-                      <Link href={`/admin/creators/${p.creator.id}`} className="text-[12px] font-semibold text-brand-600">
+                      <Link href={`/admin/creators/${p.creator.id}`} className="text-[12px] font-semibold text-brand-700">
                         크리에이터 상세
                       </Link>
                     ) : null}
                     {p.scope === 'DONOR' && p.donorId ? (
-                      <Link href={`/admin/donors/${p.donorId}`} className="text-[12px] font-semibold text-brand-600">
+                      <Link href={`/admin/donors/${p.donorId}`} className="text-[12px] font-semibold text-brand-700">
                         후원자 상세
                       </Link>
                     ) : null}
@@ -238,6 +243,7 @@ export default async function AdminPoliciesPage() {
                       donorDailyLimit: p.donorDailyLimit.toString(),
                       donorMonthlyLimit: p.donorMonthlyLimit.toString(),
                       perCreatorDailyLimit: p.perCreatorDailyLimit.toString(),
+                      donorDailyMaxCount: String(p.donorDailyMaxCount),
                       velocityWindowSec: String(p.velocityWindowSec),
                       velocityMaxCount: String(p.velocityMaxCount),
                       cooldownAfterCount: String(p.cooldownAfterCount),

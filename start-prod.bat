@@ -51,7 +51,9 @@ if errorlevel 1 (
 
 echo.
 echo [2/2] 서버 시작
+echo        종료하려면 이 창에서 Ctrl+C 를 누르거나 창을 닫으세요.
+echo        (창을 닫으면 서버도 함께 종료됩니다)
 start "" powershell -NoProfile -ExecutionPolicy Bypass -Command "$u='%TORNADO_URL%/api/health'; for($i=0;$i -lt 90;$i++){ try{ $r=Invoke-WebRequest -Uri $u -UseBasicParsing -TimeoutSec 5; if($r.StatusCode -eq 200){ Start-Process '%TORNADO_URL%'; exit } }catch{}; Start-Sleep -Seconds 2 }"
-call npm run start
+call node tools\serve.mjs start
 
 endlocal

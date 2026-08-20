@@ -441,7 +441,18 @@ model CreatorProfile {
   displayName    String        @map("display_name")
   channelName    String?       @map("channel_name")
   avatarUrl      String?       @map("avatar_url")
+  /// 후원 페이지 상단 배너 이미지 URL (크리에이터 꾸미기)
+  bannerUrl      String?       @map("banner_url")
   description    String?
+  /// 방송중 스위치: 켜면 후원 페이지에 온에어 표시 + 라이브 링크 노출
+  liveOn         Boolean       @default(false) @map("live_on")
+  /// 유튜브 라이브 방송 링크 (방송중 스위치와 함께 사용)
+  liveUrl        String?       @map("live_url")
+  /// 플랫폼별 라이브 주소. livePlatform으로 현재 연결할 플랫폼을 고른다.
+  youtubeLiveUrl   String?     @map("youtube_live_url")
+  instagramLiveUrl String?     @map("instagram_live_url")
+  tiktokLiveUrl    String?     @map("tiktok_live_url")
+  livePlatform     String?     @map("live_platform")
   status         CreatorStatus @default(PENDING)
   /// 문자 1건당 후원금 (원)
   donationAmount BigInt        @default(3000) @map("donation_amount")
@@ -667,6 +678,8 @@ model Donation {
   messageRawEnc String?        @map("message_raw_enc")
   status        DonationStatus @default(RECEIVED)
   statusReason  String?        @map("status_reason")
+  /// 접수 채널: MO(문자) | WEB(후원샵 PC 웹 후원)
+  channel       String         @default("MO")
   paymentMode   PaymentMode    @default(CONFIRM_LINK) @map("payment_mode")
   isTest        Boolean        @default(false) @map("is_test")
   anonymous     Boolean        @default(false)
@@ -817,6 +830,8 @@ model DonationLimitPolicy {
   donorDailyLimit       BigInt      @default(100000) @map("donor_daily_limit")
   donorMonthlyLimit     BigInt      @default(1000000) @map("donor_monthly_limit")
   perCreatorDailyLimit  BigInt      @default(50000) @map("per_creator_daily_limit")
+  /// 1인(후원자) 1일 최대 후원 건수. 금액 한도와 별개로 건수 자체를 제한한다.
+  donorDailyMaxCount    Int         @default(30) @map("donor_daily_max_count")
   velocityWindowSec     Int         @default(60) @map("velocity_window_sec")
   velocityMaxCount      Int         @default(3) @map("velocity_max_count")
   cooldownAfterCount    Int         @default(5) @map("cooldown_after_count")
@@ -1198,6 +1213,56 @@ model Notification {
 
   @@index([userId, createdAt])
   @@map("notification")
+}
+
+/// 1:1 문의 (고객지원 채팅). 로그인 사용자 또는 게스트(쿠키 토큰)가 접수한다.
+model SupportInquiry {
+  id            String        @id
+  /// 로그인 사용자 문의면 app_user.id (FK 없이 참조)
+  userId        String?       @map("user_id")
+  /// 비로그인 문의 식별 토큰 (httpOnly 쿠키에 대응)
+  guestToken    String?       @unique @map("guest_token")
+  guestName     String?       @map("guest_name")
+  /// 회신 연락처(이메일/전화)는 암호화 + 마스킹만 보관한다
+  contactEnc    String?       @map("contact_enc")
+  contactMasked String?       @map("contact_masked")
+  category      String        @default("일반")
+  status        InquiryStatus @default(OPEN)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  lastMessageAt DateTime      @default(now()) @map("last_message_at") @db.Timestamptz(3)
+
+  messages SupportMessage[]
+
+  @@index([status, lastMessageAt])
+  @@index([userId])
+  @@map("support_inquiry")
+}
+
+model SupportMessage {
+  id            String        @id
+  inquiryId     String        @map("inquiry_id")
+  sender        InquirySender
+  body          String
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  readByUserAt  DateTime?     @map("read_by_user_at") @db.Timestamptz(3)
+  readByAdminAt DateTime?     @map("read_by_admin_at") @db.Timestamptz(3)
+
+  inquiry SupportInquiry @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+
+  @@index([inquiryId, createdAt])
+  @@map("support_message")
+}
+
+enum InquiryStatus {
+  OPEN
+  ANSWERED
+  CLOSED
+}
+
+enum InquirySender {
+  USER
+  ADMIN
 }
 
 model Report {

@@ -64,17 +64,14 @@ if errorlevel 1 (
 
 netstat -ano | findstr /r /c:":%TORNADO_PORT% .*LISTENING" >nul 2>nul
 if not errorlevel 1 (
-  echo.
-  echo [경고] 포트 %TORNADO_PORT% 를 이미 사용 중입니다.
-  echo        이전에 실행한 서버 창이 열려 있는지 확인해 주세요.
-  echo.
-  pause
+  echo [정리] 이전에 실행된 서버가 남아 있습니다. 정리한 뒤 새로 시작합니다.
 )
 
 echo.
 echo [안내] 서버 준비가 끝나면 브라우저가 자동으로 열립니다.
 echo        첫 실행은 화면 컴파일 때문에 20~60초 정도 걸립니다.
-echo        서버를 끄려면 이 창에서 Ctrl+C 를 누르세요.
+echo        서버를 끄려면 이 창에서 Ctrl+C 를 누르거나 창을 닫으세요.
+echo        (창을 닫으면 서버도 함께 종료됩니다)
 echo.
 echo   메인        %TORNADO_URL%
 echo   크리에이터  %TORNADO_URL%/studio   creator1@tornado.kr / tornado1234!
@@ -83,6 +80,6 @@ echo.
 
 start "" powershell -NoProfile -ExecutionPolicy Bypass -Command "$u='%TORNADO_URL%/api/health'; for($i=0;$i -lt 150;$i++){ try{ $r=Invoke-WebRequest -Uri $u -UseBasicParsing -TimeoutSec 5; if($r.StatusCode -eq 200){ Start-Process '%TORNADO_URL%'; exit } }catch{}; Start-Sleep -Seconds 2 }"
 
-call npm run dev
+call node tools\serve.mjs dev
 
 endlocal

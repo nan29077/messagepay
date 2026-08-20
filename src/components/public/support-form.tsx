@@ -8,7 +8,7 @@ import { submitSupportRequest, type SupportFormState } from '@/app/actions/suppo
 
 const initial: SupportFormState = { ok: false };
 
-export function SupportForm() {
+export function SupportForm({ defaultTransactionNo }: { defaultTransactionNo?: string }) {
   const [state, formAction, pending] = React.useActionState(submitSupportRequest, initial);
 
   if (state.ok && state.ticketId) {
@@ -27,7 +27,7 @@ export function SupportForm() {
         </div>
 
         <div className="mt-4 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">
-          <p className="text-[12px] font-semibold text-brand-600">접수번호</p>
+          <p className="text-[12px] font-semibold text-brand-700">접수번호</p>
           <p className="mt-1 break-all font-mono text-[14px] font-bold tracking-tight text-ink-900">
             {state.ticketId}
           </p>
@@ -69,7 +69,13 @@ export function SupportForm() {
         label="거래번호 (선택)"
         hint="후원 결과 문자나 마이페이지 후원 내역에서 확인할 수 있습니다. 예: TRD-20260819-XXXXXXXX"
       >
-        <Input name="transactionNo" placeholder="TRD-20260819-XXXXXXXX" maxLength={64} autoComplete="off" />
+        <Input
+          name="transactionNo"
+          placeholder="TRD-20260819-XXXXXXXX"
+          maxLength={64}
+          autoComplete="off"
+          defaultValue={defaultTransactionNo ?? ''}
+        />
       </Field>
 
       <Field

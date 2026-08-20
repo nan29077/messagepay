@@ -1,4 +1,4 @@
-import { prisma } from '@/server/db';
+import { prisma, withAdvisoryLock } from '@/server/db';
 import { newId } from '@/lib/id';
 import { applyRate } from '@/lib/money';
 import { kstMonthKey } from '@/lib/datetime';
@@ -62,9 +62,12 @@ export interface LedgerInput {
   occurredAt?: Date;
 }
 
-export async function appendLedger(entries: LedgerInput[]) {
+/** appendLedger 가 받는 클라이언트 (전역 prisma 또는 트랜잭션 tx) */
+type LedgerClient = Pick<typeof prisma, 'settlementLedger'> | Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
+export async function appendLedger(entries: LedgerInput[], client: LedgerClient = prisma) {
   if (entries.length === 0) return;
-  await prisma.settlementLedger.createMany({
+  await client.settlementLedger.createMany({
     data: entries.map((e) => {
       const at = e.occurredAt ?? new Date();
       return {
@@ -181,50 +184,71 @@ export async function getSettlementSummary(creatorId: string): Promise<Settlemen
   };
 }
 
-/** 정산 요청 생성. 가능 금액 초과 요청을 막는다. */
+/**
+ * 정산 요청 생성. 가능 금액 초과 요청을 막는다.
+ * 크리에이터 단위 advisory lock 으로 동시 요청을 직렬화한다.
+ * (잠금 없이는 두 요청이 같은 가용 금액을 읽고 둘 다 통과해 잔액 초과 이중 요청이 생긴다)
+ */
 export async function createSettlementRequest(creatorId: string, amount: bigint, memo?: string) {
-  const summary = await getSettlementSummary(creatorId);
   if (amount <= 0n) throw new Error('정산 요청 금액이 올바르지 않습니다.');
-  if (amount > summary.available) throw new Error('정산 가능 금액을 초과했습니다.');
 
-  const account = await prisma.settlementAccount.findUnique({ where: { creatorId } });
-  if (!account || !account.verified) throw new Error('정산 계좌 인증이 완료되지 않았습니다.');
+  return prisma.$transaction(async (tx) =>
+    withAdvisoryLock(tx, `settlement:req:${creatorId}`, async () => {
+      // 잠금 획득 후 읽어야 앞선 요청의 커밋 결과가 반영된 값을 본다
+      const summary = await getSettlementSummary(creatorId);
+      if (amount > summary.available) throw new Error('정산 가능 금액을 초과했습니다.');
 
-  // 원천징수 3.3% (사업소득 기준). 실제 적용은 세무 자문 후 확정한다.
-  const withholding = applyRate(amount, 0.033);
+      const account = await tx.settlementAccount.findUnique({ where: { creatorId } });
+      if (!account || !account.verified) throw new Error('정산 계좌 인증이 완료되지 않았습니다.');
 
-  return prisma.settlementRequest.create({
-    data: {
-      id: newId(),
-      creatorId,
-      amount,
-      withholding,
-      payoutAmount: amount - withholding,
-      memo: memo ?? null,
-    },
-  });
+      // 원천징수 3.3% (사업소득 기준). 실제 적용은 세무 자문 후 확정한다.
+      const withholding = applyRate(amount, 0.033);
+
+      return tx.settlementRequest.create({
+        data: {
+          id: newId(),
+          creatorId,
+          amount,
+          withholding,
+          payoutAmount: amount - withholding,
+          memo: memo ?? null,
+        },
+      });
+    }),
+  );
 }
 
-/** 지급 완료 처리 시 원장에 PAYOUT 분개를 추가한다. */
+/**
+ * 지급 완료 처리 시 원장에 PAYOUT 분개를 추가한다.
+ * 요청 단위 advisory lock + 단일 트랜잭션으로, 관리자 이중 클릭 시
+ * append-only 원장에 지급 분개가 중복 기록되는 것을 막는다.
+ */
 export async function markSettlementPaid(requestId: string, adminId?: string) {
-  const req = await prisma.settlementRequest.findUnique({ where: { id: requestId } });
-  if (!req) throw new Error('정산 요청을 찾을 수 없습니다.');
-  if (req.status === 'PAID') return req;
+  return prisma.$transaction(async (tx) =>
+    withAdvisoryLock(tx, `settlement:paid:${requestId}`, async () => {
+      const req = await tx.settlementRequest.findUnique({ where: { id: requestId } });
+      if (!req) throw new Error('정산 요청을 찾을 수 없습니다.');
+      if (req.status === 'PAID') return req;
 
-  const now = new Date();
-  await appendLedger([
-    {
-      creatorId: req.creatorId, entryType: 'PAYOUT', amount: -req.payoutAmount,
-      requestId: req.id, occurredAt: now, memo: '정산 지급',
-    },
-    {
-      creatorId: req.creatorId, entryType: 'PAYOUT_WITHHOLDING', amount: -req.withholding,
-      requestId: req.id, occurredAt: now, memo: '원천징수',
-    },
-  ]);
+      const now = new Date();
+      await appendLedger(
+        [
+          {
+            creatorId: req.creatorId, entryType: 'PAYOUT', amount: -req.payoutAmount,
+            requestId: req.id, occurredAt: now, memo: '정산 지급',
+          },
+          {
+            creatorId: req.creatorId, entryType: 'PAYOUT_WITHHOLDING', amount: -req.withholding,
+            requestId: req.id, occurredAt: now, memo: '원천징수',
+          },
+        ],
+        tx,
+      );
 
-  return prisma.settlementRequest.update({
-    where: { id: requestId },
-    data: { status: 'PAID', paidAt: now, adminId: adminId ?? null },
-  });
+      return tx.settlementRequest.update({
+        where: { id: requestId },
+        data: { status: 'PAID', paidAt: now, adminId: adminId ?? null },
+      });
+    }),
+  );
 }

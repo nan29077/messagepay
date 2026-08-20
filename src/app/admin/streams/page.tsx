@@ -62,7 +62,7 @@ export default async function AdminStreamsPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
-                      <Link href={`/admin/creators/${c.creator.id}`} className="text-[15px] font-bold text-brand-600">
+                      <Link href={`/admin/creators/${c.creator.id}`} className="text-[15px] font-bold text-brand-700">
                         {c.creator.displayName}
                       </Link>
                       <Badge tone={c.live ? 'success' : 'neutral'}>{c.live ? '라이브' : '오프라인'}</Badge>

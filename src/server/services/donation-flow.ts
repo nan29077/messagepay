@@ -100,7 +100,7 @@ async function setStatus(donationId: string, to: DonationStatus, reason?: string
   ]);
 }
 
-async function loadBannedWords(creatorId: string): Promise<BannedWordRule[]> {
+export async function loadBannedWords(creatorId: string): Promise<BannedWordRule[]> {
   const rows = await prisma.bannedWord.findMany({
     where: { active: true, OR: [{ scope: 'GLOBAL' }, { creatorId }] },
     select: { word: true, action: true },
@@ -109,6 +109,25 @@ async function loadBannedWords(creatorId: string): Promise<BannedWordRule[]> {
 }
 
 /** 수신번호(+키워드)로 크리에이터를 찾는다. */
+
+/**
+ * 문자 본문 맨 앞의 "N원" 표기를 금액 지정으로 해석한다.
+ * 예) "5000원 오늘도 화이팅" → amount 5000, rest "오늘도 화이팅"
+ *     "1,000원" → amount 1000, rest ""
+ * 표기가 없으면 크리에이터 기본 후원금을 사용한다.
+ * 파싱된 금액이 정책 범위를 벗어나면 이후 checkLimits 에서 AMOUNT_RANGE 로 차단되고 안내 문자가 발송된다.
+ */
+export function parseExplicitAmount(body: string): { amount: bigint | null; rest: string } {
+  const m = body.match(/^\s*(\d{1,3}(?:,\d{3})+|\d{3,7})원(?=\s|$)/u);
+  if (!m) return { amount: null, rest: body };
+  const digits = m[1].replace(/,/g, '');
+  try {
+    return { amount: BigInt(digits), rest: body.slice(m[0].length).trim() };
+  } catch {
+    return { amount: null, rest: body };
+  }
+}
+
 export async function routeCreator(receivedNumber: string, content: string) {
   const number = normalizePhone(receivedNumber) || receivedNumber;
 
@@ -265,15 +284,17 @@ export async function handleMoInbound(inbound: MoInbound): Promise<MoHandleResul
     };
   }
 
-  // (4) 콘텐츠 필터
+  // (4) 금액 지정 파싱 + 콘텐츠 필터
+  // 후원 페이지에서 금액을 선택해 보내면 본문 맨 앞에 "5000원" 형태의 표기가 붙는다.
+  const amountSpec = parseExplicitAmount(routed.body);
   const bannedWords = await loadBannedWords(creator.id);
   const overlay = await prisma.overlaySetting.findUnique({ where: { creatorId: creator.id } });
-  const filtered = filterContent(routed.body, {
+  const filtered = filterContent(amountSpec.rest, {
     bannedWords,
     maxLength: overlay?.maxMessageLen ?? 80,
   });
 
-  const amount = creator.donationAmount;
+  const amount = amountSpec.amount ?? creator.donationAmount;
   const displayName = donor.displayName || maskPhone(inbound.fromNumber);
 
   // (5) 후원 거래 생성 (멱등)

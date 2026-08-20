@@ -2,17 +2,15 @@ import { notFound } from 'next/navigation';
 import { Badge, Card, CardTitle, DataRow, EmptyState, Field, Input, Notice, SectionTitle, Table, Td, Textarea, Th } from '@/components/ui';
 import { PageHeader } from '@/components/layout/console-shell';
 import { ActionForm } from '@/components/studio/action-form';
-import { CopyField } from '@/components/studio/copy';
 import { updateCreatorProfileAction } from '@/app/actions/studio';
 import { requireCreator } from '@/server/auth';
 import { prisma } from '@/server/db';
-import { env } from '@/lib/env';
 import { formatKst } from '@/lib/datetime';
 import { creatorStatusLabel } from '@/lib/labels';
 
 export const dynamic = 'force-dynamic';
 
-export default async function StudioProfilePage() {
+export default async function StudioSettingsProfilePage() {
   const { creatorId, email } = await requireCreator();
 
   const creator = await prisma.creatorProfile.findUnique({
@@ -26,7 +24,7 @@ export default async function StudioProfilePage() {
 
   return (
     <>
-      <PageHeader title="프로필 · 코드" description="후원 페이지에 표시되는 정보를 관리합니다." />
+      <PageHeader title="설정" description="채널 프로필과 계정 정보를 관리합니다. 후원샵 꾸미기는 후원 설정 > 후원샵 관리에 있습니다." />
 
       <div className="space-y-5">
         <section>
@@ -41,9 +39,6 @@ export default async function StudioProfilePage() {
             <DataRow label="승인 시각" value={formatKst(creator.approvedAt)} />
             <DataRow label="가입 시각" value={formatKst(creator.createdAt)} />
             {creator.suspendedAt ? <DataRow label="정지 시각" value={formatKst(creator.suspendedAt)} /> : null}
-            <div className="mt-3">
-              <CopyField label="후원 페이지 URL" value={`${env.baseUrl}/c/${creator.code}`} />
-            </div>
           </Card>
         </section>
 
@@ -62,8 +57,11 @@ export default async function StudioProfilePage() {
               <Field label="소개" hint="300자 이내">
                 <Textarea name="description" rows={3} maxLength={300} defaultValue={creator.description ?? ''} />
               </Field>
-              <Field label="아바타 URL" hint="http(s) 로 시작하는 이미지 주소를 입력해 주세요. 비워두면 기본 이미지가 사용됩니다.">
-                <Input name="avatarUrl" type="url" defaultValue={creator.avatarUrl ?? ''} placeholder="https://" />
+              <Field
+                label="아바타(프로필 캐릭터) URL"
+                hint="http(s) 주소 또는 / 로 시작하는 사이트 내 이미지 경로. 비워두면 이름 첫 글자가 표시됩니다."
+              >
+                <Input name="avatarUrl" defaultValue={creator.avatarUrl ?? ''} placeholder="/avatars-donaido-a-v1.png 또는 https://" />
               </Field>
             </ActionForm>
           </Card>

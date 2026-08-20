@@ -32,7 +32,7 @@ export function SafetyBanner() {
     <Card className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-50 text-brand-600">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-50 text-brand-700">
             {warnings.length > 0 ? (
               <ShieldAlert size={18} strokeWidth={1.7} />
             ) : (

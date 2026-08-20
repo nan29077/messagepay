@@ -13,7 +13,7 @@ import type { AdapterInfo, ProviderResult } from '../types';
  *   5) 취소/환불                            → cancel
  *
  * 주의: 헥토 공식 제약상 결제인증 완료 후 10분 이내에 승인 API 를 호출해야 한다.
- *       토네이도는 CONFIRM_LINK 유효시간을 그보다 짧게(기본 300초) 운용한다.
+ *       도네이도는 CONFIRM_LINK 유효시간을 그보다 짧게(기본 300초) 운용한다.
  */
 
 export interface RegistrationSession {

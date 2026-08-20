@@ -70,7 +70,7 @@ export default async function AdminSimulatorPage() {
         <div className="mt-4">
           <Notice tone="warning" title="배정된 MO 번호가 없습니다">
             시뮬레이션을 실행하려면 먼저{' '}
-            <Link href="/admin/mo-numbers" className="font-semibold text-brand-600">
+            <Link href="/admin/mo-numbers" className="font-semibold text-brand-700">
               MO 번호 관리
             </Link>
             에서 승인된 크리에이터에게 수신번호를 배정해야 합니다.
@@ -147,7 +147,7 @@ export default async function AdminSimulatorPage() {
                       <Td>{n.mode === 'DEDICATED' ? '전용번호' : '대표번호 공유'}</Td>
                       <Td>
                         {n.creator ? (
-                          <Link href={`/admin/creators/${n.creator.id}`} className="font-semibold text-brand-600">
+                          <Link href={`/admin/creators/${n.creator.id}`} className="font-semibold text-brand-700">
                             {n.creator.displayName}
                           </Link>
                         ) : (

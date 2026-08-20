@@ -18,7 +18,7 @@ export function PageHeader({
       <span className="absolute -right-8 -top-10 h-32 w-32 rounded-full bg-brand-200/35 blur-2xl" aria-hidden />
       <span className="absolute -bottom-12 left-1/3 h-24 w-24 rounded-full bg-accent-400/15 blur-2xl" aria-hidden />
       <div className="relative">
-      {eyebrow ? <p className="text-[10px] font-extrabold tracking-[0.18em] text-brand-600">{eyebrow}</p> : null}
+      {eyebrow ? <p className="text-[10px] font-extrabold tracking-[0.18em] text-brand-700">{eyebrow}</p> : null}
       <h1 className="mt-2 text-[26px] font-black leading-[1.2] tracking-[-0.04em] text-ink-900 sm:text-[31px]">{title}</h1>
       {description ? <p className="mt-3 max-w-[520px] text-[13.5px] leading-relaxed text-ink-500 sm:text-[14px]">{description}</p> : null}
       </div>

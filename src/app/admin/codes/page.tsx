@@ -110,7 +110,7 @@ export default async function AdminCodesPage({
                   <tr key={c.id}>
                     <Td className="font-mono text-[13px] font-semibold">{c.code}</Td>
                     <Td>
-                      <Link href={`/admin/creators/${c.creator.id}`} className="font-semibold text-brand-600">
+                      <Link href={`/admin/creators/${c.creator.id}`} className="font-semibold text-brand-700">
                         {c.creator.displayName}
                       </Link>
                       <span className="mt-0.5 block text-[11px] text-ink-400">현재 코드 {c.creator.code}</span>

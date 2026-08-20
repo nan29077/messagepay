@@ -27,7 +27,7 @@ export default function ErrorPage({
 
         <ol className="mt-4 space-y-2 text-[13px] leading-relaxed text-[#2c3563]">
           <li className="rounded-xl bg-[#f2efff] px-3 py-2.5 text-[#5836d6]">
-            <span className="font-bold">간편 미리보기 사용 시:</span> 열려 있는 토네이도 서버 창을 모두 닫고{' '}
+            <span className="font-bold">간편 미리보기 사용 시:</span> 열려 있는 도네이도 서버 창을 모두 닫고{' '}
             <span className="font-bold">preview.bat</span> 하나만 다시 실행해 주세요.
           </li>
           <li>

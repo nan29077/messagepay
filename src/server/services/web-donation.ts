@@ -1,0 +1,123 @@
+import { prisma } from '@/server/db';
+import { newId, newTransactionNo } from '@/lib/id';
+import { encrypt, maskPhone } from '@/lib/crypto';
+import { filterContent } from './content-filter';
+import { checkLimits } from './limits';
+import { acquireIdempotency } from './idempotency';
+import { executePayment, loadBannedWords, resolvePaymentMode } from './donation-flow';
+import type { DonationStatus } from '@/generated/prisma/enums';
+
+/**
+ * 후원샵(웹, PC) 후원 파이프라인.
+ *
+ * 모바일 MO 문자 흐름과 동일한 안전장치(금칙어 필터, 한도, 멱등, 원장)를 그대로 거치되,
+ * 접수 채널만 WEB 이다. 사용자가 화면에서 금액을 확인하고 "결제하고 후원하기"를 눌렀으므로
+ * 확인 문자 단계 없이 곧바로 결제를 실행한다. 결제가 성공한 후원만 유튜브 댓글·오버레이로 전달된다.
+ */
+
+export interface WebDonationInput {
+  /** 전화번호 인증을 마친 후원자의 phoneHash */
+  phoneHash: string;
+  creatorId: string;
+  amount: bigint;
+  message: string;
+  /** 중복 제출 방지용 클라이언트 멱등키 */
+  requestId: string;
+}
+
+export interface WebDonationResult {
+  ok: boolean;
+  status?: DonationStatus;
+  donationId?: string;
+  transactionNo?: string;
+  message: string;
+}
+
+export async function createWebDonation(input: WebDonationInput): Promise<WebDonationResult> {
+  const creator = await prisma.creatorProfile.findFirst({
+    where: { id: input.creatorId, status: 'APPROVED' },
+  });
+  if (!creator) return { ok: false, message: '후원할 수 없는 크리에이터입니다.' };
+
+  const donor = await prisma.donorProfile.findUnique({ where: { phoneHash: input.phoneHash } });
+  if (!donor) return { ok: false, message: '등록된 후원자 정보가 없습니다. 내통장결제 가입을 먼저 완료해 주세요.' };
+
+  const token = await prisma.paymentMethodToken.findFirst({
+    where: { donorId: donor.id, status: 'ACTIVE' },
+    select: { id: true },
+  });
+  if (!token) {
+    return { ok: false, message: '등록된 결제수단(내통장결제)이 없습니다. 가입을 먼저 완료해 주세요.' };
+  }
+
+  // 콘텐츠 필터 (금칙어 차단/마스킹)
+  const bannedWords = await loadBannedWords(creator.id);
+  const overlay = await prisma.overlaySetting.findUnique({ where: { creatorId: creator.id } });
+  const filtered = filterContent(input.message, {
+    bannedWords,
+    maxLength: overlay?.maxMessageLen ?? 80,
+  });
+  if (filtered.action === 'BLOCK') {
+    return { ok: false, message: '메시지에 사용할 수 없는 단어가 포함되어 있습니다. 내용을 수정해 주세요.' };
+  }
+
+  // 한도 확인 (후원 생성 전에 먼저 확인해 불필요한 레코드를 만들지 않는다)
+  const blocked = await prisma.blockedDonor.findUnique({
+    where: { creatorId_donorId: { creatorId: creator.id, donorId: donor.id } },
+  });
+  const limit = await checkLimits({
+    donor,
+    creatorId: creator.id,
+    amount: input.amount,
+    blockedByCreator: Boolean(blocked),
+  });
+  if (!limit.ok) {
+    await prisma.riskDetection.create({
+      data: {
+        id: newId(),
+        donorId: donor.id,
+        creatorId: creator.id,
+        type: limit.code === 'VELOCITY' || limit.code === 'COOLDOWN' ? 'VELOCITY' : 'DAILY_LIMIT',
+        level: 'MEDIUM',
+        detail: { code: limit.code, message: limit.message, channel: 'WEB' } as object,
+      },
+    });
+    return { ok: false, message: limit.message ?? '이용 한도를 초과했습니다.' };
+  }
+
+  // 멱등: 같은 requestId 로 두 번 제출돼도 후원이 중복 생성되지 않는다
+  const idem = await acquireIdempotency('donation', `web:${creator.id}:${donor.id}:${input.requestId}`);
+  if (idem.status === 'DUPLICATE') {
+    return { ok: false, message: '이미 처리 중인 후원입니다. 잠시 후 후원 내역에서 확인해 주세요.' };
+  }
+
+  const donation = await prisma.donation.create({
+    data: {
+      id: newId(),
+      transactionNo: newTransactionNo(),
+      creatorId: creator.id,
+      donorId: donor.id,
+      channel: 'WEB',
+      amount: input.amount,
+      displayName: donor.displayName || maskPhone(donor.phoneMasked ?? ''),
+      message: filtered.clean,
+      messageRawEnc: encrypt(input.message),
+      status: 'RECEIVED',
+      statusReason: '후원샵 웹 후원',
+      paymentMode: resolvePaymentMode(creator.paymentMode),
+    },
+  });
+  await idem.release(donation.id);
+
+  // 화면에서 금액을 확인하고 버튼을 눌렀으므로 곧바로 결제를 실행한다.
+  const paid = await executePayment(donation.id);
+  return {
+    ok: paid.ok,
+    status: paid.status,
+    donationId: donation.id,
+    transactionNo: donation.transactionNo,
+    message: paid.ok
+      ? '후원이 완료되었습니다. 결제된 후원만 유튜브 댓글과 방송 오버레이로 전달됩니다.'
+      : paid.message,
+  };
+}

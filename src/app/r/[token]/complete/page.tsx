@@ -18,7 +18,7 @@ import { LinkShell } from '../link-shell';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '토네이도 계좌 등록 결과',
+  title: '도네이도 계좌 등록 결과',
   robots: { index: false, follow: false },
 };
 
@@ -160,7 +160,7 @@ export default async function RegistrationCompletePage({
               label="등록 계좌"
               value={
                 <span className="inline-flex items-center gap-1.5">
-                  <Landmark size={14} strokeWidth={1.7} className="text-brand-500" />
+                  <Landmark size={14} strokeWidth={1.7} className="text-brand-700" />
                   {resultBankName ?? '등록 은행'} {resultTail4 ? `****${resultTail4}` : ''}
                 </span>
               }
@@ -179,7 +179,7 @@ export default async function RegistrationCompletePage({
             ) : null}
           </div>
           <p className="mt-3 text-[12px] leading-relaxed text-ink-400">
-            계좌번호 원문은 토네이도에 저장되지 않습니다. 은행명과 끝 4자리만 보관합니다.
+            계좌번호 원문은 도네이도에 저장되지 않습니다. 은행명과 끝 4자리만 보관합니다.
           </p>
         </Card>
 
@@ -188,16 +188,26 @@ export default async function RegistrationCompletePage({
           출금이 요청되니 반복 발송에 주의해 주세요.
         </Notice>
 
+        {moNumber ? (
+          <a
+            href={`sms:${moNumber.phoneNumber}?body=${encodeURIComponent(moNumber.keyword ? `${moNumber.keyword} 응원합니다!` : '응원합니다!')}`}
+            className="inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-brand-400 text-[15.5px] font-extrabold text-ink-900 shadow-[0_8px_20px_rgba(237,166,0,0.28)] transition-colors hover:bg-brand-500"
+          >
+            <MessageSquare size={17} strokeWidth={1.7} />
+            바로 문자 보내러 가기
+          </a>
+        ) : null}
+
         {creator ? (
           <LinkButton href={`/c/${creator.code}`} size="lg" variant="secondary">
             <MessageSquare size={17} strokeWidth={1.7} />
-            {creator.displayName} 후원 페이지 보기
+            {creator.displayName} 후원샵 보기
           </LinkButton>
         ) : null}
 
         <Card>
           <div className="mb-2 flex items-center gap-2">
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-50 text-brand-600">
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-50 text-brand-700">
               <ShieldCheck size={17} strokeWidth={1.7} />
             </span>
             <CardTitle>자동출금 해지 방법</CardTitle>
@@ -208,10 +218,10 @@ export default async function RegistrationCompletePage({
             <li>해지 후에는 문자를 보내도 결제가 진행되지 않으며, 다시 이용하려면 계좌를 새로 등록해야 합니다.</li>
           </ul>
           <div className="mt-3 flex items-center gap-4">
-            <Link href="/my/payments" className="text-[13px] font-semibold text-brand-600">
+            <Link href="/my/payments" className="text-[13px] font-semibold text-brand-700">
               결제수단 관리
             </Link>
-            <Link href="/support" className="text-[13px] font-semibold text-brand-600">
+            <Link href="/support" className="text-[13px] font-semibold text-brand-700">
               고객센터 문의하기
             </Link>
           </div>

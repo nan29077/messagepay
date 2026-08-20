@@ -30,7 +30,7 @@ import { ConfirmPanel } from './confirm-panel';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '토네이도 후원 확인',
+  title: '도네이도 후원 확인',
   robots: { index: false, follow: false },
 };
 
@@ -128,7 +128,7 @@ function InvalidLink({ reason }: { reason: 'NOT_FOUND' | 'EXPIRED' | 'USED' }) {
       </p>
       <div className="mt-3">
         <Notice tone="warning" title="주의">
-          토네이도는 문자로 발송한 링크 외에 다른 경로로 계좌 정보를 요구하지 않습니다.
+          도네이도는 문자로 발송한 링크 외에 다른 경로로 계좌 정보를 요구하지 않습니다.
         </Notice>
       </div>
     </Card>
@@ -191,7 +191,7 @@ async function RegisterScreen({ token }: { token: string }) {
   return (
     <div className="space-y-3">
       <Card>
-        <p className="text-[12px] font-semibold text-brand-600">최초 1회 계좌 등록</p>
+        <p className="text-[12px] font-semibold text-brand-700">최초 1회 계좌 등록</p>
         <h1 className="mt-1 text-[20px] font-extrabold leading-snug tracking-tight text-ink-900">
           {ctx.creatorName ?? '크리에이터'} 후원을 위한
           <br />
@@ -207,7 +207,7 @@ async function RegisterScreen({ token }: { token: string }) {
             value={
               moNumber ? (
                 <span className="inline-flex items-center gap-1.5">
-                  <Phone size={14} strokeWidth={1.7} className="text-brand-500" />
+                  <Phone size={14} strokeWidth={1.7} className="text-brand-700" />
                   {moNumber.phoneNumber}
                   {moNumber.keyword ? <span className="text-ink-400">({moNumber.keyword} 로 시작)</span> : null}
                 </span>
@@ -227,7 +227,7 @@ async function RegisterScreen({ token }: { token: string }) {
 
       <Card>
         <div className="mb-2 flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-50 text-brand-600">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-50 text-brand-700">
             <Wallet size={17} strokeWidth={1.7} />
           </span>
           <CardTitle>후원금과 수수료</CardTitle>
@@ -244,7 +244,7 @@ async function RegisterScreen({ token }: { token: string }) {
 
       <Card>
         <div className="mb-2 flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-50 text-brand-600">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-50 text-brand-700">
             <MessageSquare size={17} strokeWidth={1.7} />
           </span>
           <CardTitle>이용 한도</CardTitle>

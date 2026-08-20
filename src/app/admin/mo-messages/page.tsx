@@ -159,7 +159,7 @@ export default async function AdminMoMessagesPage({
                     <Td>{m.matchedKeyword ?? '-'}</Td>
                     <Td>
                       {m.creator ? (
-                        <Link href={`/admin/creators/${m.creator.id}`} className="font-semibold text-brand-600">
+                        <Link href={`/admin/creators/${m.creator.id}`} className="font-semibold text-brand-700">
                           {m.creator.displayName}
                         </Link>
                       ) : (

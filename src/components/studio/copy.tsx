@@ -117,7 +117,7 @@ export function SecretBox({
         <button
           type="button"
           onClick={() => setVisible((v) => !v)}
-          className="inline-flex items-center gap-1 text-[12px] font-semibold text-brand-600"
+          className="inline-flex items-center gap-1 text-[12px] font-semibold text-brand-700"
         >
           {visible ? <EyeOff size={15} strokeWidth={1.7} /> : <Eye size={15} strokeWidth={1.7} />}
           {visible ? '가리기' : '보기'}
@@ -132,7 +132,7 @@ export function SecretBox({
         />
         <CopyButton value={value} />
       </div>
-      {hint ? <p className="mt-2 text-[12px] leading-relaxed text-brand-600">{hint}</p> : null}
+      {hint ? <p className="mt-2 text-[12px] leading-relaxed text-brand-700">{hint}</p> : null}
     </div>
   );
 }

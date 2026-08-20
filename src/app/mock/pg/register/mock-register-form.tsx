@@ -96,7 +96,7 @@ export function MockRegisterForm({
 
       <Card>
         <div className="mb-3 flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-50 text-brand-600">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-50 text-brand-700">
             <Landmark size={17} strokeWidth={1.7} />
           </span>
           <div>
@@ -158,7 +158,7 @@ export function MockRegisterForm({
       </Card>
 
       <p className="text-center text-[11.5px] leading-relaxed text-ink-400">
-        실제 연동 시에는 헥토파이낸셜 결제창에서 본인 명의 계좌 확인과 출금이체 동의가 진행되며, 토네이도는 계좌번호
+        실제 연동 시에는 헥토파이낸셜 결제창에서 본인 명의 계좌 확인과 출금이체 동의가 진행되며, 도네이도는 계좌번호
         원문을 전달받지 않습니다.
       </p>
     </div>

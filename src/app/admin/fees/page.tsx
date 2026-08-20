@@ -134,7 +134,7 @@ export default async function AdminFeesPage() {
                       {p.scope === 'GLOBAL' ? (
                         <Badge tone="brand">전역</Badge>
                       ) : p.creator ? (
-                        <Link href={`/admin/creators/${p.creator.id}`} className="font-semibold text-brand-600">
+                        <Link href={`/admin/creators/${p.creator.id}`} className="font-semibold text-brand-700">
                           {p.creator.displayName}
                         </Link>
                       ) : (

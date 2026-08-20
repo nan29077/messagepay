@@ -22,6 +22,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
+import { acquireLock, freePort, guardOrphan, killTree, releaseLock } from './process-guard.mjs';
 
 const DB_PORT = Number(process.env.PGLITE_PORT ?? 5433);
 const APP_PORT = Number(process.env.PORT ?? 3025);
@@ -140,7 +141,10 @@ function needsBuild() {
 async function shutdown(code = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
-  if (child && !child.killed) {
+  // 자식(Next 서버)이 워커를 띄웠을 수 있으므로 트리째 종료한다.
+  // 이렇게 하지 않으면 창을 닫아도 서버만 남아 포트를 계속 점유한다.
+  if (child?.pid) {
+    killTree(child.pid);
     try {
       child.kill();
     } catch {
@@ -157,19 +161,53 @@ async function shutdown(code = 0) {
   process.exit(code);
 }
 
-process.on('SIGINT', () => shutdown(0));
-process.on('SIGTERM', () => shutdown(0));
+/**
+ * Ctrl+C / 창 닫힘(SIGHUP) / 종료 요청 모두에서 서버를 함께 내린다.
+ * 신호 처리기를 등록하면 기본 종료 동작이 사라지므로 반드시 직접 종료까지 수행한다.
+ */
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) {
+  try {
+    process.on(sig, () => {
+      void shutdown(0);
+    });
+  } catch {
+    /* 지원하지 않는 신호는 무시 */
+  }
+}
+
+/** 어떤 경로로 끝나든 자식 서버가 남지 않게 하는 마지막 안전장치 */
+process.on('exit', () => {
+  if (child?.pid) killTree(child.pid);
+  releaseLock();
+});
 
 async function main() {
-  if (await portInUse(DB_PORT)) {
-    console.error(`[중단] 내장 데이터베이스 포트 ${DB_PORT} 가 이미 사용 중입니다.`);
-    console.error('       이전 미리보기 창이 열려 있는지 확인하고 닫아 주세요.');
-    process.exit(1);
+  // 이미 실행 중인 미리보기가 있으면 건드리지 않는다.
+  // (화면 빌드 중에는 포트가 아직 열리지 않아, 포트만 보고 판단하면 빌드 중인 실행을 죽이게 된다)
+  const lock = acquireLock('preview');
+  if (!lock.ok) {
+    const since = lock.startedAt ? new Date(lock.startedAt).toLocaleTimeString('ko-KR') : '알 수 없음';
+    console.error('[안내] 토네이도 미리보기가 이미 실행 중입니다.');
+    console.error(`       실행 중인 창: PID ${lock.pid} (시작 ${since})`);
+    console.error('       화면 빌드 중이면 1~3분 걸립니다. 먼저 실행된 창을 확인해 주세요.');
+    console.error('       그 창을 닫았는데도 이 메시지가 보이면 stop.bat 을 실행한 뒤 다시 시도하세요.');
+    process.exit(0);
   }
-  if (await portInUse(APP_PORT)) {
-    console.error(`[중단] 앱 포트 ${APP_PORT} 가 이미 사용 중입니다.`);
-    console.error(`       이전 서버 창을 닫거나, 그대로 쓰시려면 http://localhost:${APP_PORT} 로 접속하세요.`);
-    process.exit(1);
+
+  // 이전 실행이 창만 닫히고 서버는 남아 있는 경우가 있다.
+  // 옛 빌드가 계속 보이는 것을 막기 위해, 남은 서버를 정리하고 새로 시작한다.
+  for (const [port, label] of [
+    [APP_PORT, `앱 포트 ${APP_PORT}`],
+    [DB_PORT, `내장 데이터베이스 포트 ${DB_PORT}`],
+  ]) {
+    const res = await freePort(port, { label, log });
+    if (!res.ok) {
+      const who = (res.blockedBy ?? []).map((p) => `${p.name}(PID ${p.pid})`).join(', ');
+      console.error(`[중단] ${label} 를 정리하지 못했습니다.`);
+      if (who) console.error(`       다른 프로그램이 사용 중입니다: ${who}`);
+      console.error('       해당 프로그램을 종료한 뒤 다시 실행해 주세요.');
+      process.exit(1);
+    }
   }
 
   const firstRun = !fs.existsSync(DATA_DIR);
@@ -220,6 +258,9 @@ async function main() {
       env: { ...process.env, ...previewEnv, NODE_ENV: 'production' },
     });
   }
+
+  // 창을 닫거나(X) 강제 종료되어도 서버가 고아로 남지 않게 감시자를 붙인다.
+  guardOrphan(child.pid);
 
   openBrowserWhenReady(`http://localhost:${APP_PORT}`);
 

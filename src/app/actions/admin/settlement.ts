@@ -7,6 +7,7 @@ import { newId } from '@/lib/id';
 import { markSettlementPaid } from '@/server/services/settlement';
 import type { AdminActionState } from '@/components/admin/state';
 import { run, text, optText, money, rate, enumValue, requiredId, optDate } from './shared';
+import { notifyUser } from '@/server/services/notifications';
 
 /**
  * 정산 요청 처리 / 수수료 정책 관리.
@@ -25,7 +26,7 @@ export async function updateSettlementRequestStatus(
 
     const before = await prisma.settlementRequest.findUnique({
       where: { id: requestId },
-      select: { id: true, status: true, amount: true, payoutAmount: true, creatorId: true },
+      select: { id: true, status: true, amount: true, payoutAmount: true, creatorId: true, creator: { select: { userId: true } } },
     });
     if (!before) throw new Error('정산 요청을 찾을 수 없습니다.');
     if (before.status === 'PAID') throw new Error('이미 지급 완료된 요청입니다.');
@@ -44,6 +45,13 @@ export async function updateSettlementRequestStatus(
             : { status, adminId: admin.id, memo: memo ?? undefined };
       await prisma.settlementRequest.update({ where: { id: requestId }, data });
     }
+
+    await notifyUser({
+      userId: before.creator.userId,
+      title: '정산 요청 상태가 변경되었습니다',
+      body: status === 'PAID' ? '요청하신 정산이 지급 완료되었습니다.' : `정산 요청이 ${status} 상태로 변경되었습니다.`,
+      linkUrl: '/studio/settlement',
+    });
 
     await writeAudit({
       adminUserId: admin.id,

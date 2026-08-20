@@ -25,6 +25,6 @@ export async function requireDonorContext(next = '/my'): Promise<DonorContext> {
   return { user, donorId: donor?.id ?? null };
 }
 
-export const NO_DONOR_TITLE = '문자후원 이용 내역이 없습니다';
+export const NO_DONOR_TITLE = '휴대폰 번호가 연결되지 않았습니다';
 export const NO_DONOR_DESC =
-  '이 계정으로 접수된 문자후원이 없습니다. 크리에이터의 후원 번호로 문자를 보내고 계좌 등록을 완료하면 이곳에서 내역을 확인할 수 있습니다.';
+  '문자후원 내역은 휴대전화 번호를 기준으로 기록됩니다. 마이페이지의 등록 계좌 탭에서 본인 휴대폰 번호를 인증하면 해당 번호로 후원한 내역과 결제 내역이 이 계정에 표시됩니다.';

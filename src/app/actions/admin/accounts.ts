@@ -1,12 +1,13 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { notifyUser } from '@/server/services/notifications';
 import { prisma } from '@/server/db';
 import { writeAudit } from '@/server/auth';
 import { newId, newCreatorCode } from '@/lib/id';
 import { env } from '@/lib/env';
 import type { AdminActionState } from '@/components/admin/state';
-import { run, text, optText, optMoney, enumValue, requiredId } from './shared';
+import { run, text, optText, money, optMoney, enumValue, requiredId } from './shared';
 
 /**
  * 회원 / 후원자 / 크리에이터 / 코드 / 관리자 권한 관련 서버 액션.
@@ -155,7 +156,7 @@ export async function updateCreatorStatus(_prev: AdminActionState, fd: FormData)
 
     const before = await prisma.creatorProfile.findUnique({
       where: { id: creatorId },
-      select: { id: true, displayName: true, status: true, approvedAt: true, suspendedAt: true },
+      select: { id: true, userId: true, displayName: true, status: true, approvedAt: true, suspendedAt: true },
     });
     if (!before) throw new Error('크리에이터를 찾을 수 없습니다.');
 
@@ -168,6 +169,14 @@ export async function updateCreatorStatus(_prev: AdminActionState, fd: FormData)
           : { status };
 
     await prisma.creatorProfile.update({ where: { id: creatorId }, data });
+    await notifyUser({
+      userId: before.userId,
+      title: status === 'APPROVED' ? '크리에이터 승인이 완료되었습니다' : '크리에이터 심사 상태가 변경되었습니다',
+      body: status === 'APPROVED'
+        ? '이제 크리에이터 관리자에서 후원샵과 방송 연동을 설정할 수 있습니다.'
+        : `${before.displayName}님의 심사 상태가 ${status}(으)로 변경되었습니다.`,
+      linkUrl: '/studio',
+    });
     await writeAudit({
       adminUserId: admin.id,
       action: 'CREATOR_STATUS_UPDATE',
@@ -212,6 +221,94 @@ export async function updateCreatorPaymentMode(_prev: AdminActionState, fd: Form
     });
     revalidatePath(`/admin/creators/${creatorId}`);
     return `${before.displayName} 님의 결제 모드를 ${paymentMode ?? '전역 설정'} 으로 변경했습니다.`;
+  });
+}
+
+
+// =========================================================== 크리에이터 1건 후원금 허용 범위
+
+/** 크리에이터의 donationAmount 를 [min, max] 범위 안으로 보정한다. */
+function clampAmount(amount: bigint, min: bigint, max: bigint): bigint {
+  if (amount < min) return min;
+  if (amount > max) return max;
+  return amount;
+}
+
+/**
+ * 크리에이터 1명의 1건 후원금 허용 범위(최소/최대)를 변경한다.
+ * 현재 설정된 1건 후원금이 새 범위를 벗어나면 범위 안으로 자동 보정한다.
+ */
+export async function updateCreatorAmountBounds(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
+  return run(async (admin) => {
+    const creatorId = requiredId(fd, 'creatorId', '크리에이터');
+    const minAmount = money(fd, 'minAmount', '1건 최소 후원금', { min: 100n });
+    const maxAmount = money(fd, 'maxAmount', '1건 최대 후원금', { min: 100n });
+    if (minAmount > maxAmount) throw new Error('최소 금액이 최대 금액보다 클 수 없습니다.');
+
+    const before = await prisma.creatorProfile.findUnique({
+      where: { id: creatorId },
+      select: { id: true, displayName: true, minAmount: true, maxAmount: true, donationAmount: true },
+    });
+    if (!before) throw new Error('크리에이터를 찾을 수 없습니다.');
+
+    const donationAmount = clampAmount(before.donationAmount, minAmount, maxAmount);
+    const clamped = donationAmount !== before.donationAmount;
+
+    await prisma.creatorProfile.update({
+      where: { id: creatorId },
+      data: { minAmount, maxAmount, donationAmount },
+    });
+    await writeAudit({
+      adminUserId: admin.id,
+      action: 'CREATOR_AMOUNT_BOUNDS_UPDATE',
+      targetType: 'CreatorProfile',
+      targetId: creatorId,
+      before: { minAmount: before.minAmount, maxAmount: before.maxAmount, donationAmount: before.donationAmount },
+      after: { minAmount, maxAmount, donationAmount },
+    });
+    revalidatePath(`/admin/creators/${creatorId}`);
+    revalidatePath('/admin/creators');
+    return clamped
+      ? `${before.displayName} 님의 허용 범위를 변경했고, 1건 후원금을 범위에 맞게 ${donationAmount.toString()}원으로 보정했습니다.`
+      : `${before.displayName} 님의 1건 후원금 허용 범위를 변경했습니다.`;
+  });
+}
+
+/**
+ * 모든 크리에이터(탈퇴 제외)의 1건 후원금 허용 범위를 공통으로 일괄 적용한다.
+ * 범위를 벗어난 크리에이터의 1건 후원금은 범위 안으로 자동 보정한다.
+ */
+export async function applyGlobalAmountBounds(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
+  return run(async (admin) => {
+    const minAmount = money(fd, 'minAmount', '1건 최소 후원금', { min: 100n });
+    const maxAmount = money(fd, 'maxAmount', '1건 최대 후원금', { min: 100n });
+    if (minAmount > maxAmount) throw new Error('최소 금액이 최대 금액보다 클 수 없습니다.');
+
+    const result = await prisma.$transaction(async (tx) => {
+      const total = await tx.creatorProfile.count();
+      await tx.creatorProfile.updateMany({ data: { minAmount, maxAmount } });
+      const below = await tx.creatorProfile.updateMany({
+        where: { donationAmount: { lt: minAmount } },
+        data: { donationAmount: minAmount },
+      });
+      const above = await tx.creatorProfile.updateMany({
+        where: { donationAmount: { gt: maxAmount } },
+        data: { donationAmount: maxAmount },
+      });
+      return { total, clamped: below.count + above.count };
+    });
+
+    await writeAudit({
+      adminUserId: admin.id,
+      action: 'CREATOR_AMOUNT_BOUNDS_APPLY_ALL',
+      targetType: 'CreatorProfile',
+      targetId: 'ALL',
+      after: { minAmount, maxAmount, appliedTo: result.total, clamped: result.clamped },
+    });
+    revalidatePath('/admin/creators');
+    revalidatePath('/studio/settings');
+    return `크리에이터 ${result.total}명 전체에 1건 후원금 허용 범위 ${minAmount.toString()}원 ~ ${maxAmount.toString()}원을 적용했습니다.` +
+      (result.clamped > 0 ? ` 범위를 벗어난 ${result.clamped}명의 1건 후원금을 자동 보정했습니다.` : '');
   });
 }
 
@@ -307,5 +404,51 @@ export async function updateAdminPermission(_prev: AdminActionState, fd: FormDat
     });
     revalidatePath('/admin/admins');
     return `${before.user.email ?? profileId} 의 권한을 ${permission} 으로 변경했습니다.`;
+  });
+}
+
+// =========================================================== 관리자 추가 (기존 계정 승격)
+
+export async function createAdminByEmail(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
+  return run(async (admin) => {
+    if (admin.adminPermission !== 'SUPER_ADMIN') {
+      throw new Error('관리자 추가는 SUPER_ADMIN 만 수행할 수 있습니다.');
+    }
+    const email = text(fd, 'email').trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('이메일 형식을 확인해 주세요.');
+    const permission = enumValue(
+      fd,
+      'permission',
+      ['SUPER_ADMIN', 'OPERATION', 'FINANCE', 'SUPPORT', 'READ_ONLY'] as const,
+      '권한',
+    );
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, role: true, status: true, adminProfile: { select: { id: true } } },
+    });
+    if (!user) throw new Error('해당 이메일로 가입된 계정이 없습니다. 먼저 일반 회원가입을 완료해 주세요.');
+    if (user.adminProfile) throw new Error('이미 관리자로 등록된 계정입니다.');
+    if (user.role === 'CREATOR') {
+      throw new Error('크리에이터 계정은 관리자를 겸할 수 없습니다. 별도 계정으로 등록해 주세요.');
+    }
+    if (user.status !== 'ACTIVE') throw new Error('활성 상태의 계정만 관리자로 등록할 수 있습니다.');
+
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: user.id }, data: { role: 'ADMIN' } }),
+      prisma.adminProfile.create({ data: { id: newId(), userId: user.id, permission } }),
+    ]);
+
+    await writeAudit({
+      adminUserId: admin.id,
+      action: 'ADMIN_CREATE',
+      targetType: 'User',
+      targetId: user.id,
+      before: { role: user.role },
+      after: { role: 'ADMIN', permission },
+    });
+    revalidatePath('/admin/admins');
+    revalidatePath('/admin/users');
+    return `${email} 계정을 ${permission} 권한의 관리자로 등록했습니다.`;
   });
 }

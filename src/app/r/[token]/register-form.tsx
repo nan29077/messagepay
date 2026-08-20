@@ -68,7 +68,7 @@ export function RegisterForm({ token, terms }: { token: string; terms: TermsItem
           <span
             className={cx(
               'grid h-6 w-6 shrink-0 place-items-center rounded-md border',
-              allAgreed ? 'border-brand-500 bg-brand-500 text-white' : 'border-ink-300 text-transparent',
+              allAgreed ? 'border-brand-500 bg-brand-500 text-ink-900' : 'border-ink-300 text-transparent',
             )}
             aria-hidden
           >
@@ -137,7 +137,7 @@ function TermsRow({
         />
       </div>
       <details className="ml-8 pb-2">
-        <summary className="cursor-pointer list-none text-[12px] font-semibold text-brand-600">약관 내용 보기</summary>
+        <summary className="cursor-pointer list-none text-[12px] font-semibold text-brand-700">약관 내용 보기</summary>
         <p className="mt-1.5 max-h-40 overflow-y-auto rounded-lg bg-ink-50 px-3 py-2 text-[12px] leading-relaxed text-ink-500">
           {item.content}
         </p>

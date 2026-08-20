@@ -1,7 +1,10 @@
-import { Landmark, MessageSquare, CreditCard } from 'lucide-react';
-import { Card, CardTitle, Badge, EmptyState, Notice, DataRow, LinkButton, SectionTitle } from '@/components/ui';
+import Link from 'next/link';
+import { Landmark, MessageSquare, CreditCard, SlidersHorizontal, Ban, FileText, ChevronRight } from 'lucide-react';
+import { Card, CardTitle, Badge, Notice, DataRow, LinkButton, SectionTitle } from '@/components/ui';
 import { RevokeForm } from '@/components/my/revoke-form';
-import { requireDonorContext, NO_DONOR_TITLE, NO_DONOR_DESC } from '@/components/my/donor';
+import { PhoneLinkForm } from '@/components/my/phone-link-form';
+import { WithdrawForm } from '@/components/my/withdraw-form';
+import { requireDonorContext } from '@/components/my/donor';
 import { prisma } from '@/server/db';
 import { formatKst } from '@/lib/datetime';
 
@@ -9,7 +12,22 @@ export const dynamic = 'force-dynamic';
 
 export default async function MyAccountPage() {
   const { donorId } = await requireDonorContext('/my/account');
-  if (!donorId) return <EmptyState title={NO_DONOR_TITLE} description={NO_DONOR_DESC} />;
+
+  const donor = donorId
+    ? await prisma.donorProfile.findUnique({ where: { id: donorId }, select: { phoneMasked: true } })
+    : null;
+
+  if (!donorId) {
+    return (
+      <div className="space-y-5" id="phone-link">
+        <Notice tone="brand" title="휴대폰 번호를 연결해 주세요">
+          문자후원 내역은 휴대전화 번호를 기준으로 기록됩니다. 아래에서 본인 번호를 인증하면 해당 번호의
+          후원·결제 내역이 이 계정에 연결됩니다.
+        </Notice>
+        <PhoneLinkForm linkedPhoneMasked={null} />
+      </div>
+    );
+  }
 
   const tokens = await prisma.paymentMethodToken.findMany({
     where: { donorId },
@@ -31,11 +49,19 @@ export default async function MyAccountPage() {
 
   return (
     <div className="space-y-5">
+      <section id="phone-link">
+        <SectionTitle
+          title="휴대폰 번호"
+          description="문자후원의 후원자 식별 기준입니다. 번호를 변경하면 새 번호의 내역이 표시됩니다."
+        />
+        <PhoneLinkForm linkedPhoneMasked={donor?.phoneMasked ?? null} />
+      </section>
+
       {active ? (
         <Card className="border border-brand-100">
           <div className="flex items-start justify-between gap-3">
             <div className="flex gap-3">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700">
                 <Landmark size={18} strokeWidth={1.7} />
               </span>
               <div>
@@ -103,7 +129,7 @@ export default async function MyAccountPage() {
           <SectionTitle title="다시 이용하려면" />
           <Card>
             <div className="flex gap-3">
-              <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600">
+              <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
                 <MessageSquare size={17} strokeWidth={1.7} />
               </span>
               <div>
@@ -147,6 +173,44 @@ export default async function MyAccountPage() {
           </div>
         </section>
       ) : null}
+
+      <section>
+        <SectionTitle title="설정" description="후원 한도와 차단, 동의 이력을 관리합니다." />
+        <Card padded={false}>
+          <ul>
+            {[
+              { href: '/my/limits', label: '후원 한도', desc: '일일·월간 한도를 더 낮게 설정', icon: SlidersHorizontal },
+              { href: '/my/blocks', label: '후원 차단', desc: '특정 크리에이터 후원 차단', icon: Ban },
+              { href: '/my/consents', label: '동의 이력', desc: '약관 동의 기록과 마케팅 수신', icon: FileText },
+            ].map((m) => {
+              const Icon = m.icon;
+              return (
+                <li key={m.href} className="border-b border-ink-100 last:border-0">
+                  <Link
+                    href={m.href}
+                    className="flex items-center justify-between gap-3 px-4 py-3.5 transition-colors hover:bg-ink-50"
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-ink-50 text-ink-500">
+                        <Icon size={16} strokeWidth={1.7} />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-[13.5px] font-bold text-ink-900">{m.label}</span>
+                        <span className="block truncate text-[12px] text-ink-400">{m.desc}</span>
+                      </span>
+                    </span>
+                    <ChevronRight size={16} strokeWidth={1.8} className="shrink-0 text-ink-300" />
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      </section>
+
+      <section>
+        <WithdrawForm />
+      </section>
     </div>
   );
 }

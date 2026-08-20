@@ -4,8 +4,8 @@ import { PageHeader } from '@/components/layout/console-shell';
 import {
   Badge, Card, CardTitle, DataRow, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th,
 } from '@/components/ui';
-import { ActionButton, SelectActionForm } from '@/components/admin/action-form';
-import { updateCreatorStatus, updateCreatorPaymentMode, reissueCreatorCode } from '@/app/actions/admin/accounts';
+import { ActionButton, ActionForm, SelectActionForm } from '@/components/admin/action-form';
+import { updateCreatorStatus, updateCreatorPaymentMode, reissueCreatorCode, updateCreatorAmountBounds } from '@/app/actions/admin/accounts';
 import { prisma } from '@/server/db';
 import { getSettlementSummary } from '@/server/services/settlement';
 import { resolveFeePolicy } from '@/server/services/settlement';
@@ -13,6 +13,7 @@ import { env } from '@/lib/env';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import { creatorStatusLabel, donationStatusLabel, paymentModeLabel, moNumberStatusLabel } from '@/lib/labels';
+import { AdminField, AdminInput } from '@/components/admin/controls';
 
 export const dynamic = 'force-dynamic';
 
@@ -98,6 +99,24 @@ export default async function AdminCreatorDetailPage({ params }: { params: Promi
               <DataRow label="신청일" value={formatKst(creator.createdAt)} />
               <DataRow label="승인일" value={formatKst(creator.approvedAt)} />
               <DataRow label="정지일" value={formatKst(creator.suspendedAt)} />
+            </div>
+            <div className="mt-3 rounded-xl border border-ink-100 px-3 py-3">
+              <p className="mb-2 text-[12.5px] font-bold text-ink-900">1건 후원금 허용 범위 변경</p>
+              <ActionForm
+                action={updateCreatorAmountBounds}
+                submitLabel="범위 저장"
+                confirm="이 크리에이터의 1건 후원금 허용 범위를 변경합니다. 현재 설정 금액이 범위를 벗어나면 자동 보정됩니다."
+              >
+                <input type="hidden" name="creatorId" value={creator.id} />
+                <div className="grid grid-cols-2 gap-2">
+                  <AdminField label="1건 최소 (원)">
+                    <AdminInput name="minAmount" inputMode="numeric" defaultValue={creator.minAmount.toString()} required />
+                  </AdminField>
+                  <AdminField label="1건 최대 (원)">
+                    <AdminInput name="maxAmount" inputMode="numeric" defaultValue={creator.maxAmount.toString()} required />
+                  </AdminField>
+                </div>
+              </ActionForm>
             </div>
             <div className="mt-3">
               <SelectActionForm
@@ -233,7 +252,7 @@ export default async function AdminCreatorDetailPage({ params }: { params: Promi
                 </Table>
               )}
               <div className="mt-3">
-                <Link href="/admin/mo-numbers" className="text-[12px] font-semibold text-brand-600">
+                <Link href="/admin/mo-numbers" className="text-[12px] font-semibold text-brand-700">
                   MO 번호 관리로 이동
                 </Link>
               </div>
@@ -308,7 +327,7 @@ export default async function AdminCreatorDetailPage({ params }: { params: Promi
             <DataRow label="환불(수수료 환입 포함)" value={formatWon(-summary.totalRefund)} />
             <DataRow label="조정" value={formatWon(summary.totalAdjustment)} />
             <DataRow label="지급 완료" value={formatWon(-summary.totalPaid)} />
-            <DataRow label="현재 잔액" value={<span className="text-brand-600">{formatWon(summary.balance)}</span>} />
+            <DataRow label="현재 잔액" value={<span className="text-brand-700">{formatWon(summary.balance)}</span>} />
           </Card>
         </section>
 

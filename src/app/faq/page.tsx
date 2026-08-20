@@ -8,7 +8,7 @@ import { prisma } from '@/server/db';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '자주 묻는 질문 | 토네이도',
+  title: '자주 묻는 질문 | 도네이도',
   description: '문자후원 이용, 계좌 등록, 한도, 환불, 방송 노출에 대해 자주 묻는 질문을 모았습니다.',
 };
 

@@ -1,4 +1,4 @@
-# 토네이도(TORNADO) — 개발 가이드
+# 도네이도(DONAIDO) — 개발 가이드
 
 문자 기반 크리에이터 후원 플랫폼. 이 문서는 이 저장소에서 작업할 때의 규칙입니다.
 
@@ -33,11 +33,13 @@ docs/              분석·설계 보고서, 운영 문서
 
 ## 실행 방법
 
+- **개발 중 확인**: `dev.bat` — 저장하면 서버 재시작 없이 화면에 바로 반영된다(HMR). 코드를 고치는 동안에는 이쪽을 쓴다.
 - **간편 미리보기**: `preview.bat` (또는 `npm run preview`) — Docker/PostgreSQL 설치 없이 내장 DB(PGlite)로 실행. 포트 3025.
-  - 기본은 프로덕션 빌드 방식이다. Next 16 개발 서버(Turbopack)가 내부 오류로 중단되는 사례가 있어 미리보기 기본값으로 쓰지 않는다.
-  - 코드 수정을 즉시 반영하려면 `PREVIEW_MODE=dev` 로 실행한다.
+  - 기본은 프로덕션 빌드 방식이라 소스가 바뀌면 재빌드(1~3분)를 한다. 실제 서비스와 같은 조건으로 최종 확인할 때 쓴다.
+  - `dev.bat` 은 같은 실행기에 `PREVIEW_MODE=dev` 를 준 것이다.
   - `.env` 에 `NODE_ENV` 를 넣지 않는다. 빌드/실행 모드가 뒤섞여 React 오류가 난다.
   - `src/app/error.tsx` 등 에러 바운더리에서 훅(useEffect 등)을 쓰지 않는다. `/_global-error` 프리렌더가 실패한다.
+- **서버 종료**: `stop.bat` — 창을 닫아도 남아 있는 서버를 정리한다. 창을 정상적으로 닫으면 서버도 함께 종료된다.
 - **정식 개발 환경**: `db-up.bat` -> `setup.bat` -> `start.bat` — 실제 PostgreSQL + Redis 사용.
 - 문제가 생기면 `doctor.bat` 으로 원인을 먼저 점검한다.
 - 서비스 포트는 **3025** 로 고정한다. 변경 시 package.json 의 dev/start, .env 의 PORT·APP_BASE_URL, 배치 파일을 함께 수정한다.

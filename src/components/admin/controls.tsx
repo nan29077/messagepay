@@ -58,10 +58,10 @@ export function FilterBar({
     <form
       method="get"
       action={action}
-      className="mb-4 flex flex-wrap items-end gap-2 rounded-2xl border border-ink-100 bg-white p-3"
+      className="mb-4 flex flex-col items-stretch gap-2 rounded-2xl border border-ink-100 bg-white p-3 sm:flex-row sm:flex-wrap sm:items-end [&>label]:w-full sm:[&>label]:w-auto"
     >
       {children}
-      <div className="flex items-center gap-2 pb-0.5">
+      <div className="flex w-full items-center gap-2 pb-0.5 sm:w-auto [&>*]:flex-1 sm:[&>*]:flex-none">
         <Button type="submit" size="sm" variant="primary">
           조회
         </Button>

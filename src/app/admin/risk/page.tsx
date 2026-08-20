@@ -157,7 +157,7 @@ export default async function AdminRiskPage({
                     </Td>
                     <Td>
                       {r.donor ? (
-                        <Link href={`/admin/donors/${r.donor.id}`} className="font-semibold text-brand-600">
+                        <Link href={`/admin/donors/${r.donor.id}`} className="font-semibold text-brand-700">
                           {r.donor.phoneMasked}
                         </Link>
                       ) : (
@@ -167,7 +167,7 @@ export default async function AdminRiskPage({
                     <Td className="font-mono text-[11px]">{r.donationId ?? '-'}</Td>
                     <Td>
                       <details>
-                        <summary className="cursor-pointer text-[12px] text-brand-600">상세 보기</summary>
+                        <summary className="cursor-pointer text-[12px] text-brand-700">상세 보기</summary>
                         <div className="mt-1.5">
                           <JsonView value={r.detail} maxLength={600} />
                         </div>

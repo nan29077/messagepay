@@ -4,11 +4,12 @@ import { PageHeader } from '@/components/layout/console-shell';
 import { InlineActionForm } from '@/components/studio/action-form';
 import { PAID_STATUSES, one, type SearchParamsRecord } from '@/components/studio/shared';
 import { blockDonorAction } from '@/app/actions/studio';
+import { MoNumberPanel, type MoNumberView } from '@/components/studio/mo-number-panel';
 import { requireCreator } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { formatNumber, formatWon } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
-import { donationStatusLabel, moResultLabel } from '@/lib/labels';
+import { donationStatusLabel, moResultLabel, moNumberStatusLabel } from '@/lib/labels';
 import type { Prisma } from '@/generated/prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -59,7 +60,7 @@ export default async function StudioMessagesPage({
 
   const where: Prisma.MoInboundMessageWhereInput = { creatorId, ...tabWhere(tab) };
 
-  const [total, rows, blockedRows] = await Promise.all([
+  const [total, rows, blockedRows, moNumbers, creator] = await Promise.all([
     prisma.moInboundMessage.count({ where }),
     prisma.moInboundMessage.findMany({
       where,
@@ -80,9 +81,39 @@ export default async function StudioMessagesPage({
       },
     }),
     prisma.blockedDonor.findMany({ where: { creatorId }, select: { donorId: true } }),
+    prisma.creatorMoNumber.findMany({
+      where: { creatorId },
+      orderBy: [{ status: 'asc' }, { assignedAt: 'desc' }],
+      select: { id: true, phoneNumber: true, keyword: true, mode: true, status: true, assignedAt: true },
+    }),
+    prisma.creatorProfile.findUnique({ where: { id: creatorId }, select: { displayName: true, donationAmount: true } }),
   ]);
 
   const blockedSet = new Set(blockedRows.map((b) => b.donorId));
+
+  const numbers: MoNumberView[] = moNumbers.map((m) => ({
+    id: m.id,
+    phoneNumber: m.phoneNumber,
+    keyword: m.keyword,
+    mode: m.mode,
+    statusText: moNumberStatusLabel[m.status].text,
+    statusTone: moNumberStatusLabel[m.status].tone,
+    assignedAt: m.assignedAt ? formatKst(m.assignedAt, false) : null,
+  }));
+
+  // 방송 화면에 띄울 안내 문구 (배정된 번호가 있을 때만)
+  const primary = moNumbers.find((m) => m.status === 'ASSIGNED') ?? moNumbers[0] ?? null;
+  const guideText = primary
+    ? [
+        `${creator?.displayName ?? '크리에이터'} 문자후원`,
+        `${primary.phoneNumber} 으로 문자를 보내주세요.`,
+        primary.keyword ? `문자 맨 앞에 ${primary.keyword} 를 붙여주세요.` : null,
+        `문자 1건당 ${formatWon(creator?.donationAmount ?? 3000n)}이 후원됩니다.`,
+        '최초 1회 계좌 등록이 필요하며, 만 19세 이상만 이용할 수 있습니다.',
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : null;
 
   return (
     <>
@@ -92,6 +123,8 @@ export default async function StudioMessagesPage({
       />
 
       <div className="space-y-4">
+        <MoNumberPanel numbers={numbers} guideText={guideText} />
+
         <Notice tone="neutral" title="문자 원문은 표시되지 않습니다">
           방송 노출용으로 필터링된 내용만 확인할 수 있습니다. 개인정보가 포함될 수 있는 원문과 후원자 전화번호 전체는
           크리에이터에게 제공되지 않습니다.
@@ -105,7 +138,7 @@ export default async function StudioMessagesPage({
                 href={t.value === 'all' ? '/studio/messages' : `/studio/messages?tab=${t.value}`}
                 className={
                   t.value === tab
-                    ? 'rounded-lg bg-brand-50 px-3 py-2 text-[13px] font-bold text-brand-600'
+                    ? 'rounded-lg bg-brand-50 px-3 py-2 text-[13px] font-bold text-brand-700'
                     : 'rounded-lg px-3 py-2 text-[13px] font-medium text-ink-500 hover:bg-ink-50 hover:text-ink-900'
                 }
               >

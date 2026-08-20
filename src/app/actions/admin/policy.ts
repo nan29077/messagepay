@@ -24,6 +24,7 @@ function readLimitFields(fd: FormData) {
   const manualReviewAmount = money(fd, 'manualReviewAmount', '수동 검수 기준', { min: 1n });
   const ttsMinAmount = money(fd, 'ttsMinAmount', 'TTS 최소 후원금');
 
+  const donorDailyMaxCount = int(fd, 'donorDailyMaxCount', { min: 1, max: 10000, label: '1인 1일 최대 건수' });
   const velocityWindowSec = int(fd, 'velocityWindowSec', { min: 1, max: 86400, label: '속도 제한 구간(초)' });
   const velocityMaxCount = int(fd, 'velocityMaxCount', { min: 1, max: 1000, label: '속도 제한 건수' });
   const cooldownAfterCount = int(fd, 'cooldownAfterCount', { min: 1, max: 1000, label: '연속발송 기준 건수' });
@@ -39,7 +40,7 @@ function readLimitFields(fd: FormData) {
 
   return {
     defaultAmount, minAmount, maxAmount,
-    donorDailyLimit, donorMonthlyLimit, perCreatorDailyLimit,
+    donorDailyLimit, donorMonthlyLimit, perCreatorDailyLimit, donorDailyMaxCount,
     velocityWindowSec, velocityMaxCount, cooldownAfterCount, cooldownSec,
     failureLockThreshold, newDonorFirstDayLimit, manualReviewAmount, ttsMinAmount,
   };
@@ -67,6 +68,7 @@ export async function saveLimitPolicy(_prev: AdminActionState, fd: FormData): Pr
           defaultAmount: before.defaultAmount, minAmount: before.minAmount, maxAmount: before.maxAmount,
           donorDailyLimit: before.donorDailyLimit, donorMonthlyLimit: before.donorMonthlyLimit,
           perCreatorDailyLimit: before.perCreatorDailyLimit,
+          donorDailyMaxCount: before.donorDailyMaxCount,
           velocityWindowSec: before.velocityWindowSec, velocityMaxCount: before.velocityMaxCount,
           cooldownAfterCount: before.cooldownAfterCount, cooldownSec: before.cooldownSec,
           failureLockThreshold: before.failureLockThreshold,

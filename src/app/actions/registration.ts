@@ -3,6 +3,8 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { startRegistration, completeRegistration } from '@/server/services/donor-registration';
+import { getSessionUser } from '@/server/auth';
+import { prisma } from '@/server/db';
 import type { ConsentType } from '@/generated/prisma/enums';
 
 /**
@@ -75,6 +77,27 @@ export async function completeRegistrationAction(input: {
       ip: meta.ip,
       userAgent: meta.userAgent,
     });
+
+    // 로그인 상태에서 계좌 등록을 마쳤다면 후원자 프로필을 계정에 자동 연결한다.
+    // (연결돼 있어야 마이페이지에서 후원·결제 내역을 볼 수 있다)
+    try {
+      const user = await getSessionUser();
+      if (user && res.donorId) {
+        const alreadyLinked = await prisma.donorProfile.findUnique({
+          where: { userId: user.id },
+          select: { id: true },
+        });
+        if (!alreadyLinked) {
+          await prisma.donorProfile.updateMany({
+            where: { id: res.donorId, userId: null },
+            data: { userId: user.id },
+          });
+        }
+      }
+    } catch {
+      // 연결 실패가 계좌 등록 성공을 뒤집지 않는다. 마이페이지에서 수동 연결 가능.
+    }
+
     return { ok: true, bankName: res.bankName, accountTail4: res.accountTail4 };
   } catch (e) {
     return { ok: false, message: (e as Error).message || '계좌 등록을 완료하지 못했습니다.' };

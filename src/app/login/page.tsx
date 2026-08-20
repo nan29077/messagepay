@@ -10,8 +10,8 @@ import { SOCIAL_LABEL, type SocialProvider } from '@/server/adapters/social';
 import { env } from '@/lib/env';
 
 export const metadata: Metadata = {
-  title: '로그인 | 토네이도',
-  description: '토네이도 계정으로 로그인하고 후원 내역과 결제 설정을 확인하세요.',
+  title: '로그인 | 도네이도',
+  description: '도네이도 계정으로 로그인하고 후원 내역과 결제 설정을 확인하세요.',
 };
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -47,7 +47,7 @@ export default async function LoginPage({
     <PublicShell aside={<LoginAside />}>
       <PageHeader
         eyebrow="로그인"
-        title="토네이도 계정으로 로그인"
+        title="도네이도 계정으로 로그인"
         description="후원 내역, 결제 수단, 한도 설정은 로그인 후 확인할 수 있습니다."
       />
 
@@ -92,7 +92,7 @@ export default async function LoginPage({
 
         <p className="mt-4 text-center text-[13px] text-ink-500">
           아직 계정이 없으신가요{' '}
-          <Link href="/signup" className="font-semibold text-brand-600">
+          <Link href="/signup" className="font-semibold text-brand-700">
             후원자 회원가입
           </Link>
         </p>
@@ -111,6 +111,7 @@ export default async function LoginPage({
             seedAccounts={[
               { email: 'admin@tornado.kr', password: 'tornado1234!' },
               { email: 'creator1@tornado.kr', password: 'tornado1234!' },
+              { email: 'donor@tornado.kr', password: 'tornado1234!' },
             ]}
           />
         </div>

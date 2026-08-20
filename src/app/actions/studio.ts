@@ -8,6 +8,7 @@ import { newId } from '@/lib/id';
 import { env } from '@/lib/env';
 import { accountTail4, decrypt, encrypt, generateToken, maskName, maskSecret, tokenHash } from '@/lib/crypto';
 import { sendTestOverlay } from '@/server/services/broadcast-dispatch';
+import { resolvePolicy } from '@/server/services/limits';
 import { createSettlementRequest } from '@/server/services/settlement';
 import { getYouTubeAdapter } from '@/server/adapters/youtube';
 import { getStreamAdapter } from '@/server/adapters/stream';
@@ -378,61 +379,6 @@ export async function testOverlayAction(
 }
 
 // ===========================================================================
-// TTS
-// ===========================================================================
-
-const VOICES = ['ko-KR-Standard-A', 'ko-KR-Standard-B', 'ko-KR-Standard-C', 'ko-KR-Standard-D'] as const;
-
-export async function updateTtsSettingAction(
-  _prev: StudioActionState,
-  formData: FormData,
-): Promise<StudioActionState> {
-  return withCreator(async (creatorId) => {
-    const parsed = z
-      .object({
-        voice: z.enum(VOICES),
-        speed: z.coerce.number().min(0.5).max(2),
-        volume: z.coerce.number().min(0).max(1),
-        maxChars: z.coerce.number().int().min(10).max(200),
-      })
-      .safeParse({
-        voice: text(formData, 'voice'),
-        speed: text(formData, 'speed'),
-        volume: text(formData, 'volume'),
-        maxChars: text(formData, 'maxChars'),
-      });
-    if (!parsed.success) {
-      return { ok: false, message: '입력값을 확인해 주세요. 속도는 0.5~2.0, 볼륨은 0~1, 최대 글자 수는 10~200자입니다.' };
-    }
-
-    const minAmount = parseAmount(text(formData, 'minAmount'));
-    if (minAmount === null || minAmount > 1_000_000n) {
-      return { ok: false, message: '최소 후원금은 1,000,000원 이하의 숫자로 입력해 주세요.' };
-    }
-
-    const data = {
-      enabled: checked(formData, 'enabled'),
-      readAmount: checked(formData, 'readAmount'),
-      readName: checked(formData, 'readName'),
-      voice: parsed.data.voice,
-      speed: parsed.data.speed,
-      volume: parsed.data.volume,
-      maxChars: parsed.data.maxChars,
-      minAmount,
-    };
-
-    await prisma.ttsSetting.upsert({
-      where: { creatorId },
-      create: { id: newId(), creatorId, ...data },
-      update: data,
-    });
-
-    revalidatePath('/studio/tts');
-    return { ok: true, message: 'TTS 설정을 저장했습니다.' };
-  });
-}
-
-// ===========================================================================
 // 자체 방송 스트림 키
 // ===========================================================================
 
@@ -494,16 +440,26 @@ export async function updateDonationSettingsAction(
     const amount = parseAmount(text(formData, 'donationAmount'));
     if (amount === null) return { ok: false, message: '후원금은 숫자만 입력해 주세요.' };
 
-    const creator = await prisma.creatorProfile.findUnique({
-      where: { id: creatorId },
-      select: { minAmount: true, maxAmount: true },
-    });
+    const [creator, policy] = await Promise.all([
+      prisma.creatorProfile.findUnique({
+        where: { id: creatorId },
+        select: { minAmount: true, maxAmount: true },
+      }),
+      resolvePolicy(creatorId, null),
+    ]);
     if (!creator) return { ok: false, message: '크리에이터 정보를 찾을 수 없습니다.' };
 
-    if (amount < creator.minAmount || amount > creator.maxAmount) {
+    // 유효 범위 = 관리자 지정 크리에이터 범위 ∩ 한도 정책 범위.
+    // 정책 범위 밖 금액을 허용하면 후원 접수 시점에 AMOUNT_RANGE 로 전부 차단되므로 설정 단계에서 막는다.
+    const effMin = creator.minAmount > policy.minAmount ? creator.minAmount : policy.minAmount;
+    const effMax = creator.maxAmount < policy.maxAmount ? creator.maxAmount : policy.maxAmount;
+    if (effMin > effMax) {
+      return { ok: false, message: '관리자 설정과 한도 정책이 충돌해 설정할 수 있는 금액이 없습니다. 고객센터로 문의해 주세요.' };
+    }
+    if (amount < effMin || amount > effMax) {
       return {
         ok: false,
-        message: `문자 1건당 후원금은 ${creator.minAmount.toString()}원 ~ ${creator.maxAmount.toString()}원 사이에서만 설정할 수 있습니다.`,
+        message: `문자 1건당 후원금은 ${effMin.toString()}원 ~ ${effMax.toString()}원 사이에서만 설정할 수 있습니다.`,
       };
     }
 
@@ -655,29 +611,50 @@ export async function saveSettlementAccountAction(
 // 프로필
 // ===========================================================================
 
+/** http(s) 주소 또는 사이트 내 경로(/로 시작)를 허용하는 이미지 주소 검증 */
+const imageUrlSchema = z.union([
+  z.literal(''),
+  z.url(),
+  z.string().regex(/^\/[^\s]*$/u, '이미지 주소는 http(s) 주소 또는 / 로 시작하는 경로여야 합니다.'),
+]);
+
+type LivePlatform = 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK';
+
+function isPlatformUrl(url: string, platform: LivePlatform): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+    if (platform === 'YOUTUBE') return /(^|\.)youtube\.com$/.test(u.hostname) || u.hostname === 'youtu.be';
+    if (platform === 'INSTAGRAM') return /(^|\.)instagram\.com$/.test(u.hostname);
+    return /(^|\.)tiktok\.com$/.test(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
 export async function updateCreatorProfileAction(
   _prev: StudioActionState,
   formData: FormData,
 ): Promise<StudioActionState> {
   return withCreator(async (creatorId) => {
-    const avatarUrl = text(formData, 'avatarUrl');
     const parsed = z
       .object({
         displayName: z.string().trim().min(1).max(30),
         channelName: z.string().trim().max(50),
         description: z.string().trim().max(300),
-        avatarUrl: z.union([z.literal(''), z.url()]),
+        avatarUrl: imageUrlSchema,
       })
       .safeParse({
         displayName: text(formData, 'displayName'),
         channelName: text(formData, 'channelName'),
         description: text(formData, 'description'),
-        avatarUrl,
+        avatarUrl: text(formData, 'avatarUrl'),
       });
     if (!parsed.success) {
       return {
         ok: false,
-        message: '표시명(1~30자), 채널명(50자 이내), 소개(300자 이내)를 확인하고 아바타 URL은 http(s) 주소로 입력해 주세요.',
+        message:
+          '표시명(1~30자), 채널명(50자 이내), 소개(300자 이내)를 확인하고 아바타 주소는 http(s) 주소 또는 / 로 시작하는 경로로 입력해 주세요.',
       };
     }
 
@@ -694,5 +671,93 @@ export async function updateCreatorProfileAction(
     revalidatePath('/studio/profile');
     revalidatePath('/studio');
     return { ok: true, message: '프로필을 저장했습니다.' };
+  });
+}
+
+/**
+ * 후원 페이지 설정 (배너 · 라이브 링크 · 방송중 스위치).
+ * 라이브 링크는 방송마다 바뀌므로 언제든 수정할 수 있고,
+ * 스위치를 켜면 후원 페이지 프로필에 두근두근 효과와 라이브중 배지가 표시된다.
+ */
+export async function updateDonationPageAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withCreator(async (creatorId) => {
+    const bannerPreset = text(formData, 'bannerPreset');
+    const parsed = z
+      .object({
+        bannerUrl: imageUrlSchema,
+        description: z.string().trim().max(300),
+        youtubeLiveUrl: z.string().trim().max(300),
+        instagramLiveUrl: z.string().trim().max(300),
+        tiktokLiveUrl: z.string().trim().max(300),
+        livePlatform: z.enum(['YOUTUBE', 'INSTAGRAM', 'TIKTOK']),
+      })
+      .safeParse({
+        bannerUrl: text(formData, 'bannerUrl'),
+        description: text(formData, 'description'),
+        youtubeLiveUrl: text(formData, 'youtubeLiveUrl'),
+        instagramLiveUrl: text(formData, 'instagramLiveUrl'),
+        tiktokLiveUrl: text(formData, 'tiktokLiveUrl'),
+        livePlatform: text(formData, 'livePlatform') || 'YOUTUBE',
+      });
+    if (!parsed.success) {
+      return {
+        ok: false,
+        message: '배너 주소는 http(s) 주소 또는 / 로 시작하는 경로, 소개는 300자 이내로 입력해 주세요.',
+      };
+    }
+
+    // 기본 배너 프리셋을 골랐으면 프리셋을, '직접 입력'이면 입력한 주소를 사용한다.
+    if (bannerPreset && bannerPreset !== 'custom' && !/^\/banners\/[a-z0-9-]+\.png$/.test(bannerPreset)) {
+      return { ok: false, message: '배너 선택 값이 올바르지 않습니다.' };
+    }
+    const bannerUrl =
+      bannerPreset === 'custom' ? parsed.data.bannerUrl || null : bannerPreset ? bannerPreset : null;
+
+    const { youtubeLiveUrl, instagramLiveUrl, tiktokLiveUrl, livePlatform } = parsed.data;
+    const links: Record<LivePlatform, string> = {
+      YOUTUBE: youtubeLiveUrl,
+      INSTAGRAM: instagramLiveUrl,
+      TIKTOK: tiktokLiveUrl,
+    };
+    const labels: Record<LivePlatform, string> = { YOUTUBE: '유튜브', INSTAGRAM: '인스타그램', TIKTOK: '틱톡' };
+    for (const platform of Object.keys(links) as LivePlatform[]) {
+      if (links[platform] && !isPlatformUrl(links[platform], platform)) {
+        return { ok: false, message: `${labels[platform]} 주소 형식을 확인해 주세요.` };
+      }
+    }
+
+    const liveOn = checked(formData, 'liveOn');
+    const activeLiveUrl = links[livePlatform];
+    if (liveOn && !activeLiveUrl) {
+      return { ok: false, message: `방송중 스위치를 켜려면 선택한 ${labels[livePlatform]} 라이브 주소를 입력해 주세요.` };
+    }
+
+    await prisma.creatorProfile.update({
+      where: { id: creatorId },
+      data: {
+        bannerUrl,
+        description: parsed.data.description || null,
+        liveOn,
+        livePlatform,
+        youtubeLiveUrl: youtubeLiveUrl || null,
+        instagramLiveUrl: instagramLiveUrl || null,
+        tiktokLiveUrl: tiktokLiveUrl || null,
+        // 구버전 화면 및 외부 연동 호환용 현재 활성 주소
+        liveUrl: activeLiveUrl || null,
+      },
+    });
+
+    revalidatePath('/studio/settings');
+    revalidatePath('/studio/profile');
+    revalidatePath('/studio');
+    return {
+      ok: true,
+      message: liveOn
+        ? '후원샵 설정을 저장했습니다. 후원샵에 온에어 표시가 켜졌습니다.'
+        : '후원샵 설정을 저장했습니다.',
+    };
   });
 }

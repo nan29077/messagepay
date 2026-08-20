@@ -10,6 +10,7 @@ import { formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import type { Prisma } from '@/generated/prisma/client';
 import type { UserRole, UserStatus } from '@/generated/prisma/enums';
+import { GeneratedAvatar } from '@/components/profile/generated-avatar';
 
 export const dynamic = 'force-dynamic';
 
@@ -132,11 +133,14 @@ export default async function AdminUsersPage({
                   <tr key={u.id}>
                     <Td className="max-w-[220px] break-all">{u.email ?? '-'}</Td>
                     <Td>
-                      {u.name ?? '-'}
+                      <div className="flex min-w-[150px] items-center gap-2.5">
+                        <GeneratedAvatar seed={u.id} name={u.name} className="h-9 w-9" />
+                        <div className="min-w-0">
+                      <span className="block truncate font-semibold text-ink-900">{u.name ?? '-'}</span>
                       {u.creatorProfile ? (
                         <Link
                           href={`/admin/creators/${u.creatorProfile.id}`}
-                          className="mt-0.5 block text-[11px] font-semibold text-brand-600"
+                          className="mt-0.5 block text-[11px] font-semibold text-brand-700"
                         >
                           {u.creatorProfile.displayName} ({u.creatorProfile.code})
                         </Link>
@@ -144,11 +148,13 @@ export default async function AdminUsersPage({
                       {u.donorProfile ? (
                         <Link
                           href={`/admin/donors/${u.donorProfile.id}`}
-                          className="mt-0.5 block text-[11px] font-semibold text-brand-600"
+                          className="mt-0.5 block text-[11px] font-semibold text-brand-700"
                         >
                           후원자 상세
                         </Link>
                       ) : null}
+                        </div>
+                      </div>
                     </Td>
                     <Td>
                       <Badge tone={u.role === 'ADMIN' ? 'brand' : 'neutral'}>{roleLabel[u.role]}</Badge>

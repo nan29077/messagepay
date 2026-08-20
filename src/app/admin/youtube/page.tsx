@@ -103,6 +103,30 @@ export default async function AdminYouTubePage() {
         </Notice>
       ) : null}
 
+      <div className="mt-4">
+        <SectionTitle
+          title="API 연동 설정"
+          description="YouTube Data API v3 키와 OAuth 클라이언트는 관리자만 설정합니다. 크리에이터는 자기 채널 연결만 수행합니다."
+        />
+        <div className="rounded-[20px] border border-ink-100 bg-white p-4 shadow-[0_10px_30px_rgba(23,22,26,0.05)] sm:p-5">
+          <div className="grid gap-x-6 sm:grid-cols-2">
+            <ConfigRow label="어댑터 모드" value={env.youtube.provider} ok={env.youtube.provider !== 'mock'} />
+            <ConfigRow
+              label="API 키 (YOUTUBE_API_KEY)"
+              value={env.youtube.apiKey ? '등록됨' : '미등록'}
+              ok={Boolean(env.youtube.apiKey)}
+            />
+            <ConfigRow label="일일 할당량" value={`${formatNumber(quota.total)} units`} ok />
+            <ConfigRow label="전송 1건당 비용" value={`${formatNumber(quota.insertCost)} units`} ok />
+          </div>
+          <p className="mt-3 border-t border-ink-100 pt-3 text-[12px] leading-relaxed text-ink-400">
+            키와 클라이언트 정보는 화면에 저장하지 않고 서버 환경변수(<span className="font-mono">.env</span>)로만
+            관리합니다. 값을 바꾼 뒤에는 서버를 재시작해야 반영됩니다. 라이브 채팅 등록은 할당량 비용이 커서 증설 신청
+            전에는 하루 전송 건수가 제한됩니다.
+          </p>
+        </div>
+      </div>
+
       <div className="mt-5">
         <SectionTitle title="채널 연결 상태" description={`전송 1건당 할당량 ${formatNumber(quota.insertCost)} 단위를 사용합니다.`} />
         {connections.length === 0 ? (
@@ -128,7 +152,7 @@ export default async function AdminYouTubePage() {
                 return (
                   <tr key={c.id}>
                     <Td>
-                      <Link href={`/admin/creators/${c.creator.id}`} className="font-semibold text-brand-600">
+                      <Link href={`/admin/creators/${c.creator.id}`} className="font-semibold text-brand-700">
                         {c.creator.displayName}
                       </Link>
                       <span className="mt-0.5 block text-[11px] text-ink-400">{c.creator.code}</span>
@@ -226,7 +250,7 @@ export default async function AdminYouTubePage() {
                   <tr key={b.id}>
                     <Td className="whitespace-nowrap">{formatKst(b.detectedAt, false)}</Td>
                     <Td>
-                      <Link href={`/admin/creators/${b.creator.id}`} className="font-semibold text-brand-600">
+                      <Link href={`/admin/creators/${b.creator.id}`} className="font-semibold text-brand-700">
                         {b.creator.displayName}
                       </Link>
                     </Td>
@@ -252,5 +276,18 @@ export default async function AdminYouTubePage() {
         </Notice>
       </div>
     </>
+  );
+}
+
+/** 연동 설정 한 줄 (키 원문은 절대 표시하지 않고 등록 여부만 보여준다) */
+function ConfigRow({ label, value, ok }: { label: string; value: string; ok: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-ink-100 py-2 last:border-b-0">
+      <span className="text-[12.5px] font-semibold text-ink-500">{label}</span>
+      <span className="flex items-center gap-2">
+        <span className="font-mono text-[12.5px] text-ink-900">{value}</span>
+        <Badge tone={ok ? 'success' : 'warning'}>{ok ? '정상' : '설정 필요'}</Badge>
+      </span>
+    </div>
   );
 }

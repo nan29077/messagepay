@@ -12,7 +12,7 @@ import { resolvePolicy } from '@/server/services/limits';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '문자후원 이용방법 | 토네이도',
+  title: '문자후원 이용방법 | 도네이도',
   description: '문자 한 통으로 크리에이터를 후원하는 방법과 계좌 등록, 결제, 방송 노출 절차를 안내합니다.',
 };
 
@@ -52,7 +52,7 @@ export default async function HowItWorksPage() {
             icon={<CreditCard size={18} strokeWidth={1.7} />}
             title="안내 문자의 링크에서 계좌 등록"
             body="문자로 받은 1회용 보안 링크를 열어 본인 명의 계좌를 등록하고 이용 동의를 진행합니다. 등록 화면에서 후원 대상, 문자 1건당 후원금, 이용 한도, 취소·환불 조건을 모두 확인할 수 있습니다."
-            note="계좌번호 원문은 토네이도에 저장하지 않습니다. 은행명과 계좌 끝 4자리만 보관합니다."
+            note="계좌번호 원문은 도네이도에 저장하지 않습니다. 은행명과 계좌 끝 4자리만 보관합니다."
           />
           <Step
             no={3}
@@ -161,7 +161,7 @@ export default async function HowItWorksPage() {
       <section className="mt-8">
         <SectionTitle title="미성년자 이용 제한" />
         <Notice tone="danger" title="만 19세 미만은 이용할 수 없습니다">
-          토네이도 문자후원은 만 19세 이상만 이용할 수 있습니다. 계좌 등록 시 연령 확인에 동의해야 하며, 명의자 동의
+          도네이도 문자후원은 만 19세 이상만 이용할 수 있습니다. 계좌 등록 시 연령 확인에 동의해야 하며, 명의자 동의
           없이 이루어진 후원은 확인 즉시 이용이 정지되고 환불 절차가 진행됩니다. 가족 명의 휴대전화나 계좌를 무단으로
           사용하지 마세요.
         </Notice>
@@ -171,7 +171,7 @@ export default async function HowItWorksPage() {
       <section className="mt-8">
         <Card>
           <div className="flex gap-3">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-ink-50 text-brand-600">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-ink-50 text-brand-700">
               <Smartphone size={17} strokeWidth={1.7} />
             </span>
             <div>
@@ -186,7 +186,7 @@ export default async function HowItWorksPage() {
       </section>
 
       <section className="mt-8">
-        <Card className="bg-brand-500 text-white">
+        <Card className="bg-ink-900 text-white">
           <p className="text-[15px] font-extrabold leading-snug">후원할 크리에이터의 코드를 알고 계신가요?</p>
           <p className="mt-1.5 text-[13px] leading-relaxed opacity-90">
             방송 화면에 안내된 코드를 입력하면 후원 번호와 안내를 바로 확인할 수 있습니다.
@@ -212,9 +212,9 @@ function Step({
 }) {
   return (
     <Card className="flex gap-3">
-      <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600">
+      <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700">
         {icon}
-        <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-brand-500 text-[11px] font-bold text-white">
+        <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-ink-900 text-[11px] font-bold text-white">
           {no}
         </span>
       </span>
@@ -248,7 +248,7 @@ function Line({
   const badge =
     tone === 'danger' ? 'bg-danger-50 text-danger-500'
     : tone === 'warning' ? 'bg-warning-50 text-warning-500'
-    : 'bg-ink-50 text-brand-600';
+    : 'bg-ink-50 text-brand-700';
   return (
     <div className="flex gap-3">
       <span className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg ${badge}`}>{icon}</span>

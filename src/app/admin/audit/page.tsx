@@ -128,7 +128,7 @@ export default async function AdminAuditPage({
                       ) : null}
                     </Td>
                     <Td>
-                      <Badge tone="brand">{l.action}</Badge>
+                      <Badge tone="neutral">{l.action}</Badge>
                     </Td>
                     <Td>
                       {l.targetType}

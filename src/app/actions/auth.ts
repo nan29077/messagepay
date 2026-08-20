@@ -108,6 +108,7 @@ export async function isTestLoginAllowed(): Promise<boolean> {
 const TEST_ACCOUNTS = {
   admin: { email: 'admin@tornado.kr', label: '최고관리자', redirect: '/admin' },
   creator: { email: 'creator1@tornado.kr', label: '크리에이터', redirect: '/studio' },
+  donor: { email: 'donor@tornado.kr', label: '후원자', redirect: '/my' },
 } as const;
 
 export type TestAccountKey = keyof typeof TEST_ACCOUNTS;

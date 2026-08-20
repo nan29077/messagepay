@@ -159,7 +159,7 @@ export default async function AdminSettlementsPage({
               {visibleSummaries.map(({ creator, summary }) => (
                 <tr key={creator.id}>
                   <Td>
-                    <Link href={`/admin/creators/${creator.id}`} className="font-semibold text-brand-600">
+                    <Link href={`/admin/creators/${creator.id}`} className="font-semibold text-brand-700">
                       {creator.displayName}
                     </Link>
                     <span className="mt-0.5 block text-[11px] text-ink-400">{creator.code}</span>
@@ -170,7 +170,7 @@ export default async function AdminSettlementsPage({
                   <Td className="text-right tabular-nums">{formatWon(summary.totalPaid)}</Td>
                   <Td className="text-right font-semibold tabular-nums">{formatWon(summary.balance)}</Td>
                   <Td className="text-right tabular-nums">{formatWon(summary.pending)}</Td>
-                  <Td className="text-right font-semibold tabular-nums text-brand-600">{formatWon(summary.available)}</Td>
+                  <Td className="text-right font-semibold tabular-nums text-brand-700">{formatWon(summary.available)}</Td>
                 </tr>
               ))}
             </tbody>
@@ -234,7 +234,7 @@ export default async function AdminSettlementsPage({
                       {r.rejectedAt ? <span className="mt-0.5 block text-[11px] text-danger-500">반려 {formatKst(r.rejectedAt, false)}</span> : null}
                     </Td>
                     <Td>
-                      <Link href={`/admin/creators/${r.creator.id}`} className="font-semibold text-brand-600">
+                      <Link href={`/admin/creators/${r.creator.id}`} className="font-semibold text-brand-700">
                         {r.creator.displayName}
                       </Link>
                       <span className="mt-0.5 block text-[11px] text-ink-400">{r.creator.code}</span>
@@ -325,7 +325,7 @@ export default async function AdminSettlementsPage({
                     <Td className="whitespace-nowrap">{formatKst(l.occurredAt, false)}</Td>
                     <Td className="font-mono text-[12px]">{l.settlementKey}</Td>
                     <Td>
-                      <Link href={`/admin/creators/${l.creator.id}`} className="font-semibold text-brand-600">
+                      <Link href={`/admin/creators/${l.creator.id}`} className="font-semibold text-brand-700">
                         {l.creator.displayName}
                       </Link>
                     </Td>

@@ -43,7 +43,7 @@ function TxRows({ rows }: { rows: TxRow[] }) {
           </Td>
           <Td className="font-mono text-[12px]">{t.donation.transactionNo}</Td>
           <Td>
-            <Link href={`/admin/creators/${t.donation.creator.id}`} className="font-semibold text-brand-600">
+            <Link href={`/admin/creators/${t.donation.creator.id}`} className="font-semibold text-brand-700">
               {t.donation.creator.displayName}
             </Link>
             {t.donation.donor ? (
@@ -70,7 +70,7 @@ function TxRows({ rows }: { rows: TxRow[] }) {
           </Td>
           <Td>
             <details>
-              <summary className="cursor-pointer text-[12px] font-semibold text-brand-600">
+              <summary className="cursor-pointer text-[12px] font-semibold text-brand-700">
                 시도 {t.attempts.length}건
               </summary>
               <div className="mt-2 space-y-1.5">

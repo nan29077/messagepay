@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { ShieldCheck, UserCog, Radio } from 'lucide-react';
+import { ShieldCheck, UserCog, Radio, Heart } from 'lucide-react';
 import { Card, CardTitle, Notice, cx } from '@/components/ui';
 import { testLogin, type TestLoginState } from '@/app/actions/auth';
 
@@ -20,7 +20,7 @@ export function TestLoginPanel({ seedAccounts }: { seedAccounts: { email: string
       label: '최고관리자로 로그인',
       hint: '통합 관리자 · /admin',
       icon: <ShieldCheck size={17} strokeWidth={1.7} />,
-      className: 'bg-brand-500 text-white hover:bg-brand-600',
+      className: 'bg-brand-400 text-ink-900 hover:bg-brand-500',
     },
     {
       account: 'creator',
@@ -28,6 +28,13 @@ export function TestLoginPanel({ seedAccounts }: { seedAccounts: { email: string
       hint: '크리에이터 관리자 · /studio',
       icon: <Radio size={17} strokeWidth={1.7} />,
       className: 'bg-ink-900 text-white hover:opacity-90',
+    },
+    {
+      account: 'donor',
+      label: '후원자로 로그인',
+      hint: '마이페이지 · /my',
+      icon: <Heart size={17} strokeWidth={1.7} />,
+      className: 'border border-ink-200 bg-white text-ink-900 hover:bg-ink-50',
     },
   ];
 

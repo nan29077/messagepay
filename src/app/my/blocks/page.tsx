@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ChevronLeft } from 'lucide-react';
 import { Card, CardTitle, Badge, EmptyState, Notice, LinkButton } from '@/components/ui';
 import { BlockToggle } from '@/components/my/block-toggle';
 import { requireDonorContext, NO_DONOR_TITLE, NO_DONOR_DESC } from '@/components/my/donor';
@@ -27,6 +28,16 @@ export default async function MyBlocksPage() {
 
   return (
     <div className="space-y-5">
+      <div>
+        <Link
+          href="/my/account"
+          className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-ink-400 transition-colors hover:text-ink-900"
+        >
+          <ChevronLeft size={14} strokeWidth={1.8} />
+          내 정보로 돌아가기
+        </Link>
+        <h2 className="mt-1 text-[18px] font-black tracking-[-0.025em] text-ink-900">후원 차단</h2>
+      </div>
       <Notice tone="brand" title="크리에이터별 후원 차단">
         차단하면 해당 크리에이터에게 보낸 문자는 후원으로 접수되지 않습니다. 실수로 반복 발송하는 것을 막고 싶을 때
         사용하세요. 차단은 언제든 해제할 수 있습니다.
@@ -48,7 +59,7 @@ export default async function MyBlocksPage() {
                     <div className="flex flex-wrap items-center gap-1.5">
                       <p className="text-[14.5px] font-bold text-ink-900">
                         {l.creator.status === 'APPROVED' ? (
-                          <Link href={`/c/${l.creator.code}`} className="hover:text-brand-600">
+                          <Link href={`/c/${l.creator.code}`} className="hover:text-brand-700">
                             {l.creator.displayName}
                           </Link>
                         ) : (

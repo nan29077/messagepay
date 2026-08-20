@@ -11,7 +11,7 @@ import { creatorStatusLabel } from '@/lib/labels';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '크리에이터 가입 신청 | 토네이도',
+  title: '크리에이터 가입 신청 | 도네이도',
   description: '문자후원 번호를 배정받고 방송에 후원 알림을 연결하려면 크리에이터 가입을 신청하세요.',
 };
 
@@ -46,7 +46,7 @@ export default async function CreatorApplyPage() {
                 : '신청 상태에 대한 자세한 안내가 필요하면 고객센터로 문의해 주세요.'}
           </p>
           <div className="mt-4 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">
-            <p className="text-[12px] font-semibold text-brand-600">크리에이터 코드</p>
+            <p className="text-[12px] font-semibold text-brand-700">크리에이터 코드</p>
             <p className="mt-1 font-mono text-[20px] font-extrabold tracking-[0.1em] text-ink-900">{existing.code}</p>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
@@ -86,7 +86,7 @@ function ApplyAside() {
             { icon: <ShieldCheck size={17} strokeWidth={1.7} />, title: '금칙어 · 차단', body: '부적절한 메시지와 후원자를 차단합니다.' },
           ].map((f) => (
             <div key={f.title} className="flex gap-3">
-              <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-ink-50 text-brand-600">
+              <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-ink-50 text-brand-700">
                 {f.icon}
               </span>
               <div>

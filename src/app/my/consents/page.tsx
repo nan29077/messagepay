@@ -1,5 +1,7 @@
-import { FileText, Check, X } from 'lucide-react';
+import Link from 'next/link';
+import {FileText, Check, X, ChevronLeft } from 'lucide-react';
 import { Card, CardTitle, Badge, EmptyState, Notice, LinkButton } from '@/components/ui';
+import { MarketingConsentForm } from '@/components/my/marketing-consent-form';
 import { requireDonorContext } from '@/components/my/donor';
 import { prisma } from '@/server/db';
 import { formatKst } from '@/lib/datetime';
@@ -45,11 +47,27 @@ export default async function MyConsentsPage() {
     },
   });
 
+  // 최신 마케팅 동의 상태 (이력 중 가장 최근 레코드 기준)
+  const latestMarketing = records.find((r) => r.type === 'MARKETING');
+  const marketingAgreed = latestMarketing?.agreed ?? false;
+
   return (
     <div className="space-y-5">
-      <Notice tone="brand" title="동의 이력">
+      <div>
+        <Link
+          href="/my/account"
+          className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-ink-400 transition-colors hover:text-ink-900"
+        >
+          <ChevronLeft size={14} strokeWidth={1.8} />
+          내 정보로 돌아가기
+        </Link>
+        <h2 className="mt-1 text-[18px] font-black tracking-[-0.025em] text-ink-900">동의 이력</h2>
+      </div>
+      <Notice tone="brand">
         계좌 등록과 이용 동의 시점에 동의한 약관의 버전과 일시입니다. 약관이 변경되면 새 버전으로 다시 동의를 받습니다.
       </Notice>
+
+      <MarketingConsentForm agreed={marketingAgreed} />
 
       {records.length === 0 ? (
         <EmptyState
@@ -64,13 +82,13 @@ export default async function MyConsentsPage() {
               <Card key={r.id}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 gap-3">
-                    <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-ink-50 text-brand-600">
+                    <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-ink-50 text-brand-700">
                       <FileText size={17} strokeWidth={1.7} />
                     </span>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <p className="text-[14px] font-bold text-ink-900">{CONSENT_LABEL[r.type]}</p>
-                        <Badge tone={r.terms.required ? 'warning' : 'neutral'}>
+                        <Badge tone={r.terms.required ? 'brand' : 'neutral'}>
                           {r.terms.required ? '필수' : '선택'}
                         </Badge>
                       </div>
@@ -111,8 +129,8 @@ export default async function MyConsentsPage() {
       <Card>
         <CardTitle>동의를 철회하고 싶다면</CardTitle>
         <p className="mt-1.5 text-[13px] leading-relaxed text-ink-500">
-          출금이체 동의는 등록 계좌 관리에서 해지할 수 있습니다. 그 밖의 동의 철회나 개인정보 삭제 요청은 고객센터로
-          접수해 주세요.
+          출금이체 동의는 등록 계좌 관리에서 해지할 수 있고, 마케팅 수신 동의는 이 페이지 상단에서 바로 철회할 수
+          있습니다. 그 밖의 동의 철회나 개인정보 삭제 요청은 고객센터로 접수해 주세요.
         </p>
         <div className="mt-3 grid grid-cols-2 gap-2">
           <LinkButton href="/my/account" variant="secondary" size="md" className="w-full">

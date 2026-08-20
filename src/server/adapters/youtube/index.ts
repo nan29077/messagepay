@@ -96,7 +96,7 @@ export const mockYouTubeAdapter: YouTubeAdapter = {
   async getChannel() {
     return {
       ok: true,
-      data: { channelId: 'UCmockchannel0001', title: '토네이도 테스트 채널' },
+      data: { channelId: 'UCmockchannel0001', title: '도네이도 테스트 채널' },
     };
   },
   async findActiveBroadcast() {
@@ -140,7 +140,7 @@ export function getYouTubeAdapter(): YouTubeAdapter {
 /**
  * 유튜브 채팅 메시지 포맷.
  * - 이모지를 사용하지 않는다.
- * - Super Chat 으로 오인되지 않도록 "토네이도 후원" 을 명시한다.
+ * - Super Chat 으로 오인되지 않도록 "도네이도 후원" 을 명시한다.
  */
 export function formatChatMessage(input: {
   donorName: string;
@@ -149,7 +149,7 @@ export function formatChatMessage(input: {
   maxLength?: number;
 }): string {
   const amountText = input.amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  const head = `[토네이도 후원 ${amountText}원] ${input.donorName}: `;
+  const head = `[도네이도 후원 ${amountText}원] ${input.donorName}: `;
   const limit = input.maxLength ?? 200;
   const room = Math.max(0, limit - head.length);
   const body = input.message.length > room ? `${input.message.slice(0, Math.max(0, room - 3))}...` : input.message;

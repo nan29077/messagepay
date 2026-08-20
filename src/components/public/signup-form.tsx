@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { UserPlus } from 'lucide-react';
 import { Button, Field, Input, Notice, Checkbox } from '@/components/ui';
 import { signupDonor, type SignupFormState } from '@/app/actions/auth';
+import { GeneratedAvatar } from '@/components/profile/generated-avatar';
 
 const initial: SignupFormState = { ok: false };
 
@@ -13,6 +14,20 @@ export function SignupForm() {
 
   return (
     <form action={formAction} className="space-y-4">
+      <div className="overflow-hidden rounded-2xl border border-brand-200 bg-brand-50/70 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[13.5px] font-extrabold text-ink-900">나만의 캐릭터를 선물해 드려요</p>
+            <p className="mt-1 text-[12px] leading-relaxed text-ink-500">가입이 완료되면 50종 중 하나가 무작위로 배정됩니다.</p>
+          </div>
+          <div className="flex -space-x-2" aria-hidden>
+            {['preview-a', 'preview-b', 'preview-c'].map((seed) => (
+              <GeneratedAvatar key={seed} seed={seed} className="h-10 w-10" />
+            ))}
+          </div>
+        </div>
+      </div>
+
       <Field label="이름" required hint="후원 내역 확인 시 사용할 이름입니다.">
         <Input name="name" required maxLength={20} defaultValue={state.values?.name} autoComplete="name" placeholder="홍길동" />
       </Field>
@@ -42,11 +57,11 @@ export function SignupForm() {
           name="agreeTerms"
           label={
             <span>
-              <Link href="/terms" className="font-semibold text-brand-600">
+              <Link href="/terms" className="font-semibold text-brand-700">
                 이용약관
               </Link>
               과{' '}
-              <Link href="/privacy" className="font-semibold text-brand-600">
+              <Link href="/privacy" className="font-semibold text-brand-700">
                 개인정보처리방침
               </Link>
               에 동의합니다. (필수)

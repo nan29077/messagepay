@@ -195,7 +195,7 @@ export default async function AdminDonorDetailPage({ params }: { params: Promise
                 {donor.creatorLinks.map((l) => (
                   <tr key={l.id}>
                     <Td>
-                      <Link href={`/admin/creators/${l.creator.id}`} className="font-semibold text-brand-600">
+                      <Link href={`/admin/creators/${l.creator.id}`} className="font-semibold text-brand-700">
                         {l.creator.displayName}
                       </Link>
                       <span className="ml-1 text-[11px] text-ink-400">{l.creator.code}</span>

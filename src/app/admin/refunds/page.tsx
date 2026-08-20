@@ -152,7 +152,7 @@ export default async function AdminRefundsPage({
                     </Td>
                     <Td className="font-mono text-[12px]">{r.donation.transactionNo}</Td>
                     <Td>
-                      <Link href={`/admin/creators/${r.donation.creator.id}`} className="font-semibold text-brand-600">
+                      <Link href={`/admin/creators/${r.donation.creator.id}`} className="font-semibold text-brand-700">
                         {r.donation.creator.displayName}
                       </Link>
                       {r.donation.donor ? (

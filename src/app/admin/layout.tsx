@@ -6,7 +6,7 @@ import { requireAdmin, type SessionUser } from '@/server/auth';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '통합 관리자 | 토네이도',
+  title: '통합 관리자 | 도네이도',
   robots: { index: false, follow: false },
 };
 
@@ -43,7 +43,8 @@ const groups: NavGroup[] = [
     items: [
       { href: '/admin/youtube', label: '유튜브 연동' },
       { href: '/admin/streams', label: '방송·스트림' },
-      { href: '/admin/overlay', label: '오버레이·TTS' },
+      { href: '/admin/tts', label: 'TTS 연동' },
+      { href: '/admin/overlay', label: '오버레이' },
     ],
   },
   {
@@ -55,6 +56,7 @@ const groups: NavGroup[] = [
       { href: '/admin/banners', label: '배너' },
       { href: '/admin/contents', label: '공지·FAQ' },
       { href: '/admin/moderation', label: '신고·금칙어' },
+      { href: '/admin/inquiries', label: '문의 관리' },
       { href: '/admin/terms', label: '약관 버전' },
       { href: '/admin/admins', label: '관리자 권한' },
       { href: '/admin/audit', label: '감사로그' },
@@ -80,10 +82,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }
   if (!admin) redirect('/login?next=/admin');
 
+  const visibleGroups = groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => item.href !== '/admin/inquiries' || admin?.adminPermission === 'SUPER_ADMIN'),
+    }))
+    .filter((group) => group.items.length > 0);
+
   return (
     <ConsoleShell
-      title="토네이도 통합 관리자"
-      groups={groups}
+      title="도네이도 통합 관리자"
+      groups={visibleGroups}
       user={{
         name: admin.name ?? admin.email ?? '관리자',
         role: permissionLabel[admin.adminPermission ?? ''] ?? '권한 미지정',

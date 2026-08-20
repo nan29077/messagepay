@@ -6,17 +6,27 @@ import { headers } from 'next/headers';
 import { normalizeCreatorCode } from '@/lib/id';
 
 /**
- * 크리에이터 코드 조회.
- * 전체 목록을 공개하지 않으므로, 코드 존재 여부를 과도하게 탐색하지 못하도록
- * IP 단위 요청 제한을 적용한다.
+ * 크리에이터 검색 / 코드 조회.
+ * - 코드(TOR-XXXX)뿐 아니라 크리에이터 이름·유튜브 채널명으로도 검색할 수 있다.
+ * - 무차별 탐색을 막기 위해 IP 단위 요청 제한을 유지하고, 결과는 최대 8건까지만 반환한다.
+ * - 승인(APPROVED)된 크리에이터만 노출한다.
  */
 
 const WINDOW_SEC = 60;
-const MAX_TRIES = 15;
+const MAX_TRIES = 20;
+
+export interface CreatorSearchItem {
+  code: string;
+  displayName: string;
+  channelName: string | null;
+}
 
 export interface LookupResult {
   ok: boolean;
+  /** 정확히 1명을 찾았을 때 바로 이동할 코드 */
   code?: string;
+  /** 여러 명이 검색됐을 때 선택 목록 */
+  matches?: CreatorSearchItem[];
   message?: string;
 }
 
@@ -29,22 +39,48 @@ export async function lookupCreatorCode(input: string): Promise<LookupResult> {
     return { ok: false, message: '조회 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' };
   }
 
-  const code = normalizeCreatorCode(input);
-  if (!/^TOR-[A-Z0-9]{4,8}$/.test(code)) {
-    return { ok: false, message: '코드 형식이 올바르지 않습니다. 예: TOR-8K2M' };
+  const raw = input.trim();
+  if (raw.length < 2) {
+    return { ok: false, message: '크리에이터 코드 또는 이름을 2자 이상 입력해 주세요.' };
   }
 
-  const creator = await prisma.creatorProfile.findFirst({
-    where: { code, status: 'APPROVED' },
-    select: { code: true },
-  });
-
-  if (!creator) {
+  // 1) 코드 형태면 코드 우선 조회
+  const code = normalizeCreatorCode(raw);
+  if (/^TOR-[A-Z0-9]{4,8}$/.test(code)) {
+    const byCode = await prisma.creatorProfile.findFirst({
+      where: { code, status: 'APPROVED' },
+      select: { code: true },
+    });
+    if (byCode) return { ok: true, code: byCode.code };
+    // 코드 형태인데 없으면 이름 검색으로 넘어가지 않고 바로 안내한다 (오타 가능성)
     return {
       ok: false,
-      message: '크리에이터를 찾을 수 없습니다. 방송 화면 또는 크리에이터 프로필에 안내된 코드를 다시 확인해 주세요.',
+      message: '해당 코드의 크리에이터를 찾을 수 없습니다. 코드를 다시 확인하거나 이름으로 검색해 보세요.',
     };
   }
 
-  return { ok: true, code: creator.code };
+  // 2) 이름 · 채널명 검색
+  const matches = await prisma.creatorProfile.findMany({
+    where: {
+      status: 'APPROVED',
+      OR: [
+        { displayName: { contains: raw, mode: 'insensitive' } },
+        { channelName: { contains: raw, mode: 'insensitive' } },
+      ],
+    },
+    orderBy: { displayName: 'asc' },
+    take: 8,
+    select: { code: true, displayName: true, channelName: true },
+  });
+
+  if (matches.length === 0) {
+    return {
+      ok: false,
+      message: '검색 결과가 없습니다. 크리에이터 코드(예: TOR-8K2M) 또는 정확한 채널명·이름으로 다시 검색해 주세요.',
+    };
+  }
+  if (matches.length === 1) {
+    return { ok: true, code: matches[0].code };
+  }
+  return { ok: true, matches };
 }

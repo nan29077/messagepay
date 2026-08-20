@@ -6,7 +6,7 @@ import { requireCreator } from '@/server/auth';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '크리에이터 관리자 | 토네이도',
+  title: '크리에이터 관리자 | 도네이도',
   robots: { index: false, follow: false },
 };
 
@@ -22,10 +22,8 @@ const groups: NavGroup[] = [
   {
     title: '방송',
     items: [
-      { href: '/studio/youtube', label: '유튜브 연동' },
-      { href: '/studio/overlay', label: '오버레이 설정' },
-      { href: '/studio/tts', label: 'TTS 설정' },
-      { href: '/studio/stream', label: '자체 방송' },
+      { href: '/studio/youtube', label: '유튜브 채널 연결' },
+      { href: '/studio/overlay', label: '방송·오버레이' },
     ],
   },
   {
@@ -40,12 +38,11 @@ const groups: NavGroup[] = [
     title: '정산',
     items: [
       { href: '/studio/settlement', label: '정산 관리' },
-      { href: '/studio/settlement/account', label: '정산 계좌' },
     ],
   },
   {
     title: '계정',
-    items: [{ href: '/studio/profile', label: '프로필·코드' }],
+    items: [{ href: '/studio/profile', label: '설정' }],
   },
 ];
 

@@ -94,7 +94,7 @@ export default async function AdminOverlayPage() {
               {creators.map((c) => (
                 <tr key={c.id}>
                   <Td>
-                    <Link href={`/admin/creators/${c.id}`} className="font-semibold text-brand-600">
+                    <Link href={`/admin/creators/${c.id}`} className="font-semibold text-brand-700">
                       {c.displayName}
                     </Link>
                     <span className="mt-0.5 block text-[11px] text-ink-400">{c.code}</span>
@@ -190,7 +190,7 @@ export default async function AdminOverlayPage() {
                   <Td className="whitespace-nowrap">{formatKst(e.playedAt, false)}</Td>
                   <Td>
                     <details>
-                      <summary className="cursor-pointer text-[12px] text-brand-600">보기</summary>
+                      <summary className="cursor-pointer text-[12px] text-brand-700">보기</summary>
                       <div className="mt-1.5">
                         <JsonView value={e.payload} maxLength={500} />
                       </div>

@@ -61,6 +61,8 @@ function ensureRedis() {
     sub.on('message', (_ch: string, raw: string) => {
       try {
         const payload = JSON.parse(raw) as OverlayEventPayload;
+        // 이 프로세스에서 이미 로컬로 전달한 이벤트가 Redis 를 거쳐 되돌아온 경우 중복 재생을 막는다.
+        if (recentLocalEventIds.has(payload.eventId)) return;
         emitter.emit(payload.creatorId, payload);
       } catch {
         /* ignore */
@@ -75,12 +77,26 @@ function ensureRedis() {
 
 ensureRedis();
 
+/**
+ * 이 프로세스가 직접 발행한 이벤트 ID 기록.
+ * Redis Pub/Sub 로 자기 자신에게 되돌아온 메시지를 중복 재생하지 않기 위해 사용한다.
+ */
+const recentLocalEventIds = new Set<string>();
+const RECENT_LOCAL_MAX = 1000;
+
 export function publishOverlayEvent(payload: OverlayEventPayload) {
-  if (globalForBus.overlayPub) {
-    globalForBus.overlayPub.publish(CHANNEL, JSON.stringify(payload)).catch(() => undefined);
-  } else {
-    emitter.emit(payload.creatorId, payload);
+  // 항상 로컬 구독자(같은 프로세스의 SSE 연결)에게 즉시 전달한다.
+  // 기존에는 REDIS_URL 이 설정돼 있으면 Redis 로만 발행했는데, Redis 서버가 내려가 있으면
+  // publish 실패가 조용히 무시되어 오버레이가 아무 이벤트도 받지 못했다.
+  // 로컬 전달을 기본으로 하고, Redis 는 다중 인스턴스 브로드캐스트 용도로만 추가 발행한다.
+  recentLocalEventIds.add(payload.eventId);
+  if (recentLocalEventIds.size > RECENT_LOCAL_MAX) {
+    const oldest = recentLocalEventIds.values().next().value;
+    if (oldest) recentLocalEventIds.delete(oldest);
   }
+  emitter.emit(payload.creatorId, payload);
+
+  globalForBus.overlayPub?.publish(CHANNEL, JSON.stringify(payload)).catch(() => undefined);
 }
 
 export function subscribeOverlay(creatorId: string, handler: (p: OverlayEventPayload) => void): () => void {

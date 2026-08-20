@@ -1,4 +1,5 @@
-import { Gauge } from 'lucide-react';
+import Link from 'next/link';
+import {Gauge, ChevronLeft } from 'lucide-react';
 import { Card, CardTitle, EmptyState, Notice, DataRow, SectionTitle, StatTile } from '@/components/ui';
 import { LimitsForm } from '@/components/my/limits-form';
 import { requireDonorContext, NO_DONOR_TITLE, NO_DONOR_DESC } from '@/components/my/donor';
@@ -53,6 +54,16 @@ export default async function MyLimitsPage() {
 
   return (
     <div className="space-y-5">
+      <div>
+        <Link
+          href="/my/account"
+          className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-ink-400 transition-colors hover:text-ink-900"
+        >
+          <ChevronLeft size={14} strokeWidth={1.8} />
+          내 정보로 돌아가기
+        </Link>
+        <h2 className="mt-1 text-[18px] font-black tracking-[-0.025em] text-ink-900">한도 설정</h2>
+      </div>
       <div className="grid grid-cols-2 gap-2.5">
         <StatTile
           label="오늘 사용"
@@ -68,7 +79,7 @@ export default async function MyLimitsPage() {
       </div>
 
       <Notice tone="brand" title="한도는 낮추는 방향으로만 설정할 수 있습니다">
-        토네이도 기본 정책보다 높은 한도는 설정할 수 없습니다. 과도한 후원이 걱정된다면 한도를 더 낮게 조정해 주세요.
+        도네이도 기본 정책보다 높은 한도는 설정할 수 없습니다. 과도한 후원이 걱정된다면 한도를 더 낮게 조정해 주세요.
       </Notice>
 
       <section>
@@ -86,10 +97,10 @@ export default async function MyLimitsPage() {
       </section>
 
       <section>
-        <SectionTitle title="기본 정책" description="아래 값은 토네이도가 모든 후원자에게 공통 적용하는 상한입니다." />
+        <SectionTitle title="기본 정책" description="아래 값은 도네이도가 모든 후원자에게 공통 적용하는 상한입니다." />
         <Card>
           <div className="mb-2 flex items-center gap-2">
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-50 text-brand-600">
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-50 text-brand-700">
               <Gauge size={16} strokeWidth={1.7} />
             </span>
             <CardTitle>전역 한도 정책</CardTitle>

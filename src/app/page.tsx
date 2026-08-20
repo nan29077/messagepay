@@ -7,6 +7,7 @@ import {
 import { PublicShell } from '@/components/layout/public-shell';
 import { CreatorCodeForm } from '@/components/creator-code-form';
 import { HeroSlider } from '@/components/public/hero-slider';
+import { BannerStrip } from '@/components/public/banner-strip';
 import { Card, CardTitle, SectionTitle, LinkButton, Notice } from '@/components/ui';
 import { prisma } from '@/server/db';
 
@@ -25,21 +26,24 @@ export default async function HomePage() {
     <PublicShell aside={<HomeAside />}>
       <HeroSlider />
 
+      {/* 관리자 등록 배너 (HOME_TOP) */}
+      <BannerStrip position="HOME_TOP" className="mt-4" />
+
       {/* 3. 크리에이터 코드 입력 */}
       <section className="mt-4">
         <Card className="border border-brand-100">
           <div className="mb-3 flex items-center gap-2">
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-50 text-brand-600">
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-50 text-brand-700">
               <Sparkles size={17} strokeWidth={1.7} />
             </span>
             <div>
-              <CardTitle>크리에이터 코드 입력</CardTitle>
-              <p className="text-[12px] text-ink-400">방송 화면에 안내된 코드를 입력하세요.</p>
+              <CardTitle>크리에이터 찾기</CardTitle>
+              <p className="text-[12px] text-ink-400">코드 · 유튜브 채널명 · 닉네임으로 검색하세요.</p>
             </div>
           </div>
           <CreatorCodeForm />
           <p className="mt-3 text-[12px] leading-relaxed text-ink-400">
-            토네이도는 전체 크리에이터 목록을 공개하지 않습니다. 크리에이터가 공개한 전용 코드로만 후원 페이지에
+            승인된 크리에이터만 검색됩니다. 크리에이터 코드뿐 아니라 유튜브 채널명이나 닉네임으로도 후원 페이지에
             접근할 수 있습니다.
           </p>
         </Card>
@@ -99,7 +103,7 @@ export default async function HomePage() {
               '출금이체 동의 (마케팅 동의는 선택)',
             ].map((t) => (
               <li key={t} className="flex gap-2">
-                <ListChecks size={16} strokeWidth={1.7} className="mt-0.5 shrink-0 text-brand-500" />
+                <ListChecks size={16} strokeWidth={1.7} className="mt-0.5 shrink-0 text-brand-700" />
                 <span>{t}</span>
               </li>
             ))}
@@ -122,7 +126,7 @@ export default async function HomePage() {
             <FeatureLine icon={<PlayCircle size={17} strokeWidth={1.7} />} title="유튜브 라이브 채팅 등록" body="후원 메시지가 라이브 채팅에 자동으로 올라갑니다. 유튜브 공식 슈퍼챗이 아닌 외부 후원으로 표시됩니다." />
             <FeatureLine icon={<MonitorPlay size={17} strokeWidth={1.7} />} title="OBS · PRISM 오버레이" body="브라우저 소스 주소 하나만 추가하면 회오리 애니메이션과 후원 알림이 표시됩니다." />
             <FeatureLine icon={<Volume2 size={17} strokeWidth={1.7} />} title="TTS 음성 안내" body="후원 메시지를 음성으로 읽어줍니다. 음성·속도·볼륨·최소 후원금을 설정할 수 있습니다." />
-            <FeatureLine icon={<Radio size={17} strokeWidth={1.7} />} title="토네이도 자체 방송" body="RTMPS 송출과 자체 플레이어에서도 동일한 후원 효과를 확인할 수 있습니다. (준비 중)" />
+            <FeatureLine icon={<Radio size={17} strokeWidth={1.7} />} title="도네이도 자체 방송" body="RTMPS 송출과 자체 플레이어에서도 동일한 후원 효과를 확인할 수 있습니다. (준비 중)" />
           </div>
         </Card>
       </section>
@@ -138,7 +142,7 @@ export default async function HomePage() {
             { icon: <ShieldCheck size={17} strokeWidth={1.7} />, title: '금칙어·차단', body: '부적절한 메시지와 후원자를 즉시 차단합니다.' },
           ].map((f) => (
             <Card key={f.title} className="h-full">
-              <span className="grid h-9 w-9 place-items-center rounded-lg bg-brand-50 text-brand-600">{f.icon}</span>
+              <span className="grid h-9 w-9 place-items-center rounded-lg bg-brand-50 text-brand-700">{f.icon}</span>
               <p className="mt-2.5 text-[14px] font-bold text-ink-900">{f.title}</p>
               <p className="mt-1 text-[12.5px] leading-relaxed text-ink-500">{f.body}</p>
             </Card>
@@ -183,12 +187,15 @@ export default async function HomePage() {
         </Card>
       </section>
 
+      {/* 관리자 등록 배너 (HOME_MIDDLE) */}
+      <BannerStrip position="HOME_MIDDLE" className="mt-8" />
+
       {/* 10. FAQ */}
       <section className="mt-8">
         <SectionTitle
           title="자주 묻는 질문"
           action={
-            <Link href="/faq" className="text-[13px] font-semibold text-brand-600">
+            <Link href="/faq" className="text-[13px] font-semibold text-brand-700">
               전체 보기
             </Link>
           }
@@ -223,9 +230,9 @@ export default async function HomePage() {
 function StepCard({ no, icon, title, body }: { no: number; icon: React.ReactNode; title: string; body: string }) {
   return (
     <Card className="flex gap-3">
-      <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600">
+      <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700">
         {icon}
-        <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-brand-500 text-[11px] font-bold text-white">
+        <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-ink-900 text-[11px] font-bold text-white">
           {no}
         </span>
       </span>
@@ -240,7 +247,7 @@ function StepCard({ no, icon, title, body }: { no: number; icon: React.ReactNode
 function FeatureLine({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) {
   return (
     <div className="flex gap-3">
-      <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-ink-50 text-brand-600">{icon}</span>
+      <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-ink-50 text-brand-700">{icon}</span>
       <div>
         <p className="text-[13.5px] font-bold text-ink-900">{title}</p>
         <p className="mt-0.5 text-[12.5px] leading-relaxed text-ink-500">{body}</p>
@@ -262,7 +269,7 @@ function HomeAside() {
   return (
     <div className="sticky top-24 space-y-3">
       <Card>
-        <CardTitle>토네이도는</CardTitle>
+        <CardTitle>도네이도는</CardTitle>
         <p className="mt-2 text-[13px] leading-relaxed text-ink-500">
           문자 한 통으로 크리에이터를 응원하는 후원 플랫폼입니다. 결제가 완료된 후원만 방송에 표시되며, 모든 거래는
           거래번호로 추적됩니다.
@@ -279,7 +286,7 @@ function HomeAside() {
             <div key={d.name} className="rounded-xl border border-ink-100 px-3 py-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-[12.5px] font-bold text-ink-900">{d.name}</span>
-                <span className="text-[12.5px] font-extrabold text-brand-600">{d.amount}</span>
+                <span className="text-[12.5px] font-extrabold text-brand-700">{d.amount}</span>
               </div>
               <p className="mt-1 text-[12px] text-ink-500">{d.msg}</p>
             </div>

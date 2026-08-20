@@ -32,7 +32,7 @@ export function CreatorApplyForm({ loggedIn, sessionEmail }: { loggedIn: boolean
           {STATUS_TEXT[state.alreadyStatus] ?? '신청 상태를 확인해 주세요.'}
         </p>
         <div className="mt-4 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">
-          <p className="text-[12px] font-semibold text-brand-600">크리에이터 코드</p>
+          <p className="text-[12px] font-semibold text-brand-700">크리에이터 코드</p>
           <p className="mt-1 font-mono text-[18px] font-extrabold tracking-[0.1em] text-ink-900">{state.code}</p>
         </div>
         <LinkButton href="/support" variant="secondary" size="md" className="mt-4 w-full">
@@ -177,7 +177,7 @@ function ApplyDone({ code, displayName }: { code: string; displayName?: string }
         </div>
 
         <div className="mt-4 rounded-2xl border border-brand-200 bg-brand-50 px-4 py-4 text-center">
-          <p className="flex items-center justify-center gap-1.5 text-[12px] font-semibold text-brand-600">
+          <p className="flex items-center justify-center gap-1.5 text-[12px] font-semibold text-brand-700">
             <Hash size={14} strokeWidth={1.8} />
             크리에이터 코드
           </p>
@@ -214,7 +214,7 @@ function ApplyDone({ code, displayName }: { code: string; displayName?: string }
       </Card>
 
       <Notice tone="warning" title="현재 준비 단계 안내">
-        토네이도는 준비 단계로 실제 문자 발송과 결제는 비활성화되어 있습니다. 승인 및 번호 배정 일정은 별도로
+        도네이도는 준비 단계로 실제 문자 발송과 결제는 비활성화되어 있습니다. 승인 및 번호 배정 일정은 별도로
         안내드립니다.
       </Notice>
 

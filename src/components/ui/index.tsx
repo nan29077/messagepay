@@ -2,7 +2,7 @@ import * as React from 'react';
 import Link from 'next/link';
 
 /**
- * 토네이도 공통 UI 프리미티브.
+ * 도네이도 공통 UI 프리미티브.
  * - 이모지를 사용하지 않는다. 아이콘은 lucide-react 라인 아이콘만 사용한다.
  * - 카드형 UI, 둥근 모서리, 부드러운 그림자, 충분한 여백.
  */
@@ -19,9 +19,13 @@ type ButtonSize = 'sm' | 'md' | 'lg';
 const buttonBase =
   'inline-flex items-center justify-center gap-2 font-extrabold transition-all disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 active:scale-[0.985]';
 
+/**
+ * 노랑 계열 면 위에는 흰 글자를 쓰지 않는다 (대비 부족).
+ * 기본 버튼은 꿀색 바탕 + 검은 글자, 강조 버튼은 검은 바탕 + 흰 글자로 둔다.
+ */
 const buttonVariants: Record<ButtonVariant, string> = {
-  primary: 'bg-brand-500 text-white shadow-[0_8px_20px_rgba(114,72,245,0.22)] hover:-translate-y-0.5 hover:bg-brand-600 active:bg-brand-700',
-  accent: 'bg-accent-500 text-white shadow-[0_8px_20px_rgba(255,107,107,0.2)] hover:-translate-y-0.5 hover:bg-accent-600',
+  primary: 'bg-brand-400 text-ink-900 shadow-[0_8px_20px_rgba(237,166,0,0.28)] hover:-translate-y-0.5 hover:bg-brand-500 active:bg-brand-600',
+  accent: 'bg-ink-900 text-white shadow-[0_8px_20px_rgba(23,22,26,0.22)] hover:-translate-y-0.5 hover:opacity-90',
   secondary: 'bg-white text-ink-900 border border-ink-200 shadow-sm hover:-translate-y-0.5 hover:bg-ink-50',
   ghost: 'bg-transparent text-ink-500 hover:bg-ink-100',
   danger: 'bg-danger-500 text-white hover:opacity-90',
@@ -81,12 +85,12 @@ export function SectionTitle({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-3.5 flex items-end justify-between gap-3">
-      <div>
+    <div className="mb-3.5 flex flex-col items-stretch justify-between gap-2.5 sm:flex-row sm:items-end sm:gap-3">
+      <div className="min-w-0">
         <h2 className="text-[18px] font-black tracking-[-0.025em] text-ink-900 sm:text-[19px]">{title}</h2>
         {description ? <p className="mt-1 text-[13px] leading-relaxed text-ink-500">{description}</p> : null}
       </div>
-      {action}
+      {action ? <div className="w-full sm:w-auto [&>*]:w-full sm:[&>*]:w-auto">{action}</div> : null}
     </div>
   );
 }
@@ -97,8 +101,9 @@ type Tone = 'neutral' | 'brand' | 'success' | 'warning' | 'danger';
 
 const toneClass: Record<Tone, string> = {
   neutral: 'bg-ink-100 text-ink-500',
-  brand: 'bg-brand-50 text-brand-600',
-  success: 'bg-success-50 text-success-500',
+  // 밝은 꿀색 배경 위에는 진한 브랜드색 글자만 쓴다 (대비 확보)
+  brand: 'bg-brand-100 text-brand-800',
+  success: 'bg-success-50 text-[#0b7d59]',
   warning: 'bg-warning-50 text-warning-500',
   danger: 'bg-danger-50 text-danger-500',
 };
@@ -194,7 +199,7 @@ export function Checkbox({
     <label className={cx('flex cursor-pointer items-start gap-3 py-2', className)}>
       <input
         type="checkbox"
-        className="mt-0.5 h-5 w-5 shrink-0 rounded-md border-ink-300 text-brand-500 focus:ring-brand-300"
+        className="mt-0.5 h-5 w-5 shrink-0 rounded-md border-ink-300 text-brand-700 focus:ring-brand-300"
         {...props}
       />
       <span>
@@ -219,7 +224,7 @@ export function StatTile({
   tone?: Tone;
 }) {
   const valueTone =
-    tone === 'brand' ? 'text-brand-600'
+    tone === 'brand' ? 'text-brand-700'
     : tone === 'success' ? 'text-success-500'
     : tone === 'danger' ? 'text-danger-500'
     : tone === 'warning' ? 'text-warning-500'
@@ -233,11 +238,21 @@ export function StatTile({
   );
 }
 
-export function EmptyState({ title, description }: { title: string; description?: string }) {
+export function EmptyState({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description?: string;
+  /** 빈 상태에서 바로 할 수 있는 행동 (버튼/링크) */
+  action?: React.ReactNode;
+}) {
   return (
     <div className="rounded-2xl border border-dashed border-ink-200 px-6 py-10 text-center">
       <p className="text-[14px] font-semibold text-ink-700">{title}</p>
       {description ? <p className="mt-1.5 text-[13px] text-ink-400">{description}</p> : null}
+      {action ? <div className="mt-4 flex justify-center">{action}</div> : null}
     </div>
   );
 }
@@ -275,9 +290,12 @@ export function DataRow({ label, value }: { label: string; value: React.ReactNod
 }
 
 export function Table({ children, className }: { children: React.ReactNode; className?: string }) {
+  // className(min-w-* 등)은 안쪽 table 에 적용한다.
+  // 바깥 래퍼에 min-w 를 주면 래퍼 자체가 부모보다 넓어져 가로 스크롤 컨테이너가
+  // 무력화되고 페이지 전체가 옆으로 밀린다.
   return (
-    <div className={cx('overflow-x-auto rounded-[20px] border border-ink-100 bg-white shadow-[0_10px_30px_rgba(23,20,45,0.05)]', className)}>
-      <table className="w-full min-w-[720px] border-collapse text-[13px]">{children}</table>
+    <div className="-mx-3 w-[calc(100%+1.5rem)] max-w-[calc(100%+1.5rem)] overflow-x-auto overscroll-x-contain rounded-[18px] border border-ink-100 bg-white shadow-[0_10px_30px_rgba(23,22,26,0.05)] sm:mx-0 sm:w-full sm:max-w-full sm:rounded-[20px]">
+      <table className={cx('w-full min-w-[720px] border-collapse text-[12.5px] sm:text-[13px]', className)}>{children}</table>
     </div>
   );
 }

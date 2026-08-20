@@ -9,8 +9,8 @@ import { prisma } from '@/server/db';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '공지사항 | 토네이도',
-  description: '토네이도 서비스 운영 공지와 점검, 정책 변경 안내를 확인하세요.',
+  title: '공지사항 | 도네이도',
+  description: '도네이도 서비스 운영 공지와 점검, 정책 변경 안내를 확인하세요.',
 };
 
 export default async function NoticePage() {
@@ -34,7 +34,7 @@ export default async function NoticePage() {
           {posts.map((p) => (
             <Card key={p.id}>
               <div className="flex items-start gap-3">
-                <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600">
+                <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
                   {p.pinned ? <Pin size={17} strokeWidth={1.7} /> : <Megaphone size={17} strokeWidth={1.7} />}
                 </span>
                 <div className="min-w-0 flex-1">
@@ -61,7 +61,7 @@ function NoticeAside() {
       <Card>
         <CardTitle>운영 상태</CardTitle>
         <p className="mt-2 text-[13px] leading-relaxed text-ink-500">
-          토네이도는 현재 준비 단계로, 실제 결제와 문자 발송은 비활성화되어 있습니다. 화면에 보이는 결제·문자 관련
+          도네이도는 현재 준비 단계로, 실제 결제와 문자 발송은 비활성화되어 있습니다. 화면에 보이는 결제·문자 관련
           동작은 모의(mock) 처리입니다.
         </p>
       </Card>

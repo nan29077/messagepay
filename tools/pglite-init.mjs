@@ -11,6 +11,7 @@ import path from 'node:path';
 import { Client } from 'pg';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { SEED_VERSION, SEED_VERSION_KEY } from '../prisma/seed-version.mjs';
 
 const url = process.env.DATABASE_URL;
 if (!url) {
@@ -63,6 +64,7 @@ const { rows } = await client.query(
   "SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema='public'",
 );
 let creators = 0;
+let seedVersion = 0;
 if (rows[0].n > 0) {
   try {
     const r = await client.query('SELECT count(*)::int AS n FROM creator_profile');
@@ -70,16 +72,31 @@ if (rows[0].n > 0) {
   } catch {
     creators = 0;
   }
+  try {
+    const r = await client.query('SELECT value FROM system_setting WHERE key = $1', [SEED_VERSION_KEY]);
+    seedVersion = Number(r.rows[0]?.value ?? 0) || 0;
+  } catch {
+    seedVersion = 0;
+  }
 }
 await client.end();
 
+// 기존 미리보기 DB도 새 마이그레이션을 빠짐없이 적용한다.
+// migrate deploy는 이미 적용된 항목을 건너뛰므로 기존 데이터는 유지된다.
+console.log('[준비] 데이터베이스 마이그레이션을 확인합니다.');
+runNode(prismaCli, ['migrate', 'deploy']);
+
 if (rows[0].n === 0) {
-  console.log('[준비] 처음 실행입니다. 스키마를 생성합니다.');
-  runNode(prismaCli, ['migrate', 'deploy']);
+  console.log('[준비] 처음 실행입니다.');
   console.log('[준비] 시드 데이터를 생성합니다.');
   runNode(tsxCli, ['prisma/seed.ts']);
 } else if (creators === 0) {
   console.log('[준비] 시드 데이터가 없어 다시 생성합니다.');
+  runNode(tsxCli, ['prisma/seed.ts']);
+} else if (seedVersion < SEED_VERSION) {
+  // 시드 내용이 추가된 경우(예: 후원자 테스트 계정).
+  // 기존 데이터는 지우지 않고 부족한 것만 채운다 (시드는 전부 upsert).
+  console.log(`[준비] 시드 데이터를 최신으로 보충합니다. (버전 ${seedVersion} → ${SEED_VERSION})`);
   runNode(tsxCli, ['prisma/seed.ts']);
 } else {
   console.log(`[준비] 기존 미리보기 데이터를 사용합니다. (크리에이터 ${creators}명)`);

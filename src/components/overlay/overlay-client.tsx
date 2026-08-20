@@ -283,8 +283,55 @@ function DonationCard({
 
       <div className="mt-4 flex items-center justify-between">
         <ThanksSticker variant={payload.sticker} />
-        <span className="text-[12px] font-semibold tracking-[0.16em] text-ink-300">TORNADO</span>
+        <span className="text-[12px] font-semibold tracking-[0.16em] text-ink-300">DONAIDO</span>
       </div>
+
+      {/* 감사 애니메이션: 카드 등장과 함께 하트/별 파티클이 떠오른다 */}
+      {payload.sticker !== 'NONE' && !leaving ? <ThanksBurst variant={payload.sticker} /> : null}
+    </div>
+  );
+}
+
+/** 후원 도착 시 카드 주위로 떠오르는 감사 파티클 */
+function ThanksBurst({ variant }: { variant: string }) {
+  // 렌더 순수성을 위해 인덱스 기반 결정적 배치를 사용한다 (매 후원마다 동일한 패턴이지만 충분히 자연스럽다)
+  const particles = React.useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, i) => ({
+        left: 4 + ((i * 37 + 11) % 92),
+        delay: (i % 5) * 0.26,
+        duration: 1.8 + (i % 4) * 0.34,
+        size: 14 + (i % 4) * 4,
+        drift: ((i * 53 + 17) % 48) - 24,
+        kind: variant === 'HEART' ? 'heart' : variant === 'STAR' ? 'star' : i % 2 === 0 ? 'heart' : 'star',
+      })),
+    [variant],
+  );
+
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-x-0 -top-2 bottom-0 overflow-visible">
+      {particles.map((p, i) => (
+        <span
+          key={i}
+          className="animate-thanks-float absolute bottom-2"
+          style={{
+            left: `${p.left}%`,
+            animationDelay: `${p.delay}s`,
+            animationDuration: `${p.duration}s`,
+            ['--drift' as string]: `${p.drift}px`,
+          }}
+        >
+          {p.kind === 'heart' ? (
+            <svg width={p.size} height={p.size} viewBox="0 0 24 24" fill="#f4506b" aria-hidden>
+              <path d="M12 20.5 4.8 13.3a4.4 4.4 0 0 1 6.2-6.2l1 1 1-1a4.4 4.4 0 0 1 6.2 6.2Z" />
+            </svg>
+          ) : (
+            <svg width={p.size} height={p.size} viewBox="0 0 24 24" fill="#fbb914" aria-hidden>
+              <path d="M12 2.5l2.6 5.9 6.4.6-4.8 4.3 1.4 6.2L12 16.2 6.4 19.5l1.4-6.2L3 9l6.4-.6z" />
+            </svg>
+          )}
+        </span>
+      ))}
     </div>
   );
 }
@@ -292,7 +339,7 @@ function DonationCard({
 /** 회오리 라인 애니메이션 */
 function TornadoSwirl() {
   return (
-    <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-brand-50 text-brand-500">
+    <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-brand-50 text-brand-700">
       <svg
         width={40}
         height={40}
@@ -319,7 +366,7 @@ function TornadoSwirl() {
 function ThanksSticker({ variant }: { variant: string }) {
   const label = variant === 'SIMPLE' ? '고맙습니다' : '감사합니다';
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-[13px] font-bold text-brand-600">
+    <span className="animate-thanks-bounce inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-[13px] font-bold text-brand-700">
       <svg
         width={18}
         height={18}

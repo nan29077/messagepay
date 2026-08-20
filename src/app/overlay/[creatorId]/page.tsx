@@ -13,7 +13,7 @@ import { OverlayClient } from '@/components/overlay/overlay-client';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '토네이도 오버레이',
+  title: '도네이도 오버레이',
   robots: { index: false, follow: false },
 };
 

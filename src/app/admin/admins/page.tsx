@@ -1,7 +1,8 @@
 import { PageHeader } from '@/components/layout/console-shell';
-import { Badge, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
-import { SelectActionForm } from '@/components/admin/action-form';
-import { updateAdminPermission } from '@/app/actions/admin/accounts';
+import { Badge, Card, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
+import { ActionForm, SelectActionForm } from '@/components/admin/action-form';
+import { AdminInput, AdminSelect } from '@/components/admin/controls';
+import { createAdminByEmail, updateAdminPermission } from '@/app/actions/admin/accounts';
 import { prisma } from '@/server/db';
 import { getSessionUser } from '@/server/auth';
 import { formatNumber } from '@/lib/money';
@@ -71,6 +72,39 @@ export default async function AdminAdminsPage() {
           </div>
         ))}
       </div>
+
+      {isSuper ? (
+        <div className="mt-5">
+          <SectionTitle
+            title="관리자 추가"
+            description="기존에 가입된 계정을 관리자로 승격합니다. 크리에이터 계정은 겸직할 수 없습니다."
+          />
+          <Card>
+            <ActionForm
+              action={createAdminByEmail}
+              submitLabel="관리자로 등록"
+              confirm="입력한 계정을 관리자로 등록합니다. 계속할까요?"
+            >
+              <div className="grid gap-2.5 sm:grid-cols-[1fr_200px]">
+                <label className="block">
+                  <span className="mb-1 block text-[12px] font-semibold text-ink-500">계정 이메일</span>
+                  <AdminInput type="email" name="email" required placeholder="user@example.com" />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[12px] font-semibold text-ink-500">부여할 권한</span>
+                  <AdminSelect name="permission" defaultValue="READ_ONLY">
+                    {PERMISSIONS.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </AdminSelect>
+                </label>
+              </div>
+            </ActionForm>
+          </Card>
+        </div>
+      ) : null}
 
       <div className="mt-5">
         <SectionTitle title="관리자 목록" />

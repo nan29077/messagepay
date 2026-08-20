@@ -6,7 +6,7 @@ import type { Metadata } from 'next';
  */
 
 export const metadata: Metadata = {
-  title: '토네이도 오버레이',
+  title: '도네이도 오버레이',
   robots: { index: false, follow: false },
 };
 
