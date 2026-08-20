@@ -4,7 +4,7 @@ import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
 import { generateToken, tokenHash } from '@/lib/crypto';
 import { addDays } from '@/lib/datetime';
-import type { UserRole } from '@/generated/prisma/enums';
+import type { UserRole, CreatorStatus } from '@/generated/prisma/enums';
 
 /**
  * 세션 기반 인증.
@@ -21,6 +21,8 @@ export interface SessionUser {
   name: string | null;
   role: UserRole;
   creatorId?: string;
+  /** 크리에이터 프로필 상태. APPROVED 가 아니면 스튜디오 기능을 쓸 수 없다. */
+  creatorStatus?: CreatorStatus;
   adminPermission?: string;
 }
 
@@ -91,6 +93,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     name: u.name,
     role: u.role,
     creatorId: u.creatorProfile?.id,
+    creatorStatus: u.creatorProfile?.status,
     adminPermission: u.adminProfile?.permission,
   };
 }
@@ -107,9 +110,27 @@ export async function requireRole(role: UserRole): Promise<SessionUser> {
   return user;
 }
 
+/**
+ * 크리에이터 전용 화면/액션 가드.
+ *
+ * 프로필 존재만으로는 부족하다. 심사 대기(PENDING)·반려(REJECTED)·정지(SUSPENDED) 상태에서도
+ * 스튜디오에 접근되면 미승인 채널이 후원을 받거나, 정지된 채널이 정산을 신청할 수 있다.
+ * 정지 상태는 세션 자체를 무효화해 모든 탭에서 즉시 로그아웃시킨다.
+ */
 export async function requireCreator(): Promise<SessionUser & { creatorId: string }> {
   const user = await requireUser();
   if (!user.creatorId) throw new Error('크리에이터 권한이 필요합니다.');
+
+  const status = user.creatorStatus;
+  if (status !== 'APPROVED') {
+    if (status === 'SUSPENDED') {
+      await destroySession().catch(() => undefined);
+      throw new Error('정지된 채널입니다. 고객센터로 문의해 주세요.');
+    }
+    if (status === 'REJECTED') throw new Error('채널 심사가 반려되었습니다. 고객센터로 문의해 주세요.');
+    throw new Error('채널 승인 후 이용할 수 있습니다. 심사가 완료되면 알려드립니다.');
+  }
+
   return user as SessionUser & { creatorId: string };
 }
 

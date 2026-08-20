@@ -48,6 +48,21 @@ export async function approveRefund(refundId: string, adminUserId?: string) {
   if (!refund) throw new Error('환불 요청을 찾을 수 없습니다.');
   if (refund.status === 'DONE') return refund;
 
+  // 이중 승인 방어.
+  // (1) 요청 상태가 아닌 건(거절·실패)을 되살려 다시 취소·반대분개하지 않는다.
+  // (2) 동시에 두 관리자가 승인해도 조건부 UPDATE 로 한쪽만 선점하게 한다.
+  //     append-only 원장에 환불 분개가 두 번 쌓이면 되돌릴 수 없으므로 PG 취소 호출 전에 APPROVED 로 선점한다.
+  if (refund.status !== 'REQUESTED') {
+    throw new Error('요청 상태의 환불만 승인할 수 있습니다. 목록을 새로고침해 현재 상태를 확인해 주세요.');
+  }
+  const claimed = await prisma.refund.updateMany({
+    where: { id: refundId, status: 'REQUESTED' },
+    data: { status: 'APPROVED' },
+  });
+  if (claimed.count === 0) {
+    throw new Error('이미 다른 처리가 진행 중인 환불입니다. 잠시 후 상태를 다시 확인해 주세요.');
+  }
+
   const txn = refund.donation.transactions.find((t) => t.status === 'APPROVED');
   if (!txn) throw new Error('승인된 결제 거래가 없습니다.');
 
@@ -60,6 +75,8 @@ export async function approveRefund(refundId: string, adminUserId?: string) {
   });
 
   if (!res.ok) {
+    // 선점(APPROVED)했다가 PG 취소에 실패한 건은 FAILED 로 확정한다.
+    // 관리자 화면에서 재시도(신규 환불 요청)로 이어갈 수 있도록 사유를 남긴다.
     await prisma.refund.update({
       where: { id: refundId },
       data: { status: 'FAILED', resultCode: res.code ?? null, resultMessage: res.message ?? null },

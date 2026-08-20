@@ -86,6 +86,7 @@ export const settlementStatusLabel: Record<SettlementRequestStatus, { text: stri
   REVIEWING: { text: '검토중', tone: 'brand' },
   APPROVED: { text: '승인', tone: 'brand' },
   PAID: { text: '지급완료', tone: 'success' },
+  PAYOUT_FAILED: { text: '지급실패', tone: 'danger' },
   REJECTED: { text: '반려', tone: 'danger' },
 };
 

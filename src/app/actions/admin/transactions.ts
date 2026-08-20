@@ -14,12 +14,14 @@ import { run, text, optText, money, enumValue, requiredId } from './shared';
 
 // =========================================================== MO 번호
 
-const PHONE_RE = /^[0-9]{4,15}$/;
+// MO 수신번호는 050(0505/0507 등) 안심번호 체계를 사용한다.
+// 크리에이터마다 고유 번호를 부여하므로 형식을 강제해 오등록을 막는다.
+const PHONE_RE = /^050[0-9]{7,10}$/;
 
 export async function createMoNumber(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
     const phoneNumber = text(fd, 'phoneNumber').replace(/[^0-9]/g, '');
-    if (!PHONE_RE.test(phoneNumber)) throw new Error('수신번호는 숫자만 4 ~ 15자리로 입력해 주세요.');
+    if (!PHONE_RE.test(phoneNumber)) throw new Error('수신번호는 050 으로 시작하는 숫자 10~13자리로 입력해 주세요. (예: 05051001001)');
 
     const mode = enumValue(fd, 'mode', ['DEDICATED', 'SHARED_PREFIX'] as const, '수신 모드');
     const rawKeyword = optText(fd, 'keyword');

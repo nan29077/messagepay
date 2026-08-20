@@ -17,20 +17,22 @@ ok('내비: 설정 메뉴', navText.includes('설정'));
 ok('내비: 프로필·코드 제거', !navText.includes('프로필·코드'));
 ok('내비: 정산 계좌 항목 제거', !navText.includes('정산 계좌'));
 
-// 2. 설정 페이지 구성
+// 2. 설정 페이지 구성 (후원샵 꾸미기는 후원 설정 > 후원샵 관리로 이동됨)
 await page.goto(`${BASE}/studio/profile`);
-const pbody = await page.locator('body').innerText();
 ok('설정: 페이지 제목', (await page.locator('h1').first().innerText()).includes('설정'));
-ok('설정: 후원 페이지 URL 이동', pbody.includes('후원 페이지 URL'));
-ok('설정: 라이브 링크 입력', (await page.locator('input[name=liveUrl]').count())>0);
-ok('설정: 링크 옆 스위치', (await page.locator('input[name=liveOn].peer').count())>0);
+
+await page.goto(`${BASE}/studio/settings?tab=page`);
+const pbody = await page.locator('body').innerText();
+ok('후원샵 관리: 후원샵 URL 노출', pbody.includes('/c/TOR-8K2M'));
+ok('후원샵 관리: 라이브 링크 입력', (await page.locator('input[name=youtubeLiveUrl]').count())>0);
+ok('후원샵 관리: 링크 옆 스위치', (await page.locator('input[name=liveOn].peer').count())>0);
 
 // 스위치 켜기 → /c 반영
-await page.fill('input[name=liveUrl]','https://www.youtube.com/watch?v=round5');
+await page.fill('input[name=youtubeLiveUrl]','https://www.youtube.com/watch?v=round5');
 await page.locator('input[name=liveOn]').check({ force: true });
-await page.click('button:has-text("후원 페이지 설정 저장")');
+await page.click('button:has-text("후원페이지 설정 저장")');
 await page.waitForTimeout(2500);
-ok('설정: 방송중 저장', (await page.locator('body').innerText()).includes('온에어 표시가 켜졌습니다'));
+ok('후원샵 관리: 방송중 저장', (await page.locator('body').innerText()).includes('온에어 표시가 켜졌습니다'));
 
 const c = await ctx.newPage();
 await c.goto(`${BASE}/c/TOR-8K2M`);
@@ -39,13 +41,13 @@ ok('/c: 두근두근 효과', (await c.locator('header .animate-heartbeat').coun
 await c.close();
 
 // 스위치 끄기(원상복구) + 라이브 링크 수정 가능 확인
-await page.goto(`${BASE}/studio/profile`);
-await page.fill('input[name=liveUrl]','https://www.youtube.com/watch?v=changed-link');
+await page.goto(`${BASE}/studio/settings?tab=page`);
+await page.fill('input[name=youtubeLiveUrl]','https://www.youtube.com/watch?v=changed-link');
 await page.locator('input[name=liveOn]').uncheck({ force: true });
-await page.click('button:has-text("후원 페이지 설정 저장")');
+await page.click('button:has-text("후원페이지 설정 저장")');
 await page.waitForTimeout(2500);
 await page.reload();
-ok('설정: 라이브 링크 수정 유지', (await page.locator('input[name=liveUrl]').inputValue()).includes('changed-link'));
+ok('후원샵 관리: 라이브 링크 수정 유지', (await page.locator('input[name=youtubeLiveUrl]').inputValue()).includes('changed-link'));
 
 // 3. 정산 관리: 캘린더 + 통합 계좌
 await page.goto(`${BASE}/studio/settlement`);
@@ -55,9 +57,12 @@ ok('정산: 캘린더 월 표기', sbody.includes(`${now.getUTCFullYear()}년 ${
 ok('정산: 요일 헤더', sbody.includes('일') && sbody.includes('토'));
 ok('정산: 일별 후원 합계 표시', /\d+건/.test(sbody));
 ok('정산: 월 후원 합계 타일', sbody.includes('월 후원 합계'));
-ok('정산: 계좌 섹션 통합', sbody.includes('정산 계좌') && (await page.locator('select[name=bankCode]').count())>0);
-ok('정산: 요청 섹션', sbody.includes('정산 요청'));
-// 월 이동
+await page.goto(`${BASE}/studio/settlement?tab=account`);
+ok('정산: 계좌 탭(은행 선택)', (await page.locator('select[name=bankCode]').count())>0);
+await page.goto(`${BASE}/studio/settlement?tab=request`);
+ok('정산: 요청 탭', (await page.locator('body').innerText()).includes('정산 요청'));
+// 월 이동 (캘린더는 현황 탭)
+await page.goto(`${BASE}/studio/settlement?tab=overview`);
 await page.click('a[aria-label="이전 달"]');
 await page.waitForTimeout(1200);
 const prevMonth = now.getUTCMonth() === 0 ? 12 : now.getUTCMonth();

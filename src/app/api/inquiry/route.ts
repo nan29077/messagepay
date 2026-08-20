@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { prisma } from '@/server/db';
 import { getSessionUser } from '@/server/auth';
+import { claimGuestInquiry } from '@/server/services/inquiry';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,10 +14,16 @@ export const dynamic = 'force-dynamic';
 
 const GUEST_COOKIE = 'donaido_inquiry';
 
-export async function GET(request: Request) {
+export async function GET() {
   const user = await getSessionUser().catch(() => null);
   const jar = await cookies();
   const guestToken = jar.get(GUEST_COOKIE)?.value ?? null;
+
+  // 게스트로 접수한 뒤 로그인한 경우, 기존 스레드를 계정으로 승계해 답변이 유실되지 않게 한다.
+  if (user && guestToken) {
+    await claimGuestInquiry(user.id, guestToken).catch(() => null);
+    jar.delete(GUEST_COOKIE);
+  }
 
   const inquiry = user
     ? await prisma.supportInquiry.findFirst({ where: { userId: user.id }, orderBy: { createdAt: 'desc' } })
@@ -25,33 +32,32 @@ export async function GET(request: Request) {
       : null;
 
   if (!inquiry) {
-    return Response.json({ exists: false, status: null, unreadCount: 0, messages: [] });
+    return Response.json({ exists: false, status: null, messages: [] });
   }
 
-  const peek = new URL(request.url).searchParams.get('peek') === '1';
-  const unreadCount = await prisma.supportMessage.count({
-    where: { inquiryId: inquiry.id, sender: 'ADMIN', readByUserAt: null },
-  });
-
-  const messages = await prisma.supportMessage.findMany({
+  // 최신 200건을 가져와 화면 표시용으로 다시 오래된 순으로 뒤집는다.
+  // asc + take 200 으로 자르면 스레드가 길어질수록 "방금 보낸 메시지와 최신 답변"이 잘려 보이지 않는다.
+  const recent = await prisma.supportMessage.findMany({
     where: { inquiryId: inquiry.id },
-    orderBy: { createdAt: 'asc' },
+    orderBy: { createdAt: 'desc' },
     take: 200,
-    select: { id: true, sender: true, body: true, createdAt: true },
+    select: { id: true, sender: true, body: true, createdAt: true, readByUserAt: true },
   });
+  const messages = recent.reverse();
+  const unread = messages.filter((m) => m.sender === 'ADMIN' && !m.readByUserAt).length;
 
   // 관리자 답변 읽음 처리
-  if (!peek && unreadCount > 0) {
-    await prisma.supportMessage.updateMany({
-      where: { inquiryId: inquiry.id, sender: 'ADMIN', readByUserAt: null },
-      data: { readByUserAt: new Date() },
-    });
-  }
+  await prisma.supportMessage.updateMany({
+    where: { inquiryId: inquiry.id, sender: 'ADMIN', readByUserAt: null },
+    data: { readByUserAt: new Date() },
+  });
 
   return Response.json({
     exists: true,
     status: inquiry.status,
-    unreadCount,
+    /** 이번 응답에서 처음 확인한 관리자 답변 수 (문의 버튼 배지용) */
+    unread,
+    truncated: recent.length === 200,
     messages: messages.map((m) => ({
       id: m.id,
       sender: m.sender,

@@ -1,6 +1,8 @@
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
-import type { AdapterInfo, ProviderResult } from '../types';
+import { AdapterNotConfiguredError, type AdapterInfo, type ProviderResult } from '../types';
+// hecto.ts 는 이 파일에서 '타입만' 가져오므로 런타임 순환 참조는 생기지 않는다.
+import { hectoPaymentAdapter } from './hecto';
 
 /**
  * 결제 어댑터 (헥토파이낸셜 내통장결제 EzAuth 기준 인터페이스).
@@ -173,10 +175,14 @@ export function getPaymentAdapter(): PaymentAdapter {
   switch (env.payment.provider) {
     case 'mock':
       return mockPaymentAdapter;
-    case 'hecto':
-      throw new Error(
-        '헥토파이낸셜 실연동 어댑터는 가맹점 키(MID/라이선스/AES/HASH) 확보 후 구현합니다. 현재는 mock 만 사용 가능합니다.',
-      );
+    case 'hecto': {
+      // 키가 하나라도 없으면 mock 으로 조용히 대체하지 않고 즉시 실패시킨다.
+      // (실결제로 착각한 채 운영되는 상황이 가장 위험하다)
+      const adapter = hectoPaymentAdapter;
+      const missing = adapter.info().missingCredentials;
+      if (missing.length > 0) throw new AdapterNotConfiguredError('hecto', missing);
+      return adapter;
+    }
     default:
       throw new Error(`PAYMENT_PROVIDER=${env.payment.provider} 어댑터가 구현되지 않았습니다.`);
   }

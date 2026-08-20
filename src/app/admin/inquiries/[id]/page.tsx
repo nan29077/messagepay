@@ -4,13 +4,15 @@ import { PageHeader } from '@/components/layout/console-shell';
 import { Badge, Card, DataRow, Notice, SectionTitle } from '@/components/ui';
 import { AdminField, AdminTextarea } from '@/components/admin/controls';
 import { ActionButton, ActionForm } from '@/components/admin/action-form';
-import { replyInquiry, setInquiryStatus, markInquiryRead } from '@/app/actions/admin/inquiries';
+import { replyInquiry, setInquiryStatus } from '@/app/actions/admin/inquiries';
+import { markInquiryRead } from '@/server/services/inquiry';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { formatKst } from '@/lib/datetime';
+import { formatNumber } from '@/lib/money';
+import { SUPPORT_CATEGORIES } from '@/components/public/support-options';
 import { cx } from '@/components/ui';
 import type { InquiryStatus } from '@/generated/prisma/enums';
-import { requireAdmin } from '@/server/auth';
-import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,14 +23,15 @@ const STATUS_LABEL: Record<InquiryStatus, { text: string; tone: 'warning' | 'suc
 };
 
 export default async function AdminInquiryDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin();
-  if (admin.adminPermission !== 'SUPER_ADMIN') redirect('/admin');
   const { id } = await params;
+  // 레이아웃과 페이지는 병렬로 렌더링되므로, 읽음 처리(쓰기)를 하는 이 페이지는 직접 관리자 인증을 확인한다.
+  await requireAdmin();
 
   const inquiry = await prisma.supportInquiry.findUnique({
     where: { id },
     select: {
-      id: true, userId: true, guestName: true, contactMasked: true, category: true, status: true,
+      id: true, userId: true, guestName: true, contactMasked: true, status: true,
+      category: true, source: true, transactionNo: true, donationId: true, creatorId: true,
       createdAt: true, lastMessageAt: true,
       messages: { orderBy: { createdAt: 'asc' }, take: 300, select: { id: true, sender: true, body: true, createdAt: true } },
     },
@@ -45,6 +48,18 @@ export default async function AdminInquiryDetailPage({ params }: { params: Promi
     : null;
 
   const label = STATUS_LABEL[inquiry.status];
+  const categoryLabel = SUPPORT_CATEGORIES.find((c) => c.value === inquiry.category)?.label ?? inquiry.category;
+
+  // 거래번호로 연결된 후원이 있으면 처리 근거를 바로 볼 수 있게 요약을 함께 보여준다.
+  const donation = inquiry.donationId
+    ? await prisma.donation.findUnique({
+        where: { id: inquiry.donationId },
+        select: {
+          transactionNo: true, amount: true, status: true, receivedAt: true,
+          creator: { select: { displayName: true, code: true } },
+        },
+      })
+    : null;
 
   return (
     <>
@@ -100,7 +115,9 @@ export default async function AdminInquiryDetailPage({ params }: { params: Promi
           <Card>
             <div>
               <DataRow label="상태" value={<Badge tone={label.tone}>{label.text}</Badge>} />
-              <DataRow label="문의 유형" value={inquiry.category} />
+              <DataRow label="문의 유형" value={categoryLabel} />
+              <DataRow label="접수 경로" value={inquiry.source === 'FORM' ? '고객센터 접수 폼' : '문의 창(채팅)'} />
+              <DataRow label="접수번호" value={<span className="font-mono text-[12px]">{inquiry.id}</span>} />
               {user ? (
                 <>
                   <DataRow label="이름" value={user.name ?? '-'} />
@@ -116,6 +133,25 @@ export default async function AdminInquiryDetailPage({ params }: { params: Promi
                 </>
               )}
             </div>
+            {inquiry.transactionNo ? (
+              <div className="mt-3 rounded-xl border border-ink-100 bg-ink-50 px-3.5 py-3">
+                <p className="text-[12px] font-bold text-ink-700">연결된 거래</p>
+                <DataRow label="입력 거래번호" value={<span className="font-mono text-[12px]">{inquiry.transactionNo}</span>} />
+                {donation ? (
+                  <>
+                    <DataRow label="후원 금액" value={`${formatNumber(donation.amount)}원`} />
+                    <DataRow label="거래 상태" value={donation.status} />
+                    <DataRow label="크리에이터" value={`${donation.creator.displayName} (${donation.creator.code})`} />
+                    <DataRow label="수신 시각" value={formatKst(donation.receivedAt)} />
+                  </>
+                ) : (
+                  <p className="mt-1 text-[12px] leading-relaxed text-ink-400">
+                    입력한 거래번호로 후원 내역을 찾지 못했습니다. 오타 여부를 확인해 주세요.
+                  </p>
+                )}
+              </div>
+            ) : null}
+
             <div className="mt-3 flex flex-col gap-1.5">
               {inquiry.status !== 'CLOSED' ? (
                 <ActionButton

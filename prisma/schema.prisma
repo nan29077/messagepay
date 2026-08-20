@@ -199,6 +199,7 @@ enum SettlementRequestStatus {
   REVIEWING
   APPROVED
   PAID
+  PAYOUT_FAILED
   REJECTED
 
   @@map("settlement_request_status")
@@ -446,13 +447,13 @@ model CreatorProfile {
   description    String?
   /// 방송중 스위치: 켜면 후원 페이지에 온에어 표시 + 라이브 링크 노출
   liveOn         Boolean       @default(false) @map("live_on")
-  /// 유튜브 라이브 방송 링크 (방송중 스위치와 함께 사용)
+  /// 현재 노출 중인 라이브 방송 링크 (플랫폼별 주소에서 선택된 값)
   liveUrl        String?       @map("live_url")
-  /// 플랫폼별 라이브 주소. livePlatform으로 현재 연결할 플랫폼을 고른다.
-  youtubeLiveUrl   String?     @map("youtube_live_url")
-  instagramLiveUrl String?     @map("instagram_live_url")
-  tiktokLiveUrl    String?     @map("tiktok_live_url")
-  livePlatform     String?     @map("live_platform")
+  /// 라이브 플랫폼별 주소. livePlatform 이 가리키는 값이 후원샵에 노출된다.
+  livePlatform     String? @map("live_platform")
+  youtubeLiveUrl   String? @map("youtube_live_url")
+  instagramLiveUrl String? @map("instagram_live_url")
+  tiktokLiveUrl    String? @map("tiktok_live_url")
   status         CreatorStatus @default(PENDING)
   /// 문자 1건당 후원금 (원)
   donationAmount BigInt        @default(3000) @map("donation_amount")
@@ -1143,8 +1144,26 @@ model SettlementRequest {
   status       SettlementRequestStatus @default(REQUESTED)
   withholding  BigInt                  @default(0)
   payoutAmount BigInt                  @default(0) @map("payout_amount")
+  /// 크리에이터가 남기는 메모
   memo         String?
+  /// 관리자 처리 메모(반려 사유 등). 크리에이터에게 노출된다.
+  adminMemo    String?                 @map("admin_memo")
   adminId      String?                 @map("admin_id")
+
+  /// 원천징수 신고용 주민등록번호(암호화). 신고 완료 시 파기한다.
+  residentEnc     String?   @map("resident_enc")
+  /// 마스킹 표기(예: 901010-1******). 원문은 화면에 노출하지 않는다.
+  residentMasked  String?   @map("resident_masked")
+  /// 주민등록번호 파기 시각. 값이 있으면 원문은 이미 삭제된 상태다.
+  residentPurgedAt DateTime? @map("resident_purged_at") @db.Timestamptz(3)
+  /// 원천징수 지급명세서 신고 완료 시각.
+  withholdingFiledAt DateTime? @map("withholding_filed_at") @db.Timestamptz(3)
+
+  /// 지급대행(쿠콘) 처리 참조번호.
+  payoutRef        String?   @map("payout_ref")
+  /// 지급 실패 사유(PAYOUT_FAILED).
+  payoutFailReason String?   @map("payout_fail_reason")
+
   requestedAt  DateTime                @default(now()) @map("requested_at") @db.Timestamptz(3)
   approvedAt   DateTime?               @map("approved_at") @db.Timestamptz(3)
   paidAt       DateTime?               @map("paid_at") @db.Timestamptz(3)
@@ -1228,6 +1247,13 @@ model SupportInquiry {
   contactMasked String?       @map("contact_masked")
   category      String        @default("일반")
   status        InquiryStatus @default(OPEN)
+  /// 고객센터 폼(/support)에서 입력한 거래번호. 조회 실패해도 원문을 남긴다.
+  transactionNo String?       @map("transaction_no")
+  /// 거래번호로 찾은 후원/크리에이터 (없을 수 있다)
+  donationId    String?       @map("donation_id")
+  creatorId     String?       @map("creator_id")
+  /// 접수 경로: WIDGET(우측 하단 채팅) | FORM(/support 접수 폼)
+  source        String        @default("WIDGET")
   createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
   lastMessageAt DateTime      @default(now()) @map("last_message_at") @db.Timestamptz(3)
@@ -1236,6 +1262,7 @@ model SupportInquiry {
 
   @@index([status, lastMessageAt])
   @@index([userId])
+  @@index([category])
   @@map("support_inquiry")
 }
 
@@ -1270,6 +1297,8 @@ model Report {
   donationId   String?      @map("donation_id")
   creatorId    String?      @map("creator_id")
   reporterHash String?      @map("reporter_hash")
+  /// 로그인 문의자 식별용. 크리에이터 화면에는 절대 노출하지 않고 통합 관리자만 조회한다.
+  reporterUserId String?    @map("reporter_user_id")
   category     String
   content      String
   status       ReportStatus @default(OPEN)

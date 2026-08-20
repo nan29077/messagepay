@@ -1,0 +1,159 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import { prisma } from '@/server/db';
+import { newId } from '@/lib/id';
+import { resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
+import { handleMoInbound } from '@/server/services/donation-flow';
+import { mockMoAdapter } from '@/server/adapters/mo';
+import {
+  createSettlementRequest,
+  markSettlementPaid,
+  markSettlementPayoutFailed,
+  fileWithholdingAndPurgeResident,
+  buildPayoutRows,
+  getSettlementSummary,
+} from '@/server/services/settlement';
+import { isValidResident, normalizeResident, maskResident, decrypt } from '@/lib/crypto';
+import { filterContent } from '@/server/services/content-filter';
+
+let fx: Fixture;
+const inbound = (p: Record<string, unknown>) => handleMoInbound(mockMoAdapter.parse(p));
+
+// 정산 요청이 가능하도록 계좌를 인증 상태로 등록한다.
+async function verifiedAccount(creatorId: string) {
+  const { encrypt } = await import('@/lib/crypto');
+  await prisma.settlementAccount.upsert({
+    where: { creatorId },
+    create: {
+      id: newId(), creatorId, bankCode: '004', bankName: 'KB국민은행',
+      accountEnc: encrypt('11122233344455'), accountTail4: '4455',
+      holderNameEnc: encrypt('김도네'), holderMasked: '김*네', verified: true, verifiedAt: new Date(),
+    },
+    update: {
+      verified: true, verifiedAt: new Date(), bankCode: '004', bankName: 'KB국민은행',
+      accountEnc: encrypt('11122233344455'), accountTail4: '4455',
+      holderNameEnc: encrypt('김도네'), holderMasked: '김*네',
+    },
+  });
+}
+
+async function fund(creatorId: string) {
+  // 결제 완료 후원 몇 건으로 정산 잔액을 만든다.
+  await seedRegisteredDonor(fx.donorPhone);
+  for (let i = 0; i < 5; i += 1) {
+    await inbound(moPayload({ to: fx.moNumber, messageId: `FUND-${i}-${Date.now()}`, text: `${5000}원 응원 ${i}` }));
+  }
+  const s = await getSettlementSummary(creatorId);
+  return s.available;
+}
+
+beforeEach(async () => {
+  await resetDb();
+  fx = await seedBasics();
+  await verifiedAccount(fx.creatorId);
+});
+
+describe('주민등록번호 유틸', () => {
+  it('정규화·마스킹·검증이 동작한다', () => {
+    expect(normalizeResident('901010-1234567')).toBe('9010101234567');
+    expect(normalizeResident('9010101234')).toBeNull();
+    expect(maskResident('9010101234567')).toBe('901010-1******');
+    // 유효한 체크섬 예시
+    expect(isValidResident('9010101234567')).toBe(false); // 임의값 → 대개 실패
+  });
+});
+
+describe('정산 요청 + 주민번호 저장', () => {
+  it('주민번호는 암호화 저장되고 마스킹만 노출된다', async () => {
+    const available = await fund(fx.creatorId);
+    expect(available).toBeGreaterThan(0n);
+
+    const req = await createSettlementRequest(fx.creatorId, available, { resident: '9010101234567' });
+    const row = await prisma.settlementRequest.findUniqueOrThrow({ where: { id: req.id } });
+    expect(row.residentMasked).toBe('901010-1******');
+    expect(row.residentEnc).toBeTruthy();
+    expect(decrypt(row.residentEnc!)).toBe('9010101234567'); // 서버 내부에서만 복호화
+    expect(row.withholding).toBe((available * 33n) / 1000n);
+  });
+});
+
+describe('지급대행 흐름', () => {
+  it('승인 건으로 이체 파일 행을 만들고 계좌를 복호화한다', async () => {
+    const available = await fund(fx.creatorId);
+    const req = await createSettlementRequest(fx.creatorId, available, { resident: '9010101234567' });
+    await prisma.settlementRequest.update({ where: { id: req.id }, data: { status: 'APPROVED' } });
+
+    const rows = await buildPayoutRows([req.id]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].bankCode).toBe('004');
+    expect(rows[0].account).toBe('11122233344455');
+    expect(rows[0].holder).toBe('김도네');
+    expect(rows[0].amount).toBe(req.payoutAmount);
+  });
+
+  it('미인증 계좌는 이체 파일에서 제외된다', async () => {
+    const available = await fund(fx.creatorId);
+    const req = await createSettlementRequest(fx.creatorId, available, { resident: '9010101234567' });
+    await prisma.settlementRequest.update({ where: { id: req.id }, data: { status: 'APPROVED' } });
+    await prisma.settlementAccount.update({ where: { creatorId: fx.creatorId }, data: { verified: false } });
+
+    expect(await buildPayoutRows([req.id])).toHaveLength(0);
+  });
+
+  it('지급 실패 시 지급·원천징수 분개가 잔액으로 환입된다', async () => {
+    const available = await fund(fx.creatorId);
+    const req = await createSettlementRequest(fx.creatorId, available, { resident: '9010101234567' });
+    await prisma.settlementRequest.update({ where: { id: req.id }, data: { status: 'APPROVED' } });
+
+    await markSettlementPaid(req.id, 'admin');
+    const afterPaid = await getSettlementSummary(fx.creatorId);
+    expect(afterPaid.balance).toBe(0n);
+
+    await markSettlementPayoutFailed(req.id, '계좌 오류', 'admin');
+    const afterFail = await getSettlementSummary(fx.creatorId);
+    // 환입되어 다시 요청 가능한 잔액이 살아난다.
+    expect(afterFail.balance).toBe(available);
+    const row = await prisma.settlementRequest.findUniqueOrThrow({ where: { id: req.id } });
+    expect(row.status).toBe('PAYOUT_FAILED');
+    expect(row.payoutFailReason).toContain('계좌 오류');
+  });
+
+  it('원천징수 신고 완료 시 주민번호만 파기하고 회계 기록은 유지한다', async () => {
+    const available = await fund(fx.creatorId);
+    const req = await createSettlementRequest(fx.creatorId, available, { resident: '9010101234567' });
+    await prisma.settlementRequest.update({ where: { id: req.id }, data: { status: 'APPROVED' } });
+    await markSettlementPaid(req.id, 'admin');
+
+    const r = await fileWithholdingAndPurgeResident(req.id, 'admin');
+    expect(r.purged).toBe(true);
+
+    const row = await prisma.settlementRequest.findUniqueOrThrow({ where: { id: req.id } });
+    expect(row.residentEnc).toBeNull(); // 원문 파기
+    expect(row.residentMasked).toBe('901010-1******'); // 마스킹은 유지
+    expect(row.residentPurgedAt).not.toBeNull();
+    expect(row.withholdingFiledAt).not.toBeNull();
+    expect(row.withholding).toBe((available * 33n) / 1000n); // 회계 기록 유지
+  });
+});
+
+describe('금칙어 우회 매칭', () => {
+  it('글자 사이 공백·기호로 우회해도 잡는다', () => {
+    const rules = [{ word: '바보', action: 'BLOCK' as const }];
+    expect(filterContent('바보 멍청이', { bannedWords: rules }).action).toBe('BLOCK');
+    expect(filterContent('바 보 야', { bannedWords: rules }).action).toBe('BLOCK');
+    expect(filterContent('바.보', { bannedWords: rules }).action).toBe('BLOCK');
+    expect(filterContent('바_보', { bannedWords: rules }).action).toBe('BLOCK');
+  });
+
+  it('다른 글자가 낀 경우는 오탐하지 않는다', () => {
+    const rules = [{ word: '노출', action: 'BLOCK' as const }];
+    // 노트북 출력 → 노와 출 사이에 글자가 있으므로 매칭 안 됨
+    expect(filterContent('노트북 출력 좋아요', { bannedWords: rules }).action).toBe('ALLOW');
+  });
+
+  it('마스킹은 우회 구간까지 함께 가린다', () => {
+    const r = filterContent('바 보 최고', { bannedWords: [{ word: '바보', action: 'MASK' }] });
+    expect(r.action).toBe('MASK');
+    expect(r.clean).not.toContain('바 보');
+    expect(r.clean).toContain('최고');
+  });
+});

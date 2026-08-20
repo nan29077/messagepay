@@ -28,6 +28,7 @@ export default async function AdminDashboardPage() {
     settlementPending,
     openReports,
     openRisks,
+    openInquiries,
     recentDonations,
   ] = await Promise.all([
     prisma.donation.aggregate({
@@ -53,6 +54,7 @@ export default async function AdminDashboardPage() {
     }),
     prisma.report.count({ where: { status: { in: ['OPEN', 'REVIEWING'] } } }),
     prisma.riskDetection.count({ where: { resolved: false } }),
+    prisma.supportInquiry.count({ where: { status: 'OPEN' } }),
     prisma.donation.findMany({
       orderBy: { receivedAt: 'desc' },
       take: 10,
@@ -73,7 +75,7 @@ export default async function AdminDashboardPage() {
   // 처리 대기 건이 하나라도 있으면 '확인이 필요한 건' 섹션을 지표보다 위에 배치한다.
   // 운영자가 접속해서 가장 먼저 할 일이 화면 순서와 일치하도록.
   const pendingTotal =
-    unregistered + limitBlocked + youtubeFailed + openRisks + settlementPending._count._all + openReports;
+    unregistered + limitBlocked + youtubeFailed + openRisks + settlementPending._count._all + openReports + openInquiries;
 
   return (
     <>
@@ -137,6 +139,14 @@ export default async function AdminDashboardPage() {
                 value={formatNumber(openReports)}
                 sub="접수·검토중 합계"
                 tone={openReports > 0 ? 'warning' : 'neutral'}
+              />
+            </Link>
+            <Link href="/admin/inquiries?status=OPEN">
+              <StatTile
+                label="답변 대기 문의"
+                value={formatNumber(openInquiries)}
+                sub="1:1 문의 답변 대기"
+                tone={openInquiries > 0 ? 'warning' : 'neutral'}
               />
             </Link>
             <Link href="/admin/refunds">
@@ -253,6 +263,14 @@ export default async function AdminDashboardPage() {
                 value={formatNumber(openReports)}
                 sub="접수·검토중 합계"
                 tone={openReports > 0 ? 'warning' : 'neutral'}
+              />
+            </Link>
+            <Link href="/admin/inquiries?status=OPEN">
+              <StatTile
+                label="답변 대기 문의"
+                value={formatNumber(openInquiries)}
+                sub="1:1 문의 답변 대기"
+                tone={openInquiries > 0 ? 'warning' : 'neutral'}
               />
             </Link>
             <Link href="/admin/refunds">

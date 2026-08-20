@@ -1,6 +1,6 @@
 import { prisma } from '@/server/db';
 import { newId, newTransactionNo } from '@/lib/id';
-import { encrypt, maskPhone } from '@/lib/crypto';
+import { encrypt } from '@/lib/crypto';
 import { filterContent } from './content-filter';
 import { checkLimits } from './limits';
 import { acquireIdempotency } from './idempotency';
@@ -99,7 +99,8 @@ export async function createWebDonation(input: WebDonationInput): Promise<WebDon
       donorId: donor.id,
       channel: 'WEB',
       amount: input.amount,
-      displayName: donor.displayName || maskPhone(donor.phoneMasked ?? ''),
+      // donor.phoneMasked 는 이미 마스킹된 값이라 다시 마스킹하면 '***' 만 남는다.
+      displayName: donor.displayName || '익명의 후원자',
       message: filtered.clean,
       messageRawEnc: encrypt(input.message),
       status: 'RECEIVED',

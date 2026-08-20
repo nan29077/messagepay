@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { X, Search, ShieldCheck, Info, ChevronRight } from 'lucide-react';
+import { X, Search, ShieldCheck, Info, ChevronRight, HeartHandshake } from 'lucide-react';
 import { Badge, Button, Field, Input, Notice, cx } from '@/components/ui';
 import {
   requestLookupCode,
@@ -107,11 +107,16 @@ export function DonationLookupSheet({ open, onClose }: { open: boolean; onClose:
         <div className="shrink-0 px-5 pb-3 pt-3">
           <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-ink-200" />
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-[18px] font-black tracking-[-0.03em] text-ink-900">후원확인</h2>
-              <p className="mt-1 text-[12.5px] leading-relaxed text-ink-500">
-                로그인 없이 휴대폰 번호로 내 후원 내역을 확인합니다.
-              </p>
+            <div className="flex items-start gap-3">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-brand-200 bg-brand-400 text-ink-900 shadow-[0_6px_16px_rgba(237,166,0,0.22)]">
+                <HeartHandshake size={21} strokeWidth={1.85} />
+              </span>
+              <div>
+                <h2 className="text-[18px] font-black tracking-[-0.03em] text-ink-900">후원확인</h2>
+                <p className="mt-1 text-[12.5px] leading-relaxed text-ink-500">
+                  로그인 없이 휴대폰 번호로 내 후원 내역을 확인합니다.
+                </p>
+              </div>
             </div>
             <button
               type="button"

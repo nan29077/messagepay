@@ -64,6 +64,7 @@ export default async function StudioDonationsPage({
         displayName: true,
         anonymous: true,
         message: true,
+        channel: true,
         amount: true,
         status: true,
         youtubeStatus: true,
@@ -127,7 +128,8 @@ export default async function StudioDonationsPage({
                 <Th>수신시각</Th>
                 <Th>후원자</Th>
                 <Th>표시명</Th>
-                <Th>문자 내용</Th>
+                <Th>접수</Th>
+                <Th>내용</Th>
                 <Th className="text-right">후원금</Th>
                 <Th>결제 상태</Th>
                 <Th>유튜브</Th>
@@ -156,6 +158,11 @@ export default async function StudioDonationsPage({
                     <Td className="whitespace-nowrap tabular-nums">{formatKst(d.receivedAt, false)}</Td>
                     <Td className="whitespace-nowrap tabular-nums">{d.donor?.phoneMasked ?? '-'}</Td>
                     <Td className="whitespace-nowrap">{d.anonymous ? '익명의 후원자' : d.displayName}</Td>
+                    <Td>
+                      <Badge tone={d.channel === 'WEB' ? 'brand' : 'neutral'}>
+                        {d.channel === 'WEB' ? '웹(PC)' : '문자(MO)'}
+                      </Badge>
+                    </Td>
                     <Td className="max-w-[280px]">
                       <span className="line-clamp-2">{d.message || '-'}</span>
                     </Td>

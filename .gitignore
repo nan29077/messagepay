@@ -47,3 +47,7 @@ logs/
 
 # 서버 실행 잠금 파일
 .tornado-server.lock
+
+# 런타임 업로드 이미지
+/public/uploads/
+/var/uploads/

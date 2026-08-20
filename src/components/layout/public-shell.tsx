@@ -1,5 +1,7 @@
+import { cookies } from 'next/headers';
 import { getSessionUser } from '@/server/auth';
 import { prisma } from '@/server/db';
+import { INQUIRY_GUEST_COOKIE } from '@/server/services/inquiry';
 import { PublicShellClient, type ShellViewer } from './public-shell-client';
 import { SupportWidget } from '@/components/public/support-widget';
 
@@ -31,6 +33,7 @@ export async function PublicShell({
 
   const viewer: ShellViewer | null = user
     ? {
+        id: user.id,
         name: user.name,
         email: user.email,
         myHref: user.role === 'ADMIN' ? '/admin' : user.role === 'CREATOR' ? '/studio' : '/my',
@@ -45,14 +48,19 @@ export async function PublicShell({
     orderBy: [{ pinned: 'desc' }, { sortOrder: 'asc' }],
     take: 6,
     select: { id: true, title: true, body: true },
-  }).catch(() => []);
+  });
+
+  // 문의 이력이 있을 때만 배경 폴링을 돌린다.
+  // (모든 방문자가 15초/5분마다 /api/inquiry 를 두드리면 공개 페이지 전체가 불필요한 DB 부하를 진다)
+  const jar = await cookies();
+  const hasThread = Boolean(user) || Boolean(jar.get(INQUIRY_GUEST_COOKIE)?.value);
 
   return (
     <>
       <PublicShellClient aside={aside} viewer={viewer}>
         {children}
       </PublicShellClient>
-      <SupportWidget faqs={faqs} loggedIn={Boolean(user)} />
+      <SupportWidget faqs={faqs} loggedIn={Boolean(user)} hasThread={hasThread} />
     </>
   );
 }

@@ -19,7 +19,7 @@ const txSelect = {
   resultCode: true, resultMessage: true, requestedAt: true, approvedAt: true, canceledAt: true,
   donation: {
     select: {
-      id: true, transactionNo: true, status: true, paymentMode: true,
+      id: true, transactionNo: true, status: true, paymentMode: true, channel: true,
       creator: { select: { id: true, displayName: true } },
       donor: { select: { id: true, phoneMasked: true } },
     },
@@ -57,6 +57,9 @@ function TxRows({ rows }: { rows: TxRow[] }) {
             <Badge tone={paymentTxStatusLabel[t.status].tone}>{paymentTxStatusLabel[t.status].text}</Badge>
             <span className="mt-0.5 block text-[11px] text-ink-400">
               {donationStatusLabel[t.donation.status].text}
+            </span>
+            <span className="mt-0.5 block text-[11px] font-semibold text-ink-300">
+              {t.donation.channel === 'WEB' ? '웹(PC) 후원' : '문자(MO) 후원'}
             </span>
           </Td>
           <Td className="max-w-[200px] break-words">

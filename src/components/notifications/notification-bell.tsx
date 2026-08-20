@@ -31,6 +31,9 @@ export function NotificationBell({ className }: { className?: string }) {
   const rootRef = React.useRef<HTMLDivElement>(null);
 
   const load = React.useCallback(async (quiet = false) => {
+    // 이펙트에서 곧바로 호출되므로 setState 는 반드시 await 이후에 일어나야 한다.
+    // (동기 setState 는 연쇄 렌더를 유발한다)
+    await Promise.resolve();
     if (!quiet) setLoading(true);
     try {
       const response = await fetch('/api/notifications', { cache: 'no-store' });
@@ -44,9 +47,13 @@ export function NotificationBell({ className }: { className?: string }) {
   }, []);
 
   React.useEffect(() => {
-    void load(true);
+    // 최초 1회도 타이머로 미룬다. 이펙트 본문에서 곧바로 호출하면 동기 setState 로 연쇄 렌더가 발생한다.
+    const first = window.setTimeout(() => void load(true), 0);
     const timer = window.setInterval(() => void load(true), 45_000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(timer);
+    };
   }, [load]);
 
   React.useEffect(() => {

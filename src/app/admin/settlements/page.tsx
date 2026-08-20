@@ -1,10 +1,9 @@
 import Link from 'next/link';
 import { PageHeader } from '@/components/layout/console-shell';
-import { Badge, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
+import { EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
 import { AdminField, AdminInput, AdminSelect, CreatorOptions, FilterBar, Pager } from '@/components/admin/controls';
-import { ActionForm } from '@/components/admin/action-form';
 import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
-import { updateSettlementRequestStatus } from '@/app/actions/admin/settlement';
+import { SettlementRequestsPanel, type SettlementRow } from '@/components/admin/settlement-requests';
 import { prisma } from '@/server/db';
 import { getSettlementSummary } from '@/server/services/settlement';
 import { formatWon, formatNumber } from '@/lib/money';
@@ -17,36 +16,15 @@ export const dynamic = 'force-dynamic';
 
 const REQUEST_STATUSES: SettlementRequestStatus[] = ['REQUESTED', 'REVIEWING', 'APPROVED', 'PAID', 'REJECTED'];
 
-function nextOptions(status: SettlementRequestStatus) {
-  switch (status) {
-    case 'REQUESTED':
-      return [
-        { value: 'REVIEWING', label: '검토중으로' },
-        { value: 'APPROVED', label: '승인' },
-        { value: 'REJECTED', label: '반려' },
-      ];
-    case 'REVIEWING':
-      return [
-        { value: 'APPROVED', label: '승인' },
-        { value: 'REJECTED', label: '반려' },
-      ];
-    case 'APPROVED':
-      return [
-        { value: 'PAID', label: '지급 완료' },
-        { value: 'REJECTED', label: '반려' },
-      ];
-    default:
-      return [];
-  }
-}
-
 export default async function AdminSettlementsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; creatorId?: string; key?: string; page?: string }>;
+  searchParams: Promise<{ status?: string; creatorId?: string; key?: string; page?: string; rpage?: string }>;
 }) {
   const sp = await searchParams;
   const page = parsePage(sp.page);
+  // 요청 목록과 원장 목록은 페이지를 따로 넘긴다 (하나의 page 로 묶으면 요청 목록이 2페이지부터 같은 내용을 반복한다)
+  const requestPage = parsePage(sp.rpage);
   const status = REQUEST_STATUSES.includes(sp.status as SettlementRequestStatus)
     ? (sp.status as SettlementRequestStatus)
     : undefined;
@@ -72,10 +50,15 @@ export default async function AdminSettlementsPage({
     prisma.settlementRequest.count({ where: requestWhere }),
     prisma.settlementRequest.findMany({
       where: requestWhere,
-      orderBy: { requestedAt: 'desc' },
+      // 미처리(REQUESTED→REVIEWING→APPROVED) 건을 먼저, 그 안에서는 오래된 순으로 본다.
+      // 최신순으로만 정렬하면 오래 밀린 요청이 뒤로 밀려 영영 처리되지 않는다.
+      orderBy: [{ status: 'asc' }, { requestedAt: 'asc' }],
+      skip: (requestPage - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       select: {
-        id: true, amount: true, withholding: true, payoutAmount: true, status: true, memo: true,
+        id: true, amount: true, withholding: true, payoutAmount: true, status: true,
+        memo: true, adminMemo: true, payoutFailReason: true,
+        residentMasked: true, residentPurgedAt: true,
         requestedAt: true, approvedAt: true, paidAt: true, rejectedAt: true,
         creator: {
           select: {
@@ -112,6 +95,31 @@ export default async function AdminSettlementsPage({
   const visibleSummaries = summaries.filter((s) => s.summary.balance !== 0n || s.summary.pending !== 0n);
 
   const lastPage = Math.max(1, Math.ceil(ledgerTotal / PAGE_SIZE));
+  const requestLastPage = Math.max(1, Math.ceil(requestTotal / PAGE_SIZE));
+
+  // 클라이언트 패널로 넘길 직렬화 행 (BigInt·Date 를 문자열로)
+  const requestRows: SettlementRow[] = requests.map((r) => ({
+    id: r.id,
+    requestedAt: formatKst(r.requestedAt, false),
+    status: r.status,
+    statusText: settlementStatusLabel[r.status].text,
+    statusTone: settlementStatusLabel[r.status].tone,
+    amount: r.amount.toString(),
+    withholding: r.withholding.toString(),
+    payoutAmount: r.payoutAmount.toString(),
+    creatorName: r.creator.displayName,
+    creatorCode: r.creator.code,
+    bank: r.creator.settlementAccount?.bankName ?? null,
+    accountTail4: r.creator.settlementAccount?.accountTail4 ?? null,
+    holderMasked: r.creator.settlementAccount?.holderMasked ?? null,
+    verified: r.creator.settlementAccount?.verified ?? false,
+    adminMemo: r.adminMemo,
+    memo: r.memo,
+    residentMasked: r.residentMasked,
+    residentPurged: Boolean(r.residentPurgedAt),
+    paidAt: r.paidAt ? formatKst(r.paidAt, false) : null,
+    failReason: r.payoutFailReason,
+  }));
   const countOf = (s: SettlementRequestStatus) => byStatus.find((b) => b.status === s)?._count._all ?? 0;
   const sumOf = (s: SettlementRequestStatus) => byStatus.find((b) => b.status === s)?._sum.amount ?? 0n;
 
@@ -179,7 +187,10 @@ export default async function AdminSettlementsPage({
       </section>
 
       <section className="mt-6">
-        <SectionTitle title="정산 요청 처리" description={`전체 ${formatNumber(requestTotal)}건 중 최근 ${PAGE_SIZE}건`} />
+        <SectionTitle
+          title="정산 요청 처리"
+          description={`전체 ${formatNumber(requestTotal)}건 · 미처리 건을 오래된 순으로 먼저 보여줍니다 (${requestPage}/${requestLastPage} 페이지)`}
+        />
         <FilterBar action="/admin/settlements" resetHref="/admin/settlements">
           <AdminField label="요청 상태" className="w-40">
             <AdminSelect name="status" defaultValue={status ?? ''}>
@@ -206,96 +217,26 @@ export default async function AdminSettlementsPage({
           </datalist>
         </FilterBar>
 
-        {requests.length === 0 ? (
-          <EmptyState title="조건에 맞는 정산 요청이 없습니다" />
-        ) : (
-          <Table className="min-w-[1200px]">
-            <thead>
-              <tr>
-                <Th>요청 시각</Th>
-                <Th>크리에이터</Th>
-                <Th>정산 계좌</Th>
-                <Th className="text-right">요청 금액</Th>
-                <Th className="text-right">원천징수</Th>
-                <Th className="text-right">실지급</Th>
-                <Th>상태</Th>
-                <Th>처리</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {requests.map((r) => {
-                const options = nextOptions(r.status);
-                return (
-                  <tr key={r.id}>
-                    <Td className="whitespace-nowrap">
-                      {formatKst(r.requestedAt, false)}
-                      {r.approvedAt ? <span className="mt-0.5 block text-[11px] text-ink-400">승인 {formatKst(r.approvedAt, false)}</span> : null}
-                      {r.paidAt ? <span className="mt-0.5 block text-[11px] text-success-500">지급 {formatKst(r.paidAt, false)}</span> : null}
-                      {r.rejectedAt ? <span className="mt-0.5 block text-[11px] text-danger-500">반려 {formatKst(r.rejectedAt, false)}</span> : null}
-                    </Td>
-                    <Td>
-                      <Link href={`/admin/creators/${r.creator.id}`} className="font-semibold text-brand-700">
-                        {r.creator.displayName}
-                      </Link>
-                      <span className="mt-0.5 block text-[11px] text-ink-400">{r.creator.code}</span>
-                    </Td>
-                    <Td className="text-[12px]">
-                      {r.creator.settlementAccount ? (
-                        <>
-                          <span className="block">
-                            {r.creator.settlementAccount.bankName} ****{r.creator.settlementAccount.accountTail4}
-                          </span>
-                          <span className="block text-ink-400">{r.creator.settlementAccount.holderMasked}</span>
-                          <Badge tone={r.creator.settlementAccount.verified ? 'success' : 'warning'}>
-                            {r.creator.settlementAccount.verified ? '인증 완료' : '미인증'}
-                          </Badge>
-                        </>
-                      ) : (
-                        <Badge tone="danger">계좌 미등록</Badge>
-                      )}
-                    </Td>
-                    <Td className="text-right tabular-nums">{formatWon(r.amount)}</Td>
-                    <Td className="text-right tabular-nums">{formatWon(r.withholding)}</Td>
-                    <Td className="text-right font-semibold tabular-nums">{formatWon(r.payoutAmount)}</Td>
-                    <Td>
-                      <Badge tone={settlementStatusLabel[r.status].tone}>{settlementStatusLabel[r.status].text}</Badge>
-                      {r.memo ? <span className="mt-0.5 block max-w-[140px] text-[11px] break-words text-ink-400">{r.memo}</span> : null}
-                    </Td>
-                    <Td>
-                      {options.length === 0 ? (
-                        <span className="text-[12px] text-ink-300">처리 완료</span>
-                      ) : (
-                        <div className="w-52">
-                          <ActionForm
-                            action={updateSettlementRequestStatus}
-                            submitLabel="상태 변경"
-                            variant="secondary"
-                            compact
-                            confirm="정산 요청 상태를 변경합니다. 지급 완료는 되돌릴 수 없습니다."
-                          >
-                            <input type="hidden" name="requestId" value={r.id} />
-                            <AdminField label="변경할 상태">
-                              <AdminSelect name="status" defaultValue={options[0].value}>
-                                {options.map((o) => (
-                                  <option key={o.value} value={o.value}>
-                                    {o.label}
-                                  </option>
-                                ))}
-                              </AdminSelect>
-                            </AdminField>
-                            <AdminField label="메모">
-                              <AdminInput name="memo" placeholder="처리 사유" />
-                            </AdminField>
-                          </ActionForm>
-                        </div>
-                      )}
-                    </Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
-        )}
+        <SettlementRequestsPanel rows={requestRows} />
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Link
+            href={`/api/admin/settlements/withholding?from=${kstMonthKey()}-01`}
+            className="rounded-lg border border-ink-200 px-3 py-1.5 text-[12px] font-bold text-ink-700 hover:bg-ink-50"
+          >
+            이번 달 원천징수 지급명세서 자료 받기
+          </Link>
+          <span className="text-[11.5px] text-ink-400">지급 완료 건의 지급명세서 산출 자료(CSV)를 내려받습니다.</span>
+        </div>
+
+        <Pager
+          basePath="/admin/settlements"
+          params={{ status: status ?? '', creatorId: creatorId ?? '', key: settlementKey, page: String(page) }}
+          page={requestPage}
+          lastPage={requestLastPage}
+          total={requestTotal}
+          pageParam="rpage"
+        />
       </section>
 
       <section className="mt-6">
@@ -346,7 +287,7 @@ export default async function AdminSettlementsPage({
             </Table>
             <Pager
               basePath="/admin/settlements"
-              params={{ status: status ?? '', creatorId: creatorId ?? '', key: settlementKey }}
+              params={{ status: status ?? '', creatorId: creatorId ?? '', key: settlementKey, rpage: String(requestPage) }}
               page={page}
               lastPage={lastPage}
               total={ledgerTotal}

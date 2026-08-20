@@ -4,11 +4,12 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Home, Compass, HelpCircle, User, Menu, X, Receipt, Sparkles, Headphones, LogIn, LogOut, Bell, LayoutDashboard,
+  Bell, CircleHelp, CircleUserRound, HeartHandshake, House, LayoutDashboard,
+  LifeBuoy, LogIn, LogOut, Map, Menu, Sparkles, X,
 } from 'lucide-react';
 import { Logo, TornadoMark } from '@/components/brand/logo';
 import { DonationLookupSheet } from '@/components/public/donation-lookup-sheet';
-import { NotificationBell } from '@/components/notifications/notification-bell';
+import { ProfileAvatar } from '@/components/profile/generated-avatar';
 import { cx } from '@/components/ui';
 
 /**
@@ -20,6 +21,7 @@ import { cx } from '@/components/ui';
  */
 
 export interface ShellViewer {
+  id: string;
   name: string | null;
   email: string | null;
   /** 역할별 마이페이지 목적지 (/admin, /studio, /my) */
@@ -35,7 +37,7 @@ const MY_PREFIXES = ['/my', '/studio', '/admin'];
 interface NavItem {
   href: string;
   label: string;
-  icon: typeof Home;
+  icon: typeof House;
   /** 마이페이지 탭(역할별 이동) */
   my?: boolean;
   /** 페이지 이동 대신 후원확인 바텀시트를 연다 */
@@ -44,18 +46,18 @@ interface NavItem {
 
 function buildNav(myHref: string): NavItem[] {
   return [
-    { href: '/', label: '홈', icon: Home },
-    { href: '/how-it-works', label: '이용방법', icon: Compass },
-    { href: '#lookup', label: '후원확인', icon: Receipt, sheet: true },
-    { href: '/faq', label: 'FAQ', icon: HelpCircle },
-    { href: myHref, label: '마이페이지', icon: User, my: true },
+    { href: '/', label: '홈', icon: House },
+    { href: '/how-it-works', label: '이용방법', icon: Map },
+    { href: '#lookup', label: '후원확인', icon: HeartHandshake, sheet: true },
+    { href: '/faq', label: 'FAQ', icon: CircleHelp },
+    { href: myHref, label: '마이페이지', icon: CircleUserRound, my: true },
   ];
 }
 
 const DRAWER_EXTRA = [
   { href: '/creator-apply', label: '크리에이터 가입', icon: Sparkles },
   { href: '/notice', label: '공지', icon: Bell },
-  { href: '/support', label: '고객센터', icon: Headphones },
+  { href: '/support', label: '고객센터', icon: LifeBuoy },
 ];
 
 function isActive(pathname: string, href: string, my?: boolean) {
@@ -94,43 +96,49 @@ export function PublicShellClient({
             <Logo />
           </Link>
 
-          <div className="flex items-center gap-2">
-            {viewer ? <NotificationBell /> : null}
-            <button
-              type="button"
-              aria-label="메뉴"
-              aria-expanded={open}
-              onClick={() => setOpen((v) => !v)}
-              className="grid h-10 w-10 place-items-center rounded-full border border-ink-200 bg-white text-ink-700 shadow-sm lg:hidden"
-            >
-              {open ? <X size={18} strokeWidth={1.6} /> : <Menu size={18} strokeWidth={1.6} />}
-            </button>
-          </div>
+          <button
+            type="button"
+            aria-label="메뉴"
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+            className="grid h-10 w-10 place-items-center rounded-full border border-ink-200 bg-white text-ink-700 shadow-sm lg:hidden"
+          >
+            {open ? <X size={18} strokeWidth={1.6} /> : <Menu size={18} strokeWidth={1.6} />}
+          </button>
         </div>
 
         {open ? (
           <div className="border-t border-ink-100 bg-white px-4 py-3 lg:hidden">
-            {[...nav, ...DRAWER_EXTRA].map((m) =>
-              'sheet' in m && m.sheet ? (
+            {[...nav, ...DRAWER_EXTRA].map((m) => {
+              const DrawerIcon = m.icon;
+              const drawerContent = (
+                <>
+                  <span className="grid h-8 w-8 place-items-center rounded-[10px] border border-brand-100 bg-brand-50 text-brand-700">
+                    <DrawerIcon size={16} strokeWidth={1.75} />
+                  </span>
+                  <span>{m.label}</span>
+                </>
+              );
+              return 'sheet' in m && m.sheet ? (
                 <button
                   key={m.href + m.label}
                   type="button"
                   onClick={openLookup}
-                  className="block w-full rounded-lg px-2 py-3 text-left text-[15px] font-semibold text-ink-700"
+                  className="flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left text-[14px] font-semibold text-ink-700 hover:bg-ink-50"
                 >
-                  {m.label}
+                  {drawerContent}
                 </button>
               ) : (
                 <Link
                   key={m.href + m.label}
                   href={m.href}
                   onClick={() => setOpen(false)}
-                  className="block rounded-lg px-2 py-3 text-[15px] font-semibold text-ink-700"
+                  className="flex items-center gap-2.5 rounded-xl px-2 py-2 text-[14px] font-semibold text-ink-700 hover:bg-ink-50"
                 >
-                  {m.label}
+                  {drawerContent}
                 </Link>
-              ),
-            )}
+              );
+            })}
             {viewer ? (
               <form action="/api/auth/logout" method="post" className="border-t border-ink-100 pt-2">
                 <button
@@ -169,9 +177,9 @@ export function PublicShellClient({
             <Link
               href="/"
               aria-label="도네이도 홈"
-              className="mb-2 grid h-10 w-10 place-items-center rounded-[14px] bg-white shadow-[0_6px_14px_rgba(237,166,0,0.22)] ring-1 ring-brand-200/60 transition-transform hover:-translate-y-0.5"
+              className="mb-2 grid h-10 w-10 place-items-center rounded-[14px] bg-[linear-gradient(145deg,#ffd257_0%,#f5b81a_58%,#e09b00_100%)] text-ink-900 shadow-[0_6px_14px_rgba(237,166,0,0.32)] ring-1 ring-ink-900/10 transition-transform hover:-translate-y-0.5"
             >
-              <TornadoMark size={26} />
+              <TornadoMark size={21} colored={false} />
             </Link>
             {nav.map((item) => {
               const Icon = item.icon;
@@ -182,7 +190,16 @@ export function PublicShellClient({
               );
               const inner = (
                 <>
-                  <Icon size={18} strokeWidth={active ? 2 : 1.65} className="transition-transform group-hover:-translate-y-0.5" />
+                  <span
+                    className={cx(
+                      'grid h-8 w-8 place-items-center rounded-[11px] border transition-all group-hover:-translate-y-0.5',
+                      active
+                        ? 'border-brand-300/80 bg-brand-400 text-ink-900 shadow-[0_4px_10px_rgba(237,166,0,0.22)]'
+                        : 'border-ink-100 bg-white text-ink-400 group-hover:border-brand-200 group-hover:bg-brand-50 group-hover:text-brand-700',
+                    )}
+                  >
+                    <Icon size={17} strokeWidth={active ? 2 : 1.7} />
+                  </span>
                   <span>{item.label}</span>
                 </>
               );
@@ -211,18 +228,12 @@ export function PublicShellClient({
                   className="group mt-1.5 flex w-full flex-col items-center gap-1 rounded-[14px] py-2 text-ink-500 transition-colors hover:bg-ink-50"
                   aria-label="내 프로필"
                 >
-                  {viewer.avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={viewer.avatarUrl}
-                      alt=""
-                      className="h-8 w-8 rounded-full border border-brand-200 object-cover"
-                    />
-                  ) : (
-                    <span className="grid h-8 w-8 place-items-center rounded-full bg-brand-400 text-[12px] font-extrabold text-ink-900">
-                      {(viewer.name ?? viewer.email ?? '?').slice(0, 1).toUpperCase()}
-                    </span>
-                  )}
+                  <ProfileAvatar
+                    seed={viewer.id}
+                    name={viewer.name ?? viewer.email}
+                    imageUrl={viewer.avatarUrl}
+                    className="h-9 w-9"
+                  />
                   <span className="w-full truncate text-center text-[9px] font-bold text-ink-700">
                     {viewer.name ?? viewer.email ?? '사용자'}
                   </span>
@@ -269,11 +280,18 @@ export function PublicShellClient({
             );
             const inner = (
               <>
-                {t.my && viewer && viewer.myHref !== '/my' ? (
-                  <LayoutDashboard size={20} strokeWidth={1.6} />
-                ) : (
-                  <Icon size={20} strokeWidth={1.6} />
-                )}
+                <span
+                  className={cx(
+                    'grid h-8 w-8 place-items-center rounded-[11px] border',
+                    active ? 'border-brand-300 bg-brand-400 text-ink-900 shadow-sm' : 'border-transparent bg-ink-50 text-ink-400',
+                  )}
+                >
+                  {t.my && viewer && viewer.myHref !== '/my' ? (
+                    <LayoutDashboard size={18} strokeWidth={1.75} />
+                  ) : (
+                    <Icon size={18} strokeWidth={1.75} />
+                  )}
+                </span>
                 {t.label}
               </>
             );

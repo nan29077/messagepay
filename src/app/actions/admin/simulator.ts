@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@/server/db';
 import { writeAudit } from '@/server/auth';
-import { env } from '@/lib/env';
+import { env, isLocal } from '@/lib/env';
 import { normalizePhone } from '@/lib/crypto';
 import { mockMoAdapter } from '@/server/adapters/mo';
 import { handleMoInbound } from '@/server/services/donation-flow';
@@ -18,7 +18,7 @@ import { run, text, optText } from './shared';
  */
 export async function runMoSimulation(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
-    if (env.appEnv === 'prod') throw new Error('운영 환경에서는 MO 시뮬레이터를 사용할 수 없습니다.');
+    if (!isLocal) throw new Error('이 환경에서는 MO 시뮬레이터를 사용할 수 없습니다. (APP_ENV=local 전용)');
     if (env.mo.provider !== 'mock') {
       throw new Error(`MO_PROVIDER=${env.mo.provider} 상태에서는 mock 시뮬레이터를 실행할 수 없습니다.`);
     }

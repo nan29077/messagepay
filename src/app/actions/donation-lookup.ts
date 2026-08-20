@@ -3,9 +3,9 @@
 import { prisma } from '@/server/db';
 import { kv } from '@/server/redis';
 import { newId } from '@/lib/id';
-import { hmac, maskPhone, normalizePhone, phoneHash, safeEqual } from '@/lib/crypto';
+import { generateNumericCode, hmac, maskPhone, normalizePhone, phoneHash, safeEqual } from '@/lib/crypto';
 import { getMtAdapter } from '@/server/adapters/mt';
-import { env } from '@/lib/env';
+import { env, isLocal } from '@/lib/env';
 import { logger } from '@/lib/logger';
 import { formatWon } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
@@ -68,7 +68,7 @@ function digest(code: string) {
 }
 
 function randomCode() {
-  return String(100000 + Math.floor(Math.random() * 900000));
+  return generateNumericCode(6);
 }
 
 // ---------------------------------------------------------------- 1단계: 인증번호 발송
@@ -112,7 +112,7 @@ export async function requestLookupCode(_prev: LookupState, formData: FormData):
     phoneMasked: masked,
     ticket,
     message: `${masked} 번호로 인증번호를 발송했습니다.`,
-    devCode: env.appEnv !== 'prod' && adapter.info().provider === 'mock' ? code : undefined,
+    devCode: isLocal && adapter.info().provider === 'mock' ? code : undefined,
   };
 }
 

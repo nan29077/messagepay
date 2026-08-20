@@ -85,8 +85,8 @@ async function main() {
 
   // ---------------------------------------------------------------- 크리에이터
   const creatorSeeds = [
-    { email: 'creator1@tornado.kr', name: '바람소리', code: 'TOR-8K2M', mo: '05051001001', mode: 'DEDICATED' as const, keyword: null, avatar: '/avatars-donaido-a-v1.png' },
-    { email: 'creator2@tornado.kr', name: '별하늘', code: 'TOR-3QP7', mo: '05059000000', mode: 'SHARED_PREFIX' as const, keyword: 'TOR3QP7', avatar: '/avatars-donaido-b-v1.png' },
+    { email: 'creator1@tornado.kr', name: '바람소리', code: 'TOR-8K2M', mo: '05051001001', mode: 'DEDICATED' as const, keyword: null },
+    { email: 'creator2@tornado.kr', name: '별하늘', code: 'TOR-3QP7', mo: '05059000000', mode: 'SHARED_PREFIX' as const, keyword: 'TOR3QP7' },
   ];
 
   for (const c of creatorSeeds) {
@@ -106,9 +106,11 @@ async function main() {
         channelName: `${c.name} 채널`, status: 'APPROVED', donationAmount: 3000,
         approvedAt: new Date(),
         description: '문자 한 통으로 응원을 보내주세요.',
-        avatarUrl: c.avatar,
+        avatarUrl: null,
       },
-      update: { status: 'APPROVED', avatarUrl: c.avatar },
+      // 과거 시드에서는 25개 캐릭터가 합쳐진 스프라이트 전체를 저장해 잘못 보였다.
+      // 테스트 계정은 URL을 비우고 userId 기반 자동 캐릭터를 사용한다.
+      update: { status: 'APPROVED', avatarUrl: null },
     });
 
     const codeExists = await prisma.creatorCode.findUnique({ where: { code: c.code } });
@@ -223,6 +225,13 @@ async function main() {
     await prisma.donorProfile.update({ where: { id: donor.id }, data: { userId: donorUser.id } });
   }
 
+  // ---------------------------------------------------------------- 옛 번호 샘플 정리
+  // 050 전환 이전 번호(1588…)로 들어가 UNKNOWN_ROUTE 로 실패한 샘플 수신문자를 지운다.
+  // 지워야 아래 샘플 후원 블록이 다시 실행되어 정상 데이터가 만들어진다.
+  await prisma.moInboundMessage.deleteMany({
+    where: { providerMessageId: { startsWith: 'SEED-MO-' }, result: 'UNKNOWN_ROUTE' },
+  });
+
   // ---------------------------------------------------------------- 샘플 후원 이력
   // 실제 서비스 흐름(handleMoInbound → executePayment)을 그대로 사용해 생성한다.
   // 수기 INSERT 가 아니므로 결제 트랜잭션·정산 원장·MT 발송 기록까지 일관되게 만들어진다.
@@ -233,12 +242,17 @@ async function main() {
       const { handleMoInbound, executePayment } = await import('../src/server/services/donation-flow');
       const { requestRefund } = await import('../src/server/services/refund');
 
+      // 수신번호는 시드에 정의된 크리에이터 MO 번호를 그대로 사용한다.
+      // (번호 체계를 바꿀 때 이 목록을 같이 고치지 않으면 전부 UNKNOWN_ROUTE 로 실패한다)
+      const moA = creatorSeeds[0].mo;
+      const moB = creatorSeeds[1].mo;
+      const kwB = creatorSeeds[1].keyword ? `${creatorSeeds[1].keyword} ` : '';
       const samples: Array<{ to: string; content: string; pay: boolean }> = [
-        { to: '05051001001', content: '오늘 방송 너무 재밌어요! 항상 응원합니다', pay: true },
-        { to: '05051001001', content: '목 관리 잘 하세요. 다음 방송도 기대할게요', pay: true },
-        { to: '05051001001', content: '드디어 구독 1년! 축하드려요', pay: true },
-        { to: '05059000000', content: 'TOR3QP7 별하늘님 노래 최고예요', pay: true },
-        { to: '05051001001', content: '이번 주도 수고 많으셨어요', pay: false }, // 결제 전 단계(확인 대기/한도 차단)로 남긴다
+        { to: moA, content: '오늘 방송 너무 재밌어요! 항상 응원합니다', pay: true },
+        { to: moA, content: '목 관리 잘 하세요. 다음 방송도 기대할게요', pay: true },
+        { to: moA, content: '드디어 구독 1년! 축하드려요', pay: true },
+        { to: moB, content: `${kwB}별하늘님 노래 최고예요`, pay: true },
+        { to: moA, content: '이번 주도 수고 많으셨어요', pay: false }, // 결제 전 단계(확인 대기/한도 차단)로 남긴다
       ];
 
       let refundTarget: string | null = null;
@@ -289,40 +303,8 @@ async function main() {
 
   // ---------------------------------------------------------------- 050 번호 전환
   // 시드 v5: MO 수신번호를 050(0505) 체계로 전환한다. 기존 DB 의 옛 1588 번호를 갱신한다.
-  for (const [oldNumber, nextNumber] of [
-    ['15881001', '05051001001'],
-    ['15889000', '05059000000'],
-  ] as const) {
-    const legacyRows = await prisma.creatorMoNumber.findMany({ where: { phoneNumber: oldNumber } });
-    for (const legacy of legacyRows) {
-      const target = await prisma.creatorMoNumber.findFirst({
-        where: { phoneNumber: nextNumber, keyword: legacy.keyword },
-        select: { id: true },
-      });
-      if (target) {
-        // v5 시드가 먼저 새 번호를 만든 기존 미리보기 DB에서는 중복된 옛 시드 행만 정리한다.
-        await prisma.creatorMoNumber.delete({ where: { id: legacy.id } });
-      } else {
-        await prisma.creatorMoNumber.update({ where: { id: legacy.id }, data: { phoneNumber: nextNumber } });
-      }
-    }
-  }
-
-  // PostgreSQL 복합 UNIQUE는 NULL 키워드를 서로 다른 값으로 보므로, 예전 시드가
-  // 전용번호(keyword=NULL)를 중복 생성했을 수 있다. 알려진 시드 번호만 한 행으로 정리한다.
-  for (const seedNumber of ['05051001001', '05059000000'] as const) {
-    const rows = await prisma.creatorMoNumber.findMany({
-      where: { phoneNumber: seedNumber },
-      orderBy: [{ status: 'asc' }, { createdAt: 'asc' }],
-      select: { id: true, keyword: true },
-    });
-    const seen = new Set<string>();
-    for (const row of rows) {
-      const key = row.keyword ?? '__DEDICATED__';
-      if (seen.has(key)) await prisma.creatorMoNumber.delete({ where: { id: row.id } });
-      else seen.add(key);
-    }
-  }
+  await prisma.creatorMoNumber.updateMany({ where: { phoneNumber: '15881001' }, data: { phoneNumber: '05051001001' } });
+  await prisma.creatorMoNumber.updateMany({ where: { phoneNumber: '15889000' }, data: { phoneNumber: '05059000000' } });
 
   // ---------------------------------------------------------------- 브랜드명 정리
   // 예전 시드로 만들어진 데이터에 남은 '토네이도' 를 '도네이도' 로 바꾼다.

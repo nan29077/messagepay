@@ -16,13 +16,15 @@ import { notifyUser } from '@/server/services/notifications';
 
 export async function replyInquiry(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
-    if (admin.adminPermission !== 'SUPER_ADMIN') throw new Error('문의 관리는 최고 관리자만 처리할 수 있습니다.');
     const inquiryId = requiredId(fd, 'inquiryId', '문의');
     const body = text(fd, 'body').trim();
     if (!body) throw new Error('답변 내용을 입력해 주세요.');
     if (body.length > 2000) throw new Error('답변은 2,000자 이내로 입력해 주세요.');
 
-    const inquiry = await prisma.supportInquiry.findUnique({ where: { id: inquiryId }, select: { id: true, userId: true } });
+    const inquiry = await prisma.supportInquiry.findUnique({
+      where: { id: inquiryId },
+      select: { id: true, userId: true },
+    });
     if (!inquiry) throw new Error('문의를 찾을 수 없습니다.');
 
     await prisma.$transaction([
@@ -35,13 +37,15 @@ export async function replyInquiry(_prev: AdminActionState, fd: FormData): Promi
       }),
     ]);
 
+    // 답변 알림. 회원이면 알림함(종 아이콘)에 남겨 문의 창을 열지 않아도 답변이 온 걸 알 수 있게 한다.
+    // (비회원은 알림 대상이 없으므로 문의 창의 미읽음 배지로만 안내된다)
     if (inquiry.userId) {
       await notifyUser({
         userId: inquiry.userId,
         title: '1:1 문의에 답변이 등록되었습니다',
         body: body.slice(0, 120),
         linkUrl: '/',
-      });
+      }).catch(() => undefined);
     }
 
     await writeAudit({
@@ -60,7 +64,6 @@ export async function replyInquiry(_prev: AdminActionState, fd: FormData): Promi
 
 export async function setInquiryStatus(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
-    if (admin.adminPermission !== 'SUPER_ADMIN') throw new Error('문의 관리는 최고 관리자만 처리할 수 있습니다.');
     const inquiryId = requiredId(fd, 'inquiryId', '문의');
     const status = enumValue(fd, 'status', ['OPEN', 'ANSWERED', 'CLOSED'] as const, '상태');
 
@@ -83,16 +86,5 @@ export async function setInquiryStatus(_prev: AdminActionState, fd: FormData): P
     revalidatePath('/admin/inquiries');
     revalidatePath(`/admin/inquiries/${inquiryId}`);
     return status === 'CLOSED' ? '문의를 종결 처리했습니다.' : '문의 상태를 변경했습니다.';
-  });
-}
-
-/** 문의를 읽음 처리한다 (상세 화면 진입 시 사용). */
-export async function markInquiryRead(inquiryId: string): Promise<void> {
-  const { requireAdmin } = await import('@/server/auth');
-  const admin = await requireAdmin();
-  if (admin.adminPermission !== 'SUPER_ADMIN') throw new Error('문의 관리는 최고 관리자만 확인할 수 있습니다.');
-  await prisma.supportMessage.updateMany({
-    where: { inquiryId, sender: 'USER', readByAdminAt: null },
-    data: { readByAdminAt: new Date() },
   });
 }

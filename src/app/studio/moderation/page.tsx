@@ -6,7 +6,9 @@ import {
   deleteBannedWordAction,
   toggleBannedWordAction,
   unblockDonorAction,
+  addDefaultBannedWordsAction,
 } from '@/app/actions/studio';
+import { FilterTester } from '@/components/studio/filter-tester';
 import { requireCreator } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { formatKst } from '@/lib/datetime';
@@ -22,7 +24,7 @@ const ACTION_LABEL: Record<string, { text: string; tone: 'neutral' | 'warning' |
 export default async function StudioModerationPage() {
   const { creatorId } = await requireCreator();
 
-  const [myWords, globalWords, blocked] = await Promise.all([
+  const [myWords, globalWords, blocked, blockHistory] = await Promise.all([
     prisma.bannedWord.findMany({
       where: { creatorId, scope: 'CREATOR' },
       orderBy: { createdAt: 'desc' },
@@ -37,6 +39,13 @@ export default async function StudioModerationPage() {
       orderBy: { createdAt: 'desc' },
       include: { donor: { select: { id: true, phoneMasked: true, displayName: true } } },
     }),
+    // 금칙어 차단으로 접수 거부된 최근 문자 (차단 사유 조정 근거)
+    prisma.donation.findMany({
+      where: { creatorId, status: 'CONTENT_BLOCKED' },
+      orderBy: { receivedAt: 'desc' },
+      take: 20,
+      select: { id: true, displayName: true, message: true, statusReason: true, receivedAt: true },
+    }),
   ]);
 
   return (
@@ -50,11 +59,18 @@ export default async function StudioModerationPage() {
         </Notice>
 
         <section>
+          <SectionTitle title="금칙어 미리보기" description="문장을 넣어 실제 노출 결과를 미리 확인합니다. (후원이 생성되지 않습니다)" />
+          <Card>
+            <FilterTester />
+          </Card>
+        </section>
+
+        <section>
           <SectionTitle title="내 금칙어 추가" />
           <Card>
             <ActionForm action={createBannedWordAction} submitLabel="금칙어 추가">
               <div className="grid gap-3 md:grid-cols-[2fr_1fr]">
-                <Field label="금칙어" hint="1~40자">
+                <Field label="금칙어" hint="1~40자. 글자 사이 공백·기호를 끼운 우회 표기도 함께 잡습니다.">
                   <Input name="word" maxLength={40} placeholder="예: 특정 비속어" />
                 </Field>
                 <Field label="처리 방식">
@@ -66,6 +82,17 @@ export default async function StudioModerationPage() {
                 </Field>
               </div>
             </ActionForm>
+            <div className="mt-3 border-t border-ink-100 pt-3">
+              <InlineActionForm
+                action={addDefaultBannedWordsAction}
+                submitLabel="기본 비속어 세트 추가"
+                confirmMessage="자주 쓰이는 비속어를 마스킹으로 한 번에 추가합니다. 이후 개별로 차단으로 바꿀 수 있습니다."
+                fields={{}}
+              />
+              <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-400">
+                처음이라면 기본 세트로 시작한 뒤, 필요한 단어만 차단으로 조정하는 것을 권장합니다.
+              </p>
+            </div>
           </Card>
         </section>
 
@@ -171,6 +198,37 @@ export default async function StudioModerationPage() {
                         fields={{ donorId: b.donor.id }}
                       />
                     </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </section>
+
+        <section>
+          <SectionTitle
+            title="금칙어 차단 이력"
+            description="금칙어로 접수가 거부된 최근 문자입니다. 어떤 단어가 걸렸는지 확인해 금칙어를 조정하세요."
+          />
+          {blockHistory.length === 0 ? (
+            <EmptyState title="차단된 문자가 없습니다" description="금칙어(차단)에 걸린 문자가 생기면 여기에 표시됩니다." />
+          ) : (
+            <Table>
+              <thead>
+                <tr>
+                  <Th>시각</Th>
+                  <Th>보낸 사람</Th>
+                  <Th>내용</Th>
+                  <Th>차단 사유</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {blockHistory.map((d) => (
+                  <tr key={d.id}>
+                    <Td className="whitespace-nowrap tabular-nums">{formatKst(d.receivedAt, false)}</Td>
+                    <Td>{d.displayName}</Td>
+                    <Td className="max-w-[280px] break-words text-ink-500">{d.message}</Td>
+                    <Td className="max-w-[220px] break-words text-[12px] text-danger-500">{d.statusReason ?? '-'}</Td>
                   </tr>
                 ))}
               </tbody>

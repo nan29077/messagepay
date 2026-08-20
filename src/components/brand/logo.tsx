@@ -72,12 +72,30 @@ export function Logo({
     <span className="inline-flex items-center gap-1.5">
       <TornadoMark size={compact ? 30 : 34} />
       {!compact ? (
-        <span
-          className={`text-[19px] font-black leading-none tracking-[-0.02em] ${onDark ? 'text-white' : 'text-ink-900'}`}
-        >
-          DONAIDO
-        </span>
+        <Wordmark onDark={onDark} />
       ) : null}
+    </span>
+  );
+}
+
+function Wordmark({ onDark }: { onDark: boolean }) {
+  return (
+    <span
+      aria-label="DONAIDO"
+      className={`inline-flex items-baseline text-[19px] font-black leading-none tracking-[-0.035em] ${onDark ? 'text-white' : 'text-ink-900'}`}
+    >
+      {Array.from('DONAIDO').map((letter, index) => (
+        <span key={`${letter}-${index}`} aria-hidden className="relative inline-block">
+          {letter}
+          {letter === 'D' ? (
+            <span className="pointer-events-none absolute left-[52%] top-[30%] h-[42%] w-[20%] rounded-full bg-brand-400" />
+          ) : letter === 'O' ? (
+            <span className="pointer-events-none absolute left-[36%] top-[28%] h-[45%] w-[28%] rounded-full bg-brand-400" />
+          ) : letter === 'A' ? (
+            <span className="pointer-events-none absolute left-[40%] top-[50%] h-[14%] w-[20%] bg-brand-400 [clip-path:polygon(50%_0,100%_100%,0_100%)]" />
+          ) : null}
+        </span>
+      ))}
     </span>
   );
 }

@@ -1,4 +1,5 @@
 import { ulid } from 'ulid';
+import { randomCodeString } from '@/lib/crypto';
 
 /**
  * ID 는 애플리케이션에서 생성한다(ULID).
@@ -30,11 +31,8 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 혼동 문자 제�
 
 /** 크리에이터 코드: TOR-8K2M */
 export function newCreatorCode(): string {
-  let s = '';
-  for (let i = 0; i < 4; i += 1) {
-    s += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
-  }
-  return `TOR-${s}`;
+  // 예측 가능한 코드는 타인의 후원샵 코드 추측으로 이어지므로 CSPRNG 를 쓴다.
+  return `TOR-${randomCodeString(CODE_ALPHABET, 4)}`;
 }
 
 export function normalizeCreatorCode(input: string): string {

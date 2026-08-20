@@ -3,9 +3,17 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, Home, LogOut } from 'lucide-react';
+import {
+  Activity, BadgeCheck, BookOpenText, ClipboardList, CreditCard, FlaskConical,
+  Flag, Gauge, HeartHandshake, Home, Images, KeyRound, LayoutDashboard, LogOut,
+  Menu, MessageCircleQuestion, MessageSquareText, PanelsTopLeft, Percent, PhoneCall, RadioTower,
+  ScrollText, Send, ServerCog, ShieldAlert, ShieldBan,
+  SlidersHorizontal, Undo2, UserCog, CircleUserRound, UserRoundCog,
+  UsersRound, Video, Volume2, WalletCards, X,
+} from 'lucide-react';
 import { Logo } from '@/components/brand/logo';
 import { NotificationBell } from '@/components/notifications/notification-bell';
+import { ProfileAvatar } from '@/components/profile/generated-avatar';
 import { cx } from '@/components/ui';
 
 /**
@@ -18,8 +26,50 @@ import { cx } from '@/components/ui';
 
 export interface NavGroup {
   title: string;
-  items: Array<{ href: string; label: string }>;
+  items: Array<{ href: string; label: string; icon?: ConsoleIconName }>;
 }
+
+export type ConsoleIconName =
+  | 'activity' | 'admins' | 'audit' | 'banners' | 'codes' | 'contents' | 'creators'
+  | 'dashboard' | 'donations' | 'donors' | 'fees' | 'inquiries' | 'messages'
+  | 'moderation' | 'numbers' | 'overlay' | 'payments' | 'policies' | 'profile'
+  | 'refunds' | 'reports' | 'risk' | 'settlement' | 'simulator' | 'stream'
+  | 'system' | 'terms' | 'tts' | 'users' | 'youtube' | 'settings' | 'send';
+
+const CONSOLE_ICONS = {
+  activity: Activity,
+  admins: UserCog,
+  audit: ClipboardList,
+  banners: Images,
+  codes: KeyRound,
+  contents: BookOpenText,
+  creators: BadgeCheck,
+  dashboard: LayoutDashboard,
+  donations: HeartHandshake,
+  donors: CircleUserRound,
+  fees: Percent,
+  inquiries: MessageCircleQuestion,
+  messages: MessageSquareText,
+  moderation: ShieldBan,
+  numbers: PhoneCall,
+  overlay: PanelsTopLeft,
+  payments: CreditCard,
+  policies: Gauge,
+  profile: UserRoundCog,
+  refunds: Undo2,
+  reports: Flag,
+  risk: ShieldAlert,
+  settlement: WalletCards,
+  simulator: FlaskConical,
+  stream: RadioTower,
+  system: ServerCog,
+  terms: ScrollText,
+  tts: Volume2,
+  users: UsersRound,
+  youtube: Video,
+  settings: SlidersHorizontal,
+  send: Send,
+} satisfies Record<ConsoleIconName, typeof Home>;
 
 export function ConsoleShell({
   title,
@@ -29,7 +79,7 @@ export function ConsoleShell({
 }: {
   title: string;
   groups: NavGroup[];
-  user?: { name: string; role: string };
+  user?: { id: string; name: string; role: string; avatarUrl?: string | null };
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -92,19 +142,30 @@ export function ConsoleShell({
                 <p className="mb-2 px-3 text-[10px] font-extrabold tracking-[0.12em] text-ink-300">{g.title}</p>
                 {g.items.map((item) => {
                   const active = item.href === bestMatch;
+                  const ItemIcon = CONSOLE_ICONS[item.icon ?? 'settings'];
                   return (
                     <Link
                       key={item.href}
                       href={item.href}
                       onClick={() => setOpen(false)}
                       className={cx(
-                        'block rounded-xl px-3 py-2.5 text-[13px] font-semibold transition-all',
+                        'group flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-[13px] font-semibold transition-all',
                         active
                           ? 'bg-brand-100 font-extrabold text-brand-800 shadow-sm'
                           : 'text-ink-500 hover:bg-ink-50 hover:text-ink-900',
                       )}
                     >
-                      {item.label}
+                      <span
+                        className={cx(
+                          'grid h-8 w-8 shrink-0 place-items-center rounded-[10px] border transition-all',
+                          active
+                            ? 'border-brand-300/70 bg-brand-400 text-ink-900 shadow-[0_4px_10px_rgba(237,166,0,0.2)]'
+                            : 'border-ink-100 bg-white text-ink-400 group-hover:border-brand-200 group-hover:bg-brand-50 group-hover:text-brand-700',
+                        )}
+                      >
+                        <ItemIcon size={16} strokeWidth={active ? 2 : 1.7} />
+                      </span>
+                      <span className="min-w-0 truncate">{item.label}</span>
                     </Link>
                   );
                 })}
@@ -116,9 +177,7 @@ export function ConsoleShell({
           <div className="shrink-0 border-t border-ink-100 bg-white px-3 py-3 lg:rounded-b-[24px]">
             {user ? (
               <div className="mb-2 flex items-center gap-2.5 rounded-xl bg-ink-50 px-3 py-2.5">
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-400 text-[12px] font-black text-ink-900">
-                  {user.name.slice(0, 1)}
-                </span>
+                <ProfileAvatar seed={user.id} name={user.name} imageUrl={user.avatarUrl} className="h-9 w-9" />
                 <span className="min-w-0">
                   <span className="block truncate text-[13px] font-bold text-ink-900">{user.name}</span>
                   <span className="block text-[11px] font-semibold text-ink-400">{user.role}</span>

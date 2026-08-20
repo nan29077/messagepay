@@ -41,6 +41,22 @@ function maskRun(match: string): string {
   return `${visible}${'*'.repeat(Math.max(3, match.length - 2))}`;
 }
 
+const RE_ESCAPE = /[.*+?^${}()|[\]\\]/g;
+
+/**
+ * 금칙어 매칭용 정규식.
+ *
+ * 글자 사이에 공백·구두점을 끼워 넣는 우회(예: "바 보", "바.보", "바_보")를 잡기 위해
+ * 각 글자 사이에 구분자 클래스를 허용한다. 구분자에는 문자/숫자를 넣지 않으므로
+ * "바트보" 처럼 다른 글자가 낀 경우는 매칭되지 않아 오탐이 늘지 않는다.
+ */
+export function buildWordRegex(word: string): RegExp {
+  const chars = [...word.trim()].filter((c) => c.trim() !== '').map((c) => c.replace(RE_ESCAPE, '\\$&'));
+  if (chars.length === 0) return /(?!)/g; // 절대 매칭되지 않는 패턴
+  const SEP = '[\\s._\\-*~=+/]*';
+  return new RegExp(chars.join(SEP), 'gi');
+}
+
 export function normalizeText(input: string): string {
   return (input || '')
     .replace(CONTROL, '')
@@ -104,14 +120,14 @@ export function filterContent(
   for (const rule of options.bannedWords ?? []) {
     const word = rule.word.trim();
     if (!word) continue;
-    const re = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    const re = buildWordRegex(word);
     if (!re.test(text)) continue;
     flagged.push(word);
     if (rule.action === 'BLOCK') {
       action = 'BLOCK';
       reasons.push(`금칙어 차단: ${word}`);
     } else if (rule.action === 'MASK') {
-      text = text.replace(new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), (m) => '*'.repeat(m.length));
+      text = text.replace(buildWordRegex(word), (m) => '*'.repeat(m.length));
       if (action === 'ALLOW') action = 'MASK';
       reasons.push(`금칙어 마스킹: ${word}`);
     } else {

@@ -30,12 +30,15 @@ export function WebDonationPanel({
   defaultAmount,
   minAmount,
   maxAmount,
+  paymentMock = false,
 }: {
   creatorId: string;
   creatorName: string;
   defaultAmount: string;
   minAmount: string;
   maxAmount: string;
+  /** 결제 연동이 아직 mock 이면 화면에 반드시 알린다 (가짜 성공 금지 원칙) */
+  paymentMock?: boolean;
 }) {
   const defAmount = BigInt(defaultAmount);
   const min = BigInt(minAmount);
@@ -66,7 +69,15 @@ export function WebDonationPanel({
   const [amount, setAmount] = React.useState<bigint>(defAmount);
   const [customAmount, setCustomAmount] = React.useState('');
   const [message, setMessage] = React.useState('');
-  const requestIdRef = React.useRef<HTMLInputElement>(null);
+  /**
+   * 결제 멱등키.
+   * 금액·메시지를 확정한 시점에 1회 생성해 고정한다. 제출할 때마다 새로 만들면
+   * 더블클릭·새로고침 재전송이 서로 다른 키가 되어 같은 후원이 두 번 출금된다.
+   * 결제가 성공한 뒤에만 새 키로 회전한다.
+   */
+  const [requestId, setRequestId] = React.useState('');
+  const newRequestId = () =>
+    globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${performance.now().toString(36)}`;
 
   const amountChips = React.useMemo(() => {
     const chips: bigint[] = [];
@@ -114,12 +125,21 @@ export function WebDonationPanel({
 
   return (
     <div>
+      {paymentMock ? (
+        <div className="mb-3">
+          <Notice tone="warning" title="현재 모의(mock) 결제 상태입니다">
+            내통장결제·유튜브 전송이 아직 실제 연동 전이라 실제 출금이나 유튜브 댓글 등록은 일어나지 않습니다. 계약과
+            연동이 완료되면 이 화면 그대로 실제 결제로 전환됩니다.
+          </Notice>
+        </div>
+      ) : null}
+
       {/* 시작 전: 문자후원하기 버튼 → 바로 금액·메시지 단계 */}
       {phase === 'idle' ? (
         <div>
           <button type="button" onClick={() => setStarted(true)} className={ctaClass}>
             <MessageSquare size={18} strokeWidth={1.7} />
-            응원 보내기
+            문자후원하기
           </button>
           <p className="mt-2.5 text-center text-[11.5px] leading-relaxed text-ink-400">
             금액과 응원 메시지를 고르면 등록된 내통장결제 계좌에서 바로 결제되고, 메시지가 유튜브 라이브 채팅과 방송
@@ -214,7 +234,15 @@ export function WebDonationPanel({
                 />
               </div>
 
-              <button type="button" disabled={!composeValid} onClick={() => setComposeDone(true)} className={ctaClass}>
+              <button
+                type="button"
+                disabled={!composeValid}
+                onClick={() => {
+                  setRequestId(newRequestId());
+                  setComposeDone(true);
+                }}
+                className={ctaClass}
+              >
                 {composeValid && effectiveAmount !== null
                   ? `${formatWon(effectiveAmount)} 후원 진행 (본인 인증)`
                   : '금액과 메시지를 입력해 주세요'}
@@ -317,19 +345,10 @@ export function WebDonationPanel({
 
           {/* 3. 결제 확인 (즉시 출금) */}
           {phase === 'pay' ? (
-            <form
-              action={donateAction}
-              onSubmit={() => {
-                if (requestIdRef.current) {
-                  requestIdRef.current.value =
-                    globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-                }
-              }}
-              className="space-y-3"
-            >
+            <form action={donateAction} className="space-y-3">
               <input type="hidden" name="session" value={view.session ?? ''} />
               <input type="hidden" name="creatorId" value={creatorId} />
-              <input type="hidden" name="requestId" defaultValue="" ref={requestIdRef} />
+              <input type="hidden" name="requestId" value={requestId} />
               <input type="hidden" name="amount" value={amountValid && effectiveAmount !== null ? effectiveAmount.toString() : ''} />
               <input type="hidden" name="message" value={message} />
 
@@ -386,6 +405,7 @@ export function WebDonationPanel({
                 onClick={() => {
                   setMessage('');
                   setComposeDone(false);
+                  setRequestId('');
                   setView({ ok: true, step: 'ready', session: view.session });
                 }}
                 className="mx-auto h-10 rounded-xl border border-ink-200 px-4 text-[13px] font-bold text-ink-700"
@@ -399,7 +419,7 @@ export function WebDonationPanel({
 
       <p className="mt-4 flex items-center justify-center gap-1.5 border-t border-ink-100 pt-3 text-[11.5px] text-ink-400">
         <Smartphone size={13} strokeWidth={1.8} />
-        휴대전화에서는 응원 보내기 버튼 한 번으로 더 간단하게 후원할 수 있습니다.
+        휴대전화에서는 문자후원하기 버튼 한 번으로 더 간단하게 후원할 수 있습니다.
       </p>
     </div>
   );

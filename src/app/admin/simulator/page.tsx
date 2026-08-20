@@ -7,7 +7,7 @@ import { maskLinkTokens, shortId } from '@/components/admin/mask';
 import { runMoSimulation } from '@/app/actions/admin/simulator';
 import { prisma } from '@/server/db';
 import { readMockOutbox } from '@/server/adapters/mt';
-import { env } from '@/lib/env';
+import { env, isLocal } from '@/lib/env';
 import { maskPhone } from '@/lib/crypto';
 import { formatWon } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
@@ -16,8 +16,8 @@ import { moResultLabel, donationStatusLabel } from '@/lib/labels';
 export const dynamic = 'force-dynamic';
 
 export default async function AdminSimulatorPage() {
-  // 운영 환경에서는 화면 자체를 차단한다.
-  if (env.appEnv === 'prod') {
+  // 로컬 개발 환경이 아니면 화면 자체를 차단한다.
+  if (!isLocal) {
     return (
       <>
         <PageHeader title="MO 시뮬레이터" description="운영 환경에서는 사용할 수 없습니다." />

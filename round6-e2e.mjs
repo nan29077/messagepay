@@ -118,16 +118,16 @@ if (secretUrl) {
 }
 
 // ── 5. 후원 설정: 후원샵 관리 ──────────────────────────────────────
-await cr.goto(`${BASE}/studio/settings`);
+await cr.goto(`${BASE}/studio/settings?tab=page`);
 const setBody = await cr.locator('body').innerText();
-ok('후원샵 관리: 섹션 존재', setBody.includes('후원샵 관리'));
+ok('후원샵 관리: 섹션 존재', setBody.includes('후원페이지 꾸미기'));
 ok('후원샵 관리: 기본 배너 5종', (await cr.locator('input[name=bannerPreset]').count()) >= 6);
-ok('후원샵 관리: 소개·라이브·스위치', (await cr.locator('textarea[name=description]').count())>0 && (await cr.locator('input[name=liveUrl]').count())>0 && (await cr.locator('input[name=liveOn]').count())>0);
+ok('후원샵 관리: 소개·라이브·스위치', (await cr.locator('textarea[name=description]').count())>0 && (await cr.locator('input[name=youtubeLiveUrl]').count())>0 && (await cr.locator('input[name=liveOn]').count())>0);
 // 배너 2 선택 + 라이브 온
 await cr.locator('input[name=bannerPreset][value="/banners/donaido-banner-02.png"]').check({ force: true });
-await cr.fill('input[name=liveUrl]','https://www.youtube.com/watch?v=round6');
+await cr.fill('input[name=youtubeLiveUrl]','https://www.youtube.com/watch?v=round6');
 await cr.locator('input[name=liveOn]').check({ force: true });
-await cr.click('button:has-text("후원샵 설정 저장")');
+await cr.click('button:has-text("후원페이지 설정 저장")');
 await cr.waitForTimeout(2500);
 ok('후원샵 관리: 저장(온에어)', (await cr.locator('body').innerText()).includes('온에어 표시가 켜졌습니다'));
 
@@ -139,9 +139,9 @@ await check.screenshot({ path: '/tmp/c-pc-webdonate.png' });
 await check.close();
 
 // 라이브 끄기 (원상복구)
-await cr.goto(`${BASE}/studio/settings`);
+await cr.goto(`${BASE}/studio/settings?tab=page`);
 await cr.locator('input[name=liveOn]').uncheck({ force: true });
-await cr.click('button:has-text("후원샵 설정 저장")');
+await cr.click('button:has-text("후원페이지 설정 저장")');
 await cr.waitForTimeout(2000);
 
 const fails=results.filter(r=>!r.p);

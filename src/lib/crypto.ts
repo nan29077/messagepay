@@ -121,6 +121,33 @@ export function accountTail4(account: string): string {
   return a.slice(-4);
 }
 
+/** 주민등록번호 정규화(숫자 13자리). 형식이 아니면 null. */
+export function normalizeResident(input: string): string | null {
+  const d = (input || '').replace(/[^0-9]/g, '');
+  return /^\d{13}$/.test(d) ? d : null;
+}
+
+/**
+ * 주민등록번호 표기용 마스킹(예: 901010-1******).
+ * 뒷자리 첫 숫자(성별)까지만 남기고 전부 가린다.
+ */
+export function maskResident(input: string): string {
+  const d = normalizeResident(input);
+  if (!d) return '******-*******';
+  return `${d.slice(0, 6)}-${d[6]}******`;
+}
+
+/** 주민등록번호 유효성(형식 + 체크섬). 신분증 검증은 아니고 오타 방지용이다. */
+export function isValidResident(input: string): boolean {
+  const d = normalizeResident(input);
+  if (!d) return false;
+  const w = [2, 3, 4, 5, 6, 7, 8, 9, 2, 3, 4, 5];
+  let sum = 0;
+  for (let i = 0; i < 12; i += 1) sum += Number(d[i]) * w[i];
+  const check = (11 - (sum % 11)) % 10;
+  return check === Number(d[12]);
+}
+
 /** 빌키/토큰 등 비밀값의 화면 표기용 힌트 */
 export function maskSecret(secret: string): string {
   if (!secret) return '';
@@ -134,6 +161,23 @@ export function maskSecret(secret: string): string {
 
 export function generateToken(bytes = 32): string {
   return crypto.randomBytes(bytes).toString('base64url');
+}
+
+/**
+ * 숫자 인증번호 (CSPRNG).
+ * Math.random() 은 예측 가능해 인증번호 생성에 사용해서는 안 된다.
+ */
+export function generateNumericCode(digits = 6): string {
+  const min = 10 ** (digits - 1);
+  const max = 10 ** digits;
+  return String(crypto.randomInt(min, max));
+}
+
+/** 지정한 알파벳으로 CSPRNG 난수 문자열 생성 (크리에이터 코드 등). */
+export function randomCodeString(alphabet: string, length: number): string {
+  let s = '';
+  for (let i = 0; i < length; i += 1) s += alphabet[crypto.randomInt(0, alphabet.length)];
+  return s;
 }
 
 export function tokenHash(token: string): string {

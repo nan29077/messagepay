@@ -289,6 +289,16 @@ describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
     expect(afterRequest.pending).toBe(2000n);
     expect(afterRequest.available).toBe(496n);
 
+    // 승인(APPROVED) 을 거치지 않은 요청은 지급할 수 없다.
+    await expect(markSettlementPaid(req.id, 'admin-test')).rejects.toThrow(/APPROVED/);
+
+    await prisma.settlementRequest.update({ where: { id: req.id }, data: { status: 'APPROVED' } });
+
+    // 계좌 인증이 해제되면 승인 상태여도 지급을 막는다.
+    await prisma.settlementAccount.update({ where: { creatorId: fx.creatorId }, data: { verified: false } });
+    await expect(markSettlementPaid(req.id, 'admin-test')).rejects.toThrow(/계좌 인증/);
+    await prisma.settlementAccount.update({ where: { creatorId: fx.creatorId }, data: { verified: true } });
+
     await markSettlementPaid(req.id, 'admin-test');
     const afterPaid = await getSettlementSummary(fx.creatorId);
     expect(afterPaid.balance).toBe(496n);

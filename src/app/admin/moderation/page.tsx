@@ -47,7 +47,7 @@ export default async function AdminModerationPage({
       take: PAGE_SIZE,
       select: {
         id: true, donationId: true, creatorId: true, category: true, content: true,
-        status: true, handledBy: true, handledAt: true, createdAt: true,
+        status: true, handledBy: true, handledAt: true, createdAt: true, reporterUserId: true,
       },
     }),
     prisma.report.groupBy({ by: ['status'], _count: { _all: true } }),
@@ -58,6 +58,16 @@ export default async function AdminModerationPage({
       select: { id: true, word: true, action: true, active: true, createdAt: true },
     }),
   ]);
+
+  // 접수자 계정 정보는 통합 관리자 화면에서만 조회한다 (본문에는 저장하지 않는다).
+  const reporterIds = [...new Set(reports.map((r) => r.reporterUserId).filter((v): v is string => Boolean(v)))];
+  const reporters = reporterIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: reporterIds } },
+        select: { id: true, name: true, email: true, phoneMasked: true },
+      })
+    : [];
+  const reporterById = new Map(reporters.map((u) => [u.id, u]));
 
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const countOf = (s: ReportStatus) => byStatus.find((b) => b.status === s)?._count._all ?? 0;
@@ -150,6 +160,7 @@ export default async function AdminModerationPage({
                   <tr>
                     <Th>접수 시각</Th>
                     <Th>분류</Th>
+                    <Th>접수자</Th>
                     <Th>내용</Th>
                     <Th>연결 거래</Th>
                     <Th>상태</Th>
@@ -166,6 +177,18 @@ export default async function AdminModerationPage({
                         ) : null}
                       </Td>
                       <Td>{r.category}</Td>
+                      <Td className="whitespace-nowrap text-[12px]">
+                        {(() => {
+                          const u = r.reporterUserId ? reporterById.get(r.reporterUserId) : null;
+                          if (!u) return <span className="text-ink-400">비회원</span>;
+                          return (
+                            <>
+                              <span className="block text-ink-900">{u.name ?? u.email ?? '회원'}</span>
+                              <span className="block text-[11px] text-ink-400">{u.phoneMasked ?? u.email ?? ''}</span>
+                            </>
+                          );
+                        })()}
+                      </Td>
                       <Td className="max-w-[280px] break-words">{r.content}</Td>
                       <Td className="font-mono text-[11px] text-ink-400">{r.donationId ?? '-'}</Td>
                       <Td>

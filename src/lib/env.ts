@@ -22,10 +22,58 @@ function num(key: string, fallback: number): number {
 
 export type ProviderMode = 'mock' | string;
 
+export type AppEnv = 'local' | 'staging' | 'prod';
+
+
+const NODE_ENV = str('NODE_ENV', 'development');
+
+/** dev/stage 같은 흔한 표기도 받아 준다. */
+const APP_ENV_ALIASES: Record<string, AppEnv> = {
+  local: 'local',
+  dev: 'staging',
+  development: 'staging',
+  stage: 'staging',
+  staging: 'staging',
+  prod: 'prod',
+  production: 'prod',
+};
+
+/**
+ * APP_ENV 결정 규칙 (fail-closed).
+ *
+ * - 명시적으로 지정한 값이 있으면 그 값을 따른다.
+ *   (로컬에서 `npm run build && npm run start` 로 미리보기를 돌리는 경우가 있으므로
+ *    NODE_ENV=production 만으로 prod 로 단정하면 정상적인 로컬 검수가 막힌다)
+ * - **미설정이거나 오타** 면 안전한 쪽으로 판정한다:
+ *   NODE_ENV=production → 'prod', 그 외 → 'local'.
+ *   즉 배포 시 APP_ENV 를 빠뜨려도 테스트 로그인·MO 시뮬레이터·개발 아웃박스가 열리지 않는다.
+ */
+function resolveAppEnv(): AppEnv {
+  const raw = str('APP_ENV', '').trim().toLowerCase();
+  const known = APP_ENV_ALIASES[raw];
+  if (known) return known;
+  return NODE_ENV === 'production' ? 'prod' : 'local';
+}
+
+const APP_ENV = resolveAppEnv();
+const IS_LOCAL = APP_ENV === 'local';
+
+/**
+ * 운영/스테이징에서 반드시 있어야 하는 시크릿.
+ * 로컬에서만 개발용 기본값을 허용하고, 그 외 환경에서는 모듈 로드 시점에 즉시 예외를 던진다.
+ * (기본값으로 조용히 기동해 세션 위조·전화번호 해시 충돌이 발생하는 fail-open 을 막는다)
+ */
+function requiredSecret(key: string, devFallback: string): string {
+  const v = process.env[key];
+  if (v && v.trim() !== '') return v;
+  if (IS_LOCAL) return devFallback;
+  throw new Error(`[env] ${key} 가 설정되지 않았습니다. APP_ENV=${APP_ENV} 환경에서는 필수입니다.`);
+}
+
 export const env = {
-  nodeEnv: str('NODE_ENV', 'development'),
-  appEnv: str('APP_ENV', 'local'),
-  baseUrl: str('APP_BASE_URL', 'http://localhost:3000'),
+  nodeEnv: NODE_ENV,
+  appEnv: APP_ENV,
+  baseUrl: str('APP_BASE_URL', 'http://localhost:3025'),
   timezone: str('APP_TIMEZONE', 'Asia/Seoul'),
 
   databaseUrl: str('DATABASE_URL'),
@@ -37,19 +85,31 @@ export const env = {
   crypto: {
     provider: str('CRYPTO_PROVIDER', 'local') as 'local' | 'aws-kms',
     masterKey: str('CRYPTO_MASTER_KEY'),
-    phoneHashSecret: str('PHONE_HASH_SECRET', 'dev-only-phone-hmac-secret'),
-    sessionSecret: str('SESSION_SECRET', 'dev-only-session-secret'),
+    phoneHashSecret: requiredSecret('PHONE_HASH_SECRET', 'dev-only-phone-hmac-secret'),
+    sessionSecret: requiredSecret('SESSION_SECRET', 'dev-only-session-secret'),
     awsRegion: str('AWS_REGION', 'ap-northeast-2'),
     kmsKeyId: str('AWS_KMS_KEY_ID'),
   },
 
   payment: {
     provider: str('PAYMENT_PROVIDER', 'mock') as ProviderMode,
+    /** 헥토파이낸셜 상점아이디 (mercntId). */
     hectoMid: str('HECTO_MID'),
     hectoLicenseKey: str('HECTO_LICENSE_KEY'),
+    /** custCi / trPrice 암호화용 AES-256 키 (32byte). */
     hectoAesKey: str('HECTO_AES_KEY'),
+    /** 위변조 검증 해시키 (SHA256 signature 재료). */
     hectoHashKey: str('HECTO_HASH_KEY'),
-    hectoApiBase: str('HECTO_API_BASE'),
+    /**
+     * 내통장결제(EzAuth) 호스트는 결제창과 서버 API 가 서로 다르다.
+     * - UI(결제창/SettlePay.js): https://ezauth.settlebank.co.kr
+     * - 서버 API(승인/빌키): https://ezauthapi.settlebank.co.kr:8081
+     * 하나로 합치면 승인 요청이 결제창 호스트로 나가 전건 실패한다.
+     */
+    hectoAuthUiBase: str('HECTO_AUTH_UI_BASE', 'https://ezauth.settlebank.co.kr'),
+    hectoAuthApiBase: str('HECTO_AUTH_API_BASE', 'https://ezauthapi.settlebank.co.kr:8081'),
+    /** 결제 결과 콜백을 받을 자사 URL. 결제창 hash 재료(호스트)에도 사용된다. */
+    hectoCallbackUrl: str('HECTO_CALLBACK_URL'),
     /** 헥토 공식 제한은 결제인증 후 10분. 그보다 짧게 운용한다. */
     confirmTtlSec: num('PAYMENT_CONFIRM_TTL_SEC', 300),
   },
@@ -61,6 +121,9 @@ export const env = {
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),
+    /** MTONET 050/MO 연동 값. */
+    mtonetUserId: str('MTONET_USER_ID'),
+    mtonetApiKey: str('MTONET_API_KEY'),
   },
 
   mt: {
@@ -119,6 +182,8 @@ export const env = {
 } as const;
 
 export const isProd = env.appEnv === 'prod';
+/** 개발 전용 기능(테스트 로그인, MO 시뮬레이터, 개발 아웃박스)을 열어도 되는 환경인지. */
+export const isLocal = env.appEnv === 'local';
 
 /** 운영 배포 전 반드시 통과해야 하는 환경 점검 */
 export function assertProductionSafety(): string[] {
@@ -129,6 +194,28 @@ export function assertProductionSafety(): string[] {
   if (env.crypto.phoneHashSecret.startsWith('dev-only')) problems.push('PHONE_HASH_SECRET 이 기본값입니다.');
   if (env.allowInMemoryFallback) problems.push('운영에서는 ALLOW_INMEMORY_FALLBACK=false 여야 합니다.');
   if (env.mo.allowedIps.length === 0) problems.push('MO_ALLOWED_IPS 가 비어 있습니다.');
+  if (!env.mo.webhookSecret) problems.push('MO_WEBHOOK_SECRET 이 비어 있습니다.');
   if (env.payment.provider === 'mock') problems.push('PAYMENT_PROVIDER 가 mock 입니다.');
+  if (!env.baseUrl.startsWith('https://')) problems.push('운영에서는 APP_BASE_URL 이 https 여야 합니다.');
+  if (env.payment.provider !== 'mock') {
+    if (!env.payment.hectoMid) problems.push('HECTO_MID 가 비어 있습니다.');
+    if (!env.payment.hectoHashKey) problems.push('HECTO_HASH_KEY 가 비어 있습니다.');
+    if (!env.payment.hectoAesKey) problems.push('HECTO_AES_KEY 가 비어 있습니다.');
+    if (env.payment.hectoAuthUiBase === env.payment.hectoAuthApiBase) {
+      problems.push('HECTO_AUTH_UI_BASE 와 HECTO_AUTH_API_BASE 는 서로 다른 호스트여야 합니다.');
+    }
+  }
   return problems;
+}
+
+/**
+ * 부팅 시 1회 호출한다 (src/instrumentation.ts).
+ * 운영 환경에서 위 점검을 통과하지 못하면 기동 자체를 중단시킨다.
+ * — 잘못된 설정으로 조용히 서비스가 뜨는 것이 가장 위험하다.
+ */
+export function assertBootSafety(): void {
+  const problems = assertProductionSafety();
+  if (problems.length === 0) return;
+  const msg = `[env] 운영 환경 설정 점검 실패\n- ${problems.join('\n- ')}`;
+  throw new Error(msg);
 }

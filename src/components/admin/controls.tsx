@@ -58,10 +58,10 @@ export function FilterBar({
     <form
       method="get"
       action={action}
-      className="mb-4 flex flex-col items-stretch gap-2 rounded-2xl border border-ink-100 bg-white p-3 sm:flex-row sm:flex-wrap sm:items-end [&>label]:w-full sm:[&>label]:w-auto"
+      className="mb-4 flex flex-wrap items-end gap-2 rounded-2xl border border-ink-100 bg-white p-3"
     >
       {children}
-      <div className="flex w-full items-center gap-2 pb-0.5 sm:w-auto [&>*]:flex-1 sm:[&>*]:flex-none">
+      <div className="flex items-center gap-2 pb-0.5">
         <Button type="submit" size="sm" variant="primary">
           조회
         </Button>
@@ -85,19 +85,22 @@ export function Pager({
   page,
   lastPage,
   total,
+  pageParam = 'page',
 }: {
   basePath: string;
   params: Record<string, string | undefined>;
   page: number;
   lastPage: number;
   total: number;
+  /** 한 화면에 목록이 둘 이상일 때 페이지 파라미터 이름을 분리한다. */
+  pageParam?: string;
 }) {
   const href = (p: number) => {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== '' && k !== 'page') qs.set(k, v);
+      if (v !== undefined && v !== '' && k !== pageParam) qs.set(k, v);
     }
-    qs.set('page', String(p));
+    qs.set(pageParam, String(p));
     return `${basePath}?${qs.toString()}`;
   };
 

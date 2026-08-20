@@ -11,7 +11,8 @@
  *   3 - 브랜드명 변경(토네이도 → 도네이도)을 기존 데이터에 반영
  *   4 - 크리에이터 프로필 캐릭터(아바타) 이미지 적용
  *   5 - MO 수신번호 050(0505) 체계 전환
- *   6 - 이전 미리보기 DB의 중복 전용번호 정리
+ *   6 - 샘플 후원이 실제 MO 번호를 쓰도록 수정(옛 번호 실패분 정리)
+ *   7 - 테스트 크리에이터의 잘못된 전체 캐릭터 시트 URL 제거
  */
-export const SEED_VERSION = 6;
+export const SEED_VERSION = 7;
 export const SEED_VERSION_KEY = 'seed.version';

@@ -446,6 +446,42 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
     return { ok: false, status: 'UNREGISTERED', message: '등록된 결제수단이 없습니다.' };
   }
 
+  // 결제 직전 한도 재검사.
+  // 카운터는 결제 성공 시에만 증가하므로, 확인 링크를 여러 장 받아 두었다가 한꺼번에 누르면
+  // 접수 시점 검사만으로는 일/월 한도를 얼마든지 넘길 수 있다. 실제 출금 직전에 다시 확인한다.
+  const blockedNow = await prisma.blockedDonor.findUnique({
+    where: { creatorId_donorId: { creatorId: donation.creatorId, donorId: donation.donorId! } },
+  });
+  const limitNow = await checkLimits({
+    donor: donation.donor,
+    creatorId: donation.creatorId,
+    amount: donation.amount,
+    blockedByCreator: Boolean(blockedNow),
+    // 접수 시점에 이미 속도 제한 카운터를 소진했다. 여기서 또 올리면 1건이 2건으로 세어진다.
+    consumeVelocity: false,
+  });
+  if (!limitNow.ok) {
+    await setStatus(donationId, 'LIMIT_BLOCKED', `${limitNow.code}: ${limitNow.message}`);
+    await prisma.riskDetection.create({
+      data: {
+        id: newId(),
+        donorId: donation.donorId!,
+        creatorId: donation.creatorId,
+        donationId: donation.id,
+        type: limitNow.code === 'VELOCITY' || limitNow.code === 'COOLDOWN' ? 'VELOCITY' : 'DAILY_LIMIT',
+        level: 'MEDIUM',
+        detail: { code: limitNow.code, message: limitNow.message, stage: 'PRE_PAYMENT' } as object,
+      },
+    });
+    await sendMtForDonor(
+      donation.donorId!,
+      tpl.tplLimitBlocked(donation.creator.displayName, limitNow.message ?? '이용 한도'),
+      donationId,
+      donation.creatorId,
+    );
+    return { ok: false, status: 'LIMIT_BLOCKED', message: limitNow.message ?? '이용 한도를 초과했습니다.' };
+  }
+
   // 결제 트랜잭션은 거래당 1건만 생성한다(주문번호를 멱등키로 재사용).
   let txn = await prisma.paymentTransaction.findFirst({ where: { donationId }, orderBy: { requestedAt: 'desc' } });
   if (!txn) {

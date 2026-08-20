@@ -21,7 +21,9 @@ export function SupportForm({ defaultTransactionNo }: { defaultTransactionNo?: s
           <div className="min-w-0">
             <CardTitle>문의가 접수되었습니다</CardTitle>
             <p className="mt-1.5 text-[13px] leading-relaxed text-ink-500">
-              담당자가 확인 후 순차적으로 답변드립니다. 추가 문의 시 아래 접수번호를 알려주세요.
+              담당자가 확인 후 순차적으로 답변드립니다. 답변이 등록되면 화면 오른쪽 아래{' '}
+              <strong className="font-bold text-ink-700">문의 버튼</strong>에 알림 배지가 표시되고, 버튼을 눌러
+              내용을 바로 확인하실 수 있습니다. 추가 문의 시 아래 접수번호를 알려주세요.
             </p>
           </div>
         </div>

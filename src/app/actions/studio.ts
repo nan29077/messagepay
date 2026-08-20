@@ -6,10 +6,12 @@ import { prisma } from '@/server/db';
 import { requireCreator } from '@/server/auth';
 import { newId } from '@/lib/id';
 import { env } from '@/lib/env';
-import { accountTail4, decrypt, encrypt, generateToken, maskName, maskSecret, tokenHash } from '@/lib/crypto';
+import { accountTail4, decrypt, encrypt, generateToken, isValidResident, maskName, maskSecret, normalizeResident, tokenHash } from '@/lib/crypto';
 import { sendTestOverlay } from '@/server/services/broadcast-dispatch';
 import { resolvePolicy } from '@/server/services/limits';
 import { createSettlementRequest } from '@/server/services/settlement';
+import { loadBannedWords } from '@/server/services/donation-flow';
+import { filterContent } from '@/server/services/content-filter';
 import { getYouTubeAdapter } from '@/server/adapters/youtube';
 import { getStreamAdapter } from '@/server/adapters/stream';
 import { bankName } from '@/components/studio/banks';
@@ -533,6 +535,64 @@ export async function deleteBannedWordAction(
   });
 }
 
+/** 자주 쓰는 기본 금칙어 세트(비속어 위주). 마스킹으로 등록한다. */
+const DEFAULT_BANNED_WORDS = [
+  '씨발', '시발', '개새끼', '병신', '지랄', '좆', '존나', '썅', '엿먹어', '닥쳐',
+  '창녀', '보지', '자지', '섹스', '느금마', '니미', '꺼져', '죽어', '새끼',
+];
+
+/**
+ * 기본 금칙어 세트를 한 번에 추가한다.
+ * 이미 등록된 단어는 건너뛴다. 등록 후 개별로 처리 방식·사용 여부를 조정할 수 있다.
+ */
+export async function addDefaultBannedWordsAction(
+  _prev: StudioActionState,
+  _formData: FormData,
+): Promise<StudioActionState> {
+  return withCreator(async (creatorId) => {
+    const existing = new Set(
+      (await prisma.bannedWord.findMany({ where: { creatorId, scope: 'CREATOR' }, select: { word: true } })).map((w) => w.word),
+    );
+    const toAdd = DEFAULT_BANNED_WORDS.filter((w) => !existing.has(w));
+    if (toAdd.length === 0) return { ok: true, message: '기본 금칙어가 이미 모두 등록되어 있습니다.' };
+
+    await prisma.bannedWord.createMany({
+      data: toAdd.map((word) => ({ id: newId(), word, action: 'MASK' as const, scope: 'CREATOR' as const, creatorId, active: true })),
+    });
+    revalidatePath('/studio/moderation');
+    return { ok: true, message: `기본 금칙어 ${toAdd.length}개를 마스킹으로 추가했습니다. 필요에 따라 차단으로 바꿀 수 있습니다.` };
+  });
+}
+
+/**
+ * 금칙어 미리보기 — 입력 문장에 내 금칙어/전역 금칙어를 적용한 결과를 돌려준다.
+ * 실제 후원을 만들지 않고 필터 결과만 확인한다.
+ */
+export async function testBannedWordsAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withCreator(async (creatorId) => {
+    const sample = text(formData, 'sample');
+    if (!sample) return { ok: false, message: '테스트할 문장을 입력해 주세요.' };
+
+    const rules = await loadBannedWords(creatorId);
+    const result = filterContent(sample, { bannedWords: rules, maxLength: 200 });
+
+    const verdict =
+      result.action === 'BLOCK'
+        ? '차단됨 (이 문장은 후원으로 접수되지 않습니다)'
+        : result.action === 'MASK'
+          ? '마스킹 적용됨 (일부가 가려집니다)'
+          : '통과 (그대로 노출됩니다)';
+
+    return {
+      ok: true,
+      message: `[${verdict}] 노출 결과: "${result.clean}"${result.reasons.length ? ` · 적용: ${result.reasons.join(', ')}` : ''}`,
+    };
+  });
+}
+
 // ===========================================================================
 // 정산
 // ===========================================================================
@@ -546,7 +606,38 @@ export async function requestSettlementAction(
     if (amount === null || amount <= 0n) return { ok: false, message: '정산 요청 금액을 숫자로 입력해 주세요.' };
 
     const memo = text(formData, 'memo').slice(0, 200) || undefined;
-    const created = await createSettlementRequest(creatorId, amount, memo);
+
+    // 개인(사업소득 3.3% 원천징수) 크리에이터는 신고용 주민등록번호가 필수다.
+    const residentRaw = text(formData, 'resident');
+    const agreed = checked(formData, 'residentAgree');
+    // 마스킹만 전송되는 재사용 케이스(값에 * 포함)는 신규 입력으로 취급하지 않는다.
+    const isNewResident = residentRaw && !residentRaw.includes('*');
+
+    // 이미 등록해 둔(파기 전) 주민번호가 있으면 재입력 없이 진행할 수 있다.
+    const prior = await prisma.settlementRequest.findFirst({
+      where: { creatorId, residentEnc: { not: null } },
+      orderBy: { requestedAt: 'desc' },
+      select: { residentEnc: true },
+    });
+
+    let resident: string | null = null;
+    if (isNewResident) {
+      if (!agreed) return { ok: false, message: '주민등록번호 수집·이용에 동의해 주세요.' };
+      const norm = normalizeResident(residentRaw);
+      if (!norm) return { ok: false, message: '주민등록번호 13자리를 정확히 입력해 주세요.' };
+      if (!isValidResident(norm)) return { ok: false, message: '주민등록번호가 올바르지 않습니다. 다시 확인해 주세요.' };
+      resident = norm;
+    } else if (prior?.residentEnc) {
+      // 기존 등록분을 재사용한다.
+      resident = decrypt(prior.residentEnc);
+    } else {
+      return {
+        ok: false,
+        message: '원천징수 신고를 위해 주민등록번호를 입력하고 수집·이용에 동의해 주세요.',
+      };
+    }
+
+    const created = await createSettlementRequest(creatorId, amount, { memo, resident });
 
     revalidatePath('/studio/settlement');
     revalidatePath('/studio');
@@ -618,18 +709,48 @@ const imageUrlSchema = z.union([
   z.string().regex(/^\/[^\s]*$/u, '이미지 주소는 http(s) 주소 또는 / 로 시작하는 경로여야 합니다.'),
 ]);
 
-type LivePlatform = 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK';
-
-function isPlatformUrl(url: string, platform: LivePlatform): boolean {
+function isYouTubeUrl(url: string): boolean {
   try {
     const u = new URL(url);
-    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
-    if (platform === 'YOUTUBE') return /(^|\.)youtube\.com$/.test(u.hostname) || u.hostname === 'youtu.be';
-    if (platform === 'INSTAGRAM') return /(^|\.)instagram\.com$/.test(u.hostname);
-    return /(^|\.)tiktok\.com$/.test(u.hostname);
+    return /(^|\.)youtube\.com$/.test(u.hostname) || u.hostname === 'youtu.be';
   } catch {
     return false;
   }
+}
+
+/** 후원샵 라이브에 연결할 수 있는 플랫폼과 허용 호스트 */
+const LIVE_PLATFORMS = {
+  YOUTUBE: { label: '유튜브', field: 'youtubeLiveUrl', test: isYouTubeUrl, hint: 'youtube.com 또는 youtu.be' },
+  INSTAGRAM: {
+    label: '인스타그램',
+    field: 'instagramLiveUrl',
+    test: (url: string) => {
+      try {
+        return /(^|\.)instagram\.com$/.test(new URL(url).hostname);
+      } catch {
+        return false;
+      }
+    },
+    hint: 'instagram.com',
+  },
+  TIKTOK: {
+    label: '틱톡',
+    field: 'tiktokLiveUrl',
+    test: (url: string) => {
+      try {
+        return /(^|\.)tiktok\.com$/.test(new URL(url).hostname);
+      } catch {
+        return false;
+      }
+    },
+    hint: 'tiktok.com',
+  },
+} as const;
+
+export type LivePlatform = keyof typeof LIVE_PLATFORMS;
+
+function isLivePlatform(v: string): v is LivePlatform {
+  return v in LIVE_PLATFORMS;
 }
 
 export async function updateCreatorProfileAction(
@@ -637,24 +758,24 @@ export async function updateCreatorProfileAction(
   formData: FormData,
 ): Promise<StudioActionState> {
   return withCreator(async (creatorId) => {
+    // 소개(description)는 후원샵 관리에서만 수정한다.
+    // 여기서 함께 저장하면 프로필만 저장했을 때 후원샵 소개가 지워진다.
     const parsed = z
       .object({
         displayName: z.string().trim().min(1).max(30),
         channelName: z.string().trim().max(50),
-        description: z.string().trim().max(300),
         avatarUrl: imageUrlSchema,
       })
       .safeParse({
         displayName: text(formData, 'displayName'),
         channelName: text(formData, 'channelName'),
-        description: text(formData, 'description'),
         avatarUrl: text(formData, 'avatarUrl'),
       });
     if (!parsed.success) {
       return {
         ok: false,
         message:
-          '표시명(1~30자), 채널명(50자 이내), 소개(300자 이내)를 확인하고 아바타 주소는 http(s) 주소 또는 / 로 시작하는 경로로 입력해 주세요.',
+          '표시명(1~30자), 채널명(50자 이내)을 확인하고 아바타 주소는 http(s) 주소 또는 / 로 시작하는 경로로 입력해 주세요.',
       };
     }
 
@@ -663,7 +784,6 @@ export async function updateCreatorProfileAction(
       data: {
         displayName: parsed.data.displayName,
         channelName: parsed.data.channelName || null,
-        description: parsed.data.description || null,
         avatarUrl: parsed.data.avatarUrl || null,
       },
     });
@@ -692,15 +812,14 @@ export async function updateDonationPageAction(
         youtubeLiveUrl: z.string().trim().max(300),
         instagramLiveUrl: z.string().trim().max(300),
         tiktokLiveUrl: z.string().trim().max(300),
-        livePlatform: z.enum(['YOUTUBE', 'INSTAGRAM', 'TIKTOK']),
       })
       .safeParse({
         bannerUrl: text(formData, 'bannerUrl'),
         description: text(formData, 'description'),
-        youtubeLiveUrl: text(formData, 'youtubeLiveUrl'),
+        // 예전 단일 필드(liveUrl)로 저장하던 폼과도 호환되게 받는다.
+        youtubeLiveUrl: text(formData, 'youtubeLiveUrl') || text(formData, 'liveUrl'),
         instagramLiveUrl: text(formData, 'instagramLiveUrl'),
         tiktokLiveUrl: text(formData, 'tiktokLiveUrl'),
-        livePlatform: text(formData, 'livePlatform') || 'YOUTUBE',
       });
     if (!parsed.success) {
       return {
@@ -716,23 +835,37 @@ export async function updateDonationPageAction(
     const bannerUrl =
       bannerPreset === 'custom' ? parsed.data.bannerUrl || null : bannerPreset ? bannerPreset : null;
 
-    const { youtubeLiveUrl, instagramLiveUrl, tiktokLiveUrl, livePlatform } = parsed.data;
-    const links: Record<LivePlatform, string> = {
-      YOUTUBE: youtubeLiveUrl,
-      INSTAGRAM: instagramLiveUrl,
-      TIKTOK: tiktokLiveUrl,
+    const liveOn = checked(formData, 'liveOn');
+    const rawPlatform = text(formData, 'livePlatform') || 'YOUTUBE';
+    if (!isLivePlatform(rawPlatform)) {
+      return { ok: false, message: '라이브 플랫폼 선택 값이 올바르지 않습니다.' };
+    }
+    const platform: LivePlatform = rawPlatform;
+
+    const urls: Record<LivePlatform, string> = {
+      YOUTUBE: parsed.data.youtubeLiveUrl,
+      INSTAGRAM: parsed.data.instagramLiveUrl,
+      TIKTOK: parsed.data.tiktokLiveUrl,
     };
-    const labels: Record<LivePlatform, string> = { YOUTUBE: '유튜브', INSTAGRAM: '인스타그램', TIKTOK: '틱톡' };
-    for (const platform of Object.keys(links) as LivePlatform[]) {
-      if (links[platform] && !isPlatformUrl(links[platform], platform)) {
-        return { ok: false, message: `${labels[platform]} 주소 형식을 확인해 주세요.` };
+
+    // 입력한 주소는 플랫폼별 호스트로 검증한다. 엉뚱한 주소가 저장되면 후원자가 빈 페이지로 이동한다.
+    for (const key of Object.keys(urls) as LivePlatform[]) {
+      const url = urls[key];
+      if (url && !LIVE_PLATFORMS[key].test(url)) {
+        return {
+          ok: false,
+          message: `${LIVE_PLATFORMS[key].label} 라이브 주소는 ${LIVE_PLATFORMS[key].hint} 주소만 사용할 수 있습니다.`,
+        };
       }
     }
 
-    const liveOn = checked(formData, 'liveOn');
-    const activeLiveUrl = links[livePlatform];
-    if (liveOn && !activeLiveUrl) {
-      return { ok: false, message: `방송중 스위치를 켜려면 선택한 ${labels[livePlatform]} 라이브 주소를 입력해 주세요.` };
+    // 실제로 노출되는 주소는 선택한 플랫폼의 주소다.
+    const activeUrl = urls[platform];
+    if (liveOn && !activeUrl) {
+      return {
+        ok: false,
+        message: `방송중 스위치를 켜려면 ${LIVE_PLATFORMS[platform].label} 라이브 주소를 먼저 입력해 주세요.`,
+      };
     }
 
     await prisma.creatorProfile.update({
@@ -741,12 +874,12 @@ export async function updateDonationPageAction(
         bannerUrl,
         description: parsed.data.description || null,
         liveOn,
-        livePlatform,
-        youtubeLiveUrl: youtubeLiveUrl || null,
-        instagramLiveUrl: instagramLiveUrl || null,
-        tiktokLiveUrl: tiktokLiveUrl || null,
-        // 구버전 화면 및 외부 연동 호환용 현재 활성 주소
-        liveUrl: activeLiveUrl || null,
+        livePlatform: platform,
+        youtubeLiveUrl: urls.YOUTUBE || null,
+        instagramLiveUrl: urls.INSTAGRAM || null,
+        tiktokLiveUrl: urls.TIKTOK || null,
+        // 후원샵은 liveUrl 하나만 보므로 선택한 플랫폼 주소를 여기에 반영한다.
+        liveUrl: activeUrl || null,
       },
     });
 
@@ -756,7 +889,7 @@ export async function updateDonationPageAction(
     return {
       ok: true,
       message: liveOn
-        ? '후원샵 설정을 저장했습니다. 후원샵에 온에어 표시가 켜졌습니다.'
+        ? `후원샵 설정을 저장했습니다. ${LIVE_PLATFORMS[platform].label} 라이브로 온에어 표시가 켜졌습니다.`
         : '후원샵 설정을 저장했습니다.',
     };
   });

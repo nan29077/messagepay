@@ -5,9 +5,9 @@ import { prisma } from '@/server/db';
 import { kv } from '@/server/redis';
 import { getSessionUser } from '@/server/auth';
 import { newId } from '@/lib/id';
-import { encrypt, hmac, maskPhone, normalizePhone, phoneHash, safeEqual } from '@/lib/crypto';
+import { encrypt, generateNumericCode, hmac, maskPhone, normalizePhone, phoneHash, safeEqual } from '@/lib/crypto';
 import { getMtAdapter } from '@/server/adapters/mt';
-import { env } from '@/lib/env';
+import { env, isLocal } from '@/lib/env';
 import { logger } from '@/lib/logger';
 
 /**
@@ -62,9 +62,8 @@ function codeDigest(code: string): string {
 }
 
 function randomCode(): string {
-  // 000000 방지를 위해 100000~999999
-  const n = 100000 + Math.floor(Math.random() * 900000);
-  return String(n);
+  // 000000 방지를 위해 100000~999999 (CSPRNG)
+  return generateNumericCode(6);
 }
 
 // ---------------------------------------------------------------- 1단계: 인증번호 발송
@@ -127,7 +126,7 @@ export async function requestPhoneVerification(
     phoneMasked: masked,
     message: `${masked} 번호로 인증번호를 발송했습니다.`,
     // 실제 문자 발송 계약 전(mock 어댑터)이므로, 비운영 환경에서만 코드를 화면에 노출해 검증을 돕는다.
-    devCode: env.appEnv !== 'prod' && adapter.info().provider === 'mock' ? code : undefined,
+    devCode: isLocal && adapter.info().provider === 'mock' ? code : undefined,
   };
 }
 

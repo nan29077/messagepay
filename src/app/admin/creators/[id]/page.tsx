@@ -5,7 +5,7 @@ import {
   Badge, Card, CardTitle, DataRow, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th,
 } from '@/components/ui';
 import { ActionButton, ActionForm, SelectActionForm } from '@/components/admin/action-form';
-import { updateCreatorStatus, updateCreatorPaymentMode, reissueCreatorCode, updateCreatorAmountBounds } from '@/app/actions/admin/accounts';
+import { updateCreatorStatus, updateCreatorPaymentMode, reissueCreatorCode, updateCreatorAmountBounds, setSettlementAccountVerified } from '@/app/actions/admin/accounts';
 import { prisma } from '@/server/db';
 import { getSettlementSummary } from '@/server/services/settlement';
 import { resolveFeePolicy } from '@/server/services/settlement';
@@ -304,6 +304,31 @@ export default async function AdminCreatorDetailPage({ params }: { params: Promi
                 <p className="text-[13px] text-ink-400">등록된 정산 계좌가 없습니다.</p>
               )}
             </div>
+
+            {creator.settlementAccount ? (
+              <div className="mt-3 border-t border-ink-100 pt-3">
+                <p className="mb-2 text-[12px] leading-relaxed text-ink-500">
+                  예금주 실명확인 API 연동 전까지는 증빙(통장사본·사업자등록증)을 확인한 뒤 수동으로 처리합니다.
+                  인증되지 않은 계좌로는 정산을 요청할 수 없습니다.
+                </p>
+                {creator.settlementAccount.verified ? (
+                  <ActionButton
+                    action={setSettlementAccountVerified}
+                    values={{ creatorId: creator.id, verified: 'false' }}
+                    label="인증 해제"
+                    variant="danger"
+                    confirm="정산 계좌 인증을 해제합니다. 재확인 전까지 이 크리에이터는 정산을 요청할 수 없습니다."
+                  />
+                ) : (
+                  <ActionButton
+                    action={setSettlementAccountVerified}
+                    values={{ creatorId: creator.id, verified: 'true' }}
+                    label="실명확인 완료 처리"
+                    confirm="증빙 확인이 끝났습니까? 인증 완료로 처리하면 이 크리에이터가 정산을 요청할 수 있습니다."
+                  />
+                )}
+              </div>
+            ) : null}
           </Card>
 
           <Card>

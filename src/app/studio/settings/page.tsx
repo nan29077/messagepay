@@ -5,6 +5,7 @@ import { Badge, Card, CardTitle, DataRow, Field, Input, Notice, SectionTitle, Te
 import { DEFAULT_BANNERS, defaultBannerFor } from '@/lib/banners';
 import { PageHeader } from '@/components/layout/console-shell';
 import { ActionForm } from '@/components/studio/action-form';
+import { ImageUploadField } from '@/components/studio/image-upload-field';
 import { DonationPageShare } from '@/components/studio/donation-page-share';
 import { updateDonationSettingsAction, updateDonationPageAction } from '@/app/actions/studio';
 import { requireCreator } from '@/server/auth';
@@ -236,15 +237,17 @@ export default async function StudioSettingsPage({
                     직접 입력
                   </label>
                 </div>
-                <div className="mt-2">
-                  <Input
+                <div className="mt-3">
+                  <ImageUploadField
                     name="bannerUrl"
+                    label="직접 입력 배너 (파일 업로드 또는 URL)"
+                    aspect="wide"
                     defaultValue={
                       creator.bannerUrl && !DEFAULT_BANNERS.includes(creator.bannerUrl as (typeof DEFAULT_BANNERS)[number])
                         ? creator.bannerUrl
                         : ''
                     }
-                    placeholder="직접 입력 선택 시: /이미지 경로 또는 https:// (권장 비율 3:1 이상)"
+                    hint="위에서 '직접 입력'을 선택한 경우 적용됩니다. 권장 비율 3:1 이상."
                   />
                 </div>
               </div>

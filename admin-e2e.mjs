@@ -16,13 +16,22 @@ ok('관리자 로그인', page.url().includes('/admin'));
 // 1. 한도 정책 페이지: 새 필드 노출 + 전역 정책 등록(횟수 제한 포함)
 await page.goto(`${BASE}/admin/policies`);
 ok('정책: 1인 1일 최대 건수 필드', (await page.locator('input[name=donorDailyMaxCount]').count())>0);
-const form = page.locator('form').filter({ has: page.locator('select[name=scope]') }).first();
-await form.locator('select[name=scope]').selectOption('GLOBAL');
-await form.locator('input[name=donorDailyMaxCount]').fill('25');
-await form.locator('button:has-text("정책 등록")').click();
+// 활성 전역 정책은 1개만 허용되므로(의도된 제약), 기존 전역 정책을 수정하는 경로로 검증한다.
+const editForm = page.locator('form').filter({ has: page.locator('button:has-text("변경 저장")') }).first();
+await editForm.locator('input[name=donorDailyMaxCount]').fill('25');
+await editForm.locator('button:has-text("변경 저장")').click();
 await page.waitForTimeout(2500);
 const pbody = await page.locator('body').innerText();
-ok('정책: 전역 정책 등록(건수 25)', pbody.includes('새 한도 정책을 등록했습니다'), pbody.match(/정책[^\n]*습니다/)?.[0]??'');
+ok('정책: 1인 1일 최대 건수 저장', pbody.includes('한도 정책을 저장했습니다'), pbody.match(/정책[^\n]*습니다/)?.[0]??'');
+await page.reload();
+const savedCount = await page.locator('form').filter({ has: page.locator('button:has-text("변경 저장")') }).first().locator('input[name=donorDailyMaxCount]').inputValue();
+ok('정책: 저장값 유지(25)', savedCount === '25', savedCount);
+// 중복 전역 정책 등록이 차단되는지도 확인
+const form = page.locator('form').filter({ has: page.locator('select[name=scope]') }).first();
+await form.locator('select[name=scope]').selectOption('GLOBAL');
+await form.locator('button:has-text("정책 등록")').click();
+await page.waitForTimeout(2500);
+ok('정책: 활성 전역 정책 중복 차단', (await page.locator('body').innerText()).includes('활성 전역 정책이 이미 있습니다'));
 
 // 2. 크리에이터 목록: 공통 범위 일괄 적용
 await page.goto(`${BASE}/admin/creators`);

@@ -1,12 +1,14 @@
 import { notFound } from 'next/navigation';
-import { Badge, Card, CardTitle, DataRow, EmptyState, Field, Input, Notice, SectionTitle, Table, Td, Textarea, Th } from '@/components/ui';
+import { Badge, Card, CardTitle, DataRow, EmptyState, Field, Input, Notice, SectionTitle, Table, Td, Th } from '@/components/ui';
 import { PageHeader } from '@/components/layout/console-shell';
 import { ActionForm } from '@/components/studio/action-form';
+import { ImageUploadField } from '@/components/studio/image-upload-field';
 import { updateCreatorProfileAction } from '@/app/actions/studio';
 import { requireCreator } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { formatKst } from '@/lib/datetime';
 import { creatorStatusLabel } from '@/lib/labels';
+import { ProfileAvatar } from '@/components/profile/generated-avatar';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,8 +45,22 @@ export default async function StudioSettingsProfilePage() {
         </section>
 
         <section>
-          <SectionTitle title="프로필 수정" description="후원 페이지와 후원 알림에 표시되는 정보입니다." />
+          <SectionTitle title="프로필 수정" description="후원샵과 후원 알림에 표시되는 정보입니다. 크리에이터 소개는 후원 설정 > 후원샵 관리에서 수정합니다." />
           <Card>
+            <div className="mb-5 flex items-center gap-3 rounded-2xl border border-brand-100 bg-brand-50/60 p-4">
+              <ProfileAvatar
+                seed={creator.userId}
+                name={creator.displayName}
+                imageUrl={creator.avatarUrl}
+                className="h-16 w-16"
+              />
+              <div>
+                <p className="text-[14px] font-extrabold text-ink-900">현재 프로필 캐릭터</p>
+                <p className="mt-1 text-[12px] leading-relaxed text-ink-500">
+                  기본 캐릭터는 계정별로 50종 중 하나가 자동 배정되며 모든 화면에 동일하게 표시됩니다.
+                </p>
+              </div>
+            </div>
             <ActionForm action={updateCreatorProfileAction} submitLabel="프로필 저장">
               <div className="grid gap-3 md:grid-cols-2">
                 <Field label="표시명" hint="1~30자" required>
@@ -54,15 +70,13 @@ export default async function StudioSettingsProfilePage() {
                   <Input name="channelName" maxLength={50} defaultValue={creator.channelName ?? ''} />
                 </Field>
               </div>
-              <Field label="소개" hint="300자 이내">
-                <Textarea name="description" rows={3} maxLength={300} defaultValue={creator.description ?? ''} />
-              </Field>
-              <Field
-                label="아바타(프로필 캐릭터) URL"
-                hint="http(s) 주소 또는 / 로 시작하는 사이트 내 이미지 경로. 비워두면 이름 첫 글자가 표시됩니다."
-              >
-                <Input name="avatarUrl" defaultValue={creator.avatarUrl ?? ''} placeholder="/avatars-donaido-a-v1.png 또는 https://" />
-              </Field>
+              <ImageUploadField
+                name="avatarUrl"
+                label="아바타(프로필 캐릭터)"
+                aspect="square"
+                defaultValue={creator.avatarUrl ?? ''}
+                hint="파일을 올리거나 이미지 URL 을 입력하세요. 비워두면 자동 배정된 캐릭터가 표시됩니다."
+              />
             </ActionForm>
           </Card>
         </section>
@@ -98,7 +112,7 @@ export default async function StudioSettingsProfilePage() {
         </section>
 
         <Notice tone="neutral">
-          표시명과 소개는 후원 페이지에 그대로 노출됩니다. 개인 연락처나 계좌번호 등 개인정보는 입력하지 마세요.
+          표시명과 소개는 후원샵에 그대로 노출됩니다. 개인 연락처나 계좌번호 등 개인정보는 입력하지 마세요.
           채널 상태 변경(승인·정지)과 크리에이터 코드 변경은 통합 관리자를 통해서만 가능합니다.
         </Notice>
       </div>

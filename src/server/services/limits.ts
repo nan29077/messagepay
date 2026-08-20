@@ -76,15 +76,23 @@ function pick(row: PolicyRow): EffectivePolicy {
   };
 }
 
-export async function resolvePolicy(creatorId?: string | null, donorId?: string | null): Promise<EffectivePolicy> {
+export async function resolvePolicy(
+  creatorId?: string | null,
+  donorId?: string | null,
+  now: Date = new Date(),
+): Promise<EffectivePolicy> {
   const rows = await prisma.donationLimitPolicy.findMany({
     where: {
       active: true,
+      // 시행일이 아직 오지 않았거나 이미 종료된 정책은 적용하지 않는다.
+      // (예약 등록한 미래 정책이 곧바로 적용돼 한도가 바뀌는 사고를 막는다)
+      effectiveFrom: { lte: now },
       OR: [
         { scope: 'GLOBAL' },
         ...(creatorId ? [{ scope: 'CREATOR' as const, creatorId }] : []),
         ...(donorId ? [{ scope: 'DONOR' as const, donorId }] : []),
       ],
+      AND: [{ OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] }],
     },
     orderBy: { effectiveFrom: 'desc' },
   });
@@ -121,6 +129,14 @@ export interface LimitCheckInput {
   now?: Date;
   /** 크리에이터가 이 후원자를 차단했는지 */
   blockedByCreator?: boolean;
+  /**
+   * 속도 제한(velocity/streak) 카운터를 이번 호출에서 소진할지 여부. 기본 true.
+   *
+   * 같은 후원 1건에 대해 checkLimits 를 두 번 호출하는 경로(접수 시 + 결제 직전 재검사)에서는
+   * 두 번째 호출을 false 로 둬야 한다. 그렇지 않으면 1건이 2건으로 계산돼
+   * 설정한 속도 제한의 절반에서 정상 후원자가 차단되고 쿨다운도 두 배 빨리 걸린다.
+   */
+  consumeVelocity?: boolean;
 }
 
 async function readCounter(donorId: string, creatorId: string, periodType: string, periodKey: string) {
@@ -134,7 +150,7 @@ async function readCounter(donorId: string, creatorId: string, periodType: strin
 
 export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckResult> {
   const now = input.now ?? new Date();
-  const policy = await resolvePolicy(input.creatorId, input.donor.id);
+  const policy = await resolvePolicy(input.creatorId, input.donor.id, now);
 
   const donorDaily = input.donor.dailyLimit ?? policy.donorDailyLimit;
   const donorMonthly = input.donor.monthlyLimit ?? policy.donorMonthlyLimit;
@@ -186,19 +202,21 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
     return deny('COOLDOWN', '연속 발송으로 대기 중입니다. 잠시 후 다시 시도해 주세요.');
   }
 
-  // 속도 제한: window 내 최대 건수
-  const velocityKey = `velocity:${input.donor.id}:${Math.floor(now.getTime() / (policy.velocityWindowSec * 1000))}`;
-  const vCount = await kv.incr(velocityKey, policy.velocityWindowSec);
-  if (vCount > policy.velocityMaxCount) {
-    return deny('VELOCITY', `${policy.velocityWindowSec}초 내 최대 ${policy.velocityMaxCount}건까지 후원할 수 있습니다.`);
-  }
+  if (input.consumeVelocity !== false) {
+    // 속도 제한: window 내 최대 건수
+    const velocityKey = `velocity:${input.donor.id}:${Math.floor(now.getTime() / (policy.velocityWindowSec * 1000))}`;
+    const vCount = await kv.incr(velocityKey, policy.velocityWindowSec);
+    if (vCount > policy.velocityMaxCount) {
+      return deny('VELOCITY', `${policy.velocityWindowSec}초 내 최대 ${policy.velocityMaxCount}건까지 후원할 수 있습니다.`);
+    }
 
-  // 연속 N건 이후 쿨다운 부여
-  const streakKey = `streak:${input.donor.id}`;
-  const streak = await kv.incr(streakKey, policy.cooldownSec);
-  if (streak >= policy.cooldownAfterCount) {
-    await kv.set(cooldownKey, '1', policy.cooldownSec);
-    await kv.del(streakKey);
+    // 연속 N건 이후 쿨다운 부여
+    const streakKey = `streak:${input.donor.id}`;
+    const streak = await kv.incr(streakKey, policy.cooldownSec);
+    if (streak >= policy.cooldownAfterCount) {
+      await kv.set(cooldownKey, '1', policy.cooldownSec);
+      await kv.del(streakKey);
+    }
   }
 
   return {

@@ -6,6 +6,7 @@ import { kv } from '@/server/redis';
 import { getSessionUser } from '@/server/auth';
 import { newId } from '@/lib/id';
 import { encrypt, maskPhone } from '@/lib/crypto';
+import { claimGuestInquiry } from '@/server/services/inquiry';
 import { notifySuperAdmins } from '@/server/services/notifications';
 
 /**
@@ -48,28 +49,37 @@ export async function sendInquiryMessage(
     const body = String(formData.get('body') ?? '').trim();
     const guestName = String(formData.get('guestName') ?? '').trim().slice(0, 30);
     const contact = String(formData.get('contact') ?? '').trim().slice(0, 80);
-    const rawCategory = String(formData.get('category') ?? '일반').trim();
-    const category = ['결제·후원', '크리에이터', '계정', '방송 연동', '기타'].includes(rawCategory)
-      ? rawCategory
-      : '일반';
 
     if (!body) return { ok: false, message: '문의 내용을 입력해 주세요.' };
     if (body.length > 1000) return { ok: false, message: '문의 내용은 1,000자 이내로 입력해 주세요.' };
 
     const user = await getSessionUser().catch(() => null);
     const jar = await cookies();
-    const guestToken = user ? null : (jar.get(GUEST_COOKIE)?.value ?? null);
+    const cookieToken = jar.get(GUEST_COOKIE)?.value ?? null;
+    const guestToken = user ? null : cookieToken;
 
-    // 발송 제한 (사용자 또는 게스트/IP 단위)
+    // 발송 제한.
+    // 게스트 토큰은 클라이언트가 쿠키를 지우면 얼마든지 새로 발급받을 수 있으므로
+    // 제한 키에는 항상 IP 를 포함한다 (로그인 사용자는 계정 단위로도 함께 제한).
     const h = await headers();
     const ip = h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-    const rateKey = `inquiry:rate:${user?.id ?? guestToken ?? ip}`;
-    const tries = await kv.incr(rateKey, RATE_WINDOW_SEC);
-    if (tries > RATE_MAX) {
-      return { ok: false, message: '문의를 너무 자주 보내고 있습니다. 잠시 후 다시 시도해 주세요.' };
+    const rateKeys = [`inquiry:rate:ip:${ip}`];
+    if (user) rateKeys.push(`inquiry:rate:user:${user.id}`);
+
+    for (const key of rateKeys) {
+      const tries = await kv.incr(key, RATE_WINDOW_SEC);
+      if (tries > RATE_MAX) {
+        return { ok: false, message: '문의를 너무 자주 보내고 있습니다. 잠시 후 다시 시도해 주세요.' };
+      }
     }
 
     const now = new Date();
+
+    // 게스트로 접수했던 스레드가 있으면 로그인 계정으로 승계한다 (답변 유실 방지).
+    if (user && cookieToken) {
+      await claimGuestInquiry(user.id, cookieToken).catch(() => null);
+      jar.delete(GUEST_COOKIE);
+    }
 
     // 기존 문의 스레드 찾기 (주체당 1개 스레드, 종결돼도 이어서 사용)
     let inquiry = user
@@ -90,7 +100,6 @@ export async function sendInquiryMessage(
           guestName: user ? null : guestName || null,
           contactEnc: contact ? encrypt(contact) : null,
           contactMasked: contact ? maskContact(contact) : null,
-          category,
           status: 'OPEN',
           lastMessageAt: now,
         },
@@ -105,7 +114,6 @@ export async function sendInquiryMessage(
           lastMessageAt: now,
           ...(contact ? { contactEnc: encrypt(contact), contactMasked: maskContact(contact) } : {}),
           ...(guestName && !inquiry.userId ? { guestName } : {}),
-          ...(category !== '일반' ? { category } : {}),
         },
       });
     }
@@ -114,11 +122,12 @@ export async function sendInquiryMessage(
       data: { id: newId(), inquiryId: inquiry.id, sender: 'USER', body },
     });
 
+    // 접수 즉시 통합 관리자에게 알린다. (알림이 없으면 문의가 큐에 쌓인 채 방치된다)
     await notifySuperAdmins({
       title: '새 1:1 문의가 도착했습니다',
-      body: `[${category}] ${body.slice(0, 90)}`,
+      body: body.slice(0, 90),
       linkUrl: `/admin/inquiries/${inquiry.id}`,
-    });
+    }).catch(() => undefined);
 
     if (issuedGuestToken) {
       jar.set(GUEST_COOKIE, issuedGuestToken, {

@@ -7,7 +7,7 @@ import { Button, Card, CardTitle, Field, Input, Notice, LinkButton } from '@/com
 import { SocialAuthButtons } from '@/components/public/social-auth';
 import { TestLoginPanel } from '@/components/public/test-login';
 import { SOCIAL_LABEL, type SocialProvider } from '@/server/adapters/social';
-import { env } from '@/lib/env';
+import { isLocal } from '@/lib/env';
 
 export const metadata: Metadata = {
   title: '로그인 | 도네이도',
@@ -40,8 +40,8 @@ export default async function LoginPage({
         ? (ERROR_MESSAGES[sp.error] ?? decodeURIComponent(sp.error))
         : null;
 
-  // 테스트 로그인과 시드 계정 안내는 운영 환경에서 노출하지 않는다.
-  const showTestLogin = env.appEnv !== 'prod';
+  // 테스트 로그인과 시드 계정 안내는 로컬 개발 환경에서만 노출한다.
+  const showTestLogin = isLocal;
 
   return (
     <PublicShell aside={<LoginAside />}>

@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
 import { createSession, hashPassword } from '@/server/auth';
-import { env } from '@/lib/env';
+import { isLocal } from '@/lib/env';
 
 /**
  * 후원자 회원가입.
@@ -93,7 +93,7 @@ export async function signupDonor(_prev: SignupFormState, formData: FormData): P
  * 테스트 로그인 (개발·검수 전용)
  *
  * 비밀번호 없이 시드 계정으로 바로 로그인한다.
- * 운영(APP_ENV=prod)에서는 화면과 서버 액션 양쪽에서 차단된다.
+ * APP_ENV=local 에서만 동작하며, 그 외 환경에서는 화면과 서버 액션 양쪽에서 차단된다.
  * ------------------------------------------------------------------------- */
 
 export interface TestLoginState {
@@ -102,7 +102,8 @@ export interface TestLoginState {
 
 /** 테스트 로그인이 허용되는 환경인지 */
 export async function isTestLoginAllowed(): Promise<boolean> {
-  return env.appEnv !== 'prod';
+  // 화이트리스트 방식: local 에서만 허용한다. (APP_ENV 오타/미설정은 env 로더가 prod 로 간주)
+  return isLocal;
 }
 
 const TEST_ACCOUNTS = {
@@ -114,8 +115,8 @@ const TEST_ACCOUNTS = {
 export type TestAccountKey = keyof typeof TEST_ACCOUNTS;
 
 export async function testLogin(_prev: TestLoginState, formData: FormData): Promise<TestLoginState> {
-  if (env.appEnv === 'prod') {
-    return { message: '운영 환경에서는 테스트 로그인을 사용할 수 없습니다.' };
+  if (!isLocal) {
+    return { message: '이 환경에서는 테스트 로그인을 사용할 수 없습니다. (APP_ENV=local 전용)' };
   }
 
   const key = String(formData.get('account') ?? '') as TestAccountKey;

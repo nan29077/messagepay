@@ -149,17 +149,25 @@ async function RegisterScreen({ token }: { token: string }) {
   }
   const ctx = loaded.ctx;
 
+  // 시행일이 도래한 정책·약관만 노출한다.
+  const nowForPolicy = new Date();
   const [moNumber, feePolicy, policy, termsRows] = await Promise.all([
     ctx.creatorId
       ? prisma.creatorMoNumber.findFirst({ where: { creatorId: ctx.creatorId, status: 'ASSIGNED' } })
       : Promise.resolve(null),
     prisma.feePolicy.findFirst({
-      where: { scope: 'GLOBAL', active: true },
+      where: {
+        scope: 'GLOBAL',
+        active: true,
+        effectiveFrom: { lte: nowForPolicy },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gt: nowForPolicy } }],
+      },
       orderBy: { effectiveFrom: 'desc' },
     }),
-    resolvePolicy(ctx.creatorId, ctx.donorId),
+    resolvePolicy(ctx.creatorId, ctx.donorId, nowForPolicy),
     prisma.termsVersion.findMany({
-      where: { active: true },
+      // TermsVersion 은 종료일이 없다(신 버전 등록 시 구 버전 active=false 처리).
+      where: { active: true, effectiveFrom: { lte: nowForPolicy } },
       orderBy: [{ required: 'desc' }, { effectiveFrom: 'desc' }],
     }),
   ]);

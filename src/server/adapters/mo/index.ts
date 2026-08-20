@@ -1,6 +1,40 @@
-import { env } from '@/lib/env';
+import { env, isLocal } from '@/lib/env';
 import { verifySignature } from '@/lib/crypto';
 import type { AdapterInfo } from '../types';
+// mtonet.ts 는 이 파일에서 타입과 verifyMoRequest 만 가져온다 (아래에서 정의됨 → 함수 호출 시점에 해석).
+import { mtonetMoAdapter } from './mtonet';
+
+/**
+ * MO 웹훅 공통 검증 (fail-closed).
+ *
+ * - IP 허용목록: 로컬에서만 "비어 있으면 검사 생략"을 허용한다.
+ * - 서명 시크릿: 로컬에서만 "없으면 통과"를 허용한다.
+ *   운영/스테이징에서 시크릿이 없으면 누구나 후원 거래를 만들 수 있으므로 반드시 거절한다.
+ */
+export function verifyMoRequest(
+  rawBody: string,
+  headers: Record<string, string>,
+  ip: string | undefined,
+  signatureHeaderNames: string[],
+): { ok: boolean; reason?: string } {
+  if (env.mo.allowedIps.length > 0) {
+    if (!ip) return { ok: false, reason: '발신 IP 를 확인할 수 없습니다.' };
+    if (!env.mo.allowedIps.includes(ip)) return { ok: false, reason: `허용되지 않은 IP: ${ip}` };
+  } else if (!isLocal) {
+    return { ok: false, reason: 'MO_ALLOWED_IPS 미설정 (운영 환경에서는 IP 허용목록이 필수입니다)' };
+  }
+
+  if (!env.mo.webhookSecret) {
+    if (!isLocal) return { ok: false, reason: 'MO_WEBHOOK_SECRET 미설정 (서명 검증 불가)' };
+    return { ok: true };
+  }
+
+  const sig = signatureHeaderNames.map((n) => headers[n]).find((v) => v) ?? '';
+  if (!sig) return { ok: false, reason: '서명 헤더 없음' };
+  return verifySignature(rawBody, sig, env.mo.webhookSecret)
+    ? { ok: true }
+    : { ok: false, reason: '서명 불일치' };
+}
 
 /** MO 사업자로부터 수신하는 정규화된 인바운드 메시지 */
 export interface MoInbound {
@@ -32,16 +66,7 @@ export const mockMoAdapter: MoAdapter = {
   },
 
   verify(rawBody, headers, ip) {
-    // Mock 은 시크릿이 설정된 경우에만 서명을 검사한다(로컬 편의).
-    if (env.mo.allowedIps.length > 0 && ip && !env.mo.allowedIps.includes(ip)) {
-      return { ok: false, reason: `허용되지 않은 IP: ${ip}` };
-    }
-    const sig = headers['x-tornado-signature'] || headers['x-signature'] || '';
-    if (!env.mo.webhookSecret) return { ok: true };
-    if (!sig) return { ok: false, reason: '서명 헤더 없음' };
-    return verifySignature(rawBody, sig, env.mo.webhookSecret)
-      ? { ok: true }
-      : { ok: false, reason: '서명 불일치' };
+    return verifyMoRequest(rawBody, headers, ip, ['x-tornado-signature', 'x-signature']);
   },
 
   parse(body) {
@@ -69,6 +94,8 @@ export function getMoAdapter(): MoAdapter {
   switch (env.mo.provider) {
     case 'mock':
       return mockMoAdapter;
+    case 'mtonet':
+      return mtonetMoAdapter;
     default:
       // 실 사업자 어댑터는 계약 확정 후 이 위치에 추가한다.
       // 미구현 사업자를 mock 으로 대체해 "성공 처리"하지 않는다.

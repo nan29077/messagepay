@@ -9,8 +9,8 @@ import { sendInquiryMessage, type InquiryActionState } from '@/app/actions/inqui
 /**
  * 우측 하단 플로팅 문의 위젯.
  *
- * - PC(sm+): 우측 메뉴바 아래(우하단 모서리)에 버튼 고정, 패널은 버튼 위로 열린다.
- * - 모바일: 하단 탭바를 가리지 않도록 탭바 위쪽에 버튼을 띄운다.
+ * - PC(lg+): 우측 메뉴바 바로 아래에 세로 정렬해 버튼을 고정하고, 패널은 버튼 위로 열린다.
+ * - 모바일·태블릿(lg 미만): 하단 탭바를 가리지 않도록 탭바 위쪽에 버튼을 띄운다.
  * - 탭 1) 자주 묻는 질문: 상위 FAQ 아코디언 + 전체 보기 링크
  * - 탭 2) 1:1 문의: 채팅형 문의. 비로그인도 가능(게스트 쿠키), 답변은 15초 간격 폴링으로 수신.
  */
@@ -30,14 +30,24 @@ interface ThreadMessage {
 
 const initialState: InquiryActionState = { ok: false };
 
-export function SupportWidget({ faqs, loggedIn }: { faqs: WidgetFaq[]; loggedIn: boolean }) {
+export function SupportWidget({
+  faqs,
+  loggedIn,
+  hasThread = false,
+}: {
+  faqs: WidgetFaq[];
+  loggedIn: boolean;
+  /** 이 방문자에게 문의 스레드가 있을 수 있는지 (세션 또는 게스트 쿠키 보유) */
+  hasThread?: boolean;
+}) {
   const [open, setOpen] = React.useState(false);
   const [tab, setTab] = React.useState<'faq' | 'chat'>('faq');
   const [messages, setMessages] = React.useState<ThreadMessage[]>([]);
   const [status, setStatus] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
-  const [unreadCount, setUnreadCount] = React.useState(0);
   const [openFaq, setOpenFaq] = React.useState<string | null>(null);
+  /** 아직 확인하지 않은 관리자 답변 수. 문의 창을 열지 않아도 배지로 알 수 있게 한다. */
+  const [unread, setUnread] = React.useState(0);
   const listRef = React.useRef<HTMLDivElement>(null);
 
   const [state, formAction, pending] = React.useActionState(sendInquiryMessage, initialState);
@@ -48,32 +58,22 @@ export function SupportWidget({ faqs, loggedIn }: { faqs: WidgetFaq[]; loggedIn:
       setLoading(true);
       const res = await fetch('/api/inquiry', { cache: 'no-store' });
       if (!res.ok) return;
-      const data = (await res.json()) as { exists: boolean; status: string | null; unreadCount: number; messages: ThreadMessage[] };
+      const data = (await res.json()) as {
+        exists: boolean;
+        status: string | null;
+        unread?: number;
+        messages: ThreadMessage[];
+      };
       setMessages(data.messages);
       setStatus(data.status);
-      setUnreadCount(open && tab === 'chat' ? 0 : data.unreadCount);
+      // 창이 열려 있으면 방금 읽은 것이므로 배지를 지운다.
+      setUnread(open && tab === 'chat' ? 0 : (data.unread ?? 0));
     } catch {
       /* 네트워크 오류는 다음 폴링에서 회복 */
     } finally {
       setLoading(false);
     }
   }, [open, tab]);
-
-  // 창이 닫혀 있어도 관리자 답변 도착 여부만 가볍게 확인한다.
-  React.useEffect(() => {
-    if (open) return;
-    const peek = async () => {
-      try {
-        const res = await fetch('/api/inquiry?peek=1', { cache: 'no-store' });
-        if (!res.ok) return;
-        const data = await res.json() as { unreadCount?: number };
-        setUnreadCount(data.unreadCount ?? 0);
-      } catch { /* 다음 확인에서 회복 */ }
-    };
-    void peek();
-    const timer = window.setInterval(peek, 30_000);
-    return () => window.clearInterval(timer);
-  }, [open]);
 
   // 채팅 탭이 열려 있는 동안 15초 간격 폴링
   React.useEffect(() => {
@@ -85,6 +85,19 @@ export function SupportWidget({ faqs, loggedIn }: { faqs: WidgetFaq[]; loggedIn:
       window.clearInterval(timer);
     };
   }, [open, tab, loadThread]);
+
+  // 창이 닫혀 있어도 답변 도착 여부는 알려야 한다.
+  // 문의 이력이 있는 방문자만, 최초 1회 + 5분 간격으로 확인한다.
+  React.useEffect(() => {
+    if (!hasThread) return;
+    if (open && tab === 'chat') return;
+    const first = window.setTimeout(loadThread, 1500);
+    const timer = window.setInterval(loadThread, 300_000);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(timer);
+    };
+  }, [open, tab, hasThread, loadThread]);
 
   // 전송 성공 시 폼 비우고 스레드 새로고침 (ref 접근이 있으므로 effect 로 처리)
   React.useEffect(() => {
@@ -104,36 +117,56 @@ export function SupportWidget({ faqs, loggedIn }: { faqs: WidgetFaq[]; loggedIn:
 
   return (
     <>
-      {/* 플로팅 버튼: 모바일은 하단 탭바(약 64px + safe-area) 위, PC 는 우하단 모서리 */}
-      <button
-        type="button"
-        aria-label={open ? '문의 창 닫기' : '문의하기'}
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+      {/* 플로팅 버튼
+          - lg 미만(모바일·태블릿): 하단 탭바(약 64px + safe-area)를 가리지 않게 그 위에 배치
+          - lg 이상(PC): 본문 레이아웃(744px) 오른쪽 끝 = 우측 메뉴바 바로 아래에 세로로 정렬 */}
+      <div
         className={cx(
-          'fixed z-50 flex items-center justify-center rounded-full bg-ink-900 text-brand-400 shadow-[0_10px_28px_rgba(23,22,26,0.35)] transition-transform hover:-translate-y-0.5 active:translate-y-0',
-          'right-4 bottom-[calc(76px+env(safe-area-inset-bottom))] lg:right-auto lg:left-[calc(50%+278px)] lg:bottom-5',
-          'h-[52px] w-[52px]',
+          'pointer-events-none fixed inset-x-0 z-50',
+          'bottom-[calc(76px+env(safe-area-inset-bottom))] lg:bottom-6',
         )}
       >
-        {open ? <X size={22} strokeWidth={1.8} /> : <MessageCircleQuestion size={24} strokeWidth={1.8} />}
-        {!open && unreadCount > 0 ? (
-          <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-danger-500 px-1 text-[10px] font-black text-white ring-2 ring-white">
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </span>
-        ) : null}
-      </button>
+        <div className="mx-auto flex w-full max-w-[744px] justify-end px-4 lg:px-0 lg:pr-[18px]">
+          <button
+            type="button"
+            aria-label={open ? '문의 창 닫기' : '문의하기'}
+            aria-expanded={open}
+            onClick={() => {
+              // 답변이 와 있으면 곧바로 채팅 탭을 연다.
+              if (!open && unread > 0) setTab('chat');
+              setOpen((v) => !v);
+            }}
+            className="pointer-events-auto relative flex h-[52px] w-[52px] items-center justify-center rounded-full bg-ink-900 text-brand-400 shadow-[0_10px_28px_rgba(23,22,26,0.35)] transition-transform hover:-translate-y-0.5 active:translate-y-0"
+          >
+            {open ? <X size={22} strokeWidth={1.8} /> : <MessageCircleQuestion size={24} strokeWidth={1.8} />}
+            {!open && unread > 0 ? (
+              <span
+                aria-label={`읽지 않은 답변 ${unread}건`}
+                className="absolute -right-0.5 -top-0.5 grid h-[20px] min-w-[20px] place-items-center rounded-full bg-[#e5484d] px-1 text-[11px] font-extrabold text-white shadow-[0_2px_6px_rgba(0,0,0,0.25)]"
+              >
+                {unread > 9 ? '9+' : unread}
+              </span>
+            ) : null}
+          </button>
+        </div>
+      </div>
 
       {/* 패널 */}
       {open ? (
         <div
+          className={cx(
+            'pointer-events-none fixed inset-x-0 z-50',
+            'bottom-[calc(140px+env(safe-area-inset-bottom))] lg:bottom-[88px]',
+          )}
+        >
+          <div className="mx-auto flex w-full max-w-[744px] justify-end px-3 lg:px-0 lg:pr-[18px]">
+        <div
           role="dialog"
           aria-label="고객 문의"
           className={cx(
-            'fixed z-50 flex flex-col overflow-hidden rounded-[22px] border border-ink-100 bg-white shadow-[0_30px_80px_rgba(23,22,26,0.28)]',
-            'inset-x-3 bottom-[calc(140px+env(safe-area-inset-bottom))] top-auto max-h-[62dvh]',
-            'sm:inset-x-auto sm:right-6 sm:bottom-[92px] sm:h-[560px] sm:max-h-[calc(100dvh-120px)] sm:w-[370px]',
-            'lg:left-[calc(50%+8px)] lg:right-auto lg:bottom-[84px]',
+            'pointer-events-auto flex w-full flex-col overflow-hidden rounded-[22px] border border-ink-100 bg-white shadow-[0_30px_80px_rgba(23,22,26,0.28)]',
+            'max-h-[62dvh]',
+            'lg:h-[560px] lg:max-h-[calc(100dvh-150px)] lg:w-[370px]',
           )}
         >
           {/* 헤더 */}
@@ -254,18 +287,6 @@ export function SupportWidget({ faqs, loggedIn }: { faqs: WidgetFaq[]; loggedIn:
               </div>
 
               <form ref={formRef} action={formAction} className="border-t border-ink-100 p-3">
-                <select
-                  name="category"
-                  aria-label="문의 유형"
-                  className="mb-2 h-9 w-full rounded-lg border border-ink-200 bg-white px-2.5 text-[12px] font-semibold text-ink-700 outline-none focus:border-brand-400"
-                >
-                  <option value="일반">문의 유형을 선택해 주세요</option>
-                  <option value="결제·후원">결제·후원</option>
-                  <option value="크리에이터">크리에이터</option>
-                  <option value="계정">계정</option>
-                  <option value="방송 연동">방송 연동</option>
-                  <option value="기타">기타</option>
-                </select>
                 {needGuestFields ? (
                   <div className="mb-2 grid grid-cols-2 gap-2">
                     <input
@@ -318,6 +339,8 @@ export function SupportWidget({ faqs, loggedIn }: { faqs: WidgetFaq[]; loggedIn:
               </form>
             </div>
           ) : null}
+        </div>
+          </div>
         </div>
       ) : null}
     </>

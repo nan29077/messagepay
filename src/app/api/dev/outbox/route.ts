@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { env } from '@/lib/env';
+import { isLocal } from '@/lib/env';
 import { readMockOutbox } from '@/server/adapters/mt';
 
 export const runtime = 'nodejs';
@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
  * APP_ENV=local 이 아니면 404 를 반환하며, 운영 배포 시에는 이 라우트를 제거한다.
  */
 export async function GET() {
-  if (env.appEnv !== 'local') {
+  if (!isLocal) {
     return NextResponse.json({ ok: false, message: 'not found' }, { status: 404 });
   }
   return NextResponse.json({

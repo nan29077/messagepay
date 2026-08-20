@@ -1,9 +1,9 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { notifyUser } from '@/server/services/notifications';
 import { prisma } from '@/server/db';
 import { writeAudit } from '@/server/auth';
+import { notifyUser } from '@/server/services/notifications';
 import { newId, newCreatorCode } from '@/lib/id';
 import { env } from '@/lib/env';
 import type { AdminActionState } from '@/components/admin/state';
@@ -172,9 +172,10 @@ export async function updateCreatorStatus(_prev: AdminActionState, fd: FormData)
     await notifyUser({
       userId: before.userId,
       title: status === 'APPROVED' ? '크리에이터 승인이 완료되었습니다' : '크리에이터 심사 상태가 변경되었습니다',
-      body: status === 'APPROVED'
-        ? '이제 크리에이터 관리자에서 후원샵과 방송 연동을 설정할 수 있습니다.'
-        : `${before.displayName}님의 심사 상태가 ${status}(으)로 변경되었습니다.`,
+      body:
+        status === 'APPROVED'
+          ? '이제 크리에이터 관리자에서 후원샵과 방송 연동을 설정할 수 있습니다.'
+          : `${before.displayName}님의 심사 상태가 ${status}(으)로 변경되었습니다.`,
       linkUrl: '/studio',
     });
     await writeAudit({
@@ -309,6 +310,65 @@ export async function applyGlobalAmountBounds(_prev: AdminActionState, fd: FormD
     revalidatePath('/studio/settings');
     return `크리에이터 ${result.total}명 전체에 1건 후원금 허용 범위 ${minAmount.toString()}원 ~ ${maxAmount.toString()}원을 적용했습니다.` +
       (result.clamped > 0 ? ` 범위를 벗어난 ${result.clamped}명의 1건 후원금을 자동 보정했습니다.` : '');
+  });
+}
+
+// =========================================================== 정산 계좌 실명확인
+
+/**
+ * 정산 계좌 실명확인 처리.
+ *
+ * 예금주 실명확인 API 가 아직 연동 전이라, 통합 관리자가 증빙(사업자등록증·통장사본 등)을
+ * 확인한 뒤 수동으로 인증 상태를 전환한다. 인증되지 않은 계좌로는 정산을 요청할 수 없다.
+ * 계좌를 변경하면 저장 시점에 verified 가 다시 false 로 내려가므로 재확인이 필요하다.
+ */
+export async function setSettlementAccountVerified(
+  _prev: AdminActionState,
+  fd: FormData,
+): Promise<AdminActionState> {
+  return run(async (admin) => {
+    if (admin.adminPermission === 'SUPPORT') {
+      throw new Error('정산 계좌 실명확인은 재무/운영 권한에서만 가능합니다.');
+    }
+    const creatorId = requiredId(fd, 'creatorId', '크리에이터');
+    const verified = text(fd, 'verified') === 'true';
+
+    const before = await prisma.settlementAccount.findUnique({
+      where: { creatorId },
+      select: { id: true, verified: true, verifiedAt: true, bankName: true, accountTail4: true, holderMasked: true },
+    });
+    if (!before) throw new Error('등록된 정산 계좌가 없습니다. 크리에이터가 계좌를 먼저 등록해야 합니다.');
+    if (before.verified === verified) {
+      throw new Error(verified ? '이미 인증된 계좌입니다.' : '이미 미인증 상태입니다.');
+    }
+
+    const verifiedAt = verified ? new Date() : null;
+    await prisma.settlementAccount.update({
+      where: { creatorId },
+      data: { verified, verifiedAt },
+    });
+
+    await writeAudit({
+      adminUserId: admin.id,
+      action: verified ? 'SETTLEMENT_ACCOUNT_VERIFY' : 'SETTLEMENT_ACCOUNT_UNVERIFY',
+      targetType: 'SettlementAccount',
+      targetId: before.id,
+      before: { verified: before.verified, verifiedAt: before.verifiedAt },
+      after: {
+        verified,
+        verifiedAt,
+        bankName: before.bankName,
+        accountTail4: before.accountTail4,
+        holderMasked: before.holderMasked,
+      },
+    });
+
+    revalidatePath(`/admin/creators/${creatorId}`);
+    revalidatePath('/admin/settlements');
+    revalidatePath('/studio/settlement');
+    return verified
+      ? '정산 계좌를 실명확인 완료로 처리했습니다. 이제 크리에이터가 정산을 요청할 수 있습니다.'
+      : '정산 계좌 인증을 해제했습니다. 재확인 전까지 정산 요청이 차단됩니다.';
   });
 }
 

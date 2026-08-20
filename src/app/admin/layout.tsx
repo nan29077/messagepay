@@ -14,53 +14,53 @@ const groups: NavGroup[] = [
   {
     title: '운영현황',
     items: [
-      { href: '/admin', label: '대시보드' },
-      { href: '/admin/system', label: '시스템 상태' },
+      { href: '/admin', label: '대시보드', icon: 'dashboard' },
+      { href: '/admin/system', label: '시스템 상태', icon: 'system' },
     ],
   },
   {
     title: '회원·크리에이터',
     items: [
-      { href: '/admin/users', label: '회원' },
-      { href: '/admin/donors', label: '후원자' },
-      { href: '/admin/creators', label: '크리에이터 심사' },
-      { href: '/admin/codes', label: '크리에이터 코드' },
-      { href: '/admin/mo-numbers', label: 'MO 번호' },
+      { href: '/admin/users', label: '회원', icon: 'users' },
+      { href: '/admin/donors', label: '후원자', icon: 'donors' },
+      { href: '/admin/creators', label: '크리에이터 심사', icon: 'creators' },
+      { href: '/admin/codes', label: '크리에이터 코드', icon: 'codes' },
+      { href: '/admin/mo-numbers', label: 'MO 번호', icon: 'numbers' },
     ],
   },
   {
     title: '거래',
     items: [
-      { href: '/admin/mo-messages', label: '수신 문자' },
-      { href: '/admin/mt-messages', label: 'MT 발송' },
-      { href: '/admin/payments', label: '결제' },
-      { href: '/admin/refunds', label: '환불' },
-      { href: '/admin/risk', label: '한도·이상거래' },
+      { href: '/admin/mo-messages', label: '수신 문자', icon: 'messages' },
+      { href: '/admin/mt-messages', label: 'MT 발송', icon: 'send' },
+      { href: '/admin/payments', label: '결제', icon: 'payments' },
+      { href: '/admin/refunds', label: '환불', icon: 'refunds' },
+      { href: '/admin/risk', label: '한도·이상거래', icon: 'risk' },
     ],
   },
   {
     title: '방송',
     items: [
-      { href: '/admin/youtube', label: '유튜브 연동' },
-      { href: '/admin/streams', label: '방송·스트림' },
-      { href: '/admin/tts', label: 'TTS 연동' },
-      { href: '/admin/overlay', label: '오버레이' },
+      { href: '/admin/youtube', label: '유튜브 연동', icon: 'youtube' },
+      { href: '/admin/streams', label: '방송·스트림', icon: 'stream' },
+      { href: '/admin/tts', label: 'TTS 연동', icon: 'tts' },
+      { href: '/admin/overlay', label: '오버레이', icon: 'overlay' },
     ],
   },
   {
     title: '정산·정책·운영',
     items: [
-      { href: '/admin/settlements', label: '정산' },
-      { href: '/admin/fees', label: '수수료 정책' },
-      { href: '/admin/policies', label: '한도 정책' },
-      { href: '/admin/banners', label: '배너' },
-      { href: '/admin/contents', label: '공지·FAQ' },
-      { href: '/admin/moderation', label: '신고·금칙어' },
-      { href: '/admin/inquiries', label: '문의 관리' },
-      { href: '/admin/terms', label: '약관 버전' },
-      { href: '/admin/admins', label: '관리자 권한' },
-      { href: '/admin/audit', label: '감사로그' },
-      { href: '/admin/simulator', label: 'MO 시뮬레이터' },
+      { href: '/admin/settlements', label: '정산', icon: 'settlement' },
+      { href: '/admin/fees', label: '수수료 정책', icon: 'fees' },
+      { href: '/admin/policies', label: '한도 정책', icon: 'policies' },
+      { href: '/admin/banners', label: '배너', icon: 'banners' },
+      { href: '/admin/contents', label: '공지·FAQ', icon: 'contents' },
+      { href: '/admin/moderation', label: '신고·금칙어', icon: 'moderation' },
+      { href: '/admin/inquiries', label: '문의 관리', icon: 'inquiries' },
+      { href: '/admin/terms', label: '약관 버전', icon: 'terms' },
+      { href: '/admin/admins', label: '관리자 권한', icon: 'admins' },
+      { href: '/admin/audit', label: '감사로그', icon: 'audit' },
+      { href: '/admin/simulator', label: 'MO 시뮬레이터', icon: 'simulator' },
     ],
   },
 ];
@@ -94,6 +94,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       title="도네이도 통합 관리자"
       groups={visibleGroups}
       user={{
+        id: admin.id,
         name: admin.name ?? admin.email ?? '관리자',
         role: permissionLabel[admin.adminPermission ?? ''] ?? '권한 미지정',
       }}

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
   MessageSquare, CreditCard, ShieldCheck, CircleAlert,
-  Gauge, Flag, Hash, Phone, Camera, Music2, Video,
+  Gauge, Flag, Hash, Phone,
 } from 'lucide-react';
 import { CreatorCodeForm } from '@/components/creator-code-form';
 import { CopyButton } from '@/components/public/copy-button';
@@ -10,12 +10,14 @@ import { WebDonationPanel } from '@/components/public/web-donation-panel';
 import { defaultBannerFor } from '@/lib/banners';
 import { maskDisplayName } from '@/components/public/mask';
 import { Logo } from '@/components/brand/logo';
+import { ProfileAvatar } from '@/components/profile/generated-avatar';
 import { LinkButton } from '@/components/ui';
 import { normalizeCreatorCode } from '@/lib/id';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import { prisma } from '@/server/db';
 import { resolvePolicy } from '@/server/services/limits';
+import { getPaymentAdapter } from '@/server/adapters/payment';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,8 +49,8 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     return { title: '크리에이터를 찾을 수 없습니다 | 도네이도', robots: { index: false, follow: false } };
   }
   return {
-    title: `${creator.displayName} 후원페이지`,
-    description: `${creator.displayName} 님에게 따뜻한 응원을 보내세요. 1회 ${formatWon(creator.donationAmount)}.`,
+    title: `${creator.displayName} 문자후원`,
+    description: `${creator.displayName} 님에게 문자 한 통으로 응원을 보내세요. 문자 1건당 ${formatWon(creator.donationAmount)}.`,
     robots: { index: false, follow: false },
   };
 }
@@ -73,19 +75,16 @@ export default async function CreatorDonationPage({ params }: Params) {
   ]);
 
   const route = creator.moRoutes[0] ?? null;
-  const livePlatform = (creator.livePlatform === 'INSTAGRAM' || creator.livePlatform === 'TIKTOK')
-    ? creator.livePlatform
-    : 'YOUTUBE';
-  const platformLinks = {
-    YOUTUBE: creator.youtubeLiveUrl ?? creator.liveUrl,
-    INSTAGRAM: creator.instagramLiveUrl,
-    TIKTOK: creator.tiktokLiveUrl,
-  } as const;
-  const activeLiveUrl = platformLinks[livePlatform] ?? null;
-  const onAir = creator.liveOn && Boolean(activeLiveUrl);
-  const platformLabel = livePlatform === 'INSTAGRAM' ? 'Instagram Live' : livePlatform === 'TIKTOK' ? 'TikTok Live' : 'YouTube Live';
-  const LiveIcon = livePlatform === 'INSTAGRAM' ? Camera : livePlatform === 'TIKTOK' ? Music2 : Video;
+  const onAir = creator.liveOn && Boolean(creator.liveUrl);
   const bannerUrl = creator.bannerUrl ?? defaultBannerFor(creator.id);
+
+  // 결제 연동이 mock 이면 후원 화면에 반드시 표시한다 (가짜 성공 처리 금지 원칙)
+  let paymentMock = true;
+  try {
+    paymentMock = getPaymentAdapter().info().mode === 'mock';
+  } catch {
+    paymentMock = true;
+  }
   const keyword = route?.keyword ?? null;
   const shared = route?.mode === 'SHARED_PREFIX';
   const exampleBody = shared && keyword ? `${keyword} 응원합니다` : '응원합니다';
@@ -99,41 +98,36 @@ export default async function CreatorDonationPage({ params }: Params) {
   return (
     <div className="min-h-dvh bg-[#f7f5ef]">
       {/* ── 크리에이터 히어로 ─────────────────────────────────────────── */}
-      <header className="relative isolate min-h-[430px] overflow-hidden bg-ink-900 pb-28 pt-12 sm:min-h-[470px] sm:pt-14">
+      <header className="relative isolate overflow-hidden bg-ink-900 pb-24 pt-10">
         {/* 크리에이터 배너 (미설정 시 기본 배너 5종 중 크리에이터별 고정 적용) */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={bannerUrl} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-80" />
-        <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(23,22,26,0.1),rgba(23,22,26,0.58)_58%,rgba(23,22,26,0.9)),linear-gradient(180deg,rgba(23,22,26,0.18)_0%,rgba(23,22,26,0.82)_100%)]" />
-        <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-ink-900 to-transparent" />
-        <div className="relative mx-auto w-full max-w-[680px] px-5 text-center">
+        <img src={bannerUrl} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-70" />
+        <div aria-hidden className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(23,22,26,0.4)_0%,rgba(23,22,26,0.66)_70%,rgba(23,22,26,0.9)_100%)]" />
+        <div className="relative mx-auto w-full max-w-[560px] px-5 text-center">
           {/* 아바타 */}
-          <div className="relative mx-auto w-fit">
-            {onAir ? <span aria-hidden className="absolute -inset-3 animate-ping rounded-full border border-danger-500/60" /> : null}
-            {onAir ? <span aria-hidden className="absolute -inset-2 rounded-full bg-danger-500/20 blur-md" /> : null}
+          <div className="mx-auto w-fit">
             {onAir ? (
-              <a href={activeLiveUrl!} target="_blank" rel="noopener noreferrer" aria-label={`${platformLabel} 방송 보기`} className="relative block rounded-full focus:outline-none focus:ring-4 focus:ring-brand-300/70">
-                {creator.avatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={creator.avatarUrl} alt="" className={`h-28 w-28 rounded-full border-[3px] object-cover shadow-[0_14px_40px_rgba(0,0,0,0.38)] ${onAir ? 'animate-heartbeat border-danger-500' : 'border-brand-400/80'}`} />
-                ) : (
-                  <span className={`grid h-28 w-28 place-items-center rounded-full border-[3px] bg-[linear-gradient(145deg,#ffd257,#f5b81a,#e09b00)] text-[36px] font-black text-ink-900 shadow-[0_14px_40px_rgba(0,0,0,0.38)] ${onAir ? 'animate-heartbeat border-danger-500' : 'border-brand-400/80'}`}>
-                    {creator.displayName.slice(0, 1)}
-                  </span>
-                )}
+              <a href={creator.liveUrl!} target="_blank" rel="noopener noreferrer" aria-label="라이브 방송 보기">
+                <ProfileAvatar
+                  seed={creator.userId}
+                  name={creator.displayName}
+                  imageUrl={creator.avatarUrl}
+                  className="h-24 w-24 animate-heartbeat border-2 border-danger-500"
+                />
               </a>
-            ) : creator.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={creator.avatarUrl} alt="" className="relative h-28 w-28 rounded-full border-[3px] border-brand-400/80 object-cover shadow-[0_14px_40px_rgba(0,0,0,0.38)]" />
             ) : (
-              <span className="relative grid h-28 w-28 place-items-center rounded-full border-[3px] border-brand-400/80 bg-[linear-gradient(145deg,#ffd257,#f5b81a,#e09b00)] text-[36px] font-black text-ink-900 shadow-[0_14px_40px_rgba(0,0,0,0.38)]">
-                {creator.displayName.slice(0, 1)}
-              </span>
+              <ProfileAvatar
+                seed={creator.userId}
+                name={creator.displayName}
+                imageUrl={creator.avatarUrl}
+                className="h-24 w-24 border-2 border-brand-400/70"
+              />
             )}
           </div>
 
           {onAir ? (
             <a
-              href={activeLiveUrl!}
+              href={creator.liveUrl!}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#e5342f] px-3.5 py-1.5 text-[11.5px] font-black tracking-[0.06em] text-white shadow-[0_6px_18px_rgba(229,52,47,0.4)] transition-transform hover:-translate-y-0.5"
@@ -142,7 +136,7 @@ export default async function CreatorDonationPage({ params }: Params) {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-70" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
               </span>
-              <LiveIcon size={14} /> ON AIR · {platformLabel}
+              ON AIR · 라이브 보러가기
             </a>
           ) : null}
 
@@ -162,7 +156,7 @@ export default async function CreatorDonationPage({ params }: Params) {
       </header>
 
       {/* ── 본문 ─────────────────────────────────────────────────────── */}
-      <main className="relative z-10 mx-auto w-full max-w-[680px] px-4 pb-32 sm:pb-16">
+      <main className="relative z-10 mx-auto w-full max-w-[560px] px-4 pb-32 sm:pb-16">
         {/* 후원 카드 (히어로에 겹침) */}
         <section className="-mt-16">
           {route ? (
@@ -178,6 +172,7 @@ export default async function CreatorDonationPage({ params }: Params) {
                   defaultAmount={creator.donationAmount.toString()}
                   minAmount={policy.minAmount.toString()}
                   maxAmount={policy.maxAmount.toString()}
+                  paymentMock={paymentMock}
                 />
               </div>
 
@@ -225,7 +220,7 @@ export default async function CreatorDonationPage({ params }: Params) {
                 className="mt-4 inline-flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-brand-400 text-[16px] font-extrabold text-ink-900 shadow-[0_8px_20px_rgba(237,166,0,0.28)] transition-colors hover:bg-brand-500 active:bg-brand-600"
               >
                 <MessageSquare size={18} strokeWidth={1.7} />
-                응원 보내기
+                문자후원하기
               </a>
               <p className="mt-2.5 text-center text-[11.5px] leading-relaxed text-ink-400">
                 문자 앱이 열리며 후원 번호가 자동 입력됩니다. 문자 1통을 보내면{' '}
@@ -240,7 +235,7 @@ export default async function CreatorDonationPage({ params }: Params) {
               </span>
               <p className="mt-3 text-[15px] font-extrabold text-ink-900">후원 번호가 아직 배정되지 않았습니다</p>
               <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-500">
-                아직 문자 수신 번호가 배정되지 않아 응원을 접수할 수 없습니다. 번호가 배정되면 이 페이지에
+                아직 문자 수신 번호가 배정되지 않아 문자후원을 접수할 수 없습니다. 번호가 배정되면 이 페이지에
                 표시됩니다.
               </p>
             </div>
@@ -261,8 +256,33 @@ export default async function CreatorDonationPage({ params }: Params) {
           </div>
         </section>
 
-        {/* 후원 방법 */}
-        <section className="mt-8">
+        {/* 후원 방법 — PC(웹 후원) */}
+        <section className="mt-8 hidden sm:block">
+          <h2 className="px-1 text-[15px] font-black tracking-[-0.02em] text-ink-900">후원 방법</h2>
+          <div className="mt-2.5 space-y-2.5">
+            <Step
+              no="1"
+              icon={<MessageSquare size={17} strokeWidth={1.7} />}
+              title="금액과 응원 메시지를 고릅니다"
+              body="문자후원하기를 누르면 금액(직접 입력 포함)과 방송에 표시될 응원 메시지를 고를 수 있습니다."
+            />
+            <Step
+              no="2"
+              icon={<CreditCard size={17} strokeWidth={1.7} />}
+              title="본인 인증 후 바로 결제됩니다"
+              body="휴대전화 본인 인증을 마치면 등록된 내통장결제 계좌에서 선택한 금액이 출금됩니다. 처음이라면 인증 후 가입 창에서 계좌를 1회 등록합니다."
+            />
+            <Step
+              no="3"
+              icon={<ShieldCheck size={17} strokeWidth={1.7} />}
+              title="유튜브와 방송에 표시됩니다"
+              body="결제가 완료된 후원만 유튜브 라이브 채팅과 방송 오버레이, 음성 안내로 전달됩니다. 결제되지 않은 메시지는 표시되지 않습니다."
+            />
+          </div>
+        </section>
+
+        {/* 후원 방법 — 모바일(문자후원) */}
+        <section className="mt-8 sm:hidden">
           <h2 className="px-1 text-[15px] font-black tracking-[-0.02em] text-ink-900">후원 방법</h2>
           <div className="mt-2.5 space-y-2.5">
             <Step
@@ -275,7 +295,7 @@ export default async function CreatorDonationPage({ params }: Params) {
               no="2"
               icon={<MessageSquare size={17} strokeWidth={1.7} />}
               title="응원 문자를 보냅니다"
-              body={`위 번호로 메시지를 보내면 문자 1건당 ${formatWon(creator.donationAmount)}이 후원됩니다. 결제 확인 문자의 버튼을 눌러야 등록한 계좌에서 출금됩니다.`}
+              body={`위 번호로 메시지를 보내면 문자 1통당 ${formatWon(creator.donationAmount)}이 등록된 계좌에서 결제됩니다.`}
             />
             <Step
               no="3"
@@ -362,7 +382,7 @@ export default async function CreatorDonationPage({ params }: Params) {
         {/* 서비스 풋터 */}
         <footer className="mt-10 border-t border-ink-100 pt-6 text-center">
           <p className="text-[11.5px] leading-relaxed text-ink-400">
-            이 페이지는 <span className="font-bold text-ink-500">도네이도 후원</span>으로 운영됩니다.
+            이 페이지는 <span className="font-bold text-ink-500">도네이도 문자후원</span>으로 운영됩니다.
             <br />
             유튜브 공식 슈퍼챗이 아닌 외부 후원 서비스입니다.
           </p>
@@ -391,7 +411,7 @@ export default async function CreatorDonationPage({ params }: Params) {
               className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl bg-brand-400 text-[15px] font-extrabold text-ink-900 shadow-[0_8px_20px_rgba(237,166,0,0.28)] transition-colors hover:bg-brand-500 active:bg-brand-600"
             >
               <MessageSquare size={17} strokeWidth={1.7} />
-              응원 보내기
+              문자후원하기
             </a>
           </div>
         </div>
