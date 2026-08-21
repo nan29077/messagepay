@@ -21,14 +21,14 @@ export async function PublicShell({
   const user = await getSessionUser().catch(() => null);
 
   // 크리에이터는 프로필 캐릭터(아바타)를 우측 메뉴 프로필에도 그대로 보여준다.
-  const avatarUrl =
+  const creatorAvatar =
     user?.role === 'CREATOR' && user.creatorId
       ? (
           await prisma.creatorProfile.findUnique({
             where: { id: user.creatorId },
-            select: { avatarUrl: true },
+            select: { avatarUrl: true, code: true },
           })
-        )?.avatarUrl ?? null
+        )
       : null;
 
   const viewer: ShellViewer | null = user
@@ -38,7 +38,8 @@ export async function PublicShell({
         email: user.email,
         myHref: user.role === 'ADMIN' ? '/admin' : user.role === 'CREATOR' ? '/studio' : '/my',
         roleLabel: user.role === 'ADMIN' ? '관리자' : user.role === 'CREATOR' ? '크리에이터' : '후원자',
-        avatarUrl,
+        avatarUrl: creatorAvatar?.avatarUrl ?? null,
+        avatarSeed: creatorAvatar?.code ?? user.id,
       }
     : null;
 

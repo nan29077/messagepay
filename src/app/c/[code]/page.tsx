@@ -118,7 +118,7 @@ export default async function CreatorDonationPage({ params }: Params) {
             {onAir ? (
               <a href={creator.liveUrl!} target="_blank" rel="noopener noreferrer" aria-label="라이브 방송 보기">
                 <ProfileAvatar
-                  seed={creator.userId}
+                  seed={creator.code}
                   name={creator.displayName}
                   imageUrl={creator.avatarUrl}
                   className="h-24 w-24 animate-heartbeat border-2 border-danger-500"
@@ -126,7 +126,7 @@ export default async function CreatorDonationPage({ params }: Params) {
               </a>
             ) : (
               <ProfileAvatar
-                seed={creator.userId}
+                seed={creator.code}
                 name={creator.displayName}
                 imageUrl={creator.avatarUrl}
                 className="h-24 w-24 border-2 border-brand-400/70"

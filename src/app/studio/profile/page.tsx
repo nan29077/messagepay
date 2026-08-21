@@ -49,7 +49,7 @@ export default async function StudioSettingsProfilePage() {
           <Card>
             <div className="mb-5 flex items-center gap-3 rounded-2xl border border-brand-100 bg-brand-50/60 p-4">
               <ProfileAvatar
-                seed={creator.userId}
+                seed={creator.code}
                 name={creator.displayName}
                 imageUrl={creator.avatarUrl}
                 className="h-16 w-16"

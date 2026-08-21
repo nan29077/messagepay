@@ -15,35 +15,35 @@ const groups: NavGroup[] = [
   {
     title: '현황',
     items: [
-      { href: '/studio', label: '대시보드' },
-      { href: '/studio/donations', label: '후원 내역' },
-      { href: '/studio/messages', label: '문자 관리' },
+      { href: '/studio', label: '대시보드', icon: 'dashboard' },
+      { href: '/studio/donations', label: '후원 내역', icon: 'donations' },
+      { href: '/studio/messages', label: '문자 관리', icon: 'messages' },
     ],
   },
   {
     title: '방송',
     items: [
-      { href: '/studio/youtube', label: '유튜브 채널 연결' },
-      { href: '/studio/overlay', label: '방송·오버레이' },
+      { href: '/studio/youtube', label: '유튜브 채널 연결', icon: 'youtube' },
+      { href: '/studio/overlay', label: '방송·오버레이', icon: 'overlay' },
     ],
   },
   {
     title: '운영',
     items: [
-      { href: '/studio/settings', label: '후원 설정' },
-      { href: '/studio/moderation', label: '금칙어·차단' },
-      { href: '/studio/reports', label: '신고' },
+      { href: '/studio/settings', label: '후원 설정', icon: 'settings' },
+      { href: '/studio/moderation', label: '금칙어·차단', icon: 'moderation' },
+      { href: '/studio/reports', label: '신고', icon: 'reports' },
     ],
   },
   {
     title: '정산',
     items: [
-      { href: '/studio/settlement', label: '정산 관리' },
+      { href: '/studio/settlement', label: '정산 관리', icon: 'settlement' },
     ],
   },
   {
     title: '계정',
-    items: [{ href: '/studio/profile', label: '설정' }],
+    items: [{ href: '/studio/profile', label: '프로필 설정', icon: 'profile' }],
   },
 ];
 
@@ -94,7 +94,13 @@ export default async function StudioLayout({ children }: { children: React.React
     <ConsoleShell
       title="크리에이터 관리자"
       groups={groups}
-      user={{ id: user.id, name: user.name ?? '크리에이터', role: '크리에이터' }}
+      user={{
+        id: user.id,
+        name: user.name ?? '크리에이터',
+        role: '크리에이터',
+        avatarUrl: user.creatorAvatarUrl,
+        avatarSeed: user.creatorCode ?? user.id,
+      }}
     >
       {children}
     </ConsoleShell>

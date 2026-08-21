@@ -29,6 +29,8 @@ export interface ShellViewer {
   roleLabel: string;
   /** 프로필 캐릭터(아바타) 이미지. 크리에이터 프로필의 아바타를 그대로 사용한다. */
   avatarUrl: string | null;
+  /** 크리에이터는 재시드에도 바뀌지 않는 크리에이터 코드를 사용한다. */
+  avatarSeed: string;
 }
 
 /** 마이페이지 탭 활성 판정에 쓰는 콘솔 경로들 */
@@ -229,7 +231,7 @@ export function PublicShellClient({
                   aria-label="내 프로필"
                 >
                   <ProfileAvatar
-                    seed={viewer.id}
+                    seed={viewer.avatarSeed}
                     name={viewer.name ?? viewer.email}
                     imageUrl={viewer.avatarUrl}
                     className="h-9 w-9"

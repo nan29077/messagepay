@@ -21,6 +21,9 @@ export interface SessionUser {
   name: string | null;
   role: UserRole;
   creatorId?: string;
+  /** 크리에이터 캐릭터를 DB 재생성 후에도 동일하게 유지하는 고정 코드 */
+  creatorCode?: string;
+  creatorAvatarUrl?: string | null;
   /** 크리에이터 프로필 상태. APPROVED 가 아니면 스튜디오 기능을 쓸 수 없다. */
   creatorStatus?: CreatorStatus;
   adminPermission?: string;
@@ -93,6 +96,8 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     name: u.name,
     role: u.role,
     creatorId: u.creatorProfile?.id,
+    creatorCode: u.creatorProfile?.code,
+    creatorAvatarUrl: u.creatorProfile?.avatarUrl,
     creatorStatus: u.creatorProfile?.status,
     adminPermission: u.adminProfile?.permission,
   };

@@ -79,7 +79,7 @@ export function ConsoleShell({
 }: {
   title: string;
   groups: NavGroup[];
-  user?: { id: string; name: string; role: string; avatarUrl?: string | null };
+  user?: { id: string; name: string; role: string; avatarUrl?: string | null; avatarSeed?: string };
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -177,7 +177,12 @@ export function ConsoleShell({
           <div className="shrink-0 border-t border-ink-100 bg-white px-3 py-3 lg:rounded-b-[24px]">
             {user ? (
               <div className="mb-2 flex items-center gap-2.5 rounded-xl bg-ink-50 px-3 py-2.5">
-                <ProfileAvatar seed={user.id} name={user.name} imageUrl={user.avatarUrl} className="h-9 w-9" />
+                <ProfileAvatar
+                  seed={user.avatarSeed ?? user.id}
+                  name={user.name}
+                  imageUrl={user.avatarUrl}
+                  className="h-10 w-10"
+                />
                 <span className="min-w-0">
                   <span className="block truncate text-[13px] font-bold text-ink-900">{user.name}</span>
                   <span className="block text-[11px] font-semibold text-ink-400">{user.role}</span>
