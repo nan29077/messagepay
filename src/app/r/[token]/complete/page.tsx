@@ -190,7 +190,7 @@ export default async function RegistrationCompletePage({
 
         {moNumber ? (
           <a
-            href={`sms:${moNumber.phoneNumber}?body=${encodeURIComponent(moNumber.keyword ? `${moNumber.keyword} 응원합니다!` : '응원합니다!')}`}
+            href={`sms:${moNumber.phoneNumber}`}
             className="inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-brand-400 text-[15.5px] font-extrabold text-ink-900 shadow-[0_8px_20px_rgba(237,166,0,0.28)] transition-colors hover:bg-brand-500"
           >
             <MessageSquare size={17} strokeWidth={1.7} />

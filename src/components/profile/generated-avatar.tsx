@@ -24,24 +24,17 @@ export function GeneratedAvatar({
   className?: string;
 }) {
   const index = avatarIndexFromSeed(seed || 'donaido');
-  const localIndex = index % 25;
-  const column = localIndex % 5;
-  const row = Math.floor(localIndex / 5);
-  const sheet = index < 25 ? '/avatars-donaido-a-v1.png' : '/avatars-donaido-b-v1.png';
+  const avatarSrc = `/avatars/donaido/avatar-${String(index + 1).padStart(2, '0')}.png`;
 
   return (
-    <span
-      role="img"
-      aria-label={`${name || '사용자'} 프로필 캐릭터`}
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={avatarSrc}
+      alt={`${name || '사용자'} 프로필 캐릭터`}
       className={cx(
-        'inline-block shrink-0 overflow-hidden rounded-full bg-brand-50 bg-no-repeat shadow-[0_5px_14px_rgba(23,22,26,0.15)] ring-2 ring-white',
+        'inline-block shrink-0 rounded-full bg-brand-50 object-contain shadow-[0_5px_14px_rgba(23,22,26,0.15)] ring-2 ring-white',
         className,
       )}
-      style={{
-        backgroundImage: `url(${sheet})`,
-        backgroundSize: '500% 500%',
-        backgroundPosition: `${column * 25}% ${row * 25}%`,
-      }}
       data-avatar-index={index}
     />
   );

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
   MessageSquare, CreditCard, ShieldCheck, CircleAlert,
-  Gauge, Flag, Hash, Phone,
+  Gauge, Flag, Phone,
 } from 'lucide-react';
 import { CreatorCodeForm } from '@/components/creator-code-form';
 import { CopyButton } from '@/components/public/copy-button';
@@ -94,15 +94,9 @@ export default async function CreatorDonationPage({ params }: Params) {
   } catch {
     paymentMock = true;
   }
-  const keyword = route?.keyword ?? null;
-  const shared = route?.mode === 'SHARED_PREFIX';
-  const exampleBody = shared && keyword ? `${keyword} 응원합니다` : '응원합니다';
-  // 모바일 문자후원하기: 번호가 자동 입력된 문자 앱을 바로 연다 (키워드형은 키워드까지 미리 입력)
-  const smsHref = route
-    ? shared && keyword
-      ? `sms:${route.phoneNumber}?body=${encodeURIComponent(`${keyword} `)}`
-      : `sms:${route.phoneNumber}`
-    : null;
+  // 크리에이터마다 050 전용번호가 부여되므로 keyword 없이 번호만으로 라우팅한다.
+  // (과거 대표번호 공유 방식의 keyword 선입력 로직 제거)
+  const smsHref = route ? `sms:${route.phoneNumber}` : null;
 
   return (
     <div className="min-h-dvh bg-[#f7f5ef]">
@@ -196,7 +190,7 @@ export default async function CreatorDonationPage({ params }: Params) {
               <div className="sm:hidden">
               <p className="flex items-center justify-center gap-1.5 text-[12px] font-bold text-brand-700">
                 <Phone size={14} strokeWidth={1.8} />
-                {shared ? '대표번호 (키워드 필요)' : `${creator.displayName} 전용 후원 번호`}
+                {creator.displayName} 전용 후원 번호
               </p>
               <p className="mt-2 text-center font-mono text-[34px] font-extrabold leading-none tracking-tight text-ink-900">
                 {route.phoneNumber}
@@ -205,24 +199,6 @@ export default async function CreatorDonationPage({ params }: Params) {
                 <CopyButton value={route.phoneNumber} label="번호 복사" />
               </div>
 
-              {shared && keyword ? (
-                <div className="mt-5 rounded-xl border border-warning-500/30 bg-warning-50 px-4 py-3">
-                  <p className="flex items-center gap-1.5 text-[12px] font-bold text-ink-900">
-                    <Hash size={14} strokeWidth={1.8} />
-                    메시지 맨 앞에 키워드를 붙여 보내세요
-                  </p>
-                  <div className="mt-2 flex items-start justify-between gap-3">
-                    <p className="min-w-0 break-all rounded-lg bg-white px-3 py-2 font-mono text-[15px] font-bold text-ink-900">
-                      {exampleBody}
-                    </p>
-                    <CopyButton value={exampleBody} label="문구 복사" />
-                  </div>
-                  <p className="mt-2 text-[12px] leading-relaxed text-ink-700">
-                    키워드 <span className="font-mono font-bold">{keyword}</span> 없이 보내면 어느 크리에이터에게
-                    보내는 후원인지 확인할 수 없어 처리되지 않습니다.
-                  </p>
-                </div>
-              ) : null}
 
               <div className="mt-5 flex items-center justify-between rounded-xl bg-ink-50 px-4 py-3">
                 <span className="text-[13px] font-semibold text-ink-500">문자 1건당 후원금</span>
