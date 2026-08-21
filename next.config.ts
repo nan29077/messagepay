@@ -13,6 +13,14 @@ const nextConfig: NextConfig = {
   devIndicators: false,
 
   /**
+   * Cloudflare 터널(trycloudflare.com) 등 외부 URL로 dev 서버에 접근할 때
+   * Next.js 16 이 RSC 페이로드 요청을 차단해 React hydration 이 실패하는 문제 방지.
+   * allowedDevOrigins 에 추가된 호스트는 dev 서버가 신뢰하는 출처로 인식한다.
+   * 이 설정은 개발 모드에만 적용되며 프로덕션 빌드에는 아무 효과가 없다.
+   */
+  allowedDevOrigins: ['*.trycloudflare.com'],
+
+  /**
    * 컨테이너 배포(ECS/Fargate)에서는 standalone 출력을 쓴다.
    * node_modules 전체를 이미지에 싣지 않아 이미지가 작아지고 콜드스타트가 빨라진다.
    *
