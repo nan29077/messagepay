@@ -12,6 +12,7 @@ import { acquireIdempotency } from './idempotency';
 import { issueSecureLink } from './secure-link';
 import * as tpl from './mt-templates';
 import { calculateFees, postDonationSettlement } from './settlement';
+import { notifySuperAdmins } from './notifications';
 import { dispatchBroadcast } from './broadcast-dispatch';
 import type { DonationStatus, MoProcessResult, PaymentMode } from '@/generated/prisma/enums';
 import type { TemplateOutput } from './mt-templates';
@@ -122,6 +123,14 @@ async function raiseUnknownPaymentAlert(
           note: '결제 승인 결과를 확인하지 못했습니다. 결제사 원장과 대사한 뒤 승인/실패를 확정해 주세요.',
         } as object,
       },
+    });
+
+    // 화면을 열어보기 전에도 알 수 있도록 최고관리자 알림함에도 올린다.
+    // 이 건은 후원자 통장에서 돈이 빠졌을 수 있어 대사가 늦을수록 손해가 커진다.
+    await notifySuperAdmins({
+      title: '결제 결과를 확인하지 못한 건이 있습니다',
+      body: `주문번호 ${orderNo} · ${amount.toString()}원. 결제사 원장과 대사한 뒤 승인/실패를 확정해 주세요.`,
+      linkUrl: '/admin/payments',
     });
   } catch (e) {
     // 알림 생성 실패가 결제 처리 흐름을 막으면 안 된다. 로그로만 남긴다.

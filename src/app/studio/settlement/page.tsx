@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarClock, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Badge, Card, CardTitle, DataRow, EmptyState, Field, Input, Notice, SectionTitle, Select, StatTile, Table, Td, Textarea, Th, cx } from '@/components/ui';
 import { PageHeader } from '@/components/layout/console-shell';
 import { ActionForm } from '@/components/studio/action-form';
@@ -8,9 +8,11 @@ import { ResidentField } from '@/components/studio/resident-field';
 import { requestSettlementAction, saveSettlementAccountAction } from '@/app/actions/studio';
 import { requireCreator } from '@/server/auth';
 import { prisma } from '@/server/db';
-import { getSettlementSummary, resolveFeePolicy, WITHHOLDING_RATE } from '@/server/services/settlement';
-import { applyRate, formatWon, formatNumber } from '@/lib/money';
+import { getSettlementSummary, resolveFeePolicy, calculateWithholding } from '@/server/services/settlement';
+import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst, kstDateKey, kstMonthKey } from '@/lib/datetime';
+import { settlementDateFor, toDateKey, formatDateKeyKo, SETTLEMENT_BUSINESS_DAYS } from '@/lib/business-day';
+import { loadHolidaysAround, buildScheduleNotice } from '@/server/services/settlement-schedule';
 import { ledgerEntryLabel, settlementStatusLabel } from '@/lib/labels';
 import { PAID_STATUSES } from '@/components/studio/shared';
 
@@ -75,13 +77,15 @@ export default async function StudioSettlementPage({
         verified: true, verifiedAt: true, updatedAt: true,
       },
     }),
+    // 정산 예정일은 후원일보다 뒤에 온다. 지난달 후원이 이번 달에 정산되므로
+    // 캘린더에 "정산 예정" 을 채우려면 앞쪽으로 한 달 이상 더 읽어야 한다.
     prisma.donation.findMany({
       where: {
         creatorId,
         status: { in: PAID_STATUSES },
-        paidAt: { gte: range.start, lt: range.end },
+        paidAt: { gte: new Date(range.start.getTime() - 45 * 86_400_000), lt: range.end },
       },
-      select: { paidAt: true, amount: true },
+      select: { paidAt: true, amount: true, netAmount: true },
     }),
     prisma.settlementRequest.findMany({
       where: { creatorId, paidAt: { gte: range.start, lt: range.end } },
@@ -95,17 +99,42 @@ export default async function StudioSettlementPage({
     }),
   ]);
 
+  // ── 공휴일 로드 (정산일 계산용) ──────────────────────────────────
+  // 영업일 = 토·일과 공휴일을 뺀 날. 공휴일 표는 관리자가 관리한다.
+  const holidays = await loadHolidaysAround(
+    toDateKey(new Date(range.start.getTime() - 45 * 86_400_000)),
+    toDateKey(range.end),
+  );
+
   // ── 일별 집계 (KST) ─────────────────────────────────────────────
-  const byDay = new Map<string, { amount: bigint; count: number }>();
+  // byDay        : 그 날 "후원" 이 얼마나 들어왔는지
+  // scheduledDay : 그 날 "정산" 될 예정 금액 (후원일 + 영업일 5일)
+  // payoutByDay  : 그 날 실제로 "지급" 된 금액
+  const byDay = new Map<string, { amount: bigint; count: number; settlementDate: string }>();
+  const scheduledByDay = new Map<string, { amount: bigint; count: number; from: string[] }>();
   let monthTotal = 0n;
   for (const d of monthDonations) {
     if (!d.paidAt) continue;
     const k = kstDateKey(d.paidAt);
-    const cur = byDay.get(k) ?? { amount: 0n, count: 0 };
-    cur.amount += d.amount;
-    cur.count += 1;
-    byDay.set(k, cur);
-    monthTotal += d.amount;
+    const settlementDate = settlementDateFor(k, holidays);
+
+    // 이번 달 후원만 후원 집계·월합계에 넣는다(앞쪽 45일은 정산 예정 계산용).
+    if (d.paidAt >= range.start) {
+      const cur = byDay.get(k) ?? { amount: 0n, count: 0, settlementDate };
+      cur.amount += d.amount;
+      cur.count += 1;
+      byDay.set(k, cur);
+      monthTotal += d.amount;
+    }
+
+    // 정산 예정일이 이번 달 안이면 캘린더에 표시한다.
+    if (settlementDate >= range.key && settlementDate < `${range.nextKey}-01`) {
+      const s = scheduledByDay.get(settlementDate) ?? { amount: 0n, count: 0, from: [] };
+      s.amount += d.netAmount ?? d.amount;
+      s.count += 1;
+      if (!s.from.includes(k)) s.from.push(k);
+      scheduledByDay.set(settlementDate, s);
+    }
   }
   const payoutByDay = new Map<string, bigint>();
   for (const p of monthPayouts) {
@@ -113,6 +142,9 @@ export default async function StudioSettlementPage({
     const k = kstDateKey(p.paidAt);
     payoutByDay.set(k, (payoutByDay.get(k) ?? 0n) + p.payoutAmount);
   }
+
+  // 상단 안내에 쓸 예시 (오늘 후원하면 언제, 금·토·일 후원은 언제)
+  const notice = await buildScheduleNotice();
 
   // ── 캘린더 격자 구성 ────────────────────────────────────────────
   const firstDow = new Date(range.start.getTime() + 9 * 3600_000).getUTCDay();
@@ -127,7 +159,10 @@ export default async function StudioSettlementPage({
   ];
   while (cells.length % 7 !== 0) cells.push(null);
 
-  const previewWithholding = applyRate(summary.available, WITHHOLDING_RATE);
+  // 원천징수 미리보기는 실제 요청 시 계산과 **같은 함수**를 써야 한다.
+  // 화면은 3.3% 단일 절사, 서버는 2단계 계산이면 요청 직후 금액이 달라져
+  // 크리에이터가 "표시된 금액과 다르다"고 느끼게 된다.
+  const previewWithholding = calculateWithholding(summary.available);
   const isCurrentMonth = range.key === kstMonthKey();
 
   return (
@@ -160,12 +195,51 @@ export default async function StudioSettlementPage({
         {/* ───────────────────────── 정산 현황 ───────────────────────── */}
         {activeTab === 'overview' ? (
           <>
+            {/* ── 정산 주기 안내 ─────────────────────────────────────── */}
+            <section>
+              <div className="rounded-[22px] border border-brand-200/70 bg-[linear-gradient(135deg,#fffaf0_0%,#fff5e0_100%)] p-4 shadow-[0_8px_24px_rgba(237,166,0,0.10)] sm:p-5">
+                <p className="flex items-center gap-1.5 text-[14px] font-black tracking-[-0.01em] text-ink-900">
+                  <CalendarClock size={16} strokeWidth={1.9} className="text-brand-700" />
+                  정산은 후원일로부터 <span className="text-brand-700">영업일 {SETTLEMENT_BUSINESS_DAYS}일 후</span>에 이루어집니다
+                </p>
+                <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-600">
+                  영업일은 <strong>토요일·일요일과 공휴일(법정공휴일·대체공휴일·임시공휴일)을 뺀 날</strong>입니다.
+                  연휴가 끼면 그만큼 정산일이 뒤로 밀립니다.
+                </p>
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-xl border border-brand-200/60 bg-white/80 px-3.5 py-3">
+                    <p className="text-[11px] font-bold text-ink-400">오늘 후원되면</p>
+                    <p className="mt-1 text-[13.5px] font-extrabold text-ink-900">
+                      {formatDateKeyKo(notice.today)}
+                      <span className="mx-1.5 text-brand-500">→</span>
+                      <span className="text-brand-700">{formatDateKeyKo(notice.todaySettlement)} 정산</span>
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-brand-200/60 bg-white/80 px-3.5 py-3">
+                    <p className="text-[11px] font-bold text-ink-400">금·토·일 후원분</p>
+                    <p className="mt-1 text-[13.5px] font-extrabold text-ink-900">
+                      {formatDateKeyKo(notice.weekendDonationDate, false)} ~ 주말
+                      <span className="mx-1.5 text-brand-500">→</span>
+                      <span className="text-brand-700">{formatDateKeyKo(notice.weekendSettlement)} 정산</span>
+                    </p>
+                  </div>
+                </div>
+
+                <p className="mt-2.5 text-[11.5px] leading-relaxed text-ink-400">
+                  예) 8월 3일(월) 후원 → 8월 10일(월) 정산. 금·토·일 후원분은 하나로 묶여 다음 주 금요일에 정산됩니다.
+                  아래 캘린더에서 <span className="font-bold text-ink-600">후원</span>과{' '}
+                  <span className="font-bold text-brand-700">정산 예정</span>을 날짜별로 확인할 수 있습니다.
+                </p>
+              </div>
+            </section>
+
             <section>
               <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
                 <StatTile
                   label={`${range.month}월 후원 합계`}
                   value={formatWon(monthTotal)}
-                  sub={`${formatNumber(monthDonations.length)}건 결제 완료`}
+                  sub={`${formatNumber(byDay.size)}일 · 결제 완료`}
                 />
                 <StatTile label="정산 가능금" value={formatWon(summary.available)} tone="brand" />
                 <StatTile label="정산 보류금" value={formatWon(summary.pending)} sub="요청 검토 중" tone="warning" />
@@ -223,15 +297,18 @@ export default async function StudioSettlementPage({
                   {cells.map((cell, i) => {
                     if (!cell) return <div key={`e${i}`} className="min-h-[72px] border-b border-ink-50 sm:min-h-[84px]" />;
                     const stat = byDay.get(cell.key);
+                    const scheduled = scheduledByDay.get(cell.key);
                     const payout = payoutByDay.get(cell.key);
                     const isToday = cell.key === todayKey;
                     const dow = i % 7;
+                    const isHoliday = holidays.has(cell.key);
                     return (
                       <div
                         key={cell.key}
                         className={cx(
                           'min-h-[72px] border-b border-ink-50 px-1 py-1.5 sm:min-h-[84px] sm:px-1.5',
                           isToday && 'rounded-lg bg-brand-50/70',
+                          !isToday && isHoliday && 'bg-danger-50/40',
                         )}
                       >
                         <p
@@ -239,7 +316,7 @@ export default async function StudioSettlementPage({
                             'text-[11px] font-bold tabular-nums',
                             isToday
                               ? 'inline-grid h-5 w-5 place-items-center rounded-full bg-brand-400 text-center text-ink-900'
-                              : dow === 0
+                              : isHoliday || dow === 0
                                 ? 'text-danger-500'
                                 : dow === 6
                                   ? 'text-brand-700'
@@ -248,17 +325,33 @@ export default async function StudioSettlementPage({
                         >
                           {cell.day}
                         </p>
+
+                        {/* 후원: 그 날 결제 완료된 금액 + 이 후원분이 언제 정산되는지 */}
                         {stat ? (
-                          <div className="mt-1">
+                          <div className="mt-1 rounded border-l-2 border-ink-300 pl-1">
                             <p className="truncate text-[10.5px] font-extrabold tabular-nums text-ink-900 sm:text-[12px]">
                               {formatWon(stat.amount)}
                             </p>
-                            <p className="text-[9.5px] tabular-nums text-ink-400 sm:text-[10.5px]">{stat.count}건</p>
+                            <p className="text-[9.5px] tabular-nums text-ink-400 sm:text-[10.5px]">
+                              후원 {stat.count}건
+                            </p>
+                            <p className="truncate text-[9px] font-semibold tabular-nums text-brand-700 sm:text-[9.5px]">
+                              → {formatDateKeyKo(stat.settlementDate, false)} 정산
+                            </p>
                           </div>
                         ) : null}
+
+                        {/* 정산 예정: 그 날 정산될 후원분 (영업일 5일 전 후원) */}
+                        {scheduled ? (
+                          <p className="mt-0.5 truncate rounded bg-brand-50 px-1 py-0.5 text-[9px] font-bold text-brand-700 ring-1 ring-inset ring-brand-200 sm:text-[10px]">
+                            정산예정 {formatWon(scheduled.amount)}
+                          </p>
+                        ) : null}
+
+                        {/* 지급 완료: 실제로 계좌에 나간 금액 */}
                         {payout ? (
                           <p className="mt-0.5 truncate rounded bg-[#e8f7f0] px-1 py-0.5 text-[9px] font-bold text-[#0b7d59] sm:text-[10px]">
-                            지급 {formatWon(payout)}
+                            지급완료 {formatWon(payout)}
                           </p>
                         ) : null}
                       </div>
@@ -266,8 +359,25 @@ export default async function StudioSettlementPage({
                   })}
                 </div>
 
-                <p className="mt-2.5 text-[11.5px] leading-relaxed text-ink-400">
-                  날짜별 금액은 해당 날짜(KST)에 결제가 완료된 후원의 합계입니다. 초록 배지는 정산금이 지급된 날입니다.
+                {/* 범례 */}
+                <div className="mt-3 flex flex-wrap items-center gap-x-3.5 gap-y-1.5 border-t border-ink-100 pt-2.5">
+                  <span className="flex items-center gap-1.5 text-[11px] font-semibold text-ink-500">
+                    <span className="h-3 w-0.5 rounded bg-ink-300" /> 후원 (결제 완료)
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[11px] font-semibold text-ink-500">
+                    <span className="h-3 w-3 rounded bg-brand-50 ring-1 ring-inset ring-brand-200" /> 정산 예정
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[11px] font-semibold text-ink-500">
+                    <span className="h-3 w-3 rounded bg-[#e8f7f0]" /> 지급 완료
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[11px] font-semibold text-ink-500">
+                    <span className="h-3 w-3 rounded bg-danger-50" /> 공휴일 (영업일 제외)
+                  </span>
+                </div>
+
+                <p className="mt-2 text-[11.5px] leading-relaxed text-ink-400">
+                  후원 금액은 해당 날짜(KST)에 결제가 완료된 합계이고, 각 날짜 아래의 &ldquo;→ 정산&rdquo;은 그 후원분이
+                  지급될 예정일입니다. 정산 예정 금액은 수수료를 뺀 금액 기준이며, 원천징수는 정산 요청 시점에 계산됩니다.
                 </p>
               </Card>
             </section>
@@ -305,8 +415,23 @@ export default async function StudioSettlementPage({
                     }
                   />
                   <DataRow label="정산 가능금" value={formatWon(summary.available)} />
-                  <DataRow label="원천징수 예상 (3.3%)" value={formatWon(previewWithholding)} />
-                  <DataRow label="실지급 예상" value={formatWon(summary.available - previewWithholding)} />
+                  <DataRow
+                    label="소득세 (3%)"
+                    value={formatWon(previewWithholding.incomeTax)}
+                  />
+                  <DataRow
+                    label="지방소득세 (소득세의 10%)"
+                    value={formatWon(previewWithholding.localTax)}
+                  />
+                  <DataRow
+                    label="원천징수 합계"
+                    value={
+                      previewWithholding.exempt
+                        ? '0원 (소액부징수)'
+                        : formatWon(previewWithholding.total)
+                    }
+                  />
+                  <DataRow label="실지급 예상" value={formatWon(summary.available - previewWithholding.total)} />
                 </div>
 
                 {!account || !account.verified ? (
@@ -336,9 +461,11 @@ export default async function StudioSettlementPage({
                 )}
 
                 <div className="mt-3">
-                  <Notice tone="neutral">
-                    원천징수는 사업소득 3.3% 기준으로 계산됩니다. 원천징수 세율은 세무 검토 후 확정됩니다. 사업자 등록
-                    여부와 소득 구분에 따라 실제 적용 세율이 달라질 수 있습니다.
+                  <Notice tone="neutral" title="원천징수 계산 방식">
+                    사업소득 기준으로 <strong>소득세 3%(10원 미만 절사)</strong> 와{' '}
+                    <strong>지방소득세(소득세의 10%, 10원 미만 절사)</strong> 를 각각 산출해 더합니다. 소득세가
+                    1,000원 미만이면 <strong>소액부징수</strong>로 원천징수하지 않습니다(정산액 33,334원 미만).
+                    최종 세율은 세무 검토 후 확정되며, 사업자 등록 여부와 소득 구분에 따라 달라질 수 있습니다.
                   </Notice>
                 </div>
               </Card>

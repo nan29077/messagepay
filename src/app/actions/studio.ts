@@ -10,6 +10,8 @@ import { accountTail4, decrypt, encrypt, generateToken, isValidResident, maskNam
 import { sendTestOverlay } from '@/server/services/broadcast-dispatch';
 import { resolvePolicy } from '@/server/services/limits';
 import { createSettlementRequest } from '@/server/services/settlement';
+import { notifySuperAdmins } from '@/server/services/notifications';
+import { formatWon } from '@/lib/money';
 import { loadBannedWords } from '@/server/services/donation-flow';
 import { filterContent } from '@/server/services/content-filter';
 import { getYouTubeAdapter } from '@/server/adapters/youtube';
@@ -638,6 +640,20 @@ export async function requestSettlementAction(
     }
 
     const created = await createSettlementRequest(creatorId, amount, { memo, resident });
+
+    // 최고관리자에게 알린다.
+    // 요청은 /admin/settlements 목록에 뜨지만, 아무도 통보받지 못하면
+    // 관리자가 화면을 열어보기 전까지 지급이 그대로 밀린다.
+    // 알림 실패가 요청 접수 자체를 되돌리면 안 되므로 예외는 삼킨다.
+    const profile = await prisma.creatorProfile.findUnique({
+      where: { id: creatorId },
+      select: { displayName: true, code: true },
+    });
+    await notifySuperAdmins({
+      title: '새 정산 요청이 접수되었습니다',
+      body: `${profile?.displayName ?? '크리에이터'}(${profile?.code ?? creatorId}) · 요청금 ${formatWon(created.amount)} · 실지급 예정 ${formatWon(created.payoutAmount)}`,
+      linkUrl: '/admin/settlements',
+    }).catch(() => undefined);
 
     revalidatePath('/studio/settlement');
     revalidatePath('/studio');

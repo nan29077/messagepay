@@ -51,6 +51,7 @@ const groups: NavGroup[] = [
     title: '정산·정책·운영',
     items: [
       { href: '/admin/settlements', label: '정산', icon: 'settlement' },
+      { href: '/admin/holidays', label: '공휴일 관리', icon: 'holidays' },
       { href: '/admin/fees', label: '수수료 정책', icon: 'fees' },
       { href: '/admin/policies', label: '한도 정책', icon: 'policies' },
       { href: '/admin/banners', label: '배너', icon: 'banners' },

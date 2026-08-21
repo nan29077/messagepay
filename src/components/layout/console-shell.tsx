@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Activity, BadgeCheck, BookOpenText, ClipboardList, CreditCard, FlaskConical,
+  Activity, BadgeCheck, BookOpenText, CalendarDays, ClipboardList, CreditCard, FlaskConical,
   Flag, Gauge, HeartHandshake, Home, Images, KeyRound, LayoutDashboard, LogOut,
   Menu, MessageCircleQuestion, MessageSquareText, PanelsTopLeft, Percent, PhoneCall, RadioTower,
   ScrollText, Send, ServerCog, ShieldAlert, ShieldBan,
@@ -31,7 +31,7 @@ export interface NavGroup {
 
 export type ConsoleIconName =
   | 'activity' | 'admins' | 'audit' | 'banners' | 'codes' | 'contents' | 'creators'
-  | 'dashboard' | 'donations' | 'donors' | 'fees' | 'inquiries' | 'messages'
+  | 'dashboard' | 'donations' | 'donors' | 'fees' | 'holidays' | 'inquiries' | 'messages'
   | 'moderation' | 'numbers' | 'overlay' | 'payments' | 'policies' | 'profile'
   | 'refunds' | 'reports' | 'risk' | 'settlement' | 'simulator' | 'stream'
   | 'system' | 'terms' | 'tts' | 'users' | 'youtube' | 'settings' | 'send';
@@ -48,6 +48,7 @@ const CONSOLE_ICONS = {
   donations: HeartHandshake,
   donors: CircleUserRound,
   fees: Percent,
+  holidays: CalendarDays,
   inquiries: MessageCircleQuestion,
   messages: MessageSquareText,
   moderation: ShieldBan,

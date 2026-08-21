@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { Logo, TornadoMark } from '@/components/brand/logo';
 import { DonationLookupSheet } from '@/components/public/donation-lookup-sheet';
+import { NotificationBell } from '@/components/notifications/notification-bell';
 import { ProfileAvatar } from '@/components/profile/generated-avatar';
 import { cx } from '@/components/ui';
 
@@ -98,15 +99,24 @@ export function PublicShellClient({
             <Logo />
           </Link>
 
-          <button
-            type="button"
-            aria-label="메뉴"
-            aria-expanded={open}
-            onClick={() => setOpen((v) => !v)}
-            className="grid h-10 w-10 place-items-center rounded-full border border-ink-200 bg-white text-ink-700 shadow-sm lg:hidden"
-          >
-            {open ? <X size={18} strokeWidth={1.6} /> : <Menu size={18} strokeWidth={1.6} />}
-          </button>
+          {/*
+            알림 버튼.
+            PC 에서는 햄버거(lg:hidden)가 숨겨지므로 이 버튼만 남아 우측 상단에 위치하고,
+            모바일에서는 햄버거 바로 왼쪽에 나란히 놓인다.
+            알림은 사용자별 데이터라 로그인한 경우에만 노출한다.
+          */}
+          <div className="flex items-center gap-2">
+            {viewer ? <NotificationBell /> : null}
+            <button
+              type="button"
+              aria-label="메뉴"
+              aria-expanded={open}
+              onClick={() => setOpen((v) => !v)}
+              className="grid h-10 w-10 place-items-center rounded-full border border-ink-200 bg-white text-ink-700 shadow-sm lg:hidden"
+            >
+              {open ? <X size={18} strokeWidth={1.6} /> : <Menu size={18} strokeWidth={1.6} />}
+            </button>
+          </div>
         </div>
 
         {open ? (

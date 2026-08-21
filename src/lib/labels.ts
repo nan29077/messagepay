@@ -11,6 +11,7 @@ import type {
   RiskLevel,
   RiskType,
   DonorOnboardingStatus,
+  HolidayKind,
 } from '@/generated/prisma/enums';
 
 export type Tone = 'neutral' | 'brand' | 'success' | 'warning' | 'danger';
@@ -127,6 +128,14 @@ export const riskTypeLabel: Record<RiskType, string> = {
   DUPLICATE_WEBHOOK: '중복 수신',
   ABNORMAL_AMOUNT: '이상 금액',
   PAYMENT_UNKNOWN: '결제결과 미확인',
+};
+
+/** 정산일(영업일) 계산에서 제외되는 공휴일 종류. */
+export const holidayKindLabel: Record<HolidayKind, { text: string; tone: Tone }> = {
+  STATUTORY: { text: '법정공휴일', tone: 'brand' },
+  SUBSTITUTE: { text: '대체공휴일', tone: 'warning' },
+  TEMPORARY: { text: '임시공휴일', tone: 'danger' },
+  BANK_ONLY: { text: '은행 휴무일', tone: 'neutral' },
 };
 
 export const paymentModeLabel = {

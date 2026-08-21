@@ -50,7 +50,14 @@ async function loginCreator(page) {
   if (hasResident) {
     ok('정산: 주민번호 신고 후 파기 안내', reqText.includes('신고 완료 후 즉시 파기'));
     ok('정산: 원천징수 전용 안내', reqText.includes('원천징수 신고 목적'));
-    ok('정산: 수집 동의 체크박스', (await cr.locator('input[name=residentAgree]').count()) > 0);
+    // 두 갈래 모두 정상이다:
+    //  · 신규 입력  → 동의 체크박스가 있다
+    //  · 기존 재사용 → 마스킹 값 + '변경' 버튼이 있고 동의는 이미 받은 상태다
+    const agreeBox = await cr.locator('input[name=residentAgree]').count();
+    const reuse = (await cr.locator('input[name=resident]').count()) > 0
+      && (await cr.locator('button:has-text("변경")').count()) > 0;
+    ok('정산: 수집 동의 체크박스 또는 기존 번호 재사용', agreeBox > 0 || reuse,
+      agreeBox > 0 ? '신규 입력' : '기존 재사용');
   } else {
     ok('정산: (정산 가능금 없음 — 주민번호 폼 건너뜀)', true, '가능금 0');
     ok('정산: 원천징수 안내(요청 탭 하단)', reqText.includes('원천징수'));

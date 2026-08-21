@@ -81,7 +81,8 @@ await page.goto(`${BASE}/studio/settlement`);
 ok('사이드바: 정산 관리만 활성', (await cls('정산 관리')).includes('bg-brand-100') && !(await cls('대시보드')).includes('bg-brand-100'));
 await page.goto(`${BASE}/studio/profile`);
 const exactCls = async (label) => (await page.locator('aside a', { hasText: new RegExp(`^${label}$`) }).first().getAttribute('class')) ?? '';
-ok('사이드바: 설정만 활성', (await exactCls('설정')).includes('bg-brand-100') && !(await cls('대시보드')).includes('bg-brand-100') && !(await exactCls('후원 설정')).includes('bg-brand-100'));
+// 메뉴 이름이 '설정' → '프로필 설정' 로 바뀌었다(아이콘 메뉴 개편).
+ok('사이드바: 프로필 설정만 활성', (await exactCls('프로필 설정')).includes('bg-brand-100') && !(await cls('대시보드')).includes('bg-brand-100') && !(await exactCls('후원 설정')).includes('bg-brand-100'));
 await page.goto(`${BASE}/studio`);
 ok('사이드바: 대시보드는 대시보드에서만', (await cls('대시보드')).includes('bg-brand-100'));
 

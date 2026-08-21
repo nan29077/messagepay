@@ -1424,3 +1424,36 @@ model ContentPost {
   @@index([type, published])
   @@map("content_post")
 }
+
+/// 공휴일 종류.
+/// BANK_ONLY 는 관공서 공휴일은 아니지만 은행이 쉬는 날(근로자의 날 등)이다.
+/// 정산 지급은 은행 영업일에만 가능하므로 영업일 계산에는 함께 제외한다.
+enum HolidayKind {
+  STATUTORY
+  SUBSTITUTE
+  TEMPORARY
+  BANK_ONLY
+
+  @@map("holiday_kind")
+}
+
+/// 공휴일(영업일 계산용).
+///
+/// 정산일은 "후원일 다음날부터 영업일 5일" 로 계산하는데, 영업일은
+/// 토·일과 이 표의 날짜를 뺀 날이다. 임시공휴일은 매년 갑자기 지정되므로
+/// 배포 없이 관리자 화면에서 바로 추가·수정할 수 있어야 한다.
+/// 날짜는 KST 기준 YYYY-MM-DD 문자열로 둔다(시간대 오차 원천 차단).
+model PublicHoliday {
+  id        String      @id
+  /// KST 기준 YYYY-MM-DD
+  date      String      @unique
+  name      String
+  kind      HolidayKind @default(STATUTORY)
+  active    Boolean     @default(true)
+  memo      String?
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([date, active])
+  @@map("public_holiday")
+}
