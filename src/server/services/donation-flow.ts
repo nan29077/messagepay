@@ -90,6 +90,45 @@ async function sendMt(input: {
   }
 }
 
+/**
+ * 결제 결과 미확인(UNKNOWN) 건을 관리자 확인 큐에 올린다.
+ *
+ * 출금이 실제로 일어났는지 앱이 알 수 없는 상태이므로, 사람이 결제사 원장과
+ * 대사해서 승인/실패를 확정해야 한다. 같은 거래로 여러 번 올라오지 않도록
+ * 미해결 건이 이미 있으면 새로 만들지 않는다.
+ */
+async function raiseUnknownPaymentAlert(
+  donationId: string,
+  transactionId: string,
+  orderNo: string,
+  amount: bigint,
+) {
+  try {
+    const existing = await prisma.riskDetection.findFirst({
+      where: { donationId, type: 'PAYMENT_UNKNOWN', resolved: false },
+      select: { id: true },
+    });
+    if (existing) return;
+    await prisma.riskDetection.create({
+      data: {
+        id: newId(),
+        donationId,
+        type: 'PAYMENT_UNKNOWN',
+        level: 'CRITICAL',
+        detail: {
+          transactionId,
+          orderNo,
+          amount: amount.toString(),
+          note: '결제 승인 결과를 확인하지 못했습니다. 결제사 원장과 대사한 뒤 승인/실패를 확정해 주세요.',
+        } as object,
+      },
+    });
+  } catch (e) {
+    // 알림 생성 실패가 결제 처리 흐름을 막으면 안 된다. 로그로만 남긴다.
+    logger.error('결제 미확인 알림 생성 실패', { donationId, message: (e as Error).message });
+  }
+}
+
 async function setStatus(donationId: string, to: DonationStatus, reason?: string, actor = 'system') {
   const cur = await prisma.donation.findUnique({ where: { id: donationId }, select: { status: true } });
   await prisma.$transaction([
@@ -131,11 +170,32 @@ export function parseExplicitAmount(body: string): { amount: bigint | null; rest
 export async function routeCreator(receivedNumber: string, content: string) {
   const number = normalizePhone(receivedNumber) || receivedNumber;
 
-  // 1) 전용번호 우선
-  const dedicated = await prisma.creatorMoNumber.findFirst({
-    where: { phoneNumber: number, mode: 'DEDICATED', status: 'ASSIGNED', creatorId: { not: null } },
+  // 같은 번호에 걸린 배정 행을 한 번에 읽는다.
+  // 전용(DEDICATED)과 대표번호공유(SHARED_PREFIX)가 같은 번호에 공존하면
+  // 전용이 먼저 매칭돼 대표번호를 쓰던 모든 크리에이터의 후원이 전용 크리에이터
+  // 1명에게 흘러들어간다. 후원자도 크리에이터도 알아챌 수 없는 사고이므로
+  // 라우팅을 진행하지 않고 차단한 뒤 관리자에게 알린다.
+  const rows = await prisma.creatorMoNumber.findMany({
+    where: { phoneNumber: number, status: 'ASSIGNED', creatorId: { not: null } },
     include: { creator: true },
+    orderBy: { assignedAt: 'desc' },
   });
+
+  const dedicatedRows = rows.filter((r) => r.mode === 'DEDICATED');
+  const sharedRows = rows.filter((r) => r.mode === 'SHARED_PREFIX');
+
+  if (dedicatedRows.length > 1 || (dedicatedRows.length > 0 && sharedRows.length > 0)) {
+    logger.error('MO 번호 라우팅 충돌 — 배정 설정을 정리해야 합니다', {
+      phoneNumber: number,
+      dedicated: dedicatedRows.length,
+      shared: sharedRows.length,
+      creators: rows.map((r) => r.creator?.code).filter(Boolean),
+    });
+    return null;
+  }
+
+  // 1) 전용번호 우선
+  const dedicated = dedicatedRows[0];
   if (dedicated?.creator) {
     return { route: dedicated, creator: dedicated.creator, keyword: null as string | null, body: content };
   }
@@ -143,10 +203,7 @@ export async function routeCreator(receivedNumber: string, content: string) {
   // 2) 대표번호 + 키워드
   const { keyword, rest } = splitKeyword(content);
   if (keyword) {
-    const shared = await prisma.creatorMoNumber.findFirst({
-      where: { phoneNumber: number, mode: 'SHARED_PREFIX', keyword, status: 'ASSIGNED', creatorId: { not: null } },
-      include: { creator: true },
-    });
+    const shared = sharedRows.find((r) => r.keyword === keyword);
     if (shared?.creator) {
       return { route: shared, creator: shared.creator, keyword, body: rest };
     }
@@ -157,15 +214,32 @@ export async function routeCreator(receivedNumber: string, content: string) {
 
 async function getOrCreateDonor(phone: string) {
   const ph = hashPhone(phone);
-  const existing = await prisma.donorProfile.findUnique({ where: { phoneHash: ph } });
-  if (existing) return existing;
-  return prisma.donorProfile.create({
-    data: {
+  return prisma.donorProfile.upsert({
+    where: { phoneHash: ph },
+    update: {},
+    create: {
       id: newId(),
       phoneHash: ph,
       phoneEnc: encrypt(normalizePhone(phone)),
       phoneMasked: maskPhone(phone),
     },
+  });
+}
+
+/** 같은 전화번호의 동시 MO 중 한 요청만 최초 가입 안내 발송권을 얻는다. */
+async function claimRegistrationGuide(donorId: string) {
+  const claimedAt = new Date();
+  const claimed = await prisma.donorProfile.updateMany({
+    where: { id: donorId, onboardingStatus: 'UNREGISTERED' },
+    data: { onboardingStatus: 'LINK_SENT', registrationLinkSentAt: claimedAt },
+  });
+  return { claimed: claimed.count === 1, claimedAt };
+}
+
+async function releaseRegistrationGuideClaim(donorId: string, claimedAt: Date) {
+  await prisma.donorProfile.updateMany({
+    where: { id: donorId, onboardingStatus: 'LINK_SENT', registrationLinkSentAt: claimedAt },
+    data: { onboardingStatus: 'UNREGISTERED', registrationLinkSentAt: null },
   });
 }
 
@@ -255,33 +329,86 @@ export async function handleMoInbound(inbound: MoInbound): Promise<MoHandleResul
 
   const donor = await getOrCreateDonor(inbound.fromNumber);
 
-  // (3) 등록 여부 확인. 미등록이면 결제하지 않고 등록 링크만 보낸다.
+  // (3) 실제 활성 빌키가 있을 때만 후원 결제로 진행한다.
   const token = await prisma.paymentMethodToken.findFirst({
     where: { donorId: donor.id, status: 'ACTIVE' },
     orderBy: { registeredAt: 'desc' },
   });
 
   if (!token) {
+    const current = await prisma.donorProfile.findUniqueOrThrow({ where: { id: donor.id } });
     await prisma.moInboundMessage.update({
       where: { id: moRow.id },
-      data: { result: 'UNREGISTERED_DONOR', resultDetail: '계좌 미등록', processedAt: new Date() },
+      data: {
+        result: 'UNREGISTERED_DONOR',
+        resultDetail:
+          current.onboardingStatus === 'LINK_SENT' ? '가입 안내 발송 완료·가입 대기' : `가입 상태: ${current.onboardingStatus}`,
+        processedAt: new Date(),
+      },
     });
-    const link = await issueSecureLink({
-      purpose: 'REGISTER_ACCOUNT',
-      phoneHash: ph,
-      creatorId: creator.id,
-      payload: { moMessageId: moRow.id },
-    });
-    await sendMt({
-      phone: inbound.fromNumber,
-      template: tpl.tplRegisterGuide(creator.displayName, link.url),
-      creatorId: creator.id,
-    });
+
+    const claim = await claimRegistrationGuide(donor.id);
+    if (claim.claimed) {
+      try {
+        const link = await issueSecureLink({
+          purpose: 'REGISTER_ACCOUNT',
+          phoneHash: ph,
+          creatorId: creator.id,
+          payload: { moMessageId: moRow.id },
+        });
+        const sent = await sendMt({
+          phone: inbound.fromNumber,
+          template: tpl.tplRegisterGuide(creator.displayName, link.url),
+          creatorId: creator.id,
+        });
+        if (!sent) await releaseRegistrationGuideClaim(donor.id, claim.claimedAt);
+      } catch (error) {
+        await releaseRegistrationGuideClaim(donor.id, claim.claimedAt);
+        throw error;
+      }
+      return {
+        result: 'UNREGISTERED_DONOR',
+        moMessageId: moRow.id,
+        message: '미등록 이용자입니다. 최초 가입 안내를 발송했습니다. 이 문자는 후원 처리되지 않습니다.',
+      };
+    }
+
+    if (
+      current.onboardingStatus === 'REGISTERED' ||
+      current.onboardingStatus === 'SUSPENDED' ||
+      current.onboardingStatus === 'WITHDRAWN'
+    ) {
+      if (current.onboardingStatus === 'REGISTERED') {
+        await prisma.donorProfile.update({
+          where: { id: donor.id },
+          data: { onboardingStatus: 'SUSPENDED' },
+        });
+      }
+      await sendMt({
+        phone: inbound.fromNumber,
+        template: tpl.tplAccountInactive(creator.displayName),
+        creatorId: creator.id,
+      });
+      return {
+        result: 'UNREGISTERED_DONOR',
+        moMessageId: moRow.id,
+        message: '내통장결제 이용이 중지된 번호입니다. 결제는 진행되지 않았습니다.',
+      };
+    }
+
     return {
       result: 'UNREGISTERED_DONOR',
       moMessageId: moRow.id,
-      message: '미등록 이용자입니다. 계좌 등록 안내를 발송했습니다. 최초 문자는 후원 처리되지 않습니다.',
+      message: '가입 안내가 이미 발송된 번호입니다. 가입 완료 전 문자는 후원 처리되지 않으며 링크를 다시 보내지 않습니다.',
     };
+  }
+
+  // 기존 데이터 이관·복구 상황에서도 활성 빌키가 실제 결제 가능 상태의 기준이다.
+  if (donor.onboardingStatus !== 'REGISTERED') {
+    await prisma.donorProfile.update({
+      where: { id: donor.id },
+      data: { onboardingStatus: 'REGISTERED', registeredAt: donor.registeredAt ?? token.registeredAt },
+    });
   }
 
   // (4) 금액 지정 파싱 + 콘텐츠 필터
@@ -539,26 +666,62 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
     attemptNo += 1;
     await prisma.paymentTransaction.update({ where: { id: txn.id }, data: { status: 'TIMEOUT' } });
 
-    const inq = await adapter.inquire(txn.orderNo);
+    // 거래결과조회 자체가 실패해도 예외를 밖으로 내보내지 않는다.
+    // 여기서 throw 하면 후원이 PENDING_PAYMENT 로 영구히 멈춰 아무도 복구할 수 없다.
+    // 조회 불가 = "결과 미확인(UNKNOWN)" 으로 확정하고 관리자 확인 큐로 보낸다.
+    let inq: Awaited<ReturnType<typeof adapter.inquire>> | null = null;
+    try {
+      inq = await adapter.inquire(txn.orderNo);
+    } catch (inqErr) {
+      logger.error('거래결과조회 실패', { donationId, orderNo: txn.orderNo, message: (inqErr as Error).message });
+    }
     await prisma.paymentAttempt.create({
       data: {
         id: newId(), transactionId: txn.id, attemptNo, operation: 'INQUIRE',
-        responseMasked: { status: inq.data?.status ?? 'UNKNOWN' } as object,
+        responseMasked: { status: inq?.data?.status ?? 'UNKNOWN' } as object,
+        errorCode: inq ? null : 'INQUIRE_ERROR',
       },
     });
-    if (inq.ok && inq.data?.status === 'APPROVED') {
+    if (inq?.ok && inq.data?.status === 'APPROVED') {
       approved = { providerTid: inq.data.providerTid ?? txn.orderNo, approvedAt: new Date() };
-    } else if (inq.ok && inq.data?.status === 'FAILED') {
+    } else if (inq?.ok && inq.data?.status === 'FAILED') {
       failure = { code: 'TIMEOUT_FAILED', message: '결제가 완료되지 않았습니다.' };
     } else {
       failure = { code: 'UNKNOWN', message: '결제 결과를 확인할 수 없습니다. 관리자 확인이 필요합니다.' };
-      await prisma.paymentTransaction.update({ where: { id: txn.id }, data: { status: 'UNKNOWN' } });
     }
   }
 
   const phone = donation.donor.phoneMasked;
 
   if (!approved) {
+    // ── 결과 미확인(UNKNOWN) ────────────────────────────────────────────
+    // 출금이 실제로 일어났을 수 있으므로 "실패"로 확정하면 안 된다.
+    // FAILED 로 덮으면 (1) 원장 분개가 없어 크리에이터에게 정산되지 않고
+    // (2) 후원자에게 실패 문자가 나가며 (3) 실패 카운터로 정상 후원자가 잠기고
+    // (4) 관리자 '확인 필요' 큐(status IN UNKNOWN,TIMEOUT)가 영구히 비어 대사 자체가 불가능해진다.
+    // 따라서 UNKNOWN 은 UNKNOWN 그대로 남기고 사람이 판단하도록 넘긴다.
+    if (failure?.code === 'UNKNOWN') {
+      await prisma.paymentTransaction.update({
+        where: { id: txn.id },
+        data: { status: 'UNKNOWN', resultCode: 'UNKNOWN', resultMessage: failure.message ?? null },
+      });
+      // 후원 상태는 PENDING_PAYMENT 로 유지한다(실패 아님). 사유만 남긴다.
+      await prisma.donation.update({
+        where: { id: donationId },
+        data: { statusReason: '결제 결과 미확인 — 관리자 확인 대기' },
+      });
+      await raiseUnknownPaymentAlert(donationId, txn.id, txn.orderNo, donation.amount);
+      // 실패 카운터를 올리지 않는다. 실패 문자도 보내지 않는다(이중청구 오해 방지).
+      logger.error('결제 결과 미확인 — 수동 대사 필요', {
+        donationId, transactionId: txn.id, orderNo: txn.orderNo, phone,
+      });
+      return {
+        ok: false,
+        status: 'PENDING_PAYMENT',
+        message: '결제 결과를 확인하는 중입니다. 확인되는 대로 문자로 안내드립니다.',
+      };
+    }
+
     await prisma.paymentTransaction.update({
       where: { id: txn.id },
       data: { status: 'FAILED', resultCode: failure?.code ?? null, resultMessage: failure?.message ?? null },
@@ -571,50 +734,60 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
     return { ok: false, status: 'PAYMENT_FAILED', message: failure?.message ?? '결제에 실패했습니다.' };
   }
 
-  // 승인 성공
+  // ── 승인 성공 ──────────────────────────────────────────────────────
+  // 승인 기록과 정산 원장 분개는 반드시 같은 트랜잭션이어야 한다.
+  // 둘이 갈라져 있으면 그 사이에 프로세스가 죽었을 때
+  // "후원은 성공인데 원장에는 없는" 상태가 되고, 앞쪽 조기 return 가드가
+  // 재시도를 '이미 완료'로 되돌려 보내 크리에이터가 그 금액을 영영 못 받는다.
   const fees = await calculateFees(donation.creatorId, donation.amount);
-  await prisma.$transaction([
-    prisma.paymentTransaction.update({
+  await prisma.$transaction(async (tx) => {
+    await tx.paymentTransaction.update({
       where: { id: txn.id },
-      data: { status: 'APPROVED', providerTid: approved.providerTid, approvedAt: approved.approvedAt },
-    }),
-    prisma.donation.update({
+      data: { status: 'APPROVED', providerTid: approved!.providerTid, approvedAt: approved!.approvedAt },
+    });
+    await tx.donation.update({
       where: { id: donationId },
       data: {
-        status: 'PAYMENT_SUCCESS',
-        paidAt: approved.approvedAt,
+        status: 'SETTLEMENT_PENDING',
+        statusReason: '정산 대기',
+        paidAt: approved!.approvedAt,
         pgFee: fees.pgFee,
         platformFee: fees.platformFee,
         netAmount: fees.net,
       },
-    }),
-    prisma.donationStatusLog.create({
-      data: { id: newId(), donationId, fromStatus: 'PENDING_PAYMENT', toStatus: 'PAYMENT_SUCCESS', actor: 'system' },
-    }),
-    prisma.donorCreatorLink.upsert({
+    });
+    await tx.donationStatusLog.createMany({
+      data: [
+        { id: newId(), donationId, fromStatus: 'PENDING_PAYMENT', toStatus: 'PAYMENT_SUCCESS', actor: 'system' },
+        { id: newId(), donationId, fromStatus: 'PAYMENT_SUCCESS', toStatus: 'SETTLEMENT_PENDING', reason: '정산 대기', actor: 'system' },
+      ],
+    });
+    await tx.donorCreatorLink.upsert({
       where: { donorId_creatorId: { donorId: donation.donorId!, creatorId: donation.creatorId } },
       create: {
         id: newId(), donorId: donation.donorId!, creatorId: donation.creatorId,
-        consentedAt: new Date(), totalAmount: donation.amount, totalCount: 1, lastDonatedAt: approved.approvedAt,
+        consentedAt: new Date(), totalAmount: donation.amount, totalCount: 1, lastDonatedAt: approved!.approvedAt,
       },
       update: {
         totalAmount: { increment: donation.amount },
         totalCount: { increment: 1 },
-        lastDonatedAt: approved.approvedAt,
+        lastDonatedAt: approved!.approvedAt,
       },
-    }),
-  ]);
+    });
+    await postDonationSettlement(
+      {
+        creatorId: donation.creatorId,
+        donationId,
+        amount: donation.amount,
+        fees,
+        occurredAt: approved!.approvedAt,
+      },
+      tx,
+    );
+  });
 
   await commitCounters(donation.donorId!, donation.creatorId, donation.amount, approved.approvedAt);
   await clearFailures(donation.donorId!);
-  await postDonationSettlement({
-    creatorId: donation.creatorId,
-    donationId,
-    amount: donation.amount,
-    fees,
-    occurredAt: approved.approvedAt,
-  });
-  await setStatus(donationId, 'SETTLEMENT_PENDING', '정산 대기');
 
   // 누적 후원금 안내
   const link = await prisma.donorCreatorLink.findUnique({
@@ -624,6 +797,7 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
   await sendMtForDonor(
     donation.donorId!,
     tpl.tplDonationSuccess({
+      donorName: donation.displayName,
       creatorName: donation.creator.displayName,
       amount: donation.amount,
       message: donation.message,
@@ -634,7 +808,13 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
   );
 
   // 결제 성공 이후에만 방송 전송을 시도한다.
-  await dispatchBroadcast(donationId);
+  // 송출(유튜브 댓글·오버레이·TTS) 실패가 결제 결과를 뒤집으면 안 된다.
+  // 여기서 예외가 새면 결제는 승인·정산까지 끝났는데 후원자 화면에는 오류가 뜬다.
+  try {
+    await dispatchBroadcast(donationId);
+  } catch (e) {
+    logger.error('방송 송출 실패 (결제는 정상 완료)', { donationId, message: (e as Error).message });
+  }
 
   return { ok: true, status: 'PAYMENT_SUCCESS', message: '후원이 완료되었습니다.' };
 }

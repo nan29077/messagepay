@@ -29,7 +29,7 @@ export async function loadRegistrationContext(token: string): Promise<
   const res = await resolveSecureLink(token);
   if (!res.ok) {
     const reason =
-      res.reason === 'EXPIRED' ? '링크가 만료되었습니다. 크리에이터 번호로 문자를 다시 보내주세요.'
+      res.reason === 'EXPIRED' ? '가입 링크가 만료되었습니다. 고객센터에 재발급을 요청해 주세요.'
       : res.reason === 'USED' ? '이미 사용된 링크입니다.'
       : '유효하지 않은 링크입니다.';
     return { ok: false, reason };
@@ -176,7 +176,7 @@ export async function completeRegistration(input: {
 
   await prisma.donorProfile.update({
     where: { id: ctx.donorId },
-    data: { registeredAt: new Date(), ageVerified: true },
+    data: { registeredAt: new Date(), ageVerified: true, onboardingStatus: 'REGISTERED' },
   });
 
   if (ctx.creatorId) {
@@ -202,6 +202,10 @@ export async function revokePaymentMethod(donorId: string) {
   await prisma.paymentMethodToken.update({
     where: { id: active.id },
     data: { status: 'REVOKED', revokedAt: new Date() },
+  });
+  await prisma.donorProfile.update({
+    where: { id: donorId },
+    data: { onboardingStatus: 'SUSPENDED' },
   });
   return true;
 }

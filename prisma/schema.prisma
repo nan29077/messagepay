@@ -146,6 +146,17 @@ enum RegistrationStatus {
   @@map("registration_status")
 }
 
+/// 전화번호 기준 내통장결제 가입 상태.
+enum DonorOnboardingStatus {
+  UNREGISTERED
+  LINK_SENT
+  REGISTERED
+  SUSPENDED
+  WITHDRAWN
+
+  @@map("donor_onboarding_status")
+}
+
 enum DeliveryStatus {
   PENDING
   SENT
@@ -234,6 +245,8 @@ enum RiskType {
   MANUAL_REVIEW
   DUPLICATE_WEBHOOK
   ABNORMAL_AMOUNT
+  /// 결제 승인 결과를 확인하지 못한 건. 결제사 원장과 수동 대사가 필요하다.
+  PAYMENT_UNKNOWN
 
   @@map("risk_type")
 }
@@ -360,25 +373,27 @@ model AdminProfile {
 // ===========================================================================
 
 model DonorProfile {
-  id            String    @id
-  userId        String?   @unique @map("user_id")
+  id                     String                @id
+  userId                 String?               @unique @map("user_id")
   /// 후원자 식별의 기준. 회원가입 없이 문자만으로도 생성됨
-  phoneHash     String    @unique @map("phone_hash")
-  phoneEnc      String    @map("phone_enc")
-  phoneMasked   String    @map("phone_masked")
-  displayName   String?   @map("display_name")
-  ageVerified   Boolean   @default(false) @map("age_verified")
+  phoneHash              String                @unique @map("phone_hash")
+  phoneEnc               String                @map("phone_enc")
+  phoneMasked            String                @map("phone_masked")
+  displayName            String?               @map("display_name")
+  ageVerified            Boolean               @default(false) @map("age_verified")
   /// 후원자 개인 한도 (미설정 시 전역 정책 적용)
-  dailyLimit    BigInt?   @map("daily_limit")
-  monthlyLimit  BigInt?   @map("monthly_limit")
-  failCount     Int       @default(0) @map("fail_count")
-  lockedUntil   DateTime? @map("locked_until") @db.Timestamptz(3)
-  blockedAt     DateTime? @map("blocked_at") @db.Timestamptz(3)
-  blockedReason String?   @map("blocked_reason")
-  firstSeenAt   DateTime  @default(now()) @map("first_seen_at") @db.Timestamptz(3)
-  registeredAt  DateTime? @map("registered_at") @db.Timestamptz(3)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  dailyLimit             BigInt?               @map("daily_limit")
+  monthlyLimit           BigInt?               @map("monthly_limit")
+  failCount              Int                   @default(0) @map("fail_count")
+  lockedUntil            DateTime?             @map("locked_until") @db.Timestamptz(3)
+  blockedAt              DateTime?             @map("blocked_at") @db.Timestamptz(3)
+  blockedReason          String?               @map("blocked_reason")
+  firstSeenAt            DateTime              @default(now()) @map("first_seen_at") @db.Timestamptz(3)
+  registeredAt           DateTime?             @map("registered_at") @db.Timestamptz(3)
+  onboardingStatus       DonorOnboardingStatus @default(UNREGISTERED) @map("onboarding_status")
+  registrationLinkSentAt DateTime?             @map("registration_link_sent_at") @db.Timestamptz(3)
+  createdAt              DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user          User?                 @relation(fields: [userId], references: [id])
   paymentTokens PaymentMethodToken[]
@@ -390,6 +405,7 @@ model DonorProfile {
   blockedBy     BlockedDonor[]
 
   @@index([lockedUntil])
+  @@index([onboardingStatus])
   @@map("donor_profile")
 }
 
@@ -435,37 +451,40 @@ model BlockedDonor {
 // ===========================================================================
 
 model CreatorProfile {
-  id             String        @id
-  userId         String        @unique @map("user_id")
+  id               String        @id
+  userId           String        @unique @map("user_id")
   /// 현재 활성 코드 (이력은 creator_code 테이블)
-  code           String        @unique
-  displayName    String        @map("display_name")
-  channelName    String?       @map("channel_name")
-  avatarUrl      String?       @map("avatar_url")
+  code             String        @unique
+  displayName      String        @map("display_name")
+  channelName      String?       @map("channel_name")
+  avatarUrl        String?       @map("avatar_url")
   /// 후원 페이지 상단 배너 이미지 URL (크리에이터 꾸미기)
-  bannerUrl      String?       @map("banner_url")
-  description    String?
+  bannerUrl        String?       @map("banner_url")
+  description      String?
   /// 방송중 스위치: 켜면 후원 페이지에 온에어 표시 + 라이브 링크 노출
-  liveOn         Boolean       @default(false) @map("live_on")
+  liveOn           Boolean       @default(false) @map("live_on")
   /// 현재 노출 중인 라이브 방송 링크 (플랫폼별 주소에서 선택된 값)
-  liveUrl        String?       @map("live_url")
+  liveUrl          String?       @map("live_url")
   /// 라이브 플랫폼별 주소. livePlatform 이 가리키는 값이 후원샵에 노출된다.
-  livePlatform     String? @map("live_platform")
-  youtubeLiveUrl   String? @map("youtube_live_url")
-  instagramLiveUrl String? @map("instagram_live_url")
-  tiktokLiveUrl    String? @map("tiktok_live_url")
-  status         CreatorStatus @default(PENDING)
+  livePlatform     String?       @map("live_platform")
+  youtubeLiveUrl   String?       @map("youtube_live_url")
+  instagramLiveUrl String?       @map("instagram_live_url")
+  tiktokLiveUrl    String?       @map("tiktok_live_url")
+  /// 대표 채널 주소. 신청 때 받은 값을 소개글에 이어 붙이면 소개 길이 제한을 넘겨
+  /// 이후 후원샵 설정 저장이 영구히 막히므로 반드시 별도 컬럼에 보관한다.
+  channelUrl       String?       @map("channel_url")
+  status           CreatorStatus @default(PENDING)
   /// 문자 1건당 후원금 (원)
-  donationAmount BigInt        @default(3000) @map("donation_amount")
-  minAmount      BigInt        @default(1000) @map("min_amount")
-  maxAmount      BigInt        @default(50000) @map("max_amount")
+  donationAmount   BigInt        @default(3000) @map("donation_amount")
+  minAmount        BigInt        @default(1000) @map("min_amount")
+  maxAmount        BigInt        @default(50000) @map("max_amount")
   /// 크리에이터별 결제 모드 오버라이드 (null 이면 전역 설정)
-  paymentMode    PaymentMode?  @map("payment_mode")
-  businessNo     String?       @map("business_no")
-  approvedAt     DateTime?     @map("approved_at") @db.Timestamptz(3)
-  suspendedAt    DateTime?     @map("suspended_at") @db.Timestamptz(3)
-  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  paymentMode      PaymentMode?  @map("payment_mode")
+  businessNo       String?       @map("business_no")
+  approvedAt       DateTime?     @map("approved_at") @db.Timestamptz(3)
+  suspendedAt      DateTime?     @map("suspended_at") @db.Timestamptz(3)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   codes              CreatorCode[]
@@ -592,6 +611,8 @@ model MtOutboundMessage {
   @@index([phoneHash, createdAt])
   @@index([status])
   @@index([donationId])
+  // 20260819100100_guards_and_indexes 에서 raw SQL 로 만든 인덱스. 드리프트 방지용 선언.
+  @@index([creatorId, createdAt])
   @@map("mt_outbound_message")
 }
 
@@ -717,6 +738,10 @@ model Donation {
   @@index([donorId, receivedAt])
   @@index([status])
   @@index([receivedAt])
+  // 아래 2개는 20260819100100_guards_and_indexes 에서 raw SQL 로 만든 인덱스다.
+  // 스키마에 선언해 두지 않으면 다음 migrate 때 DROP 하는 마이그레이션이 자동 생성된다.
+  @@index([creatorId, status])
+  @@index([paidAt])
   @@map("donation")
 }
 
@@ -1138,36 +1163,45 @@ model SettlementLedger {
 }
 
 model SettlementRequest {
-  id           String                  @id
-  creatorId    String                  @map("creator_id")
-  amount       BigInt
-  status       SettlementRequestStatus @default(REQUESTED)
-  withholding  BigInt                  @default(0)
-  payoutAmount BigInt                  @default(0) @map("payout_amount")
+  id             String                  @id
+  creatorId      String                  @map("creator_id")
+  amount         BigInt
+  status         SettlementRequestStatus @default(REQUESTED)
+  /// 원천징수 합계 = 소득세 + 지방소득세
+  withholding    BigInt                  @default(0)
+  /// 소득세 (지급액의 3%, 10원 미만 절사). 지급명세서는 소득세/지방소득세를 따로 적는다.
+  incomeTax      BigInt                  @default(0) @map("income_tax")
+  /// 지방소득세 (소득세의 10%, 10원 미만 절사)
+  localTax       BigInt                  @default(0) @map("local_tax")
+  payoutAmount   BigInt                  @default(0) @map("payout_amount")
+  /// 지급대행 이체파일 발급 배치번호. 값이 있으면 이미 이체파일이 나간 건(재발급 시 이중이체 경고).
+  payoutBatchNo  String?                 @map("payout_batch_no")
+  /// 이체파일 최초 발급 시각
+  payoutIssuedAt DateTime?               @map("payout_issued_at") @db.Timestamptz(3)
   /// 크리에이터가 남기는 메모
-  memo         String?
+  memo           String?
   /// 관리자 처리 메모(반려 사유 등). 크리에이터에게 노출된다.
-  adminMemo    String?                 @map("admin_memo")
-  adminId      String?                 @map("admin_id")
+  adminMemo      String?                 @map("admin_memo")
+  adminId        String?                 @map("admin_id")
 
   /// 원천징수 신고용 주민등록번호(암호화). 신고 완료 시 파기한다.
-  residentEnc     String?   @map("resident_enc")
+  residentEnc        String?   @map("resident_enc")
   /// 마스킹 표기(예: 901010-1******). 원문은 화면에 노출하지 않는다.
-  residentMasked  String?   @map("resident_masked")
+  residentMasked     String?   @map("resident_masked")
   /// 주민등록번호 파기 시각. 값이 있으면 원문은 이미 삭제된 상태다.
-  residentPurgedAt DateTime? @map("resident_purged_at") @db.Timestamptz(3)
+  residentPurgedAt   DateTime? @map("resident_purged_at") @db.Timestamptz(3)
   /// 원천징수 지급명세서 신고 완료 시각.
   withholdingFiledAt DateTime? @map("withholding_filed_at") @db.Timestamptz(3)
 
   /// 지급대행(쿠콘) 처리 참조번호.
-  payoutRef        String?   @map("payout_ref")
+  payoutRef        String? @map("payout_ref")
   /// 지급 실패 사유(PAYOUT_FAILED).
-  payoutFailReason String?   @map("payout_fail_reason")
+  payoutFailReason String? @map("payout_fail_reason")
 
-  requestedAt  DateTime                @default(now()) @map("requested_at") @db.Timestamptz(3)
-  approvedAt   DateTime?               @map("approved_at") @db.Timestamptz(3)
-  paidAt       DateTime?               @map("paid_at") @db.Timestamptz(3)
-  rejectedAt   DateTime?               @map("rejected_at") @db.Timestamptz(3)
+  requestedAt DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
+  approvedAt  DateTime? @map("approved_at") @db.Timestamptz(3)
+  paidAt      DateTime? @map("paid_at") @db.Timestamptz(3)
+  rejectedAt  DateTime? @map("rejected_at") @db.Timestamptz(3)
 
   creator CreatorProfile     @relation(fields: [creatorId], references: [id])
   entries SettlementLedger[]
@@ -1293,18 +1327,18 @@ enum InquirySender {
 }
 
 model Report {
-  id           String       @id
-  donationId   String?      @map("donation_id")
-  creatorId    String?      @map("creator_id")
-  reporterHash String?      @map("reporter_hash")
+  id             String       @id
+  donationId     String?      @map("donation_id")
+  creatorId      String?      @map("creator_id")
+  reporterHash   String?      @map("reporter_hash")
   /// 로그인 문의자 식별용. 크리에이터 화면에는 절대 노출하지 않고 통합 관리자만 조회한다.
-  reporterUserId String?    @map("reporter_user_id")
-  category     String
-  content      String
-  status       ReportStatus @default(OPEN)
-  handledBy    String?      @map("handled_by")
-  handledAt    DateTime?    @map("handled_at") @db.Timestamptz(3)
-  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  reporterUserId String?      @map("reporter_user_id")
+  category       String
+  content        String
+  status         ReportStatus @default(OPEN)
+  handledBy      String?      @map("handled_by")
+  handledAt      DateTime?    @map("handled_at") @db.Timestamptz(3)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([status, createdAt])
   @@map("report")

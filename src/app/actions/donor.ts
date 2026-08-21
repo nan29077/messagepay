@@ -292,7 +292,10 @@ export async function withdrawAccount(_prev: DonorActionState, formData: FormDat
   try {
     await prisma.$transaction([
       // 후원자 프로필은 남기고 계정 연결만 끊는다 (거래 이력 보존)
-      prisma.donorProfile.updateMany({ where: { userId: user.id }, data: { userId: null } }),
+      prisma.donorProfile.updateMany({
+        where: { userId: user.id },
+        data: { userId: null, onboardingStatus: 'WITHDRAWN' },
+      }),
       prisma.user.update({
         where: { id: user.id },
         data: {

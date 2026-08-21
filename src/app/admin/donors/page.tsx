@@ -10,6 +10,7 @@ import { prisma } from '@/server/db';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import type { Prisma } from '@/generated/prisma/client';
+import { donorOnboardingStatusLabel } from '@/lib/labels';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +46,7 @@ export default async function AdminDonorsPage({
       take: PAGE_SIZE,
       select: {
         id: true, phoneMasked: true, displayName: true, createdAt: true, registeredAt: true,
+        onboardingStatus: true, registrationLinkSentAt: true,
         failCount: true, lockedUntil: true, blockedAt: true, blockedReason: true,
         dailyLimit: true, monthlyLimit: true,
         paymentTokens: {
@@ -144,13 +146,24 @@ export default async function AdminDonorsPage({
                       <Td>
                         {token ? (
                           <>
-                            <Badge tone="success">활성</Badge>
+                            <Badge tone={donorOnboardingStatusLabel[d.onboardingStatus].tone}>
+                              {donorOnboardingStatusLabel[d.onboardingStatus].text}
+                            </Badge>
                             <span className="mt-0.5 block text-[11px] text-ink-500">
                               {bankLabel(token.bankName, token.accountTail4)}
                             </span>
                           </>
                         ) : (
-                          <Badge tone="neutral">미등록</Badge>
+                          <>
+                            <Badge tone={donorOnboardingStatusLabel[d.onboardingStatus].tone}>
+                              {donorOnboardingStatusLabel[d.onboardingStatus].text}
+                            </Badge>
+                            {d.registrationLinkSentAt ? (
+                              <span className="mt-0.5 block text-[11px] text-ink-400">
+                                {formatKst(d.registrationLinkSentAt, false)}
+                              </span>
+                            ) : null}
+                          </>
                         )}
                       </Td>
                       <Td className="text-right tabular-nums">

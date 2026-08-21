@@ -196,9 +196,9 @@ async function main() {
     create: {
       id: newId(), phoneHash: phoneHash(testPhone), phoneEnc: encrypt(testPhone),
       phoneMasked: maskPhone(testPhone), displayName: '테스트후원자',
-      ageVerified: true, registeredAt: new Date(),
+      ageVerified: true, registeredAt: new Date(), onboardingStatus: 'REGISTERED',
     },
-    update: {},
+    update: { onboardingStatus: 'REGISTERED' },
   });
   const tokenExists = await prisma.paymentMethodToken.findFirst({ where: { donorId: donor.id, status: 'ACTIVE' } });
   if (!tokenExists) {

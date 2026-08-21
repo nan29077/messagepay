@@ -107,6 +107,7 @@ export async function seedRegisteredDonor(phone = '01012345678') {
       id: newId(), phoneHash: phoneHash(phone), phoneEnc: encrypt(phone),
       phoneMasked: maskPhone(phone), displayName: '테스트후원자',
       ageVerified: true, registeredAt: new Date(),
+      onboardingStatus: 'REGISTERED',
     },
   });
   await prisma.paymentMethodToken.create({

@@ -17,15 +17,15 @@ const MAX_TRIES = 20;
 
 export interface CreatorSearchItem {
   code: string;
+  userId: string;
   displayName: string;
   channelName: string | null;
+  avatarUrl: string | null;
 }
 
 export interface LookupResult {
   ok: boolean;
-  /** 정확히 1명을 찾았을 때 바로 이동할 코드 */
-  code?: string;
-  /** 여러 명이 검색됐을 때 선택 목록 */
+  /** 검색 결과. 1명이더라도 자동 이동하지 않고 선택 목록으로 반환한다. */
   matches?: CreatorSearchItem[];
   message?: string;
 }
@@ -49,9 +49,9 @@ export async function lookupCreatorCode(input: string): Promise<LookupResult> {
   if (/^TOR-[A-Z0-9]{4,8}$/.test(code)) {
     const byCode = await prisma.creatorProfile.findFirst({
       where: { code, status: 'APPROVED' },
-      select: { code: true },
+      select: { code: true, userId: true, displayName: true, channelName: true, avatarUrl: true },
     });
-    if (byCode) return { ok: true, code: byCode.code };
+    if (byCode) return { ok: true, matches: [byCode] };
     // 코드 형태인데 없으면 이름 검색으로 넘어가지 않고 바로 안내한다 (오타 가능성)
     return {
       ok: false,
@@ -70,7 +70,7 @@ export async function lookupCreatorCode(input: string): Promise<LookupResult> {
     },
     orderBy: { displayName: 'asc' },
     take: 8,
-    select: { code: true, displayName: true, channelName: true },
+    select: { code: true, userId: true, displayName: true, channelName: true, avatarUrl: true },
   });
 
   if (matches.length === 0) {
@@ -78,9 +78,6 @@ export async function lookupCreatorCode(input: string): Promise<LookupResult> {
       ok: false,
       message: '검색 결과가 없습니다. 크리에이터 코드(예: TOR-8K2M) 또는 정확한 채널명·이름으로 다시 검색해 주세요.',
     };
-  }
-  if (matches.length === 1) {
-    return { ok: true, code: matches[0].code };
   }
   return { ok: true, matches };
 }

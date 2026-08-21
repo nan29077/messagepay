@@ -153,6 +153,17 @@ export function SettlementRequestsPanel({ rows }: { rows: SettlementRow[] }) {
             각 줄에 <code className="rounded bg-ink-50 px-1">요청ID,SUCCESS|FAIL,사유</code> 형식으로 입력합니다. 지급대행(쿠콘)
             결과 파일을 그대로 붙여넣어 성공/실패를 한 번에 반영할 수 있습니다.
           </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              name="batchNo"
+              placeholder="배치번호 (예: B7K2M9X4QP)"
+              className="h-8 w-56 rounded-lg border border-ink-200 px-2 font-mono text-[12px] outline-none focus:border-brand-400"
+            />
+            <span className="text-[11px] text-ink-400">
+              이체파일 이름에 있는 배치번호를 넣으면 그 배치 건에만 반영됩니다. 지난 파일을 잘못 다시
+              붙여넣어 <strong>정상 지급건이 실패로 되돌아가는 사고</strong>를 막습니다.
+            </span>
+          </div>
           <textarea
             name="results"
             rows={4}

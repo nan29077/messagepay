@@ -12,7 +12,13 @@ import { unlockDonor, setDonorBlock, updateDonorLimitsByAdmin } from '@/app/acti
 import { prisma } from '@/server/db';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
-import { donationStatusLabel, paymentTxStatusLabel, riskLevelLabel, riskTypeLabel } from '@/lib/labels';
+import {
+  donationStatusLabel,
+  donorOnboardingStatusLabel,
+  paymentTxStatusLabel,
+  riskLevelLabel,
+  riskTypeLabel,
+} from '@/lib/labels';
 import { resolvePolicy } from '@/server/services/limits';
 
 export const dynamic = 'force-dynamic';
@@ -27,6 +33,7 @@ export default async function AdminDonorDetailPage({ params }: { params: Promise
       ageVerified: true, dailyLimit: true, monthlyLimit: true, failCount: true,
       lockedUntil: true, blockedAt: true, blockedReason: true,
       firstSeenAt: true, registeredAt: true, createdAt: true,
+      onboardingStatus: true, registrationLinkSentAt: true,
       user: { select: { email: true, name: true, status: true } },
       paymentTokens: {
         orderBy: { registeredAt: 'desc' },
@@ -122,6 +129,18 @@ export default async function AdminDonorDetailPage({ params }: { params: Promise
               <DataRow label="연결 회원" value={donor.user ? `${donor.user.email ?? '-'} (${donor.user.status})` : '비회원(문자 후원)'} />
               <DataRow label="성인 확인" value={donor.ageVerified ? '완료' : '미확인'} />
               <DataRow label="최초 수신" value={formatKst(donor.firstSeenAt)} />
+              <DataRow
+                label="내통장결제 가입 상태"
+                value={
+                  <Badge tone={donorOnboardingStatusLabel[donor.onboardingStatus].tone}>
+                    {donorOnboardingStatusLabel[donor.onboardingStatus].text}
+                  </Badge>
+                }
+              />
+              <DataRow
+                label="최초 가입 링크 발송"
+                value={donor.registrationLinkSentAt ? formatKst(donor.registrationLinkSentAt) : '발송 전'}
+              />
               <DataRow label="계좌 등록" value={donor.registeredAt ? formatKst(donor.registeredAt) : '미등록'} />
               <DataRow
                 label="활성 결제수단"

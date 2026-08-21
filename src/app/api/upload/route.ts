@@ -1,9 +1,6 @@
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import crypto from 'node:crypto';
 import { requireCreator } from '@/server/auth';
 import { isSameOrigin } from '@/server/request-guard';
-import { UPLOAD_DIR, mediaUrl } from '@/server/uploads';
+import { putObject, newObjectName } from '@/server/uploads';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -69,10 +66,9 @@ export async function POST(req: Request) {
     );
   }
 
-  await fs.mkdir(UPLOAD_DIR, { recursive: true });
-  // 파일명은 예측 불가능하게(크리에이터 식별자 노출 방지) 랜덤 생성한다.
-  const name = `${crypto.randomBytes(16).toString('hex')}.${kind.ext}`;
-  await fs.writeFile(path.join(UPLOAD_DIR, name), buf);
+  // 저장소는 드라이버로 분리돼 있다(local / s3). STORAGE_DRIVER 로 전환한다.
+  const name = newObjectName(kind.ext);
+  const url = await putObject(name, buf, kind.mime);
 
-  return Response.json({ ok: true, url: mediaUrl(name) });
+  return Response.json({ ok: true, url });
 }

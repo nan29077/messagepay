@@ -197,6 +197,12 @@ export function assertProductionSafety(): string[] {
   if (!env.mo.webhookSecret) problems.push('MO_WEBHOOK_SECRET 이 비어 있습니다.');
   if (env.payment.provider === 'mock') problems.push('PAYMENT_PROVIDER 가 mock 입니다.');
   if (!env.baseUrl.startsWith('https://')) problems.push('운영에서는 APP_BASE_URL 이 https 여야 합니다.');
+  // 로컬 디스크 저장은 다중 인스턴스에서 이미지가 안 보이고 재배포 때 사라진다.
+  if ((process.env.STORAGE_DRIVER ?? 'local').toLowerCase() !== 's3') {
+    problems.push('운영에서는 STORAGE_DRIVER=s3 여야 합니다. (로컬 디스크 저장은 재배포 시 이미지가 사라집니다)');
+  } else if (!process.env.S3_BUCKET) {
+    problems.push('STORAGE_DRIVER=s3 인데 S3_BUCKET 이 비어 있습니다.');
+  }
   if (env.payment.provider !== 'mock') {
     if (!env.payment.hectoMid) problems.push('HECTO_MID 가 비어 있습니다.');
     if (!env.payment.hectoHashKey) problems.push('HECTO_HASH_KEY 가 비어 있습니다.');

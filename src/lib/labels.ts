@@ -10,9 +10,18 @@ import type {
   LedgerEntryType,
   RiskLevel,
   RiskType,
+  DonorOnboardingStatus,
 } from '@/generated/prisma/enums';
 
 export type Tone = 'neutral' | 'brand' | 'success' | 'warning' | 'danger';
+
+export const donorOnboardingStatusLabel: Record<DonorOnboardingStatus, { text: string; tone: Tone }> = {
+  UNREGISTERED: { text: '최초 안내 전', tone: 'neutral' },
+  LINK_SENT: { text: '가입 링크 발송', tone: 'warning' },
+  REGISTERED: { text: '가입 완료', tone: 'success' },
+  SUSPENDED: { text: '이용 중지', tone: 'danger' },
+  WITHDRAWN: { text: '탈퇴', tone: 'neutral' },
+};
 
 export const donationStatusLabel: Record<DonationStatus, { text: string; tone: Tone }> = {
   RECEIVED: { text: '수신', tone: 'neutral' },
@@ -117,6 +126,7 @@ export const riskTypeLabel: Record<RiskType, string> = {
   MANUAL_REVIEW: '수동 검수',
   DUPLICATE_WEBHOOK: '중복 수신',
   ABNORMAL_AMOUNT: '이상 금액',
+  PAYMENT_UNKNOWN: '결제결과 미확인',
 };
 
 export const paymentModeLabel = {

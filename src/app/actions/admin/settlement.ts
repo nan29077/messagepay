@@ -8,6 +8,7 @@ import {
   markSettlementPaid,
   markSettlementPayoutFailed,
   fileWithholdingAndPurgeResident,
+  purgeResidentIfNotFilable,
 } from '@/server/services/settlement';
 import { notifyUser } from '@/server/services/notifications';
 import { formatWon } from '@/lib/money';
@@ -72,6 +73,10 @@ export async function updateSettlementRequestStatus(
       if (status === 'APPROVED') await notifySettlement(before.creatorId, '정산 요청이 승인되었습니다', '지급대행을 통해 곧 지급됩니다.');
       if (status === 'REJECTED') await notifySettlement(before.creatorId, '정산 요청이 반려되었습니다', `사유: ${memo}`);
     }
+
+    // 반려·지급실패 건은 원천징수 신고 대상이 아니므로 주민등록번호를 보관할 근거가 없다.
+    // "신고 후 즉시 파기" 안내를 지키기 위해 상태 전이 시점에 바로 파기한다.
+    await purgeResidentIfNotFilable(requestId);
 
     await writeAudit({
       adminUserId: admin.id,
@@ -139,6 +144,8 @@ export async function bulkUpdateSettlementAction(
             data: { status: 'REJECTED', rejectedAt: now, adminId: admin.id, adminMemo: memo },
           });
           await notifySettlement(req.creatorId, '정산 요청이 반려되었습니다', `사유: ${memo}`);
+          // 반려 건은 원천징수 신고 대상이 아니므로 주민등록번호를 즉시 파기한다.
+          await purgeResidentIfNotFilable(id);
         } else {
           // PAY: 승인 건만 지급 완료. 잠금·재검증은 markSettlementPaid 내부에서 처리.
           await markSettlementPaid(id, admin.id);
@@ -177,6 +184,8 @@ export async function applyPayoutResultsAction(
     if (admin.adminPermission === 'SUPPORT') throw new Error('정산 처리는 재무/운영 권한에서만 가능합니다.');
     const raw = text(fd, 'results');
     if (!raw) throw new Error('결과 내용을 붙여넣어 주세요.');
+    // 이체파일 배치번호. 입력하면 해당 배치로 나간 건에만 결과를 반영한다.
+    const batchNo = text(fd, 'batchNo').trim().toUpperCase();
 
     const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     let ok = 0;
@@ -189,15 +198,41 @@ export async function applyPayoutResultsAction(
       const reason = rest.join(',').trim();
       try {
         const up = result.toUpperCase();
+        const req = await prisma.settlementRequest.findUnique({
+          where: { id },
+          select: {
+            creatorId: true, payoutAmount: true, status: true,
+            payoutBatchNo: true, payoutIssuedAt: true,
+          },
+        });
+        if (!req) {
+          errors.push(`${id.slice(-6)}: 요청을 찾을 수 없음`);
+          continue;
+        }
+
+        // ── 지난 결과 파일 재반영 방지 ─────────────────────────────────
+        // 예전 파일을 다시 붙여넣으면 이미 정상 지급된 건이 '지급 실패'로 되돌아가
+        // 원장이 환입되고 잔액이 되살아난다(= 이중 지급의 씨앗).
+        if (!req.payoutIssuedAt) {
+          errors.push(`${id.slice(-6)}: 이체파일이 발급된 적 없는 건`);
+          continue;
+        }
+        if (batchNo && req.payoutBatchNo !== batchNo) {
+          errors.push(`${id.slice(-6)}: 배치번호 불일치(${req.payoutBatchNo ?? '없음'})`);
+          continue;
+        }
+
         if (up === 'SUCCESS' || up === 'OK' || up === '성공') {
-          const req = await prisma.settlementRequest.findUnique({ where: { id }, select: { creatorId: true, payoutAmount: true } });
+          if (req.status === 'PAID') { ok += 1; continue; } // 이미 반영됨 (멱등)
           await markSettlementPaid(id, admin.id, reason || undefined);
-          if (req) await notifySettlement(req.creatorId, '정산 지급이 완료되었습니다', `${formatWon(req.payoutAmount)}이 지급 처리되었습니다.`);
+          await notifySettlement(req.creatorId, '정산 지급이 완료되었습니다', `${formatWon(req.payoutAmount)}이 지급 처리되었습니다.`);
           ok += 1;
         } else if (up === 'FAIL' || up === 'ERROR' || up === '실패') {
-          const req = await prisma.settlementRequest.findUnique({ where: { id }, select: { creatorId: true } });
+          if (req.status === 'PAYOUT_FAILED') { failed += 1; continue; } // 이미 반영됨 (멱등)
           await markSettlementPayoutFailed(id, reason || '지급대행 실패', admin.id);
-          if (req) await notifySettlement(req.creatorId, '정산 지급이 실패했습니다', `사유: ${reason || '지급대행 실패'}. 계좌를 확인하고 다시 요청해 주세요.`);
+          await notifySettlement(req.creatorId, '정산 지급이 실패했습니다', `사유: ${reason || '지급대행 실패'}. 계좌를 확인하고 다시 요청해 주세요.`);
+          // 지급 실패 건도 신고 대상이 아니므로 주민등록번호를 파기한다.
+          await purgeResidentIfNotFilable(id);
           failed += 1;
         } else {
           errors.push(`${id.slice(-6)}: 알 수 없는 결과 '${result}'`);

@@ -22,6 +22,20 @@ export function kstMonthKey(date = new Date()): string {
   return `${k.getUTCFullYear()}-${String(k.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
+/**
+ * 해당 월의 마지막 날짜(YYYY-MM-DD).
+ *
+ * `${ym}-31` 로 쓰면 안 된다. JS 는 2026-02-31 을 2026-03-03 으로 굴려버려서
+ * 다음 달 초 데이터가 이번 달 집계·원천징수 신고 자료에 섞여 들어간다.
+ */
+export function kstMonthEndKey(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  if (!y || !m || m < 1 || m > 12) return `${ym}-28`;
+  // 다음 달 0일 = 이번 달 마지막 날
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${ym}-${String(last).padStart(2, '0')}`;
+}
+
 /** KST 기준 하루의 시작(UTC Date 반환) */
 export function kstStartOfDay(date = new Date()): Date {
   const k = toKst(date);

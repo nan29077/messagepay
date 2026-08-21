@@ -12,6 +12,7 @@ export const MT_TEMPLATE = {
   CONFIRM_PAYMENT: 'CONFIRM_PAYMENT',
   DONATION_SUCCESS: 'DONATION_SUCCESS',
   DONATION_FAILED: 'DONATION_FAILED',
+  ACCOUNT_INACTIVE: 'ACCOUNT_INACTIVE',
   LIMIT_BLOCKED: 'LIMIT_BLOCKED',
   CONTENT_BLOCKED: 'CONTENT_BLOCKED',
   REFUND_DONE: 'REFUND_DONE',
@@ -52,13 +53,14 @@ export function tplConfirmPayment(creatorName: string, amount: bigint, link: str
 }
 
 export function tplDonationSuccess(input: {
+  donorName: string;
   creatorName: string;
   amount: bigint;
   message: string;
   cumulative: bigint;
 }): TemplateOutput {
   const text =
-    `[도네이도] ${input.creatorName} 크리에이터에게 ${formatNumber(input.amount)}원이 후원되었습니다. ` +
+    `[도네이도] ${input.donorName}님, ${input.creatorName} 크리에이터에게 ${formatNumber(input.amount)}원이 후원되었습니다. 감사합니다. ` +
     `메시지: "${input.message}" 누적 후원: ${formatNumber(input.cumulative)}원`;
   return { code: MT_TEMPLATE.DONATION_SUCCESS, text, masked: text };
 }
@@ -68,6 +70,13 @@ export function tplDonationFailed(creatorName: string, reason?: string): Templat
     `[도네이도] ${creatorName} 크리에이터 후원이 완료되지 않았습니다. ` +
     `${reason ? `사유: ${reason} ` : ''}계좌 상태 또는 이용 한도를 확인해 주세요. 결제되지 않은 메시지는 방송에 표시되지 않습니다.`;
   return { code: MT_TEMPLATE.DONATION_FAILED, text, masked: text };
+}
+
+export function tplAccountInactive(creatorName: string): TemplateOutput {
+  const text =
+    `[도네이도] ${creatorName} 크리에이터 후원을 진행할 수 없습니다. ` +
+    '내통장결제 이용 상태를 확인하거나 고객센터로 문의해 주세요. 결제는 진행되지 않았습니다.';
+  return { code: MT_TEMPLATE.ACCOUNT_INACTIVE, text, masked: text };
 }
 
 export function tplLimitBlocked(creatorName: string, reason: string): TemplateOutput {

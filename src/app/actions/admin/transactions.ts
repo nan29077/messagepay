@@ -29,24 +29,42 @@ export async function createMoNumber(_prev: AdminActionState, fd: FormData): Pro
     if (mode === 'SHARED_PREFIX' && !keyword) {
       throw new Error('대표번호 공유 모드에서는 키워드가 반드시 필요합니다.');
     }
+    // 전용번호에는 키워드를 붙이지 않는다. (붙으면 유니크 키가 갈라져 중복 등록이 뚫린다)
+    const effectiveKeyword = mode === 'DEDICATED' ? null : keyword;
     const monthlyCost = money(fd, 'monthlyCost', '월 비용');
     const memo = optText(fd, 'memo');
 
-    const dup = await prisma.creatorMoNumber.findFirst({ where: { phoneNumber, keyword } });
-    if (dup) throw new Error('이미 등록된 번호/키워드 조합입니다.');
+    // 같은 번호에 전용/대표번호공유가 섞이면 라우팅이 전용으로 쏠려
+    // 대표번호를 쓰던 크리에이터들의 후원이 통째로 엉뚱한 사람에게 들어간다.
+    // 번호 단위로 먼저 검사해 모드 혼재 자체를 막는다.
+    const siblings = await prisma.creatorMoNumber.findMany({
+      where: { phoneNumber },
+      select: { id: true, mode: true, keyword: true },
+    });
+    if (siblings.some((s) => s.mode !== mode)) {
+      throw new Error(
+        '같은 번호에 전용번호와 대표번호(키워드) 방식을 함께 등록할 수 없습니다. 기존 등록을 먼저 정리해 주세요.',
+      );
+    }
+    if (mode === 'DEDICATED' && siblings.length > 0) {
+      throw new Error('이미 등록된 전용번호입니다. 전용번호는 번호당 하나만 등록할 수 있습니다.');
+    }
+    if (siblings.some((s) => s.keyword === effectiveKeyword)) {
+      throw new Error('이미 등록된 번호/키워드 조합입니다.');
+    }
 
     const created = await prisma.creatorMoNumber.create({
-      data: { id: newId(), phoneNumber, keyword, mode, monthlyCost, memo, status: 'AVAILABLE' },
+      data: { id: newId(), phoneNumber, keyword: effectiveKeyword, mode, monthlyCost, memo, status: 'AVAILABLE' },
     });
     await writeAudit({
       adminUserId: admin.id,
       action: 'MO_NUMBER_CREATE',
       targetType: 'CreatorMoNumber',
       targetId: created.id,
-      after: { phoneNumber, keyword, mode, monthlyCost, status: 'AVAILABLE' },
+      after: { phoneNumber, keyword: effectiveKeyword, mode, monthlyCost, status: 'AVAILABLE' },
     });
     revalidatePath('/admin/mo-numbers');
-    return `${phoneNumber}${keyword ? ` (${keyword})` : ''} 번호를 재고에 등록했습니다.`;
+    return `${phoneNumber}${effectiveKeyword ? ` (${effectiveKeyword})` : ''} 번호를 재고에 등록했습니다.`;
   });
 }
 

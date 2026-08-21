@@ -272,7 +272,9 @@ export function SupportWidget({
                       >
                         <p className="whitespace-pre-line break-words text-[12.5px] leading-relaxed">{m.body}</p>
                         <p className={cx('mt-0.5 text-[10px] tabular-nums', m.sender === 'USER' ? 'text-ink-900/50' : 'text-ink-400')}>
-                          {new Date(m.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          {/* 서버 렌더 시 컨테이너 기본 타임존(AWS 는 UTC)으로 찍혀 9시간 어긋나고
+                              하이드레이션 경고가 나므로, 표시 기준을 KST 로 고정한다. */}
+                          {new Date(m.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' })}
                         </p>
                       </div>
                     </div>

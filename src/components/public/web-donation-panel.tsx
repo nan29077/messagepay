@@ -329,7 +329,7 @@ export function WebDonationPanel({
                   내통장결제 가입 창 열기
                 </button>
                 <form action={recheckAction}>
-                  <input type="hidden" name="session" value={view.session ?? ''} />
+                  {/* 인증 세션은 HttpOnly 쿠키로만 오간다. 토큰을 hidden 필드에 실으면 DOM·화면공유로 새 나간다. */}
                   <button
                     type="submit"
                     disabled={recheckPending}
@@ -346,7 +346,7 @@ export function WebDonationPanel({
           {/* 3. 결제 확인 (즉시 출금) */}
           {phase === 'pay' ? (
             <form action={donateAction} className="space-y-3">
-              <input type="hidden" name="session" value={view.session ?? ''} />
+              {/* 인증 세션은 HttpOnly 쿠키로만 오간다. 토큰을 hidden 필드에 실으면 DOM·화면공유로 새 나간다. */}
               <input type="hidden" name="creatorId" value={creatorId} />
               <input type="hidden" name="requestId" value={requestId} />
               <input type="hidden" name="amount" value={amountValid && effectiveAmount !== null ? effectiveAmount.toString() : ''} />

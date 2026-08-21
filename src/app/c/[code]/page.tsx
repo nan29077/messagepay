@@ -37,8 +37,17 @@ async function findCreator(rawCode: string) {
   const code = normalizeCreatorCode(rawCode);
   if (!/^TOR-[A-Z0-9]{2,10}$/.test(code)) return null;
   return prisma.creatorProfile.findFirst({
-    where: { code, status: 'APPROVED' },
-    include: { moRoutes: { where: { status: 'ASSIGNED' } } },
+    where: {
+      code,
+      status: 'APPROVED',
+      // 계정 자체가 정지·탈퇴된 크리에이터의 후원샵은 닫아야 한다.
+      // creatorProfile.status 만 보면 User 를 SUSPENDED 로 제재해도 샵이 계속 열려
+      // 후원을 받고 정지 계정에 돈이 계속 쌓인다.
+      user: { status: 'ACTIVE' },
+    },
+    // PostgreSQL 은 행 순서를 보장하지 않아, 번호가 2개 이상 배정된 크리에이터는
+    // 새로고침마다 다른 번호가 표시될 수 있다. 다른 화면과 동일하게 assignedAt 내림차순으로 고정한다.
+    include: { moRoutes: { where: { status: 'ASSIGNED' }, orderBy: { assignedAt: 'desc' } } },
   });
 }
 
@@ -159,24 +168,31 @@ export default async function CreatorDonationPage({ params }: Params) {
       <main className="relative z-10 mx-auto w-full max-w-[560px] px-4 pb-32 sm:pb-16">
         {/* 후원 카드 (히어로에 겹침) */}
         <section className="-mt-16">
-          {route ? (
-            <div className="rounded-[26px] border border-brand-200/60 bg-white p-6 shadow-[0_24px_60px_rgba(23,22,26,0.14)]">
-              {/* PC: 텍스트 + 금액 선택 웹 후원 (내통장결제 즉시 결제 → 유튜브 댓글·오버레이) */}
-              <div className="hidden sm:block">
-                <p className="mb-4 text-center text-[16px] font-black tracking-[-0.02em] text-ink-900">
-                  {creator.displayName} 님에게 후원하기
-                </p>
-                <WebDonationPanel
-                  creatorId={creator.id}
-                  creatorName={creator.displayName}
-                  defaultAmount={creator.donationAmount.toString()}
-                  minAmount={policy.minAmount.toString()}
-                  maxAmount={policy.maxAmount.toString()}
-                  paymentMock={paymentMock}
-                />
-              </div>
+          {/*
+            PC 웹 후원(내통장결제)은 MO 수신번호가 전혀 필요 없다.
+            예전에는 번호 미배정 시 카드 전체를 안내문으로 갈아끼워 웹 후원까지 막았는데,
+            그러면 번호를 기다리는 신규 크리에이터는 PC 후원도 하나도 받지 못했다.
+            그래서 PC 패널은 번호 배정 여부와 무관하게 항상 노출하고,
+            번호가 필요한 모바일 문자후원 영역만 조건부로 바꾼다.
+          */}
+          <div className="rounded-[26px] border border-brand-200/60 bg-white p-6 shadow-[0_24px_60px_rgba(23,22,26,0.14)]">
+            {/* PC: 텍스트 + 금액 선택 웹 후원 (내통장결제 즉시 결제 → 유튜브 댓글·오버레이) */}
+            <div className="hidden sm:block">
+              <p className="mb-4 text-center text-[16px] font-black tracking-[-0.02em] text-ink-900">
+                {creator.displayName} 님에게 후원하기
+              </p>
+              <WebDonationPanel
+                creatorId={creator.id}
+                creatorName={creator.displayName}
+                defaultAmount={creator.donationAmount.toString()}
+                minAmount={policy.minAmount.toString()}
+                maxAmount={policy.maxAmount.toString()}
+                paymentMock={paymentMock}
+              />
+            </div>
 
-              {/* 모바일: 문자후원 (문자 1통 = 크리에이터 설정 금액) */}
+            {route ? (
+              /* 모바일: 문자후원 (문자 1통 = 크리에이터 설정 금액) */
               <div className="sm:hidden">
               <p className="flex items-center justify-center gap-1.5 text-[12px] font-bold text-brand-700">
                 <Phone size={14} strokeWidth={1.8} />
@@ -227,19 +243,20 @@ export default async function CreatorDonationPage({ params }: Params) {
                 {formatWon(creator.donationAmount)}이 등록된 내통장결제 계좌에서 결제됩니다.
               </p>
               </div>
-            </div>
-          ) : (
-            <div className="rounded-[26px] border border-warning-500/40 bg-white p-6 text-center shadow-[0_24px_60px_rgba(23,22,26,0.14)]">
-              <span className="mx-auto grid h-11 w-11 place-items-center rounded-xl bg-warning-50 text-warning-500">
-                <CircleAlert size={22} strokeWidth={1.7} />
-              </span>
-              <p className="mt-3 text-[15px] font-extrabold text-ink-900">후원 번호가 아직 배정되지 않았습니다</p>
-              <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-500">
-                아직 문자 수신 번호가 배정되지 않아 문자후원을 접수할 수 없습니다. 번호가 배정되면 이 페이지에
-                표시됩니다.
-              </p>
-            </div>
-          )}
+            ) : (
+              /* 번호 미배정: 문자후원 영역만 안내로 대체한다. 위 PC 웹 후원은 그대로 동작한다. */
+              <div className="sm:hidden text-center">
+                <span className="mx-auto grid h-11 w-11 place-items-center rounded-xl bg-warning-50 text-warning-500">
+                  <CircleAlert size={22} strokeWidth={1.7} />
+                </span>
+                <p className="mt-3 text-[15px] font-extrabold text-ink-900">후원 번호가 아직 배정되지 않았습니다</p>
+                <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-500">
+                  아직 문자 수신 번호가 배정되지 않아 문자후원을 접수할 수 없습니다. 번호가 배정되면 이 페이지에
+                  표시됩니다. PC 에서는 지금도 후원하실 수 있습니다.
+                </p>
+              </div>
+            )}
+          </div>
         </section>
 
         {/* 첫 문자 안내 (모바일 문자후원) */}

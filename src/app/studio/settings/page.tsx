@@ -283,7 +283,20 @@ export default async function StudioSettingsPage({
 
                 <div className="mt-3 space-y-2.5">
                   <Field label="유튜브 라이브 주소" hint="youtube.com 또는 youtu.be 주소">
-                    <Input name="youtubeLiveUrl" defaultValue={creator.youtubeLiveUrl ?? creator.liveUrl ?? ''} placeholder="https://www.youtube.com/watch?v=..." />
+                    {/*
+                      liveUrl 은 플랫폼 구분이 없던 시절의 단일 필드이고, 지금은 "선택한 플랫폼의 주소"가 들어간다.
+                      조건 없이 폴백하면 인스타/틱톡을 고른 크리에이터의 유튜브 칸에 인스타 주소가 채워지고,
+                      이후 저장은 매번 유튜브 주소 검증에 걸려 영구 실패한다.
+                      따라서 플랫폼이 유튜브이거나 아직 지정되지 않은 예전 데이터일 때만 폴백한다.
+                    */}
+                    <Input
+                      name="youtubeLiveUrl"
+                      defaultValue={
+                        creator.youtubeLiveUrl ??
+                        (!creator.livePlatform || creator.livePlatform === 'YOUTUBE' ? creator.liveUrl ?? '' : '')
+                      }
+                      placeholder="https://www.youtube.com/watch?v=..."
+                    />
                   </Field>
                   <Field label="인스타그램 라이브 주소" hint="instagram.com 주소">
                     <Input name="instagramLiveUrl" defaultValue={creator.instagramLiveUrl ?? ''} placeholder="https://www.instagram.com/..." />

@@ -9,7 +9,7 @@ await pc.goto(`${BASE}/c/TOR-8K2M`);
 const pcBody = await pc.locator('body').innerText();
 ok('PC: 문자후원하기 버튼', (await pc.locator('div.hidden.sm\\:block button:has-text("문자후원하기")').count())>0);
 ok('PC: 코드칩·문자후원 배지 제거', !(await pc.locator('header').first().innerText()).includes('TOR-8K2M'));
-ok('PC: 기본 배너 적용', (await pc.locator('header img[src*="/banners/donaido-banner-"]').count())>0);
+ok('PC: 기본 배너 적용', (await pc.locator('header img[src*="/banners/donaido-live-banner-"]').count())>0);
 void pcBody;
 
 // 버튼 클릭 → 바로 금액·메시지 단계
@@ -124,7 +124,7 @@ ok('후원샵 관리: 섹션 존재', setBody.includes('후원페이지 꾸미�
 ok('후원샵 관리: 기본 배너 5종', (await cr.locator('input[name=bannerPreset]').count()) >= 6);
 ok('후원샵 관리: 소개·라이브·스위치', (await cr.locator('textarea[name=description]').count())>0 && (await cr.locator('input[name=youtubeLiveUrl]').count())>0 && (await cr.locator('input[name=liveOn]').count())>0);
 // 배너 2 선택 + 라이브 온
-await cr.locator('input[name=bannerPreset][value="/banners/donaido-banner-02.png"]').check({ force: true });
+await cr.locator('input[name=bannerPreset][value="/banners/donaido-live-banner-02-v2.png"]').check({ force: true });
 await cr.fill('input[name=youtubeLiveUrl]','https://www.youtube.com/watch?v=round6');
 await cr.locator('input[name=liveOn]').check({ force: true });
 await cr.click('button:has-text("후원페이지 설정 저장")');
@@ -133,7 +133,7 @@ ok('후원샵 관리: 저장(온에어)', (await cr.locator('body').innerText())
 
 const check = await (await browser.newContext({ viewport:{width:1400,height:900} })).newPage();
 await check.goto(`${BASE}/c/TOR-8K2M`);
-ok('/c: 선택 배너 반영', (await check.locator('header img[src*="donaido-banner-02"]').count())>0);
+ok('/c: 선택 배너 반영', (await check.locator('header img[src*="donaido-live-banner-02-v2"]').count())>0);
 ok('/c: 온에어 + 두근두근', (await check.locator('a:has-text("ON AIR")').count())>0 && (await check.locator('header .animate-heartbeat').count())>0);
 await check.screenshot({ path: '/tmp/c-pc-webdonate.png' });
 await check.close();

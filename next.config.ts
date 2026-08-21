@@ -11,6 +11,21 @@ const nextConfig: NextConfig = {
    * 이 설정은 개발 모드에만 영향을 주며 프로덕션 빌드에는 아무 효과가 없다.
    */
   devIndicators: false,
+
+  /**
+   * 컨테이너 배포(ECS/Fargate)에서는 standalone 출력을 쓴다.
+   * node_modules 전체를 이미지에 싣지 않아 이미지가 작아지고 콜드스타트가 빨라진다.
+   *
+   * 다만 standalone 빌드는 `next start` 로 실행할 수 없고
+   * `node .next/standalone/server.js` 로 띄워야 한다.
+   * 로컬 미리보기(preview.bat → npm run start)를 깨뜨리지 않도록
+   * 빌드 시 NEXT_OUTPUT=standalone 을 준 경우에만 켠다.
+   *
+   *   운영 도커 빌드: NEXT_OUTPUT=standalone npm run build
+   *                  → node .next/standalone/server.js
+   *   로컬 미리보기 : npm run build && npm run start (지금까지와 동일)
+   */
+  ...(process.env.NEXT_OUTPUT === 'standalone' ? { output: 'standalone' as const } : {}),
 };
 
 export default nextConfig;

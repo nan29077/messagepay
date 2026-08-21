@@ -3,6 +3,7 @@ import { newId } from '@/lib/id';
 import { encrypt, decrypt, maskResident, normalizeResident } from '@/lib/crypto';
 import { applyRate } from '@/lib/money';
 import { kstMonthKey } from '@/lib/datetime';
+import { logger } from '@/lib/logger';
 import type { LedgerEntryType } from '@/generated/prisma/enums';
 
 /**
@@ -15,8 +16,71 @@ import type { LedgerEntryType } from '@/generated/prisma/enums';
  *  - 정산 가능 금액 = 원장 합계 - 보류(미정산 요청 중) - 이미 지급
  */
 
-/** 원천징수율 3.3% (사업소득 기준). 화면·서버가 반드시 같은 값을 쓰도록 여기서만 정의한다. */
+/** 원천징수율 3.3% (사업소득 기준) — 화면 안내·미리보기 표기에만 쓰는 합계 표시율. */
 export const WITHHOLDING_RATE = 0.033;
+
+/** 사업소득 원천징수 소득세율 3% */
+export const INCOME_TAX_RATE = 0.03;
+/** 지방소득세율 = 소득세액의 10% */
+export const LOCAL_TAX_RATE = 0.1;
+/**
+ * 소액부징수 기준(소득세법 제86조). 산출된 소득세가 이 금액 미만이면 징수하지 않는다.
+ * 사업소득 3% 기준으로 지급액 약 33,333원 미만이 여기 해당한다.
+ */
+export const SMALL_AMOUNT_EXEMPTION = 1_000n;
+
+/** 국고금관리법 제47조 — 10원 미만 단수 절사 */
+function truncateTo10Won(v: bigint): bigint {
+  return (v / 10n) * 10n;
+}
+
+export interface WithholdingBreakdown {
+  /** 소득세 (3%, 10원 미만 절사) */
+  incomeTax: bigint;
+  /** 지방소득세 (소득세의 10%, 10원 미만 절사) */
+  localTax: bigint;
+  /** 원천징수 합계 = 소득세 + 지방소득세 */
+  total: bigint;
+  /** 소액부징수로 전액 미징수된 경우 true */
+  exempt: boolean;
+}
+
+/**
+ * 사업소득 원천징수액 계산 (국내 일반 실무 방식).
+ *
+ * 3.3% 를 한 번에 곱해 절사하면 국세청 지급명세서 검증에서 어긋난다.
+ * 실제 신고는 소득세와 지방소득세를 **각각 따로 산출하고 각각 절사**한다.
+ *
+ *   1) 소득세      = 지급액 × 3%        → 10원 미만 절사
+ *   2) 지방소득세  = 소득세 × 10%       → 10원 미만 절사
+ *   3) 합계        = 소득세 + 지방소득세
+ *   4) 소액부징수  : 소득세가 1,000원 미만이면 소득세·지방소득세 모두 미징수
+ *
+ * 예) 지급액 333,333원
+ *     - 소득세     333,333 × 3% = 9,999.99 → 9,990원
+ *     - 지방소득세 9,990 × 10%  = 999      → 990원
+ *     - 합계 10,980원  (3.3% 단일 절사 시 10,999원 — 19원 차이)
+ *
+ * 예) 지급액 33,333원 이하
+ *     - 소득세가 1,000원 미만이므로 **소액부징수**, 원천징수 0원
+ *     - 즉 33,334원 미만 정산은 전액 지급된다
+ *
+ * 최종 세액 확정은 세무 자문을 거치는 것을 권장한다.
+ */
+export function calculateWithholding(amount: bigint): WithholdingBreakdown {
+  if (amount <= 0n) return { incomeTax: 0n, localTax: 0n, total: 0n, exempt: false };
+
+  const rawIncomeTax = applyRate(amount, INCOME_TAX_RATE);
+  const incomeTax = truncateTo10Won(rawIncomeTax);
+
+  // 소액부징수: 산출 소득세가 1,000원 미만이면 지방소득세까지 함께 미징수한다.
+  if (incomeTax < SMALL_AMOUNT_EXEMPTION) {
+    return { incomeTax: 0n, localTax: 0n, total: 0n, exempt: true };
+  }
+
+  const localTax = truncateTo10Won(applyRate(incomeTax, LOCAL_TAX_RATE));
+  return { incomeTax, localTax, total: incomeTax + localTax, exempt: false };
+}
 
 export interface FeeBreakdown {
   gross: bigint;
@@ -96,28 +160,47 @@ export async function appendLedger(entries: LedgerInput[], client: LedgerClient 
   });
 }
 
-/** 후원 결제 성공 시 3분개 (총액 / PG수수료 / 플랫폼수수료) */
-export async function postDonationSettlement(input: {
-  creatorId: string;
-  donationId: string;
-  amount: bigint;
-  fees: FeeBreakdown;
-  occurredAt?: Date;
-}) {
-  await appendLedger([
-    {
-      creatorId: input.creatorId, entryType: 'DONATION_GROSS', amount: input.fees.gross,
-      donationId: input.donationId, occurredAt: input.occurredAt, memo: '문자후원 결제 승인',
-    },
-    {
-      creatorId: input.creatorId, entryType: 'PG_FEE', amount: -input.fees.pgFee,
-      donationId: input.donationId, occurredAt: input.occurredAt, memo: `결제수수료 ${input.fees.pgFeeRate}`,
-    },
-    {
-      creatorId: input.creatorId, entryType: 'PLATFORM_FEE', amount: -input.fees.platformFee,
-      donationId: input.donationId, occurredAt: input.occurredAt, memo: `플랫폼수수료 ${input.fees.platformFeeRate}`,
-    },
-  ]);
+/**
+ * 후원 결제 성공 시 3분개 (총액 / PG수수료 / 플랫폼수수료).
+ *
+ * 반드시 결제 승인 기록과 **같은 트랜잭션**에서 호출한다(client 로 tx 전달).
+ * 분리되면 "후원은 성공인데 원장에는 없는" 상태가 생기고, 조기 return 가드 때문에
+ * 재시도로도 복구되지 않아 크리에이터가 그 금액을 영영 받지 못한다.
+ * 재시도·중복 호출에도 분개가 두 번 쌓이지 않도록 이미 기록된 후원은 건너뛴다.
+ */
+export async function postDonationSettlement(
+  input: {
+    creatorId: string;
+    donationId: string;
+    amount: bigint;
+    fees: FeeBreakdown;
+    occurredAt?: Date;
+  },
+  client: LedgerClient = prisma,
+) {
+  const already = await client.settlementLedger.findFirst({
+    where: { donationId: input.donationId, entryType: 'DONATION_GROSS' },
+    select: { id: true },
+  });
+  if (already) return;
+
+  await appendLedger(
+    [
+      {
+        creatorId: input.creatorId, entryType: 'DONATION_GROSS', amount: input.fees.gross,
+        donationId: input.donationId, occurredAt: input.occurredAt, memo: '문자후원 결제 승인',
+      },
+      {
+        creatorId: input.creatorId, entryType: 'PG_FEE', amount: -input.fees.pgFee,
+        donationId: input.donationId, occurredAt: input.occurredAt, memo: `결제수수료 ${input.fees.pgFeeRate}`,
+      },
+      {
+        creatorId: input.creatorId, entryType: 'PLATFORM_FEE', amount: -input.fees.platformFee,
+        donationId: input.donationId, occurredAt: input.occurredAt, memo: `플랫폼수수료 ${input.fees.platformFeeRate}`,
+      },
+    ],
+    client,
+  );
 }
 
 /**
@@ -209,8 +292,21 @@ export interface SettlementSummary {
   available: bigint;
 }
 
-export async function getSettlementSummary(creatorId: string): Promise<SettlementSummary> {
-  const grouped = await prisma.settlementLedger.groupBy({
+/** 요약 집계에 쓰는 클라이언트 (전역 prisma 또는 트랜잭션 tx) */
+type SummaryClient = Pick<typeof prisma, 'settlementLedger' | 'settlementRequest'>
+  | Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
+/**
+ * 크리에이터 정산 요약.
+ *
+ * 잠금 안에서 잔액을 검증할 때는 반드시 `client` 로 tx 를 넘겨야 한다.
+ * 전역 prisma 로 읽으면 트랜잭션 밖 스냅샷을 보게 되어, 락을 잡은 의미가 사라진다.
+ */
+export async function getSettlementSummary(
+  creatorId: string,
+  client: SummaryClient = prisma,
+): Promise<SettlementSummary> {
+  const grouped = await client.settlementLedger.groupBy({
     by: ['entryType'],
     where: { creatorId },
     _sum: { amount: true },
@@ -227,7 +323,7 @@ export async function getSettlementSummary(creatorId: string): Promise<Settlemen
 
   const balance = grouped.reduce((acc, g) => acc + (g._sum.amount ?? 0n), 0n);
 
-  const pendingAgg = await prisma.settlementRequest.aggregate({
+  const pendingAgg = await client.settlementRequest.aggregate({
     where: { creatorId, status: { in: ['REQUESTED', 'REVIEWING', 'APPROVED'] } },
     _sum: { amount: true },
   });
@@ -265,24 +361,26 @@ export async function createSettlementRequest(
   if (input.resident && !resident) throw new Error('주민등록번호 형식이 올바르지 않습니다.');
 
   return prisma.$transaction(async (tx) =>
-    withAdvisoryLock(tx, `settlement:req:${creatorId}`, async () => {
-      // 잠금 획득 후 읽어야 앞선 요청의 커밋 결과가 반영된 값을 본다
-      const summary = await getSettlementSummary(creatorId);
+    withAdvisoryLock(tx, `settlement:creator:${creatorId}`, async () => {
+      // 잠금 획득 후 트랜잭션 안에서 읽어야 앞선 요청의 커밋 결과가 반영된 값을 본다
+      const summary = await getSettlementSummary(creatorId, tx);
       if (amount > summary.available) throw new Error('정산 가능 금액을 초과했습니다.');
 
       const account = await tx.settlementAccount.findUnique({ where: { creatorId } });
       if (!account || !account.verified) throw new Error('정산 계좌 인증이 완료되지 않았습니다.');
 
-      // 원천징수 3.3% (사업소득 기준). 실제 적용은 세무 자문 후 확정한다.
-      const withholding = applyRate(amount, WITHHOLDING_RATE);
+      // 사업소득 원천징수: 소득세 3%(10원절사) + 지방소득세 10%(10원절사), 소액부징수 적용.
+      const wh = calculateWithholding(amount);
 
       return tx.settlementRequest.create({
         data: {
           id: newId(),
           creatorId,
           amount,
-          withholding,
-          payoutAmount: amount - withholding,
+          withholding: wh.total,
+          incomeTax: wh.incomeTax,
+          localTax: wh.localTax,
+          payoutAmount: amount - wh.total,
           memo: input.memo ?? null,
           // 주민등록번호는 암호화 저장하고 화면에는 마스킹만 노출한다.
           residentEnc: resident ? encrypt(resident) : null,
@@ -294,33 +392,66 @@ export async function createSettlementRequest(
 }
 
 /**
+ * 지급 실행 **전** 사전 검증.
+ *
+ * 계좌 인증·잔액 확인은 반드시 돈이 나가기 전에 해야 한다.
+ * 이체가 끝난 뒤(markSettlementPaid) 검증해서 throw 하면 이미 나간 돈이
+ * 원장에 남지 않아 잔액이 줄지 않고, 크리에이터가 다시 신청해 **이중 지급**이 된다.
+ * 이체파일을 만들 때 이 함수로 걸러낸다.
+ */
+export async function assertPayable(requestId: string): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const req = await prisma.settlementRequest.findUnique({ where: { id: requestId } });
+  if (!req) return { ok: false, reason: '정산 요청을 찾을 수 없습니다.' };
+  if (req.status !== 'APPROVED') return { ok: false, reason: '승인(APPROVED) 상태가 아닙니다.' };
+
+  const account = await prisma.settlementAccount.findUnique({ where: { creatorId: req.creatorId } });
+  if (!account || !account.verified) return { ok: false, reason: '정산 계좌 인증이 완료되지 않았습니다.' };
+
+  const summary = await getSettlementSummary(req.creatorId);
+  if (req.amount > summary.balance) {
+    return {
+      ok: false,
+      reason: `정산 가능 잔액 부족 (요청 ${req.amount.toString()}원 / 잔액 ${summary.balance.toString()}원)`,
+    };
+  }
+  return { ok: true };
+}
+
+/**
  * 지급 완료 처리 시 원장에 PAYOUT 분개를 추가한다.
- * 요청 단위 advisory lock + 단일 트랜잭션으로, 관리자 이중 클릭 시
- * append-only 원장에 지급 분개가 중복 기록되는 것을 막는다.
+ *
+ * ── 이 함수가 불리는 시점 ────────────────────────────────────────────────
+ * **이미 지급대행(쿠콘)이 이체를 실행한 뒤**, 그 결과를 반영하는 단계다.
+ * 따라서 여기서 검증 실패로 throw 하면 "돈은 나갔는데 원장에는 없는" 상태가 되어
+ * 잔액이 줄지 않고 재신청 시 이중 지급된다. 사전 검증은 assertPayable() 에서
+ * 이체 전에 끝내고, 여기서는 **어떤 경우에도 분개를 남긴다.**
+ * 문제가 있는 건은 막는 대신 경고 메모를 붙여 사람이 확인하도록 한다.
+ *
+ * advisory lock 키는 요청ID가 아니라 **크리에이터**다.
+ * 실제로 보호해야 하는 자원은 그 크리에이터의 잔액이므로, 요청ID로 잠그면
+ * 같은 크리에이터의 서로 다른 요청 2건이 서로 다른 락을 잡고 동시에 통과한다.
  */
 export async function markSettlementPaid(requestId: string, adminId?: string, payoutRef?: string) {
   return prisma.$transaction(async (tx) =>
-    withAdvisoryLock(tx, `settlement:paid:${requestId}`, async () => {
+    withAdvisoryLock(tx, `settlement:creator:${await creatorIdOf(tx, requestId)}`, async () => {
       const req = await tx.settlementRequest.findUnique({ where: { id: requestId } });
       if (!req) throw new Error('정산 요청을 찾을 수 없습니다.');
       if (req.status === 'PAID') return req;
 
-      // 잠금 안에서 다시 검증한다. 화면 단 검사만으로는 동시 클릭·상태 변경 경합을 막지 못한다.
-      if (req.status !== 'APPROVED') {
-        throw new Error('승인(APPROVED) 상태의 정산 요청만 지급 완료 처리할 수 있습니다.');
+      // 이미 지급 실패로 되돌린 건을 다시 지급 완료로 올리는 것은 사람이 판단해야 한다.
+      if (req.status !== 'APPROVED' && req.status !== 'PAYOUT_FAILED') {
+        throw new Error('승인(APPROVED) 또는 지급실패(PAYOUT_FAILED) 상태만 지급 완료 처리할 수 있습니다.');
       }
 
-      // 지급 직전 계좌 인증 재확인. 승인 이후 계좌가 바뀌거나 인증이 해제됐을 수 있다.
+      // 이체는 이미 끝난 뒤다. 이상이 있어도 분개는 반드시 남기고, 메모로 경고만 남긴다.
+      const warnings: string[] = [];
       const account = await tx.settlementAccount.findUnique({ where: { creatorId: req.creatorId } });
-      if (!account || !account.verified) {
-        throw new Error('정산 계좌 인증이 해제되어 지급할 수 없습니다. 계좌 실명확인 후 다시 시도해 주세요.');
-      }
+      if (!account || !account.verified) warnings.push('계좌 인증 해제 상태에서 지급됨');
 
-      // 지급 직전 잔액 재확인. 승인 이후 환불·조정이 발생해 잔액이 부족해졌을 수 있다.
-      const summary = await getSettlementSummary(req.creatorId);
+      const summary = await getSettlementSummary(req.creatorId, tx);
       if (req.amount > summary.balance) {
-        throw new Error(
-          `정산 가능 잔액이 부족합니다. (요청 ${req.amount.toString()}원 / 현재 잔액 ${summary.balance.toString()}원) 환불·조정 내역을 확인해 주세요.`,
+        warnings.push(
+          `잔액 초과 지급 (요청 ${req.amount.toString()}원 / 잔액 ${summary.balance.toString()}원)`,
         );
       }
 
@@ -339,12 +470,72 @@ export async function markSettlementPaid(requestId: string, adminId?: string, pa
         tx,
       );
 
+      if (warnings.length > 0) {
+        logger.error('정산 지급 완료 처리 중 이상 감지 — 확인 필요', {
+          requestId, creatorId: req.creatorId, warnings,
+        });
+      }
+
       return tx.settlementRequest.update({
         where: { id: requestId },
-        data: { status: 'PAID', paidAt: now, adminId: adminId ?? null, payoutRef: payoutRef ?? null },
+        data: {
+          status: 'PAID',
+          paidAt: now,
+          adminId: adminId ?? null,
+          payoutRef: payoutRef ?? null,
+          payoutFailReason: null,
+          adminMemo: warnings.length > 0 ? `⚠ ${warnings.join(' / ')}` : req.adminMemo,
+        },
       });
     }),
   );
+}
+
+/** 락 키로 쓸 크리에이터 ID를 먼저 조회한다. */
+async function creatorIdOf(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  requestId: string,
+): Promise<string> {
+  const row = await tx.settlementRequest.findUnique({
+    where: { id: requestId },
+    select: { creatorId: true },
+  });
+  if (!row) throw new Error('정산 요청을 찾을 수 없습니다.');
+  return row.creatorId;
+}
+
+/**
+ * 지급대행 이체파일 발급 이력 기록.
+ *
+ * 같은 승인 건으로 파일을 두 번 받아 두 번 업로드하면 이중이체가 된다.
+ * 최초 발급 시각·배치번호를 남기고, 이미 발급된 건이 섞여 있으면 재발급 목록으로 돌려준다.
+ */
+export async function markPayoutFileIssued(
+  requestIds: string[],
+  adminId?: string,
+): Promise<{ batchNo: string; reissued: string[] }> {
+  const batchNo = `B${newId().slice(-10).toUpperCase()}`;
+  if (requestIds.length === 0) return { batchNo, reissued: [] };
+
+  const existing = await prisma.settlementRequest.findMany({
+    where: { id: { in: requestIds }, payoutIssuedAt: { not: null } },
+    select: { id: true },
+  });
+  const reissued = existing.map((r) => r.id);
+
+  await prisma.settlementRequest.updateMany({
+    where: { id: { in: requestIds }, payoutIssuedAt: null },
+    data: { payoutIssuedAt: new Date(), payoutBatchNo: batchNo },
+  });
+  // 재발급 건은 최초 발급 시각을 보존하고 최신 배치번호만 갱신한다.
+  if (reissued.length > 0) {
+    await prisma.settlementRequest.updateMany({
+      where: { id: { in: reissued } },
+      data: { payoutBatchNo: batchNo },
+    });
+    logger.warn('지급대행 이체파일 재발급', { batchNo, reissued, adminId: adminId ?? null });
+  }
+  return { batchNo, reissued };
 }
 
 /**
@@ -355,7 +546,8 @@ export async function markSettlementPaid(requestId: string, adminId?: string, pa
  */
 export async function markSettlementPayoutFailed(requestId: string, reason: string, adminId?: string) {
   return prisma.$transaction(async (tx) =>
-    withAdvisoryLock(tx, `settlement:paid:${requestId}`, async () => {
+    // 지급 완료 처리와 같은 락(크리에이터 단위)을 잡아야 서로 경합하지 않는다.
+    withAdvisoryLock(tx, `settlement:creator:${await creatorIdOf(tx, requestId)}`, async () => {
       const req = await tx.settlementRequest.findUnique({ where: { id: requestId } });
       if (!req) throw new Error('정산 요청을 찾을 수 없습니다.');
       if (req.status === 'PAYOUT_FAILED') return req;
@@ -421,6 +613,31 @@ export async function fileWithholdingAndPurgeResident(requestId: string, adminId
   return { purged: Boolean(req.residentEnc) };
 }
 
+/**
+ * 신고 대상이 아닌 건의 주민등록번호 즉시 파기.
+ *
+ * 반려(REJECTED)·지급실패(PAYOUT_FAILED) 건은 애초에 원천징수 신고 대상이 아니므로
+ * 주민등록번호를 보관할 근거가 없다. 지급 완료 건에만 파기 기능이 있으면
+ * 이 사본들이 영구히 남아 "신고 후 즉시 파기" 안내와 어긋난다.
+ * 상태 전이 시점에 자동으로 호출한다.
+ */
+export async function purgeResidentIfNotFilable(requestId: string) {
+  const req = await prisma.settlementRequest.findUnique({
+    where: { id: requestId },
+    select: { id: true, status: true, residentEnc: true },
+  });
+  if (!req || !req.residentEnc) return { purged: false };
+  if (req.status !== 'REJECTED' && req.status !== 'PAYOUT_FAILED') {
+    return { purged: false };
+  }
+  await prisma.settlementRequest.update({
+    where: { id: requestId },
+    data: { residentEnc: null, residentPurgedAt: new Date() },
+  });
+  logger.info('신고 대상 아님 — 주민등록번호 파기', { requestId, status: req.status });
+  return { purged: true };
+}
+
 /** 지급대행 이체 파일 한 줄에 담기는 값. */
 export interface PayoutRow {
   requestId: string;
@@ -460,6 +677,13 @@ export async function buildPayoutRows(requestIds: string[]): Promise<PayoutRow[]
   for (const r of reqs) {
     const acc = r.creator.settlementAccount;
     if (!acc || !acc.verified) continue; // 미인증 계좌는 이체 대상에서 제외
+    // 잔액까지 여기서 걸러낸다. 검증은 반드시 **이체 전** 에 끝나야 한다.
+    // 이체가 끝난 뒤(markSettlementPaid) 막으면 이미 나간 돈이 원장에 안 남아 이중 지급이 된다.
+    const payable = await assertPayable(r.id);
+    if (!payable.ok) {
+      logger.warn('지급대행 이체파일에서 제외', { requestId: r.id, reason: payable.reason });
+      continue;
+    }
     rows.push({
       requestId: r.id,
       creatorName: r.creator.displayName,

@@ -7,7 +7,12 @@ import { handleMoInbound, resolvePaymentMode } from '@/server/services/donation-
 import { loadConfirmContext, confirmDonation, expireStaleConfirmations } from '@/server/services/donation-confirm';
 import { startRegistration, completeRegistration } from '@/server/services/donor-registration';
 import { requestRefund, approveRefund } from '@/server/services/refund';
-import { getSettlementSummary, createSettlementRequest, markSettlementPaid } from '@/server/services/settlement';
+import {
+  getSettlementSummary,
+  createSettlementRequest,
+  markSettlementPaid,
+  assertPayable,
+} from '@/server/services/settlement';
 import { issueSecureLink } from '@/server/services/secure-link';
 import { resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
 import { newId } from '@/lib/id';
@@ -282,8 +287,10 @@ describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
     await expect(createSettlementRequest(fx.creatorId, 999999n)).rejects.toThrow(/초과/);
 
     const req = await createSettlementRequest(fx.creatorId, 2000n);
-    expect(req.withholding).toBe(66n); // 3.3%
-    expect(req.payoutAmount).toBe(1934n);
+    // 소액부징수: 소득세 2,000 × 3% = 60원 < 1,000원 이므로 원천징수하지 않는다.
+    expect(req.withholding).toBe(0n);
+    expect(req.incomeTax).toBe(0n);
+    expect(req.payoutAmount).toBe(2000n);
 
     const afterRequest = await getSettlementSummary(fx.creatorId);
     expect(afterRequest.pending).toBe(2000n);
@@ -294,10 +301,14 @@ describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
 
     await prisma.settlementRequest.update({ where: { id: req.id }, data: { status: 'APPROVED' } });
 
-    // 계좌 인증이 해제되면 승인 상태여도 지급을 막는다.
+    // 계좌 인증 해제는 **이체 전** 사전검증(assertPayable)에서 걸러야 한다.
+    // markSettlementPaid 는 이미 돈이 나간 뒤에 불리므로, 여기서 막으면(throw)
+    // 원장에 지급 분개가 남지 않아 잔액이 그대로 남고 재신청 시 이중 지급이 된다.
     await prisma.settlementAccount.update({ where: { creatorId: fx.creatorId }, data: { verified: false } });
-    await expect(markSettlementPaid(req.id, 'admin-test')).rejects.toThrow(/계좌 인증/);
+    const notPayable = await assertPayable(req.id);
+    expect(notPayable.ok).toBe(false);
     await prisma.settlementAccount.update({ where: { creatorId: fx.creatorId }, data: { verified: true } });
+    expect((await assertPayable(req.id)).ok).toBe(true);
 
     await markSettlementPaid(req.id, 'admin-test');
     const afterPaid = await getSettlementSummary(fx.creatorId);

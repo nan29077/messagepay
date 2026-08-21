@@ -155,9 +155,12 @@ export async function applyCreator(_prev: CreatorApplyState, formData: FormData)
   }
 
   const businessNo = data.isBusiness === 'on' ? (data.businessNo ?? '').replace(/\D/g, '') : null;
-  const descriptionParts = [data.description?.trim(), data.channelUrl ? `채널: ${data.channelUrl}` : '']
-    .filter(Boolean)
-    .join('\n');
+  // 채널 주소를 소개글에 이어 붙이면 안 된다.
+  // 소개 300자 + "채널: <URL>" 304자 = 최대 604자가 되는데, 스튜디오 후원샵 설정은
+  // 소개를 300자로 검증하므로 크리에이터가 손대지도 않은 필드 때문에
+  // 이후 모든 설정 저장이 영구히 실패한다. 반드시 별도 컬럼에 보관한다.
+  const description = data.description?.trim() || null;
+  const channelUrl = data.channelUrl?.trim() || null;
 
   try {
     const creator = await prisma.creatorProfile.create({
@@ -167,7 +170,8 @@ export async function applyCreator(_prev: CreatorApplyState, formData: FormData)
         code,
         displayName: data.displayName,
         channelName: data.channelName?.trim() || null,
-        description: descriptionParts || null,
+        description,
+        channelUrl,
         status: 'PENDING',
         businessNo,
       },

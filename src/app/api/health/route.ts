@@ -19,8 +19,10 @@ export async function GET() {
   }
 
   try {
-    await kv.set('health:ping', '1', 10);
-    checks.cache = (await kv.get('health:ping')) === '1' ? 'ok' : 'error';
+    // ALB 헬스체크가 30초마다 여러 인스턴스에서 들어오므로 매 호출 쓰기를 피하고,
+    // 연결 가능 여부만 확인하는 읽기 전용 점검으로 대체한다(값이 null 이어도 ok).
+    await kv.get('health:ping');
+    checks.cache = 'ok';
   } catch (e) {
     checks.cache = `error: ${(e as Error).message}`;
   }

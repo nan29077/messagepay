@@ -1,6 +1,4 @@
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import { UPLOAD_DIR } from '@/server/uploads';
+import { getObject } from '@/server/uploads';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -9,7 +7,9 @@ export const dynamic = 'force-dynamic';
  * 업로드된 이미지 서빙.
  *
  * next start 는 빌드 이후 public/ 에 추가된 파일을 서빙하지 않으므로,
- * 런타임 업로드 파일은 이 라우트로 직접 읽어 내려준다. (S3 도입 시 이 라우트만 교체)
+ * 런타임 업로드 파일은 이 라우트로 직접 읽어 내려준다.
+ * 저장 위치(로컬 디스크 / S3)는 server/uploads.ts 드라이버가 처리하므로
+ * 이 라우트는 그대로 두고 STORAGE_DRIVER 만 바꾸면 된다.
  */
 const MIME: Record<string, string> = {
   jpg: 'image/jpeg',
@@ -28,16 +28,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
   }
 
   const ext = name.split('.').pop()!.toLowerCase();
-  try {
-    const buf = await fs.readFile(path.join(UPLOAD_DIR, name));
-    return new Response(new Uint8Array(buf), {
-      status: 200,
-      headers: {
-        'Content-Type': MIME[ext] ?? 'application/octet-stream',
-        'Cache-Control': 'public, max-age=31536000, immutable',
-      },
-    });
-  } catch {
-    return new Response('Not found', { status: 404 });
-  }
+  const buf = await getObject(name);
+  if (!buf) return new Response('Not found', { status: 404 });
+
+  return new Response(new Uint8Array(buf), {
+    status: 200,
+    headers: {
+      'Content-Type': MIME[ext] ?? 'application/octet-stream',
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    },
+  });
 }

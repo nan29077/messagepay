@@ -11,9 +11,13 @@ import {
   fileWithholdingAndPurgeResident,
   buildPayoutRows,
   getSettlementSummary,
+  calculateWithholding,
 } from '@/server/services/settlement';
 import { isValidResident, normalizeResident, maskResident, decrypt } from '@/lib/crypto';
 import { filterContent } from '@/server/services/content-filter';
+
+/** 기대 원천징수액 = 소득세 3%(10원절사) + 지방소득세 10%(10원절사), 소액부징수 적용 */
+const expectedWithholding = (amount: bigint) => calculateWithholding(amount).total;
 
 let fx: Fixture;
 const inbound = (p: Record<string, unknown>) => handleMoInbound(mockMoAdapter.parse(p));
@@ -72,7 +76,7 @@ describe('정산 요청 + 주민번호 저장', () => {
     expect(row.residentMasked).toBe('901010-1******');
     expect(row.residentEnc).toBeTruthy();
     expect(decrypt(row.residentEnc!)).toBe('9010101234567'); // 서버 내부에서만 복호화
-    expect(row.withholding).toBe((available * 33n) / 1000n);
+    expect(row.withholding).toBe(expectedWithholding(available));
   });
 });
 
@@ -131,7 +135,7 @@ describe('지급대행 흐름', () => {
     expect(row.residentMasked).toBe('901010-1******'); // 마스킹은 유지
     expect(row.residentPurgedAt).not.toBeNull();
     expect(row.withholdingFiledAt).not.toBeNull();
-    expect(row.withholding).toBe((available * 33n) / 1000n); // 회계 기록 유지
+    expect(row.withholding).toBe(expectedWithholding(available)); // 회계 기록 유지
   });
 });
 

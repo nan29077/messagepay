@@ -108,7 +108,10 @@ export default async function AdminSimulatorPage() {
                 ))}
               </AdminSelect>
             </AdminField>
-            <AdminField label="발신 휴대전화번호" hint="후원자 번호. 최초 발신이면 계좌 등록 안내가 발송됩니다.">
+            <AdminField
+              label="발신 휴대전화번호"
+              hint="전화번호 기준 최초 MO에만 내통장결제 가입 링크가 발송되며, 가입 전 반복 MO에는 링크를 다시 보내지 않습니다."
+            >
               <AdminInput name="from" placeholder="010-1234-5678" required />
             </AdminField>
             <AdminField

@@ -164,8 +164,20 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
   if (input.donor.lockedUntil && input.donor.lockedUntil > now) {
     return deny('LOCKED', '결제 실패가 반복되어 일시적으로 잠겼습니다. 관리자 해제가 필요합니다.');
   }
-  if (input.amount < policy.minAmount || input.amount > policy.maxAmount) {
-    return deny('AMOUNT_RANGE', `후원금은 ${policy.minAmount}원 ~ ${policy.maxAmount}원 사이여야 합니다.`);
+  // 허용 범위 = 플랫폼 한도 정책 ∩ 크리에이터가 후원샵 설정에서 정한 범위.
+  // 크리에이터 설정을 보지 않으면, 후원자가 문자로 금액을 지정했을 때
+  // 크리에이터가 정한 상·하한을 그냥 넘어가 버린다.
+  const creatorRange = await prisma.creatorProfile.findUnique({
+    where: { id: input.creatorId },
+    select: { minAmount: true, maxAmount: true },
+  });
+  const effMin =
+    creatorRange && creatorRange.minAmount > policy.minAmount ? creatorRange.minAmount : policy.minAmount;
+  const effMax =
+    creatorRange && creatorRange.maxAmount < policy.maxAmount ? creatorRange.maxAmount : policy.maxAmount;
+
+  if (input.amount < effMin || input.amount > effMax) {
+    return deny('AMOUNT_RANGE', `후원금은 ${effMin}원 ~ ${effMax}원 사이여야 합니다.`);
   }
 
   const dayKey = kstDateKey(now);

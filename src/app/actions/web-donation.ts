@@ -1,5 +1,6 @@
 'use server';
 
+import { cookies } from 'next/headers';
 import { prisma } from '@/server/db';
 import { kv } from '@/server/redis';
 import { newId } from '@/lib/id';
@@ -30,6 +31,36 @@ const SESSION_SEC = 1800;
 const codeKey = (t: string) => `webdon:code:${t}`;
 const sessionKey = (t: string) => `webdon:session:${t}`;
 const sendPhoneKey = (ph: string) => `webdon:send:${ph}`;
+
+/**
+ * 인증 세션 토큰은 **HttpOnly 쿠키**로만 오간다.
+ *
+ * 예전에는 폼의 hidden 필드로 실어 날랐는데, 그러면 토큰이 DOM·화면공유·확장프로그램·
+ * 브라우저 자동완성에 그대로 노출되고 쿠키·IP 어디에도 결속돼 있지 않아,
+ * 값을 손에 넣은 사람이 유효시간(30분) 안에 그 전화번호로 후원할 수 있다.
+ * 클라이언트에는 "인증됨" 여부만 알려주고, 실제 토큰은 서버만 읽는다.
+ */
+const SESSION_COOKIE = 'webdon_session';
+/** 클라이언트 상태에 넣는 값. 실제 토큰이 아니라 단계 판정을 위한 표식이다. */
+const SESSION_PRESENT = '1';
+
+async function setSessionCookie(token: string) {
+  const jar = await cookies();
+  jar.set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: !isLocal,
+    path: '/',
+    maxAge: SESSION_SEC,
+  });
+}
+
+async function readSessionPhoneHash(): Promise<string | null> {
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE)?.value;
+  if (!token) return null;
+  return kv.get(sessionKey(token));
+}
 
 function digest(code: string) {
   return hmac(code, env.crypto.sessionSecret);
@@ -131,8 +162,11 @@ export async function verifyWebDonateCode(_prev: WebDonateState, formData: FormD
   }
 
   await kv.del(codeKey(ticket));
-  const session = newId();
-  await kv.set(sessionKey(session), rec.ph, SESSION_SEC);
+  // 세션 토큰은 HttpOnly 쿠키로만 내려보낸다. 클라이언트 상태에는 표식만 담는다.
+  const sessionToken = newId();
+  await kv.set(sessionKey(sessionToken), rec.ph, SESSION_SEC);
+  await setSessionCookie(sessionToken);
+  const session = SESSION_PRESENT;
 
   // 등록(내통장결제 가입 + 활성 결제수단) 여부 확인
   const donor = await prisma.donorProfile.findUnique({
@@ -167,15 +201,15 @@ export async function verifyWebDonateCode(_prev: WebDonateState, formData: FormD
 // ---------------------------------------------------------------- 3) 후원 제출 (즉시 결제)
 
 export async function submitWebDonation(_prev: WebDonateState, formData: FormData): Promise<WebDonateState> {
-  const session = String(formData.get('session') ?? '');
   const creatorId = String(formData.get('creatorId') ?? '');
   const requestId = String(formData.get('requestId') ?? '');
   const message = String(formData.get('message') ?? '').trim();
   const amountRaw = String(formData.get('amount') ?? '').replace(/[^\d]/g, '');
 
-  if (!session) return { ok: false, step: 'phone', message: '인증이 만료되었습니다. 전화번호 인증을 다시 진행해 주세요.' };
-  const ph = await kv.get(sessionKey(session));
+  // 폼으로 온 값은 신뢰하지 않는다. 인증 주체는 오직 HttpOnly 쿠키다.
+  const ph = await readSessionPhoneHash();
   if (!ph) return { ok: false, step: 'phone', message: '인증이 만료되었습니다. 전화번호 인증을 다시 진행해 주세요.' };
+  const session = SESSION_PRESENT;
 
   if (!creatorId || !requestId) return { ok: false, step: 'ready', session, message: '요청 정보가 올바르지 않습니다.' };
   if (!message) return { ok: false, step: 'ready', session, message: '후원 메시지를 입력해 주세요.' };
@@ -209,11 +243,10 @@ export async function submitWebDonation(_prev: WebDonateState, formData: FormDat
 
 // ---------------------------------------------------------------- 가입 완료 후 재확인
 
-export async function checkWebDonateRegistered(_prev: WebDonateState, formData: FormData): Promise<WebDonateState> {
-  const session = String(formData.get('session') ?? '');
-  if (!session) return { ok: false, step: 'phone', message: '인증이 만료되었습니다. 처음부터 다시 시도해 주세요.' };
-  const ph = await kv.get(sessionKey(session));
+export async function checkWebDonateRegistered(_prev: WebDonateState, _formData: FormData): Promise<WebDonateState> {
+  const ph = await readSessionPhoneHash();
   if (!ph) return { ok: false, step: 'phone', message: '인증이 만료되었습니다. 처음부터 다시 시도해 주세요.' };
+  const session = SESSION_PRESENT;
 
   const donor = await prisma.donorProfile.findUnique({ where: { phoneHash: ph }, select: { id: true } });
   const token = donor
