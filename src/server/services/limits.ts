@@ -7,6 +7,11 @@ import type { DonorProfileModel as DonorProfile } from '@/generated/prisma/model
 /** 전체 합계 행 센티널 */
 export const ALL = 'ALL';
 
+/** 트랜잭션 클라이언트 (prisma.$transaction 의 콜백 인자) */
+export type LimitsTx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+/** 한도 조회에 쓰는 클라이언트 (전역 prisma 또는 트랜잭션 tx) */
+type LimitsClient = typeof prisma | LimitsTx;
+
 /**
  * 한도 / 이상거래 정책 엔진.
  * 정책 우선순위: DONOR > CREATOR > GLOBAL
@@ -80,8 +85,9 @@ export async function resolvePolicy(
   creatorId?: string | null,
   donorId?: string | null,
   now: Date = new Date(),
+  client: LimitsClient = prisma,
 ): Promise<EffectivePolicy> {
-  const rows = await prisma.donationLimitPolicy.findMany({
+  const rows = await client.donationLimitPolicy.findMany({
     where: {
       active: true,
       // 시행일이 아직 오지 않았거나 이미 종료된 정책은 적용하지 않는다.
@@ -137,10 +143,32 @@ export interface LimitCheckInput {
    * 설정한 속도 제한의 절반에서 정상 후원자가 차단되고 쿨다운도 두 배 빨리 걸린다.
    */
   consumeVelocity?: boolean;
+  /**
+   * 결제 판정 트랜잭션. 넘기면 모든 조회를 이 트랜잭션 안에서 수행하고,
+   * 한도 집계를 읽기 직전에 후원자 행을 `FOR UPDATE` 로 잠근다.
+   * 같은 후원자의 동시 요청은 앞선 트랜잭션이 끝날 때까지 여기서 대기하므로,
+   * 두 요청이 같은 집계를 읽고 나란히 통과하는 일이 생기지 않는다.
+   */
+  tx?: LimitsTx;
 }
 
-async function readCounter(donorId: string, creatorId: string, periodType: string, periodKey: string) {
-  const row = await prisma.donationCounter.findUnique({
+/**
+ * 후원자 행 잠금 (`SELECT ... FOR UPDATE`).
+ * donor_profile 행은 항상 존재하므로 집계 행이 아직 없어도 직렬화 지점이 된다.
+ * (donation_counter 를 잠그면 첫 후원처럼 행이 없을 때 아무것도 잠기지 않는다)
+ */
+async function lockDonorRow(tx: LimitsTx, donorId: string) {
+  await tx.$queryRawUnsafe('SELECT id FROM donor_profile WHERE id = $1 FOR UPDATE', donorId);
+}
+
+async function readCounter(
+  client: LimitsClient,
+  donorId: string,
+  creatorId: string,
+  periodType: string,
+  periodKey: string,
+) {
+  const row = await client.donationCounter.findUnique({
     where: {
       donorId_creatorId_periodType_periodKey: { donorId, creatorId, periodType, periodKey },
     },
@@ -150,7 +178,8 @@ async function readCounter(donorId: string, creatorId: string, periodType: strin
 
 export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckResult> {
   const now = input.now ?? new Date();
-  const policy = await resolvePolicy(input.creatorId, input.donor.id, now);
+  const db: LimitsClient = input.tx ?? prisma;
+  const policy = await resolvePolicy(input.creatorId, input.donor.id, now, db);
 
   const donorDaily = input.donor.dailyLimit ?? policy.donorDailyLimit;
   const donorMonthly = input.donor.monthlyLimit ?? policy.donorMonthlyLimit;
@@ -161,19 +190,20 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
 
   if (input.blockedByCreator) return deny('BLOCKED', '크리에이터가 차단한 후원자입니다.');
   if (input.donor.blockedAt) return deny('BLOCKED', '이용이 제한된 후원자입니다.');
-  // 후원자가 /my/blocks 에서 직접 건 차단(donorCreatorLink.blockedAt). 결제 경로 전부에서 막아야 한다.
-  const link = await prisma.donorCreatorLink.findUnique({
+  // 후원자가 /my/blocks 에서 직접 건 차단(donorCreatorLink.donorBlockedAt). 결제 경로 전부에서 막아야 한다.
+  // 크리에이터가 건 차단은 blockedByCreator(blocked_donor) 로 따로 들어온다.
+  const link = await db.donorCreatorLink.findUnique({
     where: { donorId_creatorId: { donorId: input.donor.id, creatorId: input.creatorId } },
-    select: { blockedAt: true },
+    select: { donorBlockedAt: true },
   });
-  if (link?.blockedAt) return deny('BLOCKED', '후원자가 차단한 크리에이터입니다. 내 정보 > 차단 관리에서 해제할 수 있습니다.');
+  if (link?.donorBlockedAt) return deny('BLOCKED', '후원자가 차단한 크리에이터입니다. 내 정보 > 차단 관리에서 해제할 수 있습니다.');
   if (input.donor.lockedUntil && input.donor.lockedUntil > now) {
     return deny('LOCKED', '결제 실패가 반복되어 일시적으로 잠겼습니다. 관리자 해제가 필요합니다.');
   }
   // 허용 범위 = 플랫폼 한도 정책 ∩ 크리에이터가 후원샵 설정에서 정한 범위.
   // 크리에이터 설정을 보지 않으면, 후원자가 문자로 금액을 지정했을 때
   // 크리에이터가 정한 상·하한을 그냥 넘어가 버린다.
-  const creatorRange = await prisma.creatorProfile.findUnique({
+  const creatorRange = await db.creatorProfile.findUnique({
     where: { id: input.creatorId },
     select: { minAmount: true, maxAmount: true },
   });
@@ -189,7 +219,11 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
   const dayKey = kstDateKey(now);
   const monthKey = kstMonthKey(now);
 
-  const donorDay = await readCounter(input.donor.id, ALL, 'DAY', dayKey);
+  // 한도 집계를 읽기 직전에 후원자 행을 잠근다.
+  // 잠금을 잡은 트랜잭션이 커밋될 때까지 같은 후원자의 다음 요청은 여기서 멈춘다.
+  if (input.tx) await lockDonorRow(input.tx, input.donor.id);
+
+  const donorDay = await readCounter(db, input.donor.id, ALL, 'DAY', dayKey);
   if (donorDay.amount + input.amount > donorDaily) {
     return deny('DONOR_DAILY', '일일 후원 한도를 초과했습니다.');
   }
@@ -199,12 +233,12 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
     return deny('DONOR_DAILY_COUNT', `하루 최대 ${policy.donorDailyMaxCount}건까지 후원할 수 있습니다.`);
   }
 
-  const donorMonth = await readCounter(input.donor.id, ALL, 'MONTH', monthKey);
+  const donorMonth = await readCounter(db, input.donor.id, ALL, 'MONTH', monthKey);
   if (donorMonth.amount + input.amount > donorMonthly) {
     return deny('DONOR_MONTHLY', '월간 후원 한도를 초과했습니다.');
   }
 
-  const creatorDay = await readCounter(input.donor.id, input.creatorId, 'DAY', dayKey);
+  const creatorDay = await readCounter(db, input.donor.id, input.creatorId, 'DAY', dayKey);
   if (creatorDay.amount + input.amount > policy.perCreatorDailyLimit) {
     return deny('CREATOR_DAILY', '해당 크리에이터에 대한 일일 한도를 초과했습니다.');
   }
@@ -244,8 +278,18 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
   };
 }
 
-/** 결제 성공 시 집계 반영 */
-export async function commitCounters(donorId: string, creatorId: string, amount: bigint, now = new Date()) {
+/**
+ * 집계 반영.
+ * 결제 판정 트랜잭션 안에서 호출하면(client=tx) 잠금이 풀리기 전에 집계가 확정되므로,
+ * 뒤이어 대기하던 동시 요청은 갱신된 집계를 보고 한도 초과로 막힌다.
+ */
+export async function commitCounters(
+  donorId: string,
+  creatorId: string,
+  amount: bigint,
+  now = new Date(),
+  client: LimitsClient = prisma,
+) {
   const dayKey = kstDateKey(now);
   const monthKey = kstMonthKey(now);
   const targets: Array<{ creatorId: string; periodType: string; periodKey: string }> = [
@@ -256,7 +300,7 @@ export async function commitCounters(donorId: string, creatorId: string, amount:
   ];
 
   for (const t of targets) {
-    await prisma.donationCounter.upsert({
+    await client.donationCounter.upsert({
       where: {
         donorId_creatorId_periodType_periodKey: {
           donorId, creatorId: t.creatorId, periodType: t.periodType, periodKey: t.periodKey,
@@ -272,7 +316,13 @@ export async function commitCounters(donorId: string, creatorId: string, amount:
 }
 
 /** 환불 시 집계 되돌림 */
-export async function rollbackCounters(donorId: string, creatorId: string, amount: bigint, at: Date) {
+export async function rollbackCounters(
+  donorId: string,
+  creatorId: string,
+  amount: bigint,
+  at: Date,
+  client: LimitsClient = prisma,
+) {
   const dayKey = kstDateKey(at);
   const monthKey = kstMonthKey(at);
   const targets: Array<{ creatorId: string; periodType: string; periodKey: string }> = [
@@ -282,7 +332,7 @@ export async function rollbackCounters(donorId: string, creatorId: string, amoun
     { creatorId, periodType: 'MONTH', periodKey: monthKey },
   ];
   for (const t of targets) {
-    await prisma.donationCounter.updateMany({
+    await client.donationCounter.updateMany({
       where: { donorId, creatorId: t.creatorId, periodType: t.periodType, periodKey: t.periodKey },
       data: { count: { decrement: 1 }, amount: { decrement: amount } },
     });

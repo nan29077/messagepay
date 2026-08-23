@@ -7,7 +7,7 @@ import type { MoInbound } from '@/server/adapters/mo';
 import { getMtAdapter, decideMessageType } from '@/server/adapters/mt';
 import { getPaymentAdapter, MockPaymentTimeout } from '@/server/adapters/payment';
 import { filterContent, splitKeyword, type BannedWordRule } from './content-filter';
-import { checkLimits, commitCounters, registerFailure, clearFailures, resolvePolicy } from './limits';
+import { checkLimits, commitCounters, rollbackCounters, registerFailure, clearFailures, resolvePolicy } from './limits';
 import { acquireIdempotency } from './idempotency';
 import { issueSecureLink, LINK_TTL_SEC } from './secure-link';
 import * as tpl from './mt-templates';
@@ -627,6 +627,7 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
   });
   if (!donation) return { ok: false, status: 'PAYMENT_FAILED', message: '후원 거래를 찾을 수 없습니다.' };
   if (!donation.donor) return { ok: false, status: 'UNREGISTERED', message: '후원자 정보가 없습니다.' };
+  const donor = donation.donor;
 
   if (['PAYMENT_SUCCESS', 'BROADCAST_PENDING', 'BROADCASTED', 'PARTIAL_DELIVERY_FAILED', 'SETTLEMENT_PENDING', 'SETTLED'].includes(donation.status)) {
     return { ok: true, status: donation.status, message: '이미 결제가 완료된 거래입니다.' };
@@ -641,20 +642,56 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
     return { ok: false, status: 'UNREGISTERED', message: '등록된 결제수단이 없습니다.' };
   }
 
-  // 결제 직전 한도 재검사.
+  // 결제 직전 한도 재검사 + 결제 판정.
   // 카운터는 결제 성공 시에만 증가하므로, 확인 링크를 여러 장 받아 두었다가 한꺼번에 누르면
   // 접수 시점 검사만으로는 일/월 한도를 얼마든지 넘길 수 있다. 실제 출금 직전에 다시 확인한다.
-  const blockedNow = await prisma.blockedDonor.findUnique({
-    where: { creatorId_donorId: { creatorId: donation.creatorId, donorId: donation.donorId! } },
+  //
+  // 재검사부터 결제 판정(집계 예약 + 결제 트랜잭션 확정)까지를 하나의 트랜잭션으로 묶고,
+  // 그 안에서 후원자 행을 FOR UPDATE 로 잠근다. 같은 후원자가 동시에 두 번 눌러도
+  // 뒤 요청은 앞 트랜잭션이 끝날 때까지 대기했다가, 예약이 반영된 집계를 보고 한도 판정을 받는다.
+  const reservedAt = new Date();
+  const decision = await prisma.$transaction(async (tx) => {
+    const blockedNow = await tx.blockedDonor.findUnique({
+      where: { creatorId_donorId: { creatorId: donation.creatorId, donorId: donor.id } },
+    });
+    const limit = await checkLimits({
+      donor,
+      creatorId: donation.creatorId,
+      amount: donation.amount,
+      blockedByCreator: Boolean(blockedNow),
+      // 접수 시점에 이미 속도 제한 카운터를 소진했다. 여기서 또 올리면 1건이 2건으로 세어진다.
+      consumeVelocity: false,
+      tx,
+    });
+    if (!limit.ok) return { limit, txn: null, alreadyApproved: false };
+
+    // 결제 트랜잭션은 거래당 1건만 생성한다(주문번호를 멱등키로 재사용).
+    const existing = await tx.paymentTransaction.findFirst({
+      where: { donationId },
+      orderBy: { requestedAt: 'desc' },
+    });
+    if (existing?.status === 'APPROVED') return { limit, txn: existing, alreadyApproved: true };
+
+    const row =
+      existing ??
+      (await tx.paymentTransaction.create({
+        data: {
+          id: newId(),
+          donationId,
+          orderNo: newOrderNo(),
+          provider: env.payment.provider,
+          amount: donation.amount,
+        },
+      }));
+
+    // 승인 결과를 기다리지 않고 집계를 먼저 잡아둔다(예약).
+    // 잠금 밖에서 승인 후에 반영하면, 그사이 들어온 같은 후원자의 요청이
+    // 이 건이 빠진 집계를 읽고 함께 통과해 한도를 넘긴다. 실패하면 아래에서 되돌린다.
+    await commitCounters(donor.id, donation.creatorId, donation.amount, reservedAt, tx);
+    return { limit, txn: row, alreadyApproved: false };
   });
-  const limitNow = await checkLimits({
-    donor: donation.donor,
-    creatorId: donation.creatorId,
-    amount: donation.amount,
-    blockedByCreator: Boolean(blockedNow),
-    // 접수 시점에 이미 속도 제한 카운터를 소진했다. 여기서 또 올리면 1건이 2건으로 세어진다.
-    consumeVelocity: false,
-  });
+
+  const limitNow = decision.limit;
   if (!limitNow.ok) {
     await setStatus(donationId, 'LIMIT_BLOCKED', `${limitNow.code}: ${limitNow.message}`);
     await prisma.riskDetection.create({
@@ -677,21 +714,10 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
     return { ok: false, status: 'LIMIT_BLOCKED', message: limitNow.message ?? '이용 한도를 초과했습니다.' };
   }
 
-  // 결제 트랜잭션은 거래당 1건만 생성한다(주문번호를 멱등키로 재사용).
-  let txn = await prisma.paymentTransaction.findFirst({ where: { donationId }, orderBy: { requestedAt: 'desc' } });
-  if (!txn) {
-    txn = await prisma.paymentTransaction.create({
-      data: {
-        id: newId(),
-        donationId,
-        orderNo: newOrderNo(),
-        provider: env.payment.provider,
-        amount: donation.amount,
-      },
-    });
-  } else if (txn.status === 'APPROVED') {
+  if (decision.alreadyApproved) {
     return { ok: true, status: 'PAYMENT_SUCCESS', message: '이미 승인된 결제입니다.' };
   }
+  const txn = decision.txn!;
 
   await setStatus(donationId, 'PENDING_PAYMENT', '결제 승인 요청');
 
@@ -780,6 +806,8 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
       });
       await raiseUnknownPaymentAlert(donationId, txn.id, txn.orderNo, donation.amount);
       // 실패 카운터를 올리지 않는다. 실패 문자도 보내지 않는다(이중청구 오해 방지).
+      // 예약해 둔 한도 집계도 되돌리지 않는다. 실제로 출금되었을 수 있으므로
+      // 되돌렸다가 다시 후원이 통과하면 그날 한도를 넘겨 이중으로 빠져나간다.
       logger.error('결제 결과 미확인 — 수동 대사 필요', {
         donationId, transactionId: txn.id, orderNo: txn.orderNo, phone,
       });
@@ -795,6 +823,8 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
       data: { status: 'FAILED', resultCode: failure?.code ?? null, resultMessage: failure?.message ?? null },
     });
     await setStatus(donationId, 'PAYMENT_FAILED', failure?.message ?? '결제 실패');
+    // 결제 판정 트랜잭션에서 잡아둔 집계 예약을 되돌린다(실패한 건은 한도를 쓰지 않는다).
+    await rollbackCounters(donor.id, donation.creatorId, donation.amount, reservedAt);
     const policy = await resolvePolicy(donation.creatorId, donation.donorId);
     const locked = await registerFailure(donation.donorId!, policy.failureLockThreshold);
     await sendMtForDonor(donation.donorId!, tpl.tplDonationFailed(donation.creator.displayName, failure?.message), donationId, donation.creatorId);
@@ -854,7 +884,7 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
     );
   });
 
-  await commitCounters(donation.donorId!, donation.creatorId, donation.amount, approved.approvedAt);
+  // 집계는 결제 판정 트랜잭션에서 이미 반영(예약)했다. 여기서 다시 더하면 두 번 세어진다.
   await clearFailures(donation.donorId!);
 
   // 누적 후원금 안내

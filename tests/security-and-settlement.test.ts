@@ -98,6 +98,33 @@ describe('속도 제한 카운터', () => {
   });
 });
 
+describe('한도 집계 예약', () => {
+  it('결제 성공 건은 집계에 한 번만 반영된다', async () => {
+    await seedRegisteredDonor(fx.donorPhone);
+    await inbound(moPayload({ to: fx.moNumber }));
+
+    const day = await prisma.donationCounter.findFirstOrThrow({
+      where: { creatorId: 'ALL', periodType: 'DAY' },
+    });
+    // 판정 트랜잭션에서 예약하고 승인 후 또 더하면 1건이 2건으로 세어진다.
+    expect(day.count).toBe(1);
+    expect(day.amount).toBe(3000n);
+  });
+
+  it('결제에 실패한 건은 집계에 남지 않는다', async () => {
+    await seedRegisteredDonor(fx.donorPhone);
+    // mock 어댑터: 금액 끝 999 = 승인 거절
+    await prisma.creatorProfile.update({ where: { id: fx.creatorId }, data: { donationAmount: 2999n } });
+
+    const res = await inbound(moPayload({ to: fx.moNumber }));
+    expect(res.status).toBe('PAYMENT_FAILED');
+
+    const counters = await prisma.donationCounter.findMany();
+    // 예약분이 되돌아오지 않으면 실패한 후원이 그날 한도를 계속 잡아먹는다.
+    expect(counters.every((c) => c.count === 0 && c.amount === 0n)).toBe(true);
+  });
+});
+
 describe('환불 수수료 환입', () => {
   it('환불 시점에 수수료율이 바뀌어도 원 거래에 기록된 금액만큼만 환입한다', async () => {
     await seedRegisteredDonor(fx.donorPhone);

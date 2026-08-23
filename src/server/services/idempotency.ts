@@ -10,7 +10,7 @@ import { addDays } from '@/lib/datetime';
  * 전체 방어 체계
  *  1) mo_inbound_message.provider_message_id UNIQUE  ← 사업자 재전송
  *  2) idempotency_key (scope,key) UNIQUE             ← 거래 생성
- *  3) pg_advisory_xact_lock(후원자)                  ← 동시성
+ *  3) 후원자 행 잠금(SELECT ... FOR UPDATE) + 판정 트랜잭션  ← 동시성
  *  4) PG 주문번호 재사용 + 거래결과조회               ← 외부 확정
  */
 

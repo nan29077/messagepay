@@ -124,4 +124,32 @@ describe('후원자 차단', () => {
     expect(res.status).toBe('LIMIT_BLOCKED');
     expect(await prisma.paymentTransaction.count()).toBe(0);
   });
+
+  it('후원자가 건 차단은 크리에이터 차단과 분리되어 있다', async () => {
+    const donor = await prisma.donorProfile.findFirstOrThrow();
+    // 후원자 -> 크리에이터 방향 차단 (내 정보 > 차단 관리)
+    await prisma.donorCreatorLink.create({
+      data: { id: newId(), donorId: donor.id, creatorId: fx.creatorId, donorBlockedAt: new Date() },
+    });
+
+    const res = await inbound(moPayload({ to: fx.moNumber, text: '후원자가 차단한 크리에이터' }));
+    expect(res.status).toBe('LIMIT_BLOCKED');
+    expect(await prisma.paymentTransaction.count()).toBe(0);
+
+    // 크리에이터가 차단했다가 해제해도(blocked_donor 행 생성 후 삭제)
+    // 후원자가 건 차단은 그대로 남아야 한다. 예전에는 한 컬럼을 공유해 함께 풀렸다.
+    await prisma.blockedDonor.create({
+      data: { id: newId(), creatorId: fx.creatorId, donorId: donor.id, reason: '검수' },
+    });
+    await prisma.blockedDonor.deleteMany({ where: { creatorId: fx.creatorId, donorId: donor.id } });
+
+    const link = await prisma.donorCreatorLink.findUniqueOrThrow({
+      where: { donorId_creatorId: { donorId: donor.id, creatorId: fx.creatorId } },
+    });
+    expect(link.donorBlockedAt).not.toBeNull();
+
+    const after = await inbound(moPayload({ to: fx.moNumber, text: '해제 후에도 차단 유지' }));
+    expect(after.status).toBe('LIMIT_BLOCKED');
+    expect(await prisma.paymentTransaction.count()).toBe(0);
+  });
 });

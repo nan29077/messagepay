@@ -415,7 +415,10 @@ model DonorCreatorLink {
   donorId       String    @map("donor_id")
   creatorId     String    @map("creator_id")
   consentedAt   DateTime? @map("consented_at") @db.Timestamptz(3)
-  blockedAt     DateTime? @map("blocked_at") @db.Timestamptz(3)
+  /// 후원자가 이 크리에이터를 차단한 시각 (후원자 -> 크리에이터 방향).
+  /// 반대 방향(크리에이터 -> 후원자)은 사유·처리자까지 남기는 blocked_donor 테이블에 기록한다.
+  /// 한 컬럼에 두 방향을 같이 쓰면 크리에이터가 차단을 해제할 때 후원자가 건 차단까지 풀린다.
+  donorBlockedAt DateTime? @map("donor_blocked_at") @db.Timestamptz(3)
   dailyLimit    BigInt?   @map("daily_limit")
   totalAmount   BigInt    @default(0) @map("total_amount")
   totalCount    Int       @default(0) @map("total_count")
@@ -431,6 +434,7 @@ model DonorCreatorLink {
   @@map("donor_creator_link")
 }
 
+/// 크리에이터 -> 후원자 방향 차단. (반대 방향은 donor_creator_link.donor_blocked_at)
 model BlockedDonor {
   id        String   @id
   creatorId String   @map("creator_id")

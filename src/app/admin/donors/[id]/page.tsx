@@ -43,8 +43,14 @@ export default async function AdminDonorDetailPage({ params }: { params: Promise
         orderBy: { totalAmount: 'desc' },
         take: 10,
         select: {
-          id: true, totalAmount: true, totalCount: true, blockedAt: true, lastDonatedAt: true,
-          creator: { select: { id: true, displayName: true, code: true } },
+          id: true, totalAmount: true, totalCount: true, donorBlockedAt: true, lastDonatedAt: true,
+          creator: {
+            select: {
+              id: true, displayName: true, code: true,
+              // 크리에이터 -> 후원자 방향 차단은 blocked_donor 에 있다.
+              blockedDonors: { where: { donorId: id }, select: { createdAt: true } },
+            },
+          },
         },
       },
     },
@@ -222,7 +228,13 @@ export default async function AdminDonorDetailPage({ params }: { params: Promise
                     <Td className="text-right tabular-nums">{formatWon(l.totalAmount)}</Td>
                     <Td className="text-right tabular-nums">{formatNumber(l.totalCount)}</Td>
                     <Td className="whitespace-nowrap">{formatKst(l.lastDonatedAt, false)}</Td>
-                    <Td>{l.blockedAt ? <Badge tone="danger">차단</Badge> : <Badge tone="neutral">없음</Badge>}</Td>
+                    <Td className="space-x-1 whitespace-nowrap">
+                      {l.donorBlockedAt ? <Badge tone="danger">후원자 차단</Badge> : null}
+                      {l.creator.blockedDonors.length > 0 ? <Badge tone="warning">크리에이터 차단</Badge> : null}
+                      {!l.donorBlockedAt && l.creator.blockedDonors.length === 0 ? (
+                        <Badge tone="neutral">없음</Badge>
+                      ) : null}
+                    </Td>
                   </tr>
                 ))}
               </tbody>

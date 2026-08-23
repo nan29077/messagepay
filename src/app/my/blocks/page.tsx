@@ -13,18 +13,25 @@ export default async function MyBlocksPage() {
   const { donorId } = await requireDonorContext('/my/blocks');
   if (!donorId) return <EmptyState title={NO_DONOR_TITLE} description={NO_DONOR_DESC} />;
 
-  const links = await prisma.donorCreatorLink.findMany({
-    where: { donorId },
-    orderBy: [{ blockedAt: { sort: 'desc', nulls: 'last' } }, { lastDonatedAt: 'desc' }],
-    select: {
-      id: true,
-      blockedAt: true,
-      totalAmount: true,
-      totalCount: true,
-      lastDonatedAt: true,
-      creator: { select: { displayName: true, code: true, status: true } },
-    },
-  });
+  // 후원자가 건 차단(donorBlockedAt)과 크리에이터가 건 차단(blockedDonor)은 별개다.
+  // 이 화면에서 해제할 수 있는 것은 후원자 본인이 건 차단뿐이다.
+  const [links, blockedByCreators] = await Promise.all([
+    prisma.donorCreatorLink.findMany({
+      where: { donorId },
+      orderBy: [{ donorBlockedAt: { sort: 'desc', nulls: 'last' } }, { lastDonatedAt: 'desc' }],
+      select: {
+        id: true,
+        donorBlockedAt: true,
+        totalAmount: true,
+        totalCount: true,
+        lastDonatedAt: true,
+        creatorId: true,
+        creator: { select: { displayName: true, code: true, status: true } },
+      },
+    }),
+    prisma.blockedDonor.findMany({ where: { donorId }, select: { creatorId: true } }),
+  ]);
+  const creatorBlocked = new Set(blockedByCreators.map((b) => b.creatorId));
 
   return (
     <div className="space-y-5">
@@ -51,7 +58,8 @@ export default async function MyBlocksPage() {
       ) : (
         <div className="space-y-2.5">
           {links.map((l) => {
-            const blocked = Boolean(l.blockedAt);
+            const blocked = Boolean(l.donorBlockedAt);
+            const blockedByCreator = creatorBlocked.has(l.creatorId);
             return (
               <Card key={l.id}>
                 <div className="flex items-start justify-between gap-3">
@@ -66,14 +74,16 @@ export default async function MyBlocksPage() {
                           l.creator.displayName
                         )}
                       </p>
-                      {blocked ? <Badge tone="danger">차단됨</Badge> : <Badge tone="success">후원 가능</Badge>}
+                      {blocked ? <Badge tone="danger">차단됨</Badge> : null}
+                      {blockedByCreator ? <Badge tone="neutral">크리에이터가 차단함</Badge> : null}
+                      {!blocked && !blockedByCreator ? <Badge tone="success">후원 가능</Badge> : null}
                     </div>
                     <p className="mt-1 text-[12.5px] text-ink-400">
                       누적 {formatWon(l.totalAmount)} · {formatNumber(l.totalCount)}건
                       {l.lastDonatedAt ? ` · 최근 ${formatKst(l.lastDonatedAt, false)}` : ''}
                     </p>
                     {blocked ? (
-                      <p className="mt-1 text-[12px] text-ink-400">차단 일시 {formatKst(l.blockedAt, false)}</p>
+                      <p className="mt-1 text-[12px] text-ink-400">차단 일시 {formatKst(l.donorBlockedAt, false)}</p>
                     ) : null}
                   </div>
                   <div className="shrink-0">

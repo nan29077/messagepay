@@ -132,7 +132,7 @@ export async function toggleCreatorBlock(
   // 소유권 검증: 반드시 로그인 후원자의 링크여야 한다.
   const link = await prisma.donorCreatorLink.findUnique({
     where: { id: linkId },
-    select: { id: true, donorId: true, blockedAt: true, creator: { select: { displayName: true } } },
+    select: { id: true, donorId: true, donorBlockedAt: true, creator: { select: { displayName: true } } },
   });
   if (!link || link.donorId !== ctx.donor.id) {
     return { ok: false, message: '대상을 찾을 수 없습니다.' };
@@ -141,7 +141,8 @@ export async function toggleCreatorBlock(
   const shouldBlock = next === 'BLOCK';
   await prisma.donorCreatorLink.update({
     where: { id: link.id },
-    data: { blockedAt: shouldBlock ? new Date() : null },
+    // 후원자 방향 차단만 건드린다. 크리에이터가 건 차단(blocked_donor)은 그대로 유지된다.
+    data: { donorBlockedAt: shouldBlock ? new Date() : null },
   });
   revalidatePath('/my/blocks');
   return {

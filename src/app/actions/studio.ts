@@ -121,10 +121,6 @@ export async function blockDonorAction(
       create: { id: newId(), creatorId, donorId, reason: reason ?? null, blockedBy: userId },
       update: { reason: reason ?? null, blockedBy: userId },
     });
-    await prisma.donorCreatorLink.updateMany({
-      where: { creatorId, donorId },
-      data: { blockedAt: new Date() },
-    });
 
     revalidatePath('/studio/moderation');
     revalidatePath('/studio/donations');
@@ -144,7 +140,6 @@ export async function unblockDonorAction(
     const deleted = await prisma.blockedDonor.deleteMany({ where: { creatorId, donorId } });
     if (deleted.count === 0) return { ok: false, message: '차단 목록에 없는 후원자입니다.' };
 
-    await prisma.donorCreatorLink.updateMany({ where: { creatorId, donorId }, data: { blockedAt: null } });
     revalidatePath('/studio/moderation');
     return { ok: true, message: '차단을 해제했습니다.' };
   });
