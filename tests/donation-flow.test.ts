@@ -113,6 +113,40 @@ describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
     expect(success).toBeDefined();
   });
 
+  it('[4-1] 본문에 "N원" 표기가 있어도 크리에이터 고정 금액으로만 결제된다', async () => {
+    await seedRegisteredDonor(fx.donorPhone);
+    const res = await inbound(moPayload({ to: fx.moNumber, text: '10000원 화이팅' }));
+
+    expect(res.result).toBe('ROUTED');
+    const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
+    // 파싱된 10000원이 아니라 크리에이터가 설정한 3000원이 청구된다.
+    expect(donation.amount).toBe(3000n);
+    // 금액 표기를 잘라내지 않고 본문 전체를 후원 메시지로 사용한다.
+    expect(donation.message).toBe('10000원 화이팅');
+    expect(donation.paidAt).not.toBeNull();
+
+    const tx = await prisma.paymentTransaction.findFirstOrThrow({ where: { donationId: donation.id } });
+    expect(tx.amount).toBe(3000n);
+  });
+
+  it('[4-2] 금액 표기가 없는 일반 문자도 같은 고정 금액으로 결제된다', async () => {
+    await seedRegisteredDonor(fx.donorPhone);
+    const res = await inbound(moPayload({ to: fx.moNumber, text: '오늘도 응원합니다' }));
+
+    const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
+    expect(donation.amount).toBe(3000n);
+    expect(donation.message).toBe('오늘도 응원합니다');
+  });
+
+  it('[4-3] 크리에이터가 고정 금액을 바꾸면 바뀐 금액으로 결제된다', async () => {
+    await seedRegisteredDonor(fx.donorPhone);
+    await prisma.creatorProfile.update({ where: { id: fx.creatorId }, data: { donationAmount: 5000n } });
+
+    const res = await inbound(moPayload({ to: fx.moNumber, text: '1,000원 응원' }));
+    const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
+    expect(donation.amount).toBe(5000n);
+  });
+
   it('[5] 동일 MO Webhook 이 재전송되어도 결제가 중복되지 않는다', async () => {
     await seedRegisteredDonor(fx.donorPhone);
     const payload = moPayload({ to: fx.moNumber, messageId: 'MO-DUP-001' });

@@ -38,6 +38,11 @@ export interface MoHandleResult {
 // 보조
 // ---------------------------------------------------------------------------
 
+/**
+ * MT 문자 1건 발송 + 발송 이력(MtOutboundMessage) 기록.
+ * 발송 성공 여부를 boolean 으로 돌려주며, 어댑터 예외는 내부에서 흡수해 이력만 FAILED 로 남긴다.
+ * (MO 흐름 외에 PC 웹 가입 안내에서도 같은 이력 규칙을 쓴다 — 파일 하단에서 export)
+ */
 async function sendMt(input: {
   phone: string;
   template: TemplateOutput;
@@ -159,11 +164,16 @@ export async function loadBannedWords(creatorId: string): Promise<BannedWordRule
 /** 수신번호(+키워드)로 크리에이터를 찾는다. */
 
 /**
- * 문자 본문 맨 앞의 "N원" 표기를 금액 지정으로 해석한다.
+ * 문자 본문 맨 앞의 "N원" 표기를 금액으로 해석하는 파서.
+ *
+ * 현재 MO 수신 흐름에서는 **호출하지 않는다.**
+ * 모바일 문자 후원은 크리에이터가 설정한 고정 금액만 사용하며, 본문의 금액 표기가
+ * 결제 금액을 덮어쓰지 않도록 processMoRow 의 호출부를 비활성화했다.
+ * 금액을 직접 지정하는 후원은 PC 웹 경로(web-donation)에서 화면 입력값으로 처리한다.
+ * 파서 자체는 향후 재도입·이력 분석을 위해 남겨 둔다.
+ *
  * 예) "5000원 오늘도 화이팅" → amount 5000, rest "오늘도 화이팅"
  *     "1,000원" → amount 1000, rest ""
- * 표기가 없으면 크리에이터 기본 후원금을 사용한다.
- * 파싱된 금액이 정책 범위를 벗어나면 이후 checkLimits 에서 AMOUNT_RANGE 로 차단되고 안내 문자가 발송된다.
  */
 export function parseExplicitAmount(body: string): { amount: bigint | null; rest: string } {
   const m = body.match(/^\s*(\d{1,3}(?:,\d{3})+|\d{3,7})원(?=\s|$)/u);
@@ -479,17 +489,18 @@ async function processMoRow(
     });
   }
 
-  // (4) 금액 지정 파싱 + 콘텐츠 필터
-  // 후원 페이지에서 금액을 선택해 보내면 본문 맨 앞에 "5000원" 형태의 표기가 붙는다.
-  const amountSpec = parseExplicitAmount(routed.body);
+  // (4) 콘텐츠 필터
+  // 모바일 MO 후원은 "문자 한 통 = 크리에이터가 설정한 고정 금액" 이다.
+  // 본문의 "5000원" 같은 표기를 금액으로 해석하지 않는다(parseExplicitAmount 호출 비활성화).
+  // 금액을 직접 지정하는 후원은 화면에서 금액을 입력·확인하는 PC 웹 경로(web-donation)만 사용한다.
   const bannedWords = await loadBannedWords(creator.id);
   const overlay = await prisma.overlaySetting.findUnique({ where: { creatorId: creator.id } });
-  const filtered = filterContent(amountSpec.rest, {
+  const filtered = filterContent(routed.body, {
     bannedWords,
     maxLength: overlay?.maxMessageLen ?? 80,
   });
 
-  const amount = amountSpec.amount ?? creator.donationAmount;
+  const amount = creator.donationAmount;
   const displayName = donor.displayName || maskPhone(inbound.fromNumber);
 
   // (5) 후원 거래 생성 (멱등)

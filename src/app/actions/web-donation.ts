@@ -4,22 +4,25 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/server/db';
 import { kv } from '@/server/redis';
 import { newId } from '@/lib/id';
-import { encrypt, generateNumericCode, hmac, maskPhone, normalizePhone, phoneHash, safeEqual } from '@/lib/crypto';
+import { decrypt, encrypt, generateNumericCode, hmac, maskPhone, normalizePhone, phoneHash, safeEqual } from '@/lib/crypto';
 import { getMtAdapter } from '@/server/adapters/mt';
 import { env, isLocal } from '@/lib/env';
 import { logger } from '@/lib/logger';
 import { issueSecureLink } from '@/server/services/secure-link';
 import { createWebDonation } from '@/server/services/web-donation';
+import { sendMt } from '@/server/services/donation-flow';
+import * as tpl from '@/server/services/mt-templates';
 
 /**
  * 후원샵 PC 웹 후원 서버 액션.
  *
  * 1) 전화번호로 인증번호 발송 → 2) 인증 성공 시 서버 KV 에 인증 세션 저장
  * 3) 등록 후원자(내통장결제 가입자)면 텍스트+금액 후원을 즉시 결제 실행
- *    미가입자면 가입 보안 링크를 발급해 팝업으로 안내한다.
+ *    미가입자면 가입 보안 링크를 발급해 팝업으로 안내하고, 같은 링크를 MT 문자로도 보낸다.
  *
  * 보안: 인증 코드는 HMAC 으로만 저장, 시도 5회 제한, 발송 3회/10분 제한,
- *       클라이언트에는 불투명 티켓만 전달, 세션 30분.
+ *       클라이언트에는 불투명 티켓만 전달, 세션 30분,
+ *       KV 에 담는 전화번호(pn)는 암호화 저장하고 필요한 순간에만 복호화.
  */
 
 const CODE_TTL_SEC = 300;
@@ -114,9 +117,10 @@ export async function requestWebDonateCode(_prev: WebDonateState, formData: Form
     return { ok: false, step: 'phone', message: '인증번호 발송에 실패했습니다. 잠시 후 다시 시도해 주세요.' };
   }
 
+  // pn(전화번호)은 Redis 에 평문으로 두지 않는다. 서버에서만 복호화해 사용한다.
   await kv.set(
     codeKey(ticket),
-    JSON.stringify({ ph, pm: masked, pn: phone, ch: digest(code), at: MAX_ATTEMPTS }),
+    JSON.stringify({ ph, pm: masked, pn: encrypt(phone), ch: digest(code), at: MAX_ATTEMPTS }),
     CODE_TTL_SEC,
   );
   logger.info('후원샵 웹 후원 인증번호 발송', { phone: masked });
@@ -143,6 +147,7 @@ export async function verifyWebDonateCode(_prev: WebDonateState, formData: FormD
   const raw = await kv.get(codeKey(ticket));
   if (!raw) return { ok: false, step: 'phone', message: '인증 유효시간이 지났습니다. 인증번호를 다시 요청해 주세요.' };
 
+  // pn 은 암호문이다. 평문 전화번호가 필요한 분기에서만 복호화한다.
   let rec: { ph: string; pm: string; pn: string; ch: string; at: number };
   try {
     rec = JSON.parse(raw);
@@ -181,19 +186,35 @@ export async function verifyWebDonateCode(_prev: WebDonateState, formData: FormD
     return { ok: true, step: 'ready', session, phoneMasked: rec.pm, message: '인증이 완료되었습니다. 금액과 메시지를 확인한 뒤 후원해 주세요.' };
   }
 
-  // 미가입: 내통장결제 가입 보안 링크 발급 (팝업으로 안내)
+  // 미가입: 내통장결제 가입 보안 링크 발급 (팝업 + 안내 문자)
+  // 세션에는 암호화된 전화번호만 들어 있으므로 실제로 필요한 이 분기에서만 복호화한다.
+  let phone: string;
+  try {
+    phone = normalizePhone(decrypt(rec.pn));
+  } catch (error) {
+    logger.error('후원샵 웹 인증 전화번호 복호화 실패', { message: (error as Error).message });
+    return { ok: false, step: 'phone', message: '인증 정보를 확인할 수 없습니다. 처음부터 다시 시도해 주세요.' };
+  }
+  if (!/^01[0-9]{8,9}$/.test(phone)) {
+    logger.error('후원샵 웹 인증 전화번호 형식 오류', { phone: rec.pm });
+    return { ok: false, step: 'phone', message: '인증 정보를 확인할 수 없습니다. 처음부터 다시 시도해 주세요.' };
+  }
+
   // 가입 화면(loadRegistrationContext)은 전화번호로 후원자 프로필을 찾으므로,
   // 문자를 한 번도 보낸 적 없는 번호는 여기서 프로필을 먼저 만들어 둔다.
   if (!donor) {
     await prisma.donorProfile.upsert({
       where: { phoneHash: rec.ph },
       update: {},
-      create: { id: newId(), phoneHash: rec.ph, phoneEnc: encrypt(normalizePhone(rec.pn)), phoneMasked: rec.pm },
+      create: { id: newId(), phoneHash: rec.ph, phoneEnc: encrypt(phone), phoneMasked: rec.pm },
     });
   }
   // 폼의 creatorId 는 검증되지 않은 값이므로 승인된 크리에이터일 때만 링크에 연결한다.
   const linkedCreator = creatorId
-    ? await prisma.creatorProfile.findFirst({ where: { id: creatorId, status: 'APPROVED' }, select: { id: true } })
+    ? await prisma.creatorProfile.findFirst({
+        where: { id: creatorId, status: 'APPROVED' },
+        select: { id: true, displayName: true },
+      })
     : null;
   const link = await issueSecureLink({
     purpose: 'REGISTER_ACCOUNT',
@@ -201,13 +222,29 @@ export async function verifyWebDonateCode(_prev: WebDonateState, formData: FormD
     creatorId: linkedCreator?.id,
     payload: { channel: 'WEB' },
   });
+
+  // 팝업이 차단되거나 창을 닫아도 가입을 이어갈 수 있도록 MO 경로와 같은 안내 문자를 함께 보낸다.
+  // 문자 발송 결과가 팝업 안내를 막으면 안 되므로 실패는 로그로만 남긴다. (이력은 MtOutboundMessage 에 남는다)
+  let mtSent = false;
+  try {
+    mtSent = await sendMt({
+      phone,
+      template: tpl.tplRegisterGuide(linkedCreator?.displayName ?? '도네이도', link.url),
+      creatorId: linkedCreator?.id ?? null,
+    });
+  } catch (error) {
+    logger.error('후원샵 웹 가입 안내 문자 발송 실패', { message: (error as Error).message });
+  }
+
   return {
     ok: true,
     step: 'register',
     session,
     phoneMasked: rec.pm,
     registerUrl: link.url,
-    message: '내통장결제 가입이 필요합니다. 가입 창에서 계좌 등록을 완료한 뒤 이 창에서 후원을 이어가 주세요.',
+    message: mtSent
+      ? '내통장결제 가입이 필요합니다. 가입 링크를 문자로도 보냈습니다. 가입 창에서 계좌 등록을 완료한 뒤 이 창에서 후원을 이어가 주세요.'
+      : '내통장결제 가입이 필요합니다. 가입 창에서 계좌 등록을 완료한 뒤 이 창에서 후원을 이어가 주세요.',
   };
 }
 
