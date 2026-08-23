@@ -98,6 +98,7 @@ export async function applyCreator(_prev: CreatorApplyState, formData: FormData)
 
   // ------------------------------------------------------------ 계정 확보
   let userId: string;
+  let newUser: { id: string; email: string; name: string; role: 'CREATOR'; passwordHash: string } | null = null;
   if (session) {
     if (session.role === 'ADMIN') {
       return { ok: false, message: '관리자 계정으로는 크리에이터를 신청할 수 없습니다.', values };
@@ -133,17 +134,16 @@ export async function applyCreator(_prev: CreatorApplyState, formData: FormData)
         values,
       };
     }
-    const created = await prisma.user.create({
-      data: {
-        id: newId(),
-        email: data.contactEmail,
-        name: data.displayName,
-        role: 'CREATOR',
-        passwordHash: await hashPassword(password),
-      },
-      select: { id: true },
-    });
-    userId = created.id;
+    // 프로필 생성까지 한 트랜잭션으로 묶기 위해 여기서는 만들지 않고 입력만 준비한다.
+    // (사용자만 만들어지고 프로필이 없으면 재신청은 "이미 가입된 이메일", 로그인은 /studio 오류가 된다)
+    newUser = {
+      id: newId(),
+      email: data.contactEmail,
+      name: data.displayName,
+      role: 'CREATOR' as const,
+      passwordHash: await hashPassword(password),
+    };
+    userId = newUser.id;
   }
 
   // ------------------------------------------------------------ 프로필 생성
@@ -163,29 +163,34 @@ export async function applyCreator(_prev: CreatorApplyState, formData: FormData)
   const channelUrl = data.channelUrl?.trim() || null;
 
   try {
-    const creator = await prisma.creatorProfile.create({
-      data: {
-        id: newId(),
-        userId,
-        code,
-        displayName: data.displayName,
-        channelName: data.channelName?.trim() || null,
-        description,
-        channelUrl,
-        status: 'PENDING',
-        businessNo,
-      },
-      select: { id: true, code: true, displayName: true },
-    });
+    const creator = await prisma.$transaction(async (tx) => {
+      if (newUser) await tx.user.create({ data: newUser });
 
-    await prisma.creatorCode.create({
-      data: { id: newId(), creatorId: creator.id, code: creator.code, active: true },
-    });
+      const profile = await tx.creatorProfile.create({
+        data: {
+          id: newId(),
+          userId,
+          code,
+          displayName: data.displayName,
+          channelName: data.channelName?.trim() || null,
+          description,
+          channelUrl,
+          status: 'PENDING',
+          businessNo,
+        },
+        select: { id: true, code: true, displayName: true },
+      });
 
-    // 로그인 사용자의 역할을 크리에이터로 승격 (관리자는 위에서 차단)
-    if (session && session.role !== 'CREATOR') {
-      await prisma.user.update({ where: { id: userId }, data: { role: 'CREATOR' } });
-    }
+      await tx.creatorCode.create({
+        data: { id: newId(), creatorId: profile.id, code: profile.code, active: true },
+      });
+
+      // 로그인 사용자의 역할을 크리에이터로 승격 (관리자는 위에서 차단)
+      if (session && session.role !== 'CREATOR') {
+        await tx.user.update({ where: { id: userId }, data: { role: 'CREATOR' } });
+      }
+      return profile;
+    });
 
     if (!session) {
       await createSession(userId);

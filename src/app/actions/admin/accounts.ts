@@ -158,6 +158,7 @@ export async function updateCreatorStatus(_prev: AdminActionState, fd: FormData)
       where: { id: creatorId },
       select: { id: true, userId: true, displayName: true, status: true, approvedAt: true, suspendedAt: true },
     });
+    if (before && before.status === status) throw new Error('이미 같은 심사 상태입니다.');
     if (!before) throw new Error('크리에이터를 찾을 수 없습니다.');
 
     const now = new Date();
@@ -276,7 +277,7 @@ export async function updateCreatorAmountBounds(_prev: AdminActionState, fd: For
 }
 
 /**
- * 모든 크리에이터(탈퇴 제외)의 1건 후원금 허용 범위를 공통으로 일괄 적용한다.
+ * 모든 크리에이터의 1건 후원금 허용 범위를 공통으로 일괄 적용한다.
  * 범위를 벗어난 크리에이터의 1건 후원금은 범위 안으로 자동 보정한다.
  */
 export async function applyGlobalAmountBounds(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {

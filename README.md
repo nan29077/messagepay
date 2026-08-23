@@ -113,6 +113,7 @@ curl -X POST http://localhost:3025/api/webhooks/mo \
 | `npm run check:db` | DB 연결 점검 |
 
 > `npm test` 는 실행 전후로 DB 를 비웁니다. 테스트 후에는 `npm run db:seed` 로 다시 채우세요.
+> 미리보기 내장 DB(PGlite, 포트 5433)를 대상으로 테스트할 때는 연결 풀이 자동으로 1개로 고정됩니다. PGlite 는 연결을 하나의 세션에 다중화하므로 풀이 2개 이상이면 동시 요청이 서로 섞여 실패합니다.
 
 ---
 

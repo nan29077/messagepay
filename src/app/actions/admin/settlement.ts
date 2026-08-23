@@ -43,11 +43,16 @@ export async function updateSettlementRequestStatus(
 
     const before = await prisma.settlementRequest.findUnique({
       where: { id: requestId },
-      select: { id: true, status: true, amount: true, payoutAmount: true, creatorId: true },
+      select: { id: true, status: true, amount: true, payoutAmount: true, creatorId: true, payoutIssuedAt: true },
     });
     if (!before) throw new Error('정산 요청을 찾을 수 없습니다.');
     if (before.status === 'PAID' && status !== 'PAYOUT_FAILED') throw new Error('이미 지급 완료된 요청입니다.');
     if (before.status === 'REJECTED') throw new Error('이미 반려된 요청입니다.');
+    // 이체파일이 이미 발급된 건을 반려/검토로 되돌리면, 이후 지급대행 결과(SUCCESS)를 반영할 수 없어
+    // 돈은 나갔는데 원장에 지급 분개가 없는 상태가 된다. 지급 실패 결과를 먼저 반영해야 한다.
+    if (before.payoutIssuedAt && (status === 'REJECTED' || status === 'REVIEWING')) {
+      throw new Error('이체파일이 이미 발급된 요청입니다. 지급대행 결과(성공/실패)를 먼저 반영한 뒤 처리해 주세요.');
+    }
 
     // 반려·지급실패는 사유가 반드시 있어야 크리에이터가 원인을 안다.
     if ((status === 'REJECTED' || status === 'PAYOUT_FAILED') && !memo) {
@@ -120,7 +125,7 @@ export async function bulkUpdateSettlementAction(
       try {
         const req = await prisma.settlementRequest.findUnique({
           where: { id },
-          select: { id: true, status: true, creatorId: true, payoutAmount: true },
+          select: { id: true, status: true, creatorId: true, payoutAmount: true, payoutIssuedAt: true },
         });
         if (!req) continue;
 
@@ -137,6 +142,10 @@ export async function bulkUpdateSettlementAction(
         } else if (action === 'REJECT') {
           if (req.status === 'PAID' || req.status === 'REJECTED') {
             errors.push(`${id.slice(-6)}: 반려 불가 상태(${req.status})`);
+            continue;
+          }
+          if (req.payoutIssuedAt) {
+            errors.push(`${id.slice(-6)}: 이체파일 발급 건은 지급대행 결과를 먼저 반영해야 합니다`);
             continue;
           }
           await prisma.settlementRequest.update({
@@ -353,6 +362,7 @@ export async function createFeePolicy(_prev: AdminActionState, fd: FormData): Pr
 
 export async function deactivateFeePolicy(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
+    if (admin.adminPermission === 'SUPPORT') throw new Error('수수료 정책 변경은 재무/운영 권한에서만 가능합니다.');
     const id = requiredId(fd, 'id', '수수료 정책');
     const before = await prisma.feePolicy.findUnique({ where: { id } });
     if (!before) throw new Error('수수료 정책을 찾을 수 없습니다.');

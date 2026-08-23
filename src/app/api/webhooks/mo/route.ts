@@ -18,9 +18,19 @@ export const dynamic = 'force-dynamic';
  *  4) 항상 200 으로 응답해 사업자 재전송 폭주를 막고, 실패는 내부 상태로 관리한다.
  *     (단 서명 실패는 401 로 명확히 거절한다)
  */
+/** MO 문자 본문은 길어야 수 KB 다. 인증 전 단계이므로 과도한 본문은 기록 없이 거절한다. */
+const MAX_BODY_BYTES = 64 * 1024;
+
 export async function POST(req: Request) {
   const started = Date.now();
+  const declared = Number(req.headers.get('content-length') ?? 0);
+  if (declared > MAX_BODY_BYTES) {
+    return NextResponse.json({ ok: false, message: '요청 본문이 너무 큽니다.' }, { status: 413 });
+  }
   const raw = await req.text();
+  if (Buffer.byteLength(raw, 'utf8') > MAX_BODY_BYTES) {
+    return NextResponse.json({ ok: false, message: '요청 본문이 너무 큽니다.' }, { status: 413 });
+  }
   const headerMap: Record<string, string> = {};
   req.headers.forEach((v, k) => {
     headerMap[k.toLowerCase()] = v;

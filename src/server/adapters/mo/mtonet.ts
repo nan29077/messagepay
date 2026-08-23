@@ -1,5 +1,5 @@
 import { env, isLocal } from '@/lib/env';
-import { verifySignature } from '@/lib/crypto';
+import { safeEqual } from '@/lib/crypto';
 import type { AdapterInfo } from '../types';
 import { verifyMoRequest, type MoAdapter, type MoInbound } from './index';
 
@@ -97,7 +97,7 @@ export const mtonetMoAdapter: MoAdapter = {
     if (env.mo.mtonetApiKey) {
       const key = headers['x-mtonet-apikey'] ?? headers['x-api-key'] ?? '';
       if (!key) return { ok: false, reason: 'API 키 헤더 없음' };
-      if (!verifySignature(env.mo.mtonetApiKey, key, env.mo.mtonetApiKey) && key !== env.mo.mtonetApiKey) {
+      if (!safeEqual(key, env.mo.mtonetApiKey)) {
         return { ok: false, reason: 'API 키 불일치' };
       }
     }

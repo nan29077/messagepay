@@ -72,7 +72,8 @@ export async function createWebDonation(input: WebDonationInput): Promise<WebDon
     blockedByCreator: Boolean(blocked),
   });
   if (!limit.ok) {
-    await prisma.riskDetection.create({
+    // 금액 범위 오류는 입력 실수라 이상거래로 기록하지 않는다.
+    if (limit.code !== 'AMOUNT_RANGE') await prisma.riskDetection.create({
       data: {
         id: newId(),
         donorId: donor.id,

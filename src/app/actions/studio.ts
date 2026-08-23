@@ -1,5 +1,6 @@
 'use server';
 
+import { logger } from '@/lib/logger';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
@@ -53,8 +54,22 @@ async function withCreator(fn: Handler): Promise<StudioActionState> {
   try {
     return await fn(creatorId, userId);
   } catch (e) {
-    return { ok: false, message: (e as Error).message || '처리 중 오류가 발생했습니다.' };
+    return { ok: false, message: userFacingError(e) };
   }
+}
+
+/**
+ * 서비스 계층이 던진 한국어 안내문은 그대로 보여 주고,
+ * Prisma/복호화 등 내부 오류 메시지는 로그로만 남기고 일반 문구로 바꾼다.
+ */
+function userFacingError(e: unknown): string {
+  const message = (e as Error)?.message ?? '';
+  const internal = !message || /prisma|invocation|decrypt|ECONNREFUSED|ETIMEDOUT/i.test(message) || !/[가-힣]/.test(message);
+  if (internal) {
+    logger.error('스튜디오 액션 처리 오류', { message });
+    return '처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.';
+  }
+  return message;
 }
 
 function text(formData: FormData, key: string): string {

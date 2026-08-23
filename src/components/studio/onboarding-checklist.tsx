@@ -75,8 +75,9 @@ export async function OnboardingChecklist({ creatorId }: { creatorId: string }) 
     },
   ];
 
-  // OBS 등록은 오버레이 설정이 끝난 뒤에만 안내한다 (등록할 URL 이 아직 의미가 없다).
-  if (overlayReady) {
+  // OBS 등록은 브라우저 소스 URL 이 발급된 뒤에만 안내한다 (등록할 URL 이 아직 없다).
+  // 금액 구간은 선택 사항이므로 URL 발급 여부만 본다.
+  if (overlay) {
     items.push({
       key: 'obsLinked',
       label: 'OBS/프리즘에 오버레이 URL 등록',

@@ -15,7 +15,7 @@ export default async function MyBlocksPage() {
 
   const links = await prisma.donorCreatorLink.findMany({
     where: { donorId },
-    orderBy: [{ blockedAt: 'desc' }, { lastDonatedAt: 'desc' }],
+    orderBy: [{ blockedAt: { sort: 'desc', nulls: 'last' } }, { lastDonatedAt: 'desc' }],
     select: {
       id: true,
       blockedAt: true,

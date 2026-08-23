@@ -4,6 +4,7 @@ import { Badge, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from
 import { AdminField, AdminInput, AdminSelect, FilterBar, Pager } from '@/components/admin/controls';
 import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import type { Prisma } from '@/generated/prisma/client';
@@ -27,6 +28,17 @@ export default async function AdminInquiriesPage({
 }: {
   searchParams: Promise<{ status?: string; page?: string; q?: string; category?: string; source?: string }>;
 }) {
+  // 문의 목록에는 문의자 이름·연락처가 보인다. 메뉴와 같은 기준(최고관리자)으로만 연다.
+  const admin = await requireAdmin();
+  if (admin.adminPermission !== 'SUPER_ADMIN') {
+    return (
+      <>
+        <PageHeader title="1:1 문의" description="최고관리자 권한에서만 열람할 수 있습니다." />
+        <Notice tone="danger" title="권한이 없습니다">문의 내용은 최고관리자만 확인할 수 있습니다.</Notice>
+      </>
+    );
+  }
+
   const sp = await searchParams;
   const page = parsePage(sp.page);
   const status = (['OPEN', 'ANSWERED', 'CLOSED'] as const).includes(sp.status as InquiryStatus)

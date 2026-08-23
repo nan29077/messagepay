@@ -146,13 +146,14 @@ export default async function AdminCreatorsPage({
       : {}),
   };
 
-  const [pending, total, creators, byStatus] = await Promise.all([
+  const [pending, pendingTotal, total, creators, byStatus] = await Promise.all([
     prisma.creatorProfile.findMany({
       where: { status: 'PENDING' },
       orderBy: { createdAt: 'asc' },
       take: 50,
       select: creatorSelect,
     }),
+    prisma.creatorProfile.count({ where: { status: 'PENDING' } }),
     prisma.creatorProfile.count({ where }),
     prisma.creatorProfile.findMany({
       where,
@@ -212,8 +213,12 @@ export default async function AdminCreatorsPage({
       {pending.length > 0 ? (
         <section className="mb-6">
           <SectionTitle
-            title={`심사 대기 ${pending.length}건`}
-            description="신청 순서대로 표시합니다. 승인 시 승인 시각이 기록되고 감사로그가 남습니다."
+            title={`심사 대기 ${pendingTotal}건`}
+            description={
+              pendingTotal > pending.length
+                ? `신청 순서대로 ${pending.length}건까지 표시합니다. 승인 시 승인 시각이 기록되고 감사로그가 남습니다.`
+                : '신청 순서대로 표시합니다. 승인 시 승인 시각이 기록되고 감사로그가 남습니다.'
+            }
           />
           <Notice tone="warning" title="승인 전 확인 사항">
             채널 실명 확인, 사업자 정보, 정산 계좌 인증 여부를 함께 검토해 주세요. 승인 후 MO 번호 배정 화면에서 수신

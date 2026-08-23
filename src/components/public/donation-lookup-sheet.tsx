@@ -260,7 +260,7 @@ export function DonationLookupSheet({ open, onClose }: { open: boolean; onClose:
               )}
 
               <a
-                href="/login"
+                href="/signup"
                 className="flex items-center justify-between rounded-2xl border border-ink-200 px-4 py-3 text-[13px] font-semibold text-ink-700 transition-colors hover:bg-ink-50"
               >
                 회원가입하면 환불 요청·한도 설정까지 관리할 수 있습니다

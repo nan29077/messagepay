@@ -39,7 +39,7 @@ export async function lookupCreatorCode(input: string): Promise<LookupResult> {
     return { ok: false, message: '조회 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' };
   }
 
-  const raw = input.trim();
+  const raw = String(input ?? '').trim();
   if (raw.length < 2) {
     return { ok: false, message: '크리에이터 코드 또는 이름을 2자 이상 입력해 주세요.' };
   }

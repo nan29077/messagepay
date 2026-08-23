@@ -210,6 +210,15 @@ export function OverlayClient({
       es.addEventListener('ready', () => {
         retry = 0;
         setConnected(true);
+        // 스튜디오 미리보기(iframe)에 구독 완료를 알린다. 구독 전에 보낸 테스트 이벤트는
+        // 서버가 보관하지 않으므로, 부모 창은 이 신호를 받은 뒤에 자동 발동해야 한다.
+        if (preview && typeof window !== 'undefined' && window.parent !== window) {
+          try {
+            window.parent.postMessage({ type: 'donaido-overlay-ready', creatorId }, window.location.origin);
+          } catch {
+            /* ignore */
+          }
+        }
       });
 
       es.addEventListener('donation', (ev) => {

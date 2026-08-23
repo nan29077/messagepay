@@ -40,6 +40,8 @@ export function SettlementRequestsPanel({ rows }: { rows: SettlementRow[] }) {
   const [bulkState, bulkAction, bulkPending] = React.useActionState(bulkUpdateSettlementAction, initialAdminState);
   const [resultState, resultAction, resultPending] = React.useActionState(applyPayoutResultsAction, initialAdminState);
   const [fileState, fileAction, filePending] = React.useActionState(fileWithholdingAction, initialAdminState);
+  /** 마지막으로 제출한 폼. 메시지와 색상은 이 폼의 결과만 보여 준다. */
+  const [lastForm, setLastForm] = React.useState<'bulk' | 'result' | 'file' | null>(null);
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -64,7 +66,15 @@ export function SettlementRequestsPanel({ rows }: { rows: SettlementRow[] }) {
   const payoutUrl =
     approvedSelected.length > 0 ? `/api/admin/settlements/payout?ids=${approvedSelected.join(',')}` : null;
 
-  const anyMsg = bulkState.message || resultState.message || fileState.message;
+  const lastState = lastForm === 'bulk' ? bulkState : lastForm === 'result' ? resultState : lastForm === 'file' ? fileState : null;
+  const anyMsg = lastState?.message ?? null;
+  const anyOk = Boolean(lastState?.ok);
+
+  const BULK_CONFIRM: Record<string, string> = {
+    APPROVE: '선택한 정산 요청을 일괄 승인합니다. 계속할까요?',
+    REJECT: '선택한 정산 요청을 일괄 반려합니다. 계속할까요?',
+    PAY: '선택한 승인 건을 지급 완료로 처리합니다. 원장에 지급·원천징수 분개가 기록되며 되돌릴 수 없습니다. 계속할까요?',
+  };
 
   return (
     <div className="space-y-3">
@@ -74,7 +84,19 @@ export function SettlementRequestsPanel({ rows }: { rows: SettlementRow[] }) {
           <span className="text-[12px] font-bold text-ink-700">선택 {selectedIds.length}건</span>
 
           {/* 일괄 승인/반려/지급 */}
-          <form action={bulkAction} className="flex flex-wrap items-center gap-1.5">
+          <form
+            action={bulkAction}
+            onSubmit={(e) => {
+              const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+              const message = BULK_CONFIRM[submitter?.value ?? ''];
+              if (message && !window.confirm(message)) {
+                e.preventDefault();
+                return;
+              }
+              setLastForm('bulk');
+            }}
+            className="flex flex-wrap items-center gap-1.5"
+          >
             {hidden(selectedIds)}
             <input
               name="memo"
@@ -126,7 +148,7 @@ export function SettlementRequestsPanel({ rows }: { rows: SettlementRow[] }) {
           </a>
 
           {/* 원천징수 신고 완료 + 주민번호 파기 (지급완료 건) */}
-          <form action={fileAction} className="inline">
+          <form action={fileAction} onSubmit={() => setLastForm('file')} className="inline">
             {hidden(paidSelected)}
             <button
               disabled={filePending || paidSelected.length === 0}
@@ -139,7 +161,7 @@ export function SettlementRequestsPanel({ rows }: { rows: SettlementRow[] }) {
         </div>
 
         {anyMsg ? (
-          <p className={cx('mt-2 text-[12px]', (bulkState.ok || resultState.ok || fileState.ok) ? 'text-success-500' : 'text-danger-500')}>
+          <p className={cx('mt-2 text-[12px]', anyOk ? 'text-success-500' : 'text-danger-500')}>
             {anyMsg}
           </p>
         ) : null}
@@ -148,7 +170,7 @@ export function SettlementRequestsPanel({ rows }: { rows: SettlementRow[] }) {
       {/* 지급대행 결과 반영 */}
       <details className="rounded-2xl border border-ink-100 bg-white p-3.5">
         <summary className="cursor-pointer text-[12.5px] font-bold text-ink-700">지급대행 결과 반영 (파일 내용 붙여넣기)</summary>
-        <form action={resultAction} className="mt-2.5 space-y-2">
+        <form action={resultAction} onSubmit={() => setLastForm('result')} className="mt-2.5 space-y-2">
           <p className="text-[11.5px] leading-relaxed text-ink-400">
             각 줄에 <code className="rounded bg-ink-50 px-1">요청ID,SUCCESS|FAIL,사유</code> 형식으로 입력합니다. 지급대행(쿠콘)
             결과 파일을 그대로 붙여넣어 성공/실패를 한 번에 반영할 수 있습니다.

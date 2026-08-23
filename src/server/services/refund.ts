@@ -27,6 +27,13 @@ export async function requestRefund(input: {
   });
   if (existing) throw new Error('이미 환불이 요청된 거래입니다.');
 
+  // 더블클릭·동시 요청으로 REQUESTED 가 두 건 생기지 않도록, 후원 상태 전이를 조건부 UPDATE 로 선점한다.
+  const claimed = await prisma.donation.updateMany({
+    where: { id: donation.id, status: donation.status },
+    data: { status: 'REFUND_REQUESTED' },
+  });
+  if (claimed.count !== 1) throw new Error('이미 환불이 요청된 거래입니다.');
+
   const refund = await prisma.refund.create({
     data: {
       id: newId(),
@@ -36,7 +43,17 @@ export async function requestRefund(input: {
       requestedBy: input.requestedBy ?? null,
     },
   });
-  await prisma.donation.update({ where: { id: donation.id }, data: { status: 'REFUND_REQUESTED' } });
+  // 거절 시 이전 상태로 되돌릴 수 있도록 전이 이력을 남긴다.
+  await prisma.donationStatusLog.create({
+    data: {
+      id: newId(),
+      donationId: donation.id,
+      fromStatus: donation.status,
+      toStatus: 'REFUND_REQUESTED',
+      actor: input.requestedBy ?? 'system',
+      reason: input.reason.slice(0, 200),
+    },
+  });
   return refund;
 }
 
@@ -135,9 +152,15 @@ export async function rejectRefund(refundId: string, adminUserId?: string, memo?
     where: { id: refundId },
     data: { status: 'REJECTED', approvedBy: adminUserId ?? null, resultMessage: memo ?? null, processedAt: new Date() },
   });
+  // 환불 요청 직전 상태(BROADCASTED·SETTLED 등)로 되돌린다. 이력이 없는 예전 건은 정산대기로 둔다.
+  const transition = await prisma.donationStatusLog.findFirst({
+    where: { donationId: refund.donationId, toStatus: 'REFUND_REQUESTED' },
+    orderBy: { createdAt: 'desc' },
+    select: { fromStatus: true },
+  });
   await prisma.donation.update({
     where: { id: refund.donationId },
-    data: { status: 'SETTLEMENT_PENDING', statusReason: '환불 거절' },
+    data: { status: transition?.fromStatus ?? 'SETTLEMENT_PENDING', statusReason: '환불 거절' },
   });
   return refund;
 }

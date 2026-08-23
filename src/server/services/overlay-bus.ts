@@ -45,6 +45,7 @@ const globalForBus = globalThis as unknown as {
   overlayEmitter?: EventEmitter;
   overlayPub?: Redis;
   overlaySub?: Redis;
+  overlayRecentLocalEventIds?: Set<string>;
 };
 
 const emitter =
@@ -55,6 +56,16 @@ const emitter =
     return e;
   })();
 globalForBus.overlayEmitter = emitter;
+
+/**
+ * 이 프로세스가 직접 발행한 이벤트 ID 기록.
+ * Redis Pub/Sub 로 자기 자신에게 되돌아온 메시지를 중복 재생하지 않기 위해 사용한다.
+ * Redis 구독 핸들러는 최초 모듈 인스턴스의 클로저에 남으므로, 개발 서버(HMR)에서 모듈이
+ * 다시 로드돼도 같은 집합을 보도록 globalThis 에 보관한다.
+ */
+const recentLocalEventIds = globalForBus.overlayRecentLocalEventIds ?? new Set<string>();
+globalForBus.overlayRecentLocalEventIds = recentLocalEventIds;
+const RECENT_LOCAL_MAX = 1000;
 
 function ensureRedis() {
   if (!env.redisUrl) return;
@@ -84,12 +95,6 @@ function ensureRedis() {
 
 ensureRedis();
 
-/**
- * 이 프로세스가 직접 발행한 이벤트 ID 기록.
- * Redis Pub/Sub 로 자기 자신에게 되돌아온 메시지를 중복 재생하지 않기 위해 사용한다.
- */
-const recentLocalEventIds = new Set<string>();
-const RECENT_LOCAL_MAX = 1000;
 
 export function publishOverlayEvent(payload: OverlayEventPayload) {
   // 항상 로컬 구독자(같은 프로세스의 SSE 연결)에게 즉시 전달한다.

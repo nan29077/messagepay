@@ -39,7 +39,9 @@ export async function GET(req: Request) {
   if (!stateCreatorId || stateCreatorId !== session.creatorId) {
     return back('youtube=state_mismatch');
   }
-  if (signature && !safeEqual(tokenHash(stateCreatorId), signature)) {
+  // 서명이 없는 state 는 거절한다. (서명 없이 creatorId 만으로 통과하면 공격자의 인증 코드가 담긴
+  // 콜백 URL 을 피해자가 열었을 때 피해자 계정에 다른 채널이 연결된다)
+  if (!signature || !safeEqual(tokenHash(stateCreatorId), signature)) {
     return back('youtube=state_mismatch');
   }
   const creatorId = session.creatorId;

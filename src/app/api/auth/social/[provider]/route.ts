@@ -1,3 +1,4 @@
+import { env } from '@/lib/env';
 import { NextResponse } from 'next/server';
 import {
   SOCIAL_PROVIDERS,
@@ -47,14 +48,14 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
     res.cookies.set(`tornado_social_state_${provider}`, state, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      secure: process.env.NODE_ENV === 'production' && env.baseUrl.startsWith('https'),
       path: '/',
       maxAge: 600,
     });
     res.cookies.set('tornado_social_mode', mode, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      secure: process.env.NODE_ENV === 'production' && env.baseUrl.startsWith('https'),
       path: '/',
       maxAge: 600,
     });

@@ -72,11 +72,22 @@ export default async function StudioDashboardPage() {
       where: { creatorId },
       select: { live: true, ingestUrl: true, keys: { where: { status: 'ACTIVE' }, select: { id: true } } },
     }),
-    prisma.creatorMoNumber.findFirst({
-      where: { creatorId },
-      orderBy: { assignedAt: 'desc' },
-      select: { phoneNumber: true, keyword: true, mode: true, status: true },
-    }),
+    // 배정 중인 번호를 우선 보여 준다. 나중에 배정됐다 회수된 번호가 있어도 현재 번호가 가려지지 않게.
+    prisma.creatorMoNumber
+      .findFirst({
+        where: { creatorId, status: 'ASSIGNED' },
+        orderBy: { assignedAt: 'desc' },
+        select: { phoneNumber: true, keyword: true, mode: true, status: true },
+      })
+      .then(
+        (assigned) =>
+          assigned ??
+          prisma.creatorMoNumber.findFirst({
+            where: { creatorId },
+            orderBy: { assignedAt: 'desc' },
+            select: { phoneNumber: true, keyword: true, mode: true, status: true },
+          }),
+      ),
     prisma.donation.findMany({
       where: { creatorId },
       orderBy: { receivedAt: 'desc' },
@@ -98,7 +109,7 @@ export default async function StudioDashboardPage() {
   const streamReady = Boolean(stream && stream.keys.length > 0);
   const moAssigned = moNumber?.status === 'ASSIGNED';
 
-  const links = [
+  const links: { label: string; ok: boolean; value: string; href: string; optional?: boolean }[] = [
     {
       label: '유튜브 채널',
       ok: ytConnected,
@@ -118,11 +129,13 @@ export default async function StudioDashboardPage() {
       ok: streamReady,
       value: streamReady ? (stream?.live ? '방송 중' : '스트림 키 발급됨') : '스트림 키 없음',
       href: '/studio/overlay#stream',
+      // 자체 방송은 아직 미디어 인프라가 없는 4단계 기능이라 '다음 할 일' 로 요구하지 않는다.
+      optional: true,
     },
   ];
 
   // 연동 미완료 항목이 있으면 최상단에 '다음 할 일' 로 안내한다 (온보딩 완주 유도)
-  const nextStep = links.find((l) => !l.ok) ?? null;
+  const nextStep = links.find((l) => !l.ok && !l.optional) ?? null;
 
   return (
     <>

@@ -14,7 +14,7 @@ import type { SettlementRequestStatus } from '@/generated/prisma/enums';
 
 export const dynamic = 'force-dynamic';
 
-const REQUEST_STATUSES: SettlementRequestStatus[] = ['REQUESTED', 'REVIEWING', 'APPROVED', 'PAID', 'REJECTED'];
+const REQUEST_STATUSES: SettlementRequestStatus[] = ['REQUESTED', 'REVIEWING', 'APPROVED', 'PAID', 'PAYOUT_FAILED', 'REJECTED'];
 
 export default async function AdminSettlementsPage({
   searchParams,
@@ -220,12 +220,13 @@ export default async function AdminSettlementsPage({
         <SettlementRequestsPanel rows={requestRows} />
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Link
+          {/* Link 는 화면에 보이면 prefetch 로 GET 을 미리 호출해 주민번호 복호화·감사로그가 클릭 없이 쌓인다. */}
+          <a
             href={`/api/admin/settlements/withholding?from=${kstMonthKey()}-01`}
             className="rounded-lg border border-ink-200 px-3 py-1.5 text-[12px] font-bold text-ink-700 hover:bg-ink-50"
           >
             이번 달 원천징수 지급명세서 자료 받기
-          </Link>
+          </a>
           <span className="text-[11.5px] text-ink-400">지급 완료 건의 지급명세서 산출 자료(CSV)를 내려받습니다.</span>
         </div>
 

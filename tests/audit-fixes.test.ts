@@ -224,7 +224,7 @@ describe('정산 지급 안전장치', () => {
 
     const paid = await markSettlementPaid(req.id, 'admin-test');
     expect(paid.status).toBe('PAID');
-    expect(paid.adminMemo).toContain('⚠'); // 사람이 확인하도록 경고만 남긴다
+    expect(paid.adminMemo).toContain('[주의]'); // 사람이 확인하도록 경고만 남긴다
 
     const entries = await prisma.settlementLedger.findMany({ where: { requestId: req.id } });
     expect(entries.map((e) => e.entryType).sort()).toEqual(['PAYOUT', 'PAYOUT_WITHHOLDING']);

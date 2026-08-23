@@ -9,7 +9,7 @@ import { getPaymentAdapter, MockPaymentTimeout } from '@/server/adapters/payment
 import { filterContent, splitKeyword, type BannedWordRule } from './content-filter';
 import { checkLimits, commitCounters, registerFailure, clearFailures, resolvePolicy } from './limits';
 import { acquireIdempotency } from './idempotency';
-import { issueSecureLink } from './secure-link';
+import { issueSecureLink, LINK_TTL_SEC } from './secure-link';
 import * as tpl from './mt-templates';
 import { calculateFees, postDonationSettlement } from './settlement';
 import { notifySuperAdmins } from './notifications';
@@ -274,9 +274,12 @@ export async function handleMoInbound(inbound: MoInbound): Promise<MoHandleResul
   // (1) 사업자 메시지 ID 기준 중복 차단
   const dup = await prisma.moInboundMessage.findUnique({
     where: { providerMessageId: inbound.providerMessageId },
-    select: { id: true, donation: { select: { id: true, status: true } } },
+    select: { id: true, result: true, donation: { select: { id: true, status: true } } },
   });
-  if (dup) {
+  // 이전 수신이 후원 생성 전에 예외로 끝난 건(result=ERROR, 후원 없음)은 사업자 재전송 시 다시 처리한다.
+  // 그 외에는 모두 중복으로 막는다.
+  const retryable = Boolean(dup && dup.result === 'ERROR' && !dup.donation);
+  if (dup && !retryable) {
     return {
       result: 'DUPLICATE',
       moMessageId: dup.id,
@@ -290,7 +293,52 @@ export async function handleMoInbound(inbound: MoInbound): Promise<MoHandleResul
 
   let moRow;
   try {
-    moRow = await prisma.moInboundMessage.create({
+    moRow = await createOrReuseMoRow(inbound, routed, ph, dup?.id ?? null);
+  } catch {
+    // 동시 재전송 경합
+    const again = await prisma.moInboundMessage.findUnique({
+      where: { providerMessageId: inbound.providerMessageId },
+      select: { id: true },
+    });
+    return { result: 'DUPLICATE', moMessageId: again?.id, message: '중복 수신(경합)으로 무시되었습니다.' };
+  }
+
+  try {
+    return await processMoRow(inbound, routed, ph, moRow);
+  } catch (error) {
+    // 예외로 끝난 행을 PENDING 으로 남기면 재전송이 영원히 DUPLICATE 로 막힌다.
+    // 후원이 만들어지기 전에 실패한 행만 ERROR 로 표시해 관리자 화면에 드러내고 재전송을 허용한다.
+    // (후원이 이미 생긴 뒤의 예외는 후원 상태·결제 기록이 진실이므로 수신 결과를 덮어쓰지 않는다)
+    await prisma.moInboundMessage
+      .updateMany({
+        where: { id: moRow.id, donation: null },
+        data: {
+          result: 'ERROR',
+          resultDetail: `처리 오류: ${(error as Error).message}`.slice(0, 500),
+          processedAt: new Date(),
+        },
+      })
+      .catch(() => undefined);
+    throw error;
+  }
+}
+
+type RoutedCreator = Awaited<ReturnType<typeof routeCreator>>;
+
+async function createOrReuseMoRow(inbound: MoInbound, routed: RoutedCreator, ph: string, reuseId: string | null) {
+  if (reuseId) {
+    return prisma.moInboundMessage.update({
+      where: { id: reuseId },
+      data: {
+        result: 'PENDING',
+        resultDetail: null,
+        processedAt: null,
+        creatorId: routed?.creator.id ?? null,
+        matchedKeyword: routed?.keyword ?? null,
+      },
+    });
+  }
+  return prisma.moInboundMessage.create({
       data: {
         id: newId(),
         providerMessageId: inbound.providerMessageId,
@@ -307,15 +355,14 @@ export async function handleMoInbound(inbound: MoInbound): Promise<MoHandleResul
         receivedAt: inbound.receivedAt,
       },
     });
-  } catch {
-    // 동시 재전송 경합
-    const again = await prisma.moInboundMessage.findUnique({
-      where: { providerMessageId: inbound.providerMessageId },
-      select: { id: true },
-    });
-    return { result: 'DUPLICATE', moMessageId: again?.id, message: '중복 수신(경합)으로 무시되었습니다.' };
-  }
+}
 
+async function processMoRow(
+  inbound: MoInbound,
+  routed: RoutedCreator,
+  ph: string,
+  moRow: { id: string },
+): Promise<MoHandleResult> {
   // (2) 라우팅 실패
   if (!routed) {
     await prisma.moInboundMessage.update({
@@ -355,6 +402,18 @@ export async function handleMoInbound(inbound: MoInbound): Promise<MoHandleResul
         processedAt: new Date(),
       },
     });
+
+    // 이전 안내 링크(30분)가 만료됐는데도 LINK_SENT 에 머물면 이후 모든 문자가 영원히 안내 없이 끝난다.
+    // 만료 뒤 첫 문자에서 UNREGISTERED 로 되돌려 새 링크를 한 번 더 보낸다.
+    if (current.onboardingStatus === 'LINK_SENT' && current.registrationLinkSentAt) {
+      const expiredAt = current.registrationLinkSentAt.getTime() + LINK_TTL_SEC.REGISTER_ACCOUNT * 1000;
+      if (expiredAt < Date.now()) {
+        await prisma.donorProfile.updateMany({
+          where: { id: donor.id, onboardingStatus: 'LINK_SENT', registrationLinkSentAt: current.registrationLinkSentAt },
+          data: { onboardingStatus: 'UNREGISTERED', registrationLinkSentAt: null },
+        });
+      }
+    }
 
     const claim = await claimRegistrationGuide(donor.id);
     if (claim.claimed) {

@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/server/db';
 import { kv } from '@/server/redis';
 import { newId } from '@/lib/id';
-import { generateNumericCode, hmac, maskPhone, normalizePhone, phoneHash, safeEqual } from '@/lib/crypto';
+import { encrypt, generateNumericCode, hmac, maskPhone, normalizePhone, phoneHash, safeEqual } from '@/lib/crypto';
 import { getMtAdapter } from '@/server/adapters/mt';
 import { env, isLocal } from '@/lib/env';
 import { logger } from '@/lib/logger';
@@ -49,7 +49,7 @@ async function setSessionCookie(token: string) {
   jar.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: !isLocal,
+    secure: !isLocal && env.baseUrl.startsWith('https'),
     path: '/',
     maxAge: SESSION_SEC,
   });
@@ -182,10 +182,23 @@ export async function verifyWebDonateCode(_prev: WebDonateState, formData: FormD
   }
 
   // 미가입: 내통장결제 가입 보안 링크 발급 (팝업으로 안내)
+  // 가입 화면(loadRegistrationContext)은 전화번호로 후원자 프로필을 찾으므로,
+  // 문자를 한 번도 보낸 적 없는 번호는 여기서 프로필을 먼저 만들어 둔다.
+  if (!donor) {
+    await prisma.donorProfile.upsert({
+      where: { phoneHash: rec.ph },
+      update: {},
+      create: { id: newId(), phoneHash: rec.ph, phoneEnc: encrypt(normalizePhone(rec.pn)), phoneMasked: rec.pm },
+    });
+  }
+  // 폼의 creatorId 는 검증되지 않은 값이므로 승인된 크리에이터일 때만 링크에 연결한다.
+  const linkedCreator = creatorId
+    ? await prisma.creatorProfile.findFirst({ where: { id: creatorId, status: 'APPROVED' }, select: { id: true } })
+    : null;
   const link = await issueSecureLink({
     purpose: 'REGISTER_ACCOUNT',
     phoneHash: rec.ph,
-    creatorId: creatorId || undefined,
+    creatorId: linkedCreator?.id,
     payload: { channel: 'WEB' },
   });
   return {

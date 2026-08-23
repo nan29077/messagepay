@@ -1,3 +1,4 @@
+import { env } from '@/lib/env';
 import { cookies, headers } from 'next/headers';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/server/db';
@@ -55,7 +56,9 @@ export async function createSession(userId: string) {
   jar.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    // 프로덕션 빌드를 http(사내망 IP 등)로 접근하는 미리보기에서 세션이 떨어지지 않도록
+    // 실제 서비스 주소가 https 일 때만 Secure 속성을 붙인다.
+    secure: process.env.NODE_ENV === 'production' && env.baseUrl.startsWith('https'),
     path: '/',
     maxAge: SESSION_DAYS * 86400,
   });

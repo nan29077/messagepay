@@ -83,6 +83,11 @@ export default async function CreatorDonationPage({ params }: Params) {
     }),
   ]);
 
+  // 허용 범위 = 플랫폼 정책 ∩ 크리에이터 설정 (결제 시 checkLimits 가 같은 교집합으로 판정한다).
+  // 정책 범위만 보여 주면 본인인증까지 마친 뒤 금액 범위 오류로 거절된다.
+  const effMin = creator.minAmount > policy.minAmount ? creator.minAmount : policy.minAmount;
+  const effMax = creator.maxAmount < policy.maxAmount ? creator.maxAmount : policy.maxAmount;
+
   const route = creator.moRoutes[0] ?? null;
   const onAir = creator.liveOn && Boolean(creator.liveUrl);
   const bannerUrl = creator.bannerUrl ?? defaultBannerFor(creator.id);
@@ -179,8 +184,8 @@ export default async function CreatorDonationPage({ params }: Params) {
                 creatorId={creator.id}
                 creatorName={creator.displayName}
                 defaultAmount={creator.donationAmount.toString()}
-                minAmount={policy.minAmount.toString()}
-                maxAmount={policy.maxAmount.toString()}
+                minAmount={effMin.toString()}
+                maxAmount={effMax.toString()}
                 paymentMock={paymentMock}
               />
             </div>

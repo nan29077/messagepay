@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { PageHeader } from '@/components/layout/console-shell';
 import { Badge, Card, CardTitle, EmptyState, Notice, SectionTitle, Table, Td, Th } from '@/components/ui';
 import { AdminField, AdminInput, AdminSelect } from '@/components/admin/controls';
@@ -15,7 +16,7 @@ export const dynamic = 'force-dynamic';
 const KIND_OPTIONS: HolidayKind[] = ['STATUTORY', 'SUBSTITUTE', 'TEMPORARY', 'BANK_ONLY'];
 
 const yearLinkClass =
-  'rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-ink-700 hover:bg-ink-50';
+  'inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-ink-700 hover:bg-ink-50';
 
 export default async function AdminHolidaysPage({
   searchParams,
@@ -95,13 +96,13 @@ export default async function AdminHolidaysPage({
             action={
               <div className="flex items-center gap-2">
                 <Link href={`/admin/holidays?year=${year - 1}`} className={yearLinkClass}>
-                  ◀ {year - 1}년
+                  <ChevronLeft size={14} strokeWidth={1.7} aria-hidden /> {year - 1}년
                 </Link>
                 <Link href={`/admin/holidays?year=${currentYear}`} className={yearLinkClass}>
                   올해
                 </Link>
                 <Link href={`/admin/holidays?year=${year + 1}`} className={yearLinkClass}>
-                  {year + 1}년 ▶
+                  {year + 1}년 <ChevronRight size={14} strokeWidth={1.7} aria-hidden />
                 </Link>
               </div>
             }

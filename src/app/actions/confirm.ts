@@ -22,7 +22,7 @@ export async function confirmDonationAction(token: string): Promise<ConfirmActio
   const ip = h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? undefined;
   const userAgent = h.get('user-agent') ?? undefined;
 
-  const loaded = await loadConfirmContext(token);
+  const loaded = await loadConfirmContext(String(token ?? ''));
   if (!loaded.ok) {
     return { ok: false, message: loaded.reason };
   }

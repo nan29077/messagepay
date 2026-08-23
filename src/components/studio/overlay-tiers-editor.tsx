@@ -58,6 +58,8 @@ const SUGGESTED: TierInput[] = [
 ];
 
 const MAX_TIERS = 6;
+/** 서버(tierSchema)의 시작 금액 상한과 같아야 한다. */
+const MAX_TIER_AMOUNT = 10_000_000;
 
 let keySeq = 0;
 function nextKey() {
@@ -149,7 +151,7 @@ export function OverlayTiersEditor({
     setTiers((prev) => [
       ...prev,
       toDraft({
-        minAmount: highest > 0 ? highest * 2 : 1000,
+        minAmount: highest > 0 ? Math.min(highest * 2, MAX_TIER_AMOUNT) : 1000,
         label: `구간 ${prev.length + 1}`,
         effect: 'HEART',
         banner: true,
@@ -195,7 +197,13 @@ export function OverlayTiersEditor({
 
   // 처음 불러온 구간과 같은 형태로 직렬화해 두고, 저장 여부 판단에만 쓴다.
   const initialPayload = React.useMemo(() => serialize(initialTiers.map(toDraft)), [initialTiers]);
-  const savedPayload = saveState.ok ? submittedPayload : initialPayload;
+  // 마지막으로 저장에 성공한 값. 이후 저장이 실패해도 기준이 초기값으로 되돌아가지 않는다.
+  // (렌더 중 파생 상태 갱신 패턴 — 액션 결과 객체가 바뀐 시점에만 한 번 기록한다)
+  const [lastSaved, setLastSaved] = React.useState<{ state: StudioActionState; payload: string } | null>(null);
+  if (saveState.ok && submittedPayload !== null && lastSaved?.state !== saveState) {
+    setLastSaved({ state: saveState, payload: submittedPayload });
+  }
+  const savedPayload = lastSaved?.payload ?? initialPayload;
   const dirty = payload !== savedPayload;
 
   const sorted = [...tiers].sort((a, b) => (Number(a.minAmount) || 0) - (Number(b.minAmount) || 0));
@@ -468,11 +476,23 @@ function PreviewModal({
     [donorName, message],
   );
 
+  // 오버레이 클라이언트가 SSE 구독을 마치면 iframe 에서 준비 신호를 보낸다.
+  // onLoad 만으로는 구독 전에 이벤트를 보내 유실될 수 있어 이 신호를 우선한다.
+  React.useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      const data = e.data as { type?: string; creatorId?: string } | null;
+      if (data?.type === 'donaido-overlay-ready' && data.creatorId === creatorId) setReady(true);
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [creatorId]);
+
   // 행의 [미리보기] 로 열었으면 오버레이가 연결된 뒤 한 번만 자동 발동한다.
   React.useEffect(() => {
     if (!ready || !initialAmount || fired.current) return;
     fired.current = true;
-    const t = setTimeout(() => void send(initialAmount), 700);
+    const t = setTimeout(() => void send(initialAmount), 300);
     return () => clearTimeout(t);
   }, [ready, initialAmount, send]);
 
@@ -520,7 +540,10 @@ function PreviewModal({
             <iframe
               title="오버레이 미리보기"
               src={`/overlay/${encodeURIComponent(creatorId)}?preview=1`}
-              onLoad={() => setReady(true)}
+              onLoad={() => {
+                // 준비 신호가 오지 않는 환경을 위한 보조 경로
+                setTimeout(() => setReady(true), 2500);
+              }}
               className="absolute inset-0 h-full w-full border-0"
               style={{ background: 'transparent' }}
             />

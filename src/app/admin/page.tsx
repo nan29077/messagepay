@@ -101,7 +101,7 @@ export default async function AdminDashboardPage() {
                 tone={unregistered > 0 ? 'warning' : 'neutral'}
               />
             </Link>
-            <Link href="/admin/mo-messages?result=BLOCKED">
+            <Link href="/admin/risk">
               <StatTile
                 label="오늘 한도 차단"
                 value={formatNumber(limitBlocked)}

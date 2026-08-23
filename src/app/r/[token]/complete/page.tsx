@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { CircleCheck, CircleX, Landmark, MessageSquare, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Card, CardTitle, DataRow, LinkButton, Notice } from '@/components/ui';
 import { prisma } from '@/server/db';
+import { tokenHash } from '@/lib/crypto';
 import { completeRegistrationAction } from '@/app/actions/registration';
 import { LinkShell } from '../link-shell';
 
@@ -60,7 +61,22 @@ export default async function RegistrationCompletePage({
   }
 
   const registration = await prisma.paymentRegistration.findUnique({ where: { id: registrationId } });
-  if (!registration) {
+  // registrationId 는 결제창에서 돌아온 쿼리값이라 위조될 수 있다.
+  // 이 링크(토큰)의 전화번호로 만든 등록 건일 때만 결과를 처리·표시한다.
+  // (완료 후 새로고침하면 링크는 이미 사용 상태이므로 사용 여부와 무관하게 소유자만 대조한다)
+  const [link, owner] = await Promise.all([
+    prisma.secureLink.findUnique({
+      where: { tokenHash: tokenHash(token) },
+      select: { purpose: true, phoneHash: true },
+    }),
+    registration
+      ? prisma.donorProfile.findUnique({ where: { id: registration.donorId }, select: { phoneHash: true } })
+      : Promise.resolve(null),
+  ]);
+  const owned = Boolean(
+    registration && link && owner && link.purpose === 'REGISTER_ACCOUNT' && link.phoneHash === owner.phoneHash,
+  );
+  if (!registration || !owned) {
     return (
       <LinkShell>
         <FailCard
@@ -218,7 +234,7 @@ export default async function RegistrationCompletePage({
             <li>해지 후에는 문자를 보내도 결제가 진행되지 않으며, 다시 이용하려면 계좌를 새로 등록해야 합니다.</li>
           </ul>
           <div className="mt-3 flex items-center gap-4">
-            <Link href="/my/payments" className="text-[13px] font-semibold text-brand-700">
+            <Link href="/my/account" className="text-[13px] font-semibold text-brand-700">
               결제수단 관리
             </Link>
             <Link href="/support" className="text-[13px] font-semibold text-brand-700">

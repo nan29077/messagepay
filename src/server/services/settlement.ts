@@ -484,7 +484,7 @@ export async function markSettlementPaid(requestId: string, adminId?: string, pa
           adminId: adminId ?? null,
           payoutRef: payoutRef ?? null,
           payoutFailReason: null,
-          adminMemo: warnings.length > 0 ? `⚠ ${warnings.join(' / ')}` : req.adminMemo,
+          adminMemo: warnings.length > 0 ? `[주의] ${warnings.join(' / ')}` : req.adminMemo,
         },
       });
     }),

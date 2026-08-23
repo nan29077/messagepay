@@ -15,6 +15,14 @@ process.env.ALLOW_INMEMORY_FALLBACK = 'true';
 process.env.REDIS_URL = '';
 process.env.MO_ALLOWED_IPS = '';
 
+// 내장 DB(PGlite)는 단일 세션 위에 여러 연결을 다중화(multiplex)한다.
+// 연결 풀이 2개 이상이면 동시 요청의 트랜잭션·prepared statement 가 서로 섞여
+// "방금 만든 행을 찾을 수 없음", "bind message supplies N parameters" 같은 오류가 난다.
+// PGlite 를 대상으로 할 때는 연결을 1개로 고정해 실제 PostgreSQL 과 같은 결과를 보장한다.
+const pglitePort = process.env.PGLITE_PORT ?? '5433';
+const isPglite = process.env.PGLITE === '1' || (process.env.DATABASE_URL ?? '').includes(`:${pglitePort}/`);
+if (isPglite) process.env.DB_POOL_MAX = '1';
+
 // 테스트가 끝난 뒤 개발 DB 에 테스트 잔여 데이터를 남기지 않는다.
 import { afterAll } from 'vitest';
 

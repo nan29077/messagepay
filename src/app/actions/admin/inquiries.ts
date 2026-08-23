@@ -14,8 +14,11 @@ import { notifyUser } from '@/server/services/notifications';
  * - 종결(CLOSED)한 문의도 사용자가 새 메시지를 보내면 다시 접수된다.
  */
 
+const INQUIRY_DENIED = '1:1 문의 관리는 최고관리자 권한에서만 가능합니다.';
+
 export async function replyInquiry(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
+    if (admin.adminPermission !== 'SUPER_ADMIN') throw new Error(INQUIRY_DENIED);
     const inquiryId = requiredId(fd, 'inquiryId', '문의');
     const body = text(fd, 'body').trim();
     if (!body) throw new Error('답변 내용을 입력해 주세요.');
@@ -64,6 +67,7 @@ export async function replyInquiry(_prev: AdminActionState, fd: FormData): Promi
 
 export async function setInquiryStatus(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
+    if (admin.adminPermission !== 'SUPER_ADMIN') throw new Error(INQUIRY_DENIED);
     const inquiryId = requiredId(fd, 'inquiryId', '문의');
     const status = enumValue(fd, 'status', ['OPEN', 'ANSWERED', 'CLOSED'] as const, '상태');
 

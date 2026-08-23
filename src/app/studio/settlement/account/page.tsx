@@ -5,5 +5,5 @@ import { redirect } from 'next/navigation';
  * 기존 북마크·링크 호환을 위해 리다이렉트만 남긴다.
  */
 export default function StudioSettlementAccountPage() {
-  redirect('/studio/settlement#account');
+  redirect('/studio/settlement?tab=account');
 }

@@ -1,6 +1,7 @@
 import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
-import { encrypt, maskSecret } from '@/lib/crypto';
+import { decrypt, encrypt, maskSecret } from '@/lib/crypto';
+import { logger } from '@/lib/logger';
 import { env } from '@/lib/env';
 import { getPaymentAdapter } from '@/server/adapters/payment';
 import { resolveSecureLink, consumeSecureLink } from './secure-link';
@@ -29,7 +30,7 @@ export async function loadRegistrationContext(token: string): Promise<
   const res = await resolveSecureLink(token);
   if (!res.ok) {
     const reason =
-      res.reason === 'EXPIRED' ? '가입 링크가 만료되었습니다. 고객센터에 재발급을 요청해 주세요.'
+      res.reason === 'EXPIRED' ? '가입 링크가 만료되었습니다. 크리에이터 번호로 문자를 다시 보내면 새 링크가 발송됩니다.'
       : res.reason === 'USED' ? '이미 사용된 링크입니다.'
       : '유효하지 않은 링크입니다.';
     return { ok: false, reason };
@@ -142,6 +143,14 @@ export async function completeRegistration(input: {
   const adapter = getPaymentAdapter();
   const res = await adapter.completeRegistration(input.providerPayload);
 
+  // registrationId 는 클라이언트가 보낸 값이다. 링크 소유자(donorId)의 등록 건이 아니면 거절한다.
+  const owned = await prisma.paymentRegistration.findFirst({
+    where: { id: input.registrationId, donorId: ctx.donorId },
+    select: { id: true, status: true },
+  });
+  if (!owned) throw new Error('등록 요청 정보가 올바르지 않습니다. 처음부터 다시 진행해 주세요.');
+  if (owned.status === 'COMPLETED') throw new Error('이미 완료된 등록 요청입니다.');
+
   if (!res.ok || !res.data) {
     await prisma.paymentRegistration.update({
       where: { id: input.registrationId },
@@ -197,8 +206,15 @@ export async function completeRegistration(input: {
 export async function revokePaymentMethod(donorId: string) {
   const active = await prisma.paymentMethodToken.findFirst({ where: { donorId, status: 'ACTIVE' } });
   if (!active) return false;
+  // 사업자에는 빌키 원문을 보내야 한다(암호문을 보내면 PG 측 빌키가 살아남는다).
+  // 사업자 해지 실패는 로그로 남기고, 내부 상태는 폐기로 바꿔 더 이상 출금에 쓰지 않는다.
   const adapter = getPaymentAdapter();
-  await adapter.revokeBillKey(active.billKeyEnc).catch(() => undefined);
+  const revoked = await adapter
+    .revokeBillKey(decrypt(active.billKeyEnc))
+    .catch((e: unknown) => ({ ok: false as const, message: (e as Error)?.message }));
+  if (!revoked.ok) {
+    logger.error('빌키 해지 실패 (내부 상태는 폐기 처리)', { donorId, tokenId: active.id, message: revoked.message });
+  }
   await prisma.paymentMethodToken.update({
     where: { id: active.id },
     data: { status: 'REVOKED', revokedAt: new Date() },

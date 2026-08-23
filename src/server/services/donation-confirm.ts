@@ -1,5 +1,6 @@
 import { prisma } from '@/server/db';
 import { resolveSecureLink, consumeSecureLink } from './secure-link';
+import { tokenHash } from '@/lib/crypto';
 import { executePayment, setStatus } from './donation-flow';
 
 /**
@@ -21,6 +22,8 @@ export async function loadConfirmContext(
 ): Promise<{ ok: true; ctx: ConfirmContext } | { ok: false; reason: string }> {
   const res = await resolveSecureLink(token);
   if (!res.ok) {
+    // 만료된 링크를 열면 그 자리에서 확인 대기 건을 취소한다(배치가 돌기 전에도 화면 안내와 실제 상태가 맞도록).
+    if (res.reason === 'EXPIRED') await expireConfirmationByToken(token);
     const reason =
       res.reason === 'EXPIRED'
         ? '확인 시간이 지나 후원이 자동 취소되었습니다. 결제는 진행되지 않았습니다.'
@@ -65,6 +68,18 @@ export async function confirmDonation(token: string, ip?: string, userAgent?: st
   if (!consumed) throw new Error('이미 처리된 요청입니다.');
 
   return executePayment(loaded.ctx.donationId);
+}
+
+/** 만료된 확인 링크 한 건에 연결된 확인 대기 후원을 취소한다. */
+async function expireConfirmationByToken(token: string) {
+  const link = await prisma.secureLink.findUnique({
+    where: { tokenHash: tokenHash(token) },
+    select: { purpose: true, donationId: true },
+  });
+  if (!link || link.purpose !== 'CONFIRM_PAYMENT' || !link.donationId) return;
+  const d = await prisma.donation.findUnique({ where: { id: link.donationId }, select: { status: true } });
+  if (d?.status !== 'PENDING_CONFIRM') return;
+  await setStatus(link.donationId, 'PAYMENT_FAILED', '확인 시간 초과로 자동 취소');
 }
 
 /** 만료된 확인 대기 건 정리 (배치) */

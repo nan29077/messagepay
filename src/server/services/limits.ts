@@ -161,6 +161,12 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
 
   if (input.blockedByCreator) return deny('BLOCKED', '크리에이터가 차단한 후원자입니다.');
   if (input.donor.blockedAt) return deny('BLOCKED', '이용이 제한된 후원자입니다.');
+  // 후원자가 /my/blocks 에서 직접 건 차단(donorCreatorLink.blockedAt). 결제 경로 전부에서 막아야 한다.
+  const link = await prisma.donorCreatorLink.findUnique({
+    where: { donorId_creatorId: { donorId: input.donor.id, creatorId: input.creatorId } },
+    select: { blockedAt: true },
+  });
+  if (link?.blockedAt) return deny('BLOCKED', '후원자가 차단한 크리에이터입니다. 내 정보 > 차단 관리에서 해제할 수 있습니다.');
   if (input.donor.lockedUntil && input.donor.lockedUntil > now) {
     return deny('LOCKED', '결제 실패가 반복되어 일시적으로 잠겼습니다. 관리자 해제가 필요합니다.');
   }

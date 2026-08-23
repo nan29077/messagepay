@@ -71,6 +71,7 @@ export async function createMoNumber(_prev: AdminActionState, fd: FormData): Pro
 export async function assignMoNumber(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
     const id = requiredId(fd, 'id', 'MO 번호');
+    if (!optText(fd, 'creatorId')) throw new Error('배정할 크리에이터를 선택해 주세요.');
     const creatorId = requiredId(fd, 'creatorId', '크리에이터');
 
     const before = await prisma.creatorMoNumber.findUnique({ where: { id } });
@@ -115,7 +116,7 @@ export async function changeMoNumberStatus(_prev: AdminActionState, fd: FormData
       status === 'RECLAIMED'
         ? { status, creatorId: null, releasedAt: new Date() }
         : status === 'DISABLED'
-          ? { status, releasedAt: new Date() }
+          ? { status, creatorId: null, releasedAt: new Date() }
           : { status };
 
     await prisma.creatorMoNumber.update({ where: { id }, data });
