@@ -1,6 +1,5 @@
-import { prisma } from '@/server/db';
-import { tokenHash } from '@/lib/crypto';
 import { subscribeOverlay } from '@/server/services/overlay-bus';
+import { authorizeOverlay } from '@/server/services/overlay-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -9,13 +8,16 @@ export const dynamic = 'force-dynamic';
  * 오버레이 실시간 이벤트 (SSE).
  * OBS / PRISM 브라우저 소스가 이 스트림을 구독한다.
  * 토큰이 없거나 틀리면 즉시 거절한다.
+ * preview=1 은 스튜디오 미리보기 전용으로, 로그인한 본인 크리에이터만 통과한다.
  */
 export async function GET(req: Request, ctx: { params: Promise<{ creatorId: string }> }) {
   const { creatorId } = await ctx.params;
-  const token = new URL(req.url).searchParams.get('token') ?? '';
+  const sp = new URL(req.url).searchParams;
+  const token = sp.get('token') ?? '';
+  const preview = sp.get('preview') === '1';
 
-  const setting = await prisma.overlaySetting.findUnique({ where: { creatorId } });
-  if (!setting || setting.tokenHash !== tokenHash(token)) {
+  const access = await authorizeOverlay(creatorId, token, preview);
+  if (!access.ok) {
     return new Response('unauthorized', { status: 401 });
   }
 

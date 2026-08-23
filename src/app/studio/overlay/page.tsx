@@ -2,6 +2,7 @@ import { Badge, Card, CardTitle, Checkbox, DataRow, EmptyState, Field, Input, No
 import { PageHeader } from '@/components/layout/console-shell';
 import { ActionForm } from '@/components/studio/action-form';
 import { CopyField } from '@/components/studio/copy';
+import { OverlayTiersEditor } from '@/components/studio/overlay-tiers-editor';
 import {
   regenerateOverlayTokenAction,
   reissueStreamKeyAction,
@@ -12,6 +13,7 @@ import { requireCreator } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { env } from '@/lib/env';
 import { formatKst } from '@/lib/datetime';
+import { listOverlayTiers } from '@/server/services/overlay-tiers';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,13 +41,27 @@ const STICKERS = [
 
 export default async function StudioOverlayPage() {
   const { creatorId } = await requireCreator();
-  const [setting, channel] = await Promise.all([
+  const [setting, channel, tiers] = await Promise.all([
     prisma.overlaySetting.findUnique({ where: { creatorId } }),
     prisma.streamChannel.findUnique({
       where: { creatorId },
       include: { keys: { orderBy: { issuedAt: 'desc' }, take: 10 } },
     }),
+    listOverlayTiers(creatorId),
   ]);
+
+  // BigInt 는 클라이언트 컴포넌트로 넘길 수 없으므로 숫자로 바꿔 전달한다.
+  const tierInputs = tiers.map((t) => ({
+    minAmount: Number(t.minAmount),
+    label: t.label,
+    effect: t.effect,
+    banner: t.banner,
+    durationMs: t.durationMs,
+    ttsEnabled: t.ttsEnabled,
+    ttsVoice: t.ttsVoice,
+    ttsSpeed: t.ttsSpeed,
+    ttsPitch: t.ttsPitch,
+  }));
 
   const activeKey = channel?.keys.find((k) => k.status === 'ACTIVE') ?? null;
   const ingestUrl = channel?.ingestUrl ?? env.stream.ingestBase;
@@ -103,7 +119,17 @@ export default async function StudioOverlayPage() {
         </section>
 
         <section>
-          <SectionTitle title="표시 설정" />
+          <SectionTitle
+            title="금액 구간별 효과"
+            description="후원 금액에 따라 스티커 효과, 배너, TTS 를 다르게 재생합니다. 설정을 바꾼 뒤에는 [구간 저장]을 눌러야 미리보기와 실제 방송에 반영됩니다."
+          />
+          <Card>
+            <OverlayTiersEditor creatorId={creatorId} initialTiers={tierInputs} />
+          </Card>
+        </section>
+
+        <section>
+          <SectionTitle title="표시 설정" description="구간을 만들지 않았을 때 쓰이는 기본값입니다. 금액 구간이 있으면 표시 시간과 스티커는 구간 설정이 우선합니다." />
           <Card>
             {setting ? (
               <ActionForm action={updateOverlaySettingAction} submitLabel="설정 저장">

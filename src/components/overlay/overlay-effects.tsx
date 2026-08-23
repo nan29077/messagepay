@@ -1,0 +1,202 @@
+'use client';
+
+import * as React from 'react';
+
+/**
+ * 오버레이 파티클 효과 레이어.
+ *
+ * 규칙
+ *  - 서버 모듈을 import 하지 않는다(브라우저 소스 전용 번들).
+ *  - 배치는 인덱스 기반 결정적 계산만 쓴다. Math.random 을 쓰면 hydration 이 어긋난다.
+ *  - 전체 화면을 덮되 클릭을 막지 않는다(pointer-events-none).
+ *  - 효과 종류는 서버의 OVERLAY_EFFECTS 와 값이 일치해야 한다.
+ *    DEFAULT 는 구간 기능을 쓰지 않는 기존 크리에이터용 값으로, 하트/별을 섞어 뿌린다.
+ */
+
+export type EffectName = 'NONE' | 'HEART' | 'STAR' | 'FIREWORK' | 'CONFETTI' | 'COIN' | 'DEFAULT';
+
+/** 결정적 의사난수. 같은 인덱스는 항상 같은 값을 준다. */
+function rand(i: number, salt: number) {
+  const x = Math.sin(i * 12.9898 + salt * 78.233) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+export function EffectLayer({ effect }: { effect: string }) {
+  const name = (effect || 'DEFAULT').toUpperCase() as EffectName;
+  if (name === 'NONE') return null;
+
+  return (
+    <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
+      {name === 'CONFETTI' ? <Confetti /> : null}
+      {name === 'FIREWORK' ? <Fireworks /> : null}
+      {name === 'HEART' || name === 'STAR' || name === 'COIN' || name === 'DEFAULT' ? (
+        <RisingParticles kind={name} />
+      ) : null}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------ 떠오르는 파티클
+
+function RisingParticles({ kind }: { kind: EffectName }) {
+  const items = React.useMemo(
+    () =>
+      Array.from({ length: 26 }, (_, i) => ({
+        left: rand(i, 1) * 96 + 2,
+        delay: rand(i, 2) * 2.4,
+        duration: 2.2 + rand(i, 3) * 1.8,
+        size: 20 + Math.round(rand(i, 4) * 26),
+        drift: (rand(i, 5) - 0.5) * 180,
+        rise: 45 + Math.round(rand(i, 6) * 45),
+        spin: Math.round((rand(i, 7) - 0.5) * 160),
+        // DEFAULT 는 하트와 별을 섞는다
+        shape: kind === 'DEFAULT' ? (i % 2 === 0 ? 'HEART' : 'STAR') : kind,
+      })),
+    [kind],
+  );
+
+  return (
+    <>
+      {items.map((p, i) => (
+        <span
+          key={i}
+          className="animate-particle-rise absolute bottom-0"
+          style={{
+            left: `${p.left}%`,
+            animationDelay: `${p.delay}s`,
+            animationDuration: `${p.duration}s`,
+            ['--drift' as string]: `${p.drift}px`,
+            ['--rise' as string]: `${p.rise}vh`,
+            ['--spin' as string]: `${p.spin}deg`,
+          }}
+        >
+          <ParticleShape kind={p.shape as EffectName} size={p.size} index={i} />
+        </span>
+      ))}
+    </>
+  );
+}
+
+const HEART_COLORS = ['#f4506b', '#ff7d97', '#e23a58'];
+const STAR_COLORS = ['#fbb914', '#ffd35c', '#f59e0b'];
+const COIN_COLORS = ['#eda600', '#ffcc4d', '#c98a00'];
+
+function ParticleShape({ kind, size, index }: { kind: EffectName; size: number; index: number }) {
+  if (kind === 'HEART') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill={HEART_COLORS[index % HEART_COLORS.length]}>
+        <path d="M12 20.5 4.8 13.3a4.4 4.4 0 0 1 6.2-6.2l1 1 1-1a4.4 4.4 0 0 1 6.2 6.2Z" />
+      </svg>
+    );
+  }
+  if (kind === 'COIN') {
+    const color = COIN_COLORS[index % COIN_COLORS.length];
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="9" fill={color} />
+        <circle cx="12" cy="12" r="6.2" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="1.4" />
+        <path d="M12 8v8M9.6 10h4.8M9.6 14h4.8" stroke="rgba(255,255,255,0.85)" strokeWidth="1.4" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={STAR_COLORS[index % STAR_COLORS.length]}>
+      <path d="M12 2.5l2.6 5.9 6.4.6-4.8 4.3 1.4 6.2L12 16.2 6.4 19.5l1.4-6.2L3 9l6.4-.6z" />
+    </svg>
+  );
+}
+
+// ------------------------------------------------------------------- 꽃가루
+
+const CONFETTI_COLORS = ['#f4506b', '#fbb914', '#4ba3f2', '#5ecf8b', '#a06bf0', '#ff8f4d'];
+
+function Confetti() {
+  const items = React.useMemo(
+    () =>
+      Array.from({ length: 60 }, (_, i) => ({
+        left: rand(i, 11) * 100,
+        delay: rand(i, 12) * 3,
+        duration: 2.6 + rand(i, 13) * 2.2,
+        w: 7 + Math.round(rand(i, 14) * 7),
+        h: 11 + Math.round(rand(i, 15) * 10),
+        drift: (rand(i, 16) - 0.5) * 260,
+        spin: 360 + Math.round(rand(i, 17) * 1080),
+        color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+        round: i % 4 === 0,
+      })),
+    [],
+  );
+
+  return (
+    <>
+      {items.map((c, i) => (
+        <span
+          key={i}
+          className="animate-confetti-fall absolute top-0 block"
+          style={{
+            left: `${c.left}%`,
+            width: c.w,
+            height: c.h,
+            background: c.color,
+            borderRadius: c.round ? '999px' : '2px',
+            animationDelay: `${c.delay}s`,
+            animationDuration: `${c.duration}s`,
+            ['--drift' as string]: `${c.drift}px`,
+            ['--spin' as string]: `${c.spin}deg`,
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
+// -------------------------------------------------------------------- 폭죽
+
+const FIREWORK_COLORS = ['#fbb914', '#f4506b', '#4ba3f2', '#5ecf8b', '#a06bf0'];
+
+/** 터지는 지점 5곳. 화면 상단~중단에 흩어 놓는다. */
+const BURSTS = [
+  { x: 22, y: 26, delay: 0 },
+  { x: 50, y: 18, delay: 0.45 },
+  { x: 78, y: 30, delay: 0.9 },
+  { x: 34, y: 46, delay: 1.3 },
+  { x: 68, y: 50, delay: 1.75 },
+];
+
+const RAYS = 18;
+
+function Fireworks() {
+  return (
+    <>
+      {BURSTS.map((b, bi) => (
+        <span
+          key={bi}
+          className="absolute block"
+          style={{ left: `${b.x}%`, top: `${b.y}%`, width: 0, height: 0 }}
+        >
+          {Array.from({ length: RAYS }, (_, i) => {
+            const angle = (i / RAYS) * Math.PI * 2;
+            const radius = 90 + rand(bi * RAYS + i, 21) * 90;
+            const size = 6 + Math.round(rand(bi * RAYS + i, 22) * 6);
+            return (
+              <span
+                key={i}
+                className="animate-firework-burst absolute block"
+                style={{
+                  width: size,
+                  height: size,
+                  borderRadius: '999px',
+                  background: FIREWORK_COLORS[(bi + i) % FIREWORK_COLORS.length],
+                  boxShadow: `0 0 ${size * 2}px ${FIREWORK_COLORS[(bi + i) % FIREWORK_COLORS.length]}`,
+                  animationDelay: `${b.delay + rand(i, 23) * 0.12}s`,
+                  ['--dx' as string]: `${Math.cos(angle) * radius}px`,
+                  ['--dy' as string]: `${Math.sin(angle) * radius}px`,
+                }}
+              />
+            );
+          })}
+        </span>
+      ))}
+    </>
+  );
+}

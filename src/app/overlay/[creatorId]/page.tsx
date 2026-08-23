@@ -1,11 +1,11 @@
 import type { Metadata } from 'next';
-import { prisma } from '@/server/db';
-import { safeEqual, tokenHash } from '@/lib/crypto';
 import { OverlayClient } from '@/components/overlay/overlay-client';
+import { authorizeOverlay } from '@/server/services/overlay-access';
 
 /**
  * OBS / PRISM 브라우저 소스 오버레이.
  *  - 토큰이 없거나 틀리면 아무 정보도 노출하지 않고 거절한다.
+ *  - preview=1 은 스튜디오 미리보기 전용 경로다(로그인한 본인만).
  *  - 검색엔진 색인을 차단한다.
  *  - 배경은 완전 투명이어야 한다.
  */
@@ -34,12 +34,12 @@ export default async function OverlayPage({
   const { creatorId } = await params;
   const sp = await searchParams;
   const token = one(sp.token);
+  const preview = one(sp.preview) === '1';
   const debug = one(sp.debug) === '1';
 
-  const setting = await prisma.overlaySetting.findUnique({ where: { creatorId } });
-  const authorized = Boolean(setting && token && safeEqual(setting.tokenHash, tokenHash(token)));
+  const { ok, setting } = await authorizeOverlay(creatorId, token, preview);
 
-  if (!authorized) {
+  if (!ok) {
     return (
       <div className="grid h-screen w-screen place-items-center bg-transparent">
         <div className="rounded-2xl bg-ink-900/85 px-5 py-4 text-center">
@@ -50,8 +50,9 @@ export default async function OverlayPage({
     );
   }
 
-  if (!setting!.enabled) {
-    // 오버레이가 꺼져 있으면 아무것도 표시하지 않는다(방송 화면 보호).
+  // 오버레이가 꺼져 있으면 아무것도 표시하지 않는다(방송 화면 보호).
+  // 다만 미리보기는 설정 확인이 목적이므로 꺼져 있어도 그린다.
+  if (setting && !setting.enabled && !preview) {
     return <div className="h-screen w-screen bg-transparent" />;
   }
 
@@ -59,9 +60,10 @@ export default async function OverlayPage({
     <OverlayClient
       creatorId={creatorId}
       token={token}
-      position={setting!.position}
-      defaultDurationMs={setting!.durationMs}
-      maxMessageLen={setting!.maxMessageLen}
+      preview={preview}
+      position={setting?.position ?? 'BOTTOM_CENTER'}
+      defaultDurationMs={setting?.durationMs ?? 7000}
+      maxMessageLen={setting?.maxMessageLen ?? 80}
       debug={debug}
     />
   );

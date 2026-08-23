@@ -493,6 +493,7 @@ model CreatorProfile {
   donorLinks         DonorCreatorLink[]
   blockedDonors      BlockedDonor[]
   overlaySetting     OverlaySetting?
+  overlayTiers       OverlayTier[]
   ttsSetting         TtsSetting?
   youtubeConnection  YouTubeConnection?
   youtubeBroadcasts  YouTubeBroadcast[]
@@ -1056,6 +1057,35 @@ model OverlaySetting {
   creator CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
 
   @@map("overlay_setting")
+}
+
+/// 금액 구간별 오버레이 효과.
+/// 후원 금액 이하의 구간 중 minAmount 가 가장 큰 구간 하나가 적용된다.
+/// 구간이 하나도 없으면 OverlaySetting 의 전역 값으로 동작한다(기존 동작 유지).
+model OverlayTier {
+  id         String   @id
+  creatorId  String   @map("creator_id")
+  /// 이 구간이 적용되는 최소 후원 금액(원)
+  minAmount  BigInt   @map("min_amount")
+  label      String
+  /// 파티클 효과: NONE | HEART | STAR | FIREWORK | CONFETTI | COIN
+  effect     String   @default("HEART")
+  /// 후원자명 + 메시지 배너 표시 여부
+  banner     Boolean  @default(true)
+  durationMs Int      @default(7000) @map("duration_ms")
+  ttsEnabled Boolean  @default(false) @map("tts_enabled")
+  /// 브라우저 음성 이름. 빈 값이면 오버레이가 한국어 기본 음성을 고른다.
+  ttsVoice   String   @default("") @map("tts_voice")
+  ttsSpeed   Float    @default(1.0) @map("tts_speed")
+  ttsPitch   Float    @default(1.0) @map("tts_pitch")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  creator CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@unique([creatorId, minAmount])
+  @@index([creatorId, minAmount])
+  @@map("overlay_tier")
 }
 
 model OverlayEvent {

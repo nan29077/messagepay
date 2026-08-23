@@ -8,6 +8,7 @@ import { newId } from '@/lib/id';
 import { env } from '@/lib/env';
 import { accountTail4, decrypt, encrypt, generateToken, isValidResident, maskName, maskSecret, normalizeResident, tokenHash } from '@/lib/crypto';
 import { sendTestOverlay } from '@/server/services/broadcast-dispatch';
+import { OVERLAY_EFFECTS } from '@/server/services/overlay-tiers';
 import { resolvePolicy } from '@/server/services/limits';
 import { createSettlementRequest } from '@/server/services/settlement';
 import { notifySuperAdmins } from '@/server/services/notifications';
@@ -379,6 +380,112 @@ export async function testOverlayAction(
 
     await sendTestOverlay(creatorId, { donorName, amount, message });
     return { ok: true, message: '테스트 후원을 전송했습니다. 실제 결제와 정산에는 반영되지 않습니다.' };
+  });
+}
+
+// ===========================================================================
+// 금액 구간별 오버레이 효과
+// ===========================================================================
+
+/** 한 크리에이터가 만들 수 있는 구간 수. 화면과 재생 모두 이 이상은 의미가 없다. */
+const MAX_TIERS = 6;
+
+const tierSchema = z.object({
+  minAmount: z.coerce.number().int().min(100).max(10_000_000),
+  label: z.string().trim().min(1).max(20),
+  effect: z.enum(OVERLAY_EFFECTS),
+  banner: z.boolean(),
+  durationMs: z.coerce.number().int().min(2000).max(30000),
+  ttsEnabled: z.boolean(),
+  ttsVoice: z.string().max(120),
+  ttsSpeed: z.coerce.number().min(0.5).max(2),
+  ttsPitch: z.coerce.number().min(0).max(2),
+});
+
+/**
+ * 금액 구간 저장.
+ * 화면에서 행을 자유롭게 추가/삭제하므로 전체 목록을 통째로 바꾼다(삭제 후 삽입).
+ * 구간을 모두 지우면 전역 표시 설정만으로 동작하는 기존 방식으로 돌아간다.
+ */
+export async function saveOverlayTiersAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withCreator(async (creatorId) => {
+    let raw: unknown;
+    try {
+      raw = JSON.parse(text(formData, 'tiers') || '[]');
+    } catch {
+      return { ok: false, message: '구간 정보를 읽지 못했습니다. 화면을 새로고침한 뒤 다시 시도해 주세요.' };
+    }
+
+    const parsed = z.array(tierSchema).max(MAX_TIERS).safeParse(raw);
+    if (!parsed.success) {
+      return {
+        ok: false,
+        message:
+          '구간 입력값을 확인해 주세요. 금액은 100원~10,000,000원, 이름은 20자 이내, 지속시간은 2000~30000ms 입니다.',
+      };
+    }
+
+    const tiers = parsed.data;
+    const amounts = tiers.map((t) => t.minAmount);
+    if (new Set(amounts).size !== amounts.length) {
+      return { ok: false, message: '같은 시작 금액을 가진 구간이 두 개 이상입니다. 금액을 서로 다르게 입력해 주세요.' };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.overlayTier.deleteMany({ where: { creatorId } });
+      if (tiers.length === 0) return;
+      await tx.overlayTier.createMany({
+        data: tiers.map((t) => ({
+          id: newId(),
+          creatorId,
+          minAmount: BigInt(t.minAmount),
+          label: t.label,
+          effect: t.effect,
+          banner: t.banner,
+          durationMs: t.durationMs,
+          ttsEnabled: t.ttsEnabled,
+          ttsVoice: t.ttsVoice,
+          ttsSpeed: t.ttsSpeed,
+          ttsPitch: t.ttsPitch,
+        })),
+      });
+    });
+
+    revalidatePath('/studio/overlay');
+    return {
+      ok: true,
+      message:
+        tiers.length === 0
+          ? '구간을 모두 삭제했습니다. 이제 전역 표시 설정으로만 재생됩니다.'
+          : `금액 구간 ${tiers.length}개를 저장했습니다.`,
+    };
+  });
+}
+
+/**
+ * 구간 미리보기.
+ * 저장된 구간을 금액으로 다시 찾아 재생하므로, 저장하지 않은 수정 내용은 반영되지 않는다.
+ * 실제 결제/정산과는 무관한 테스트 이벤트다.
+ */
+export async function previewOverlayTierAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withCreator(async (creatorId) => {
+    const amount = parseAmount(text(formData, 'amount'));
+    if (amount === null) return { ok: false, message: '금액은 숫자만 입력해 주세요.' };
+    if (amount < 100n || amount > 10_000_000n) {
+      return { ok: false, message: '미리보기 금액은 100원 ~ 10,000,000원 사이로 입력해 주세요.' };
+    }
+
+    const donorName = text(formData, 'donorName').slice(0, 20) || '테스트 후원자';
+    const message = text(formData, 'message').slice(0, 200) || '오늘 방송 재미있어요';
+
+    await sendTestOverlay(creatorId, { donorName, amount, message });
+    return { ok: true, message: `${formatWon(amount)} 미리보기를 오버레이로 보냈습니다.` };
   });
 }
 

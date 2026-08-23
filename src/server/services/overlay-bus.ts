@@ -20,11 +20,18 @@ export interface OverlayEventPayload {
   amount: string;
   message: string;
   sticker: string;
+  /// 금액 구간에서 고른 파티클 효과 (NONE | HEART | STAR | FIREWORK | CONFETTI | COIN)
+  effect: string;
+  /// 후원자명 + 메시지 배너를 띄울지 여부
+  banner: boolean;
+  /// 적용된 금액 구간 이름. 구간을 쓰지 않으면 빈 문자열.
+  tierLabel: string;
   tts: {
     enabled: boolean;
     text: string;
     voice: string;
     speed: number;
+    pitch: number;
     volume: number;
   } | null;
   durationMs: number;

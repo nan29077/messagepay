@@ -202,3 +202,45 @@ a {
   72% { transform: translateY(-2px); }
 }
 .animate-thanks-bounce { animation: donaido-thanks-bounce 1.4s ease-in-out infinite; }
+
+/* ---------------------------------------------------------------------------
+   오버레이 금액 구간 효과 (OBS/PRISM 브라우저 소스)
+   --drift  : 좌우로 흩어지는 거리
+   --rise   : 떠오르는 높이
+   --spin   : 회전각
+   --dx/--dy: 폭죽이 터져 나가는 방향
+   --------------------------------------------------------------------------- */
+
+/* 하트 / 별 / 동전: 화면 아래에서 위로 떠오른다 */
+@keyframes donaido-particle-rise {
+  0%   { transform: translate(0, 0) scale(0.35) rotate(0deg); opacity: 0; }
+  10%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translate(var(--drift, 0px), calc(-1 * var(--rise, 60vh))) scale(1) rotate(var(--spin, 30deg)); opacity: 0; }
+}
+.animate-particle-rise { animation: donaido-particle-rise 2.6s ease-out infinite; }
+
+/* 꽃가루: 화면 위에서 아래로 떨어진다 */
+@keyframes donaido-confetti-fall {
+  0%   { transform: translate(0, -12vh) rotate(0deg); opacity: 0; }
+  8%   { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { transform: translate(var(--drift, 0px), 108vh) rotate(var(--spin, 720deg)); opacity: 0; }
+}
+.animate-confetti-fall { animation: donaido-confetti-fall 3.2s linear infinite; }
+
+/* 폭죽: 한 점에서 사방으로 터진다 */
+@keyframes donaido-firework-burst {
+  0%   { transform: translate(0, 0) scale(0.2); opacity: 0; }
+  14%  { opacity: 1; }
+  100% { transform: translate(var(--dx, 0px), var(--dy, 0px)) scale(1); opacity: 0; }
+}
+.animate-firework-burst { animation: donaido-firework-burst 1.6s cubic-bezier(0.2, 0.7, 0.3, 1) infinite; }
+
+/* 배너 슬라이드인 */
+@keyframes donaido-banner-in {
+  0%   { opacity: 0; transform: translateX(-64px) scale(0.97); }
+  70%  { opacity: 1; transform: translateX(6px) scale(1.006); }
+  100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+.animate-banner-in { animation: donaido-banner-in 520ms cubic-bezier(0.16, 1, 0.3, 1) both; }

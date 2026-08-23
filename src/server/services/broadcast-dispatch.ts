@@ -7,6 +7,7 @@ import { kstDateKey } from '@/lib/datetime';
 import { getYouTubeAdapter, formatChatMessage } from '@/server/adapters/youtube';
 import { buildTtsText } from '@/server/adapters/tts';
 import { publishOverlayEvent, type OverlayEventPayload } from './overlay-bus';
+import { resolveOverlayTier, type ResolvedTier } from './overlay-tiers';
 import { decrypt, encrypt } from '@/lib/crypto';
 
 /**
@@ -75,6 +76,56 @@ export async function dispatchBroadcast(donationId: string): Promise<DispatchRes
   return { overlay: overlayOk, youtube: yt.ok, youtubeSkippedReason: yt.reason };
 }
 
+/**
+ * 금액 구간과 전역 설정을 합쳐 오버레이 재생값을 정한다.
+ * 구간이 없으면 전역 설정만으로 기존과 동일하게 동작한다.
+ */
+function mergeTier(
+  tier: ResolvedTier | null,
+  overlay: { durationMs: number; stickerSet: string } | null,
+): { effect: string; banner: boolean; durationMs: number; tierLabel: string } {
+  return {
+    effect: tier?.effect ?? overlay?.stickerSet ?? 'DEFAULT',
+    banner: tier ? tier.banner : true,
+    durationMs: tier?.durationMs ?? overlay?.durationMs ?? 7000,
+    tierLabel: tier?.label ?? '',
+  };
+}
+
+/**
+ * TTS 재생값.
+ *  - 금액 구간이 있으면 구간의 on/off · 목소리 · 속도 · 피치를 따른다.
+ *  - 구간이 없으면 기존처럼 TtsSetting 의 enabled + minAmount 로 판단한다.
+ *  - 문장 구성 규칙(이름/금액 읽기, 최대 글자수)은 항상 TtsSetting 을 따른다.
+ */
+function buildTts(
+  tier: ResolvedTier | null,
+  tts: {
+    enabled: boolean; voice: string; speed: number; volume: number;
+    readAmount: boolean; readName: boolean; minAmount: bigint; maxChars: number;
+  } | null,
+  input: { donorName: string; amount: bigint; message: string },
+): OverlayEventPayload['tts'] {
+  const enabled = tier ? tier.ttsEnabled : Boolean(tts?.enabled) && input.amount >= (tts?.minAmount ?? 0n);
+  if (!enabled) return null;
+
+  return {
+    enabled: true,
+    text: buildTtsText({
+      donorName: input.donorName,
+      amount: input.amount,
+      message: input.message,
+      readAmount: tts?.readAmount ?? true,
+      readName: tts?.readName ?? true,
+      maxChars: tts?.maxChars ?? 80,
+    }),
+    voice: (tier?.ttsVoice || tts?.voice) ?? '',
+    speed: tier?.ttsSpeed ?? tts?.speed ?? 1,
+    pitch: tier?.ttsPitch ?? 1,
+    volume: tts?.volume ?? 1,
+  };
+}
+
 export async function buildOverlayPayload(donationId: string, isTest = false): Promise<OverlayEventPayload | null> {
   const donation = await prisma.donation.findUnique({
     where: { id: donationId },
@@ -87,7 +138,8 @@ export async function buildOverlayPayload(donationId: string, isTest = false): P
   const donorName = overlay?.anonymize || donation.anonymous ? '익명의 후원자' : donation.displayName;
   const message = overlay?.showMessage === false ? '' : donation.message;
 
-  const ttsEnabled = Boolean(tts?.enabled) && donation.amount >= (tts?.minAmount ?? 0n);
+  const tier = await resolveOverlayTier(donation.creatorId, donation.amount);
+  const merged = mergeTier(tier, overlay);
 
   return {
     eventId: newId(),
@@ -97,23 +149,11 @@ export async function buildOverlayPayload(donationId: string, isTest = false): P
     amount: overlay?.showAmount === false ? '' : donation.amount.toString(),
     message,
     sticker: overlay?.stickerSet ?? 'DEFAULT',
-    tts: ttsEnabled
-      ? {
-          enabled: true,
-          text: buildTtsText({
-            donorName,
-            amount: donation.amount,
-            message,
-            readAmount: tts?.readAmount ?? true,
-            readName: tts?.readName ?? true,
-            maxChars: tts?.maxChars ?? 80,
-          }),
-          voice: tts?.voice ?? 'ko-KR-Standard-A',
-          speed: tts?.speed ?? 1,
-          volume: tts?.volume ?? 1,
-        }
-      : null,
-    durationMs: overlay?.durationMs ?? 7000,
+    effect: merged.effect,
+    banner: merged.banner,
+    tierLabel: merged.tierLabel,
+    tts: buildTts(tier, tts, { donorName, amount: donation.amount, message }),
+    durationMs: merged.durationMs,
     occurredAt: new Date().toISOString(),
     isTest,
   };
@@ -249,15 +289,24 @@ async function sendYouTube(donationId: string): Promise<{ ok: boolean; reason?: 
   return res.ok ? { ok: true } : { ok: false, reason: res.code ?? 'SEND_FAILED' };
 }
 
-/** 테스트 후원: 실제 결제/정산에 반영하지 않고 화면과 TTS 만 확인한다. */
-export async function sendTestOverlay(creatorId: string, input: { donorName: string; amount: bigint; message: string }) {
+/**
+ * 테스트 후원: 실제 결제/정산에 반영하지 않고 화면과 TTS 만 확인한다.
+ * 금액에 해당하는 금액 구간이 그대로 적용되므로, 구간별 미리보기는
+ * 해당 구간의 최소 금액으로 이 함수를 호출하면 된다.
+ */
+export async function sendTestOverlay(
+  creatorId: string,
+  input: { donorName: string; amount: bigint; message: string },
+) {
   const creator = await prisma.creatorProfile.findUnique({
     where: { id: creatorId },
     include: { overlaySetting: true, ttsSetting: true },
   });
   if (!creator) throw new Error('크리에이터를 찾을 수 없습니다.');
 
-  const tts = creator.ttsSetting;
+  const tier = await resolveOverlayTier(creatorId, input.amount);
+  const merged = mergeTier(tier, creator.overlaySetting);
+
   const payload: OverlayEventPayload = {
     eventId: newId(),
     creatorId,
@@ -266,23 +315,11 @@ export async function sendTestOverlay(creatorId: string, input: { donorName: str
     amount: input.amount.toString(),
     message: input.message,
     sticker: creator.overlaySetting?.stickerSet ?? 'DEFAULT',
-    tts: tts?.enabled
-      ? {
-          enabled: true,
-          text: buildTtsText({
-            donorName: input.donorName,
-            amount: input.amount,
-            message: input.message,
-            readAmount: tts.readAmount,
-            readName: tts.readName,
-            maxChars: tts.maxChars,
-          }),
-          voice: tts.voice,
-          speed: tts.speed,
-          volume: tts.volume,
-        }
-      : null,
-    durationMs: creator.overlaySetting?.durationMs ?? 7000,
+    effect: merged.effect,
+    banner: merged.banner,
+    tierLabel: merged.tierLabel,
+    tts: buildTts(tier, creator.ttsSetting, input),
+    durationMs: merged.durationMs,
     occurredAt: new Date().toISOString(),
     isTest: true,
   };

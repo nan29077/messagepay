@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { formatNumber } from '@/lib/money';
+import { EffectLayer } from '@/components/overlay/overlay-effects';
 
 /**
  * OBS / PRISM 브라우저 소스용 오버레이 클라이언트.
@@ -11,6 +12,7 @@ import { formatNumber } from '@/lib/money';
  *  - 여러 건이 동시에 도착해도 대기열에 넣고 한 건씩 순차 재생한다.
  *  - TTS 재생이 끝나기 전에는 다음 항목으로 넘어가지 않는다(표시시간과 음성 길이 중 긴 쪽 기준).
  *  - 연결 상태는 방송 화면에 표시하지 않는다. 디버그 모드에서만 배지를 노출한다.
+ *  - 금액 구간(effect/banner/durationMs)이 없는 예전 이벤트도 그대로 재생돼야 한다.
  */
 
 export interface OverlayTts {
@@ -18,6 +20,7 @@ export interface OverlayTts {
   text: string;
   voice: string;
   speed: number;
+  pitch?: number;
   volume: number;
 }
 
@@ -29,6 +32,11 @@ export interface OverlayPayload {
   amount: string;
   message: string;
   sticker: string;
+  /** 금액 구간에서 고른 파티클 효과. 없으면 sticker 값으로 대체한다. */
+  effect?: string;
+  /** 배너 표시 여부. 없으면(예전 이벤트) 표시한다. */
+  banner?: boolean;
+  tierLabel?: string;
   tts: OverlayTts | null;
   durationMs: number;
   occurredAt: string;
@@ -49,9 +57,19 @@ const positionClass: Record<string, string> = {
   BOTTOM_RIGHT: 'items-end justify-end',
 };
 
+/** 배너를 끈 경우에도 효과 재생 시간은 유지된다. */
+function effectOf(payload: OverlayPayload): string {
+  return payload.effect || payload.sticker || 'DEFAULT';
+}
+
+function bannerOf(payload: OverlayPayload): boolean {
+  return payload.banner !== false;
+}
+
 export function OverlayClient({
   creatorId,
   token,
+  preview = false,
   position = 'BOTTOM_CENTER',
   defaultDurationMs = 7000,
   maxMessageLen = 80,
@@ -59,6 +77,8 @@ export function OverlayClient({
 }: {
   creatorId: string;
   token: string;
+  /** 스튜디오 미리보기 모드. 토큰 대신 세션으로 인증한다. */
+  preview?: boolean;
   position?: string;
   defaultDurationMs?: number;
   maxMessageLen?: number;
@@ -106,6 +126,7 @@ export function OverlayClient({
           if (matched) utter.voice = matched;
           utter.lang = matched?.lang ?? 'ko-KR';
           utter.rate = Math.min(2, Math.max(0.5, Number(tts.speed) || 1));
+          utter.pitch = Math.min(2, Math.max(0, Number(tts.pitch ?? 1)));
           utter.volume = Math.min(1, Math.max(0, Number(tts.volume ?? 1)));
 
           let done = false;
@@ -175,7 +196,8 @@ export function OverlayClient({
 
     const connect = () => {
       if (disposed) return;
-      const url = `/api/overlay/${encodeURIComponent(creatorId)}/stream?token=${encodeURIComponent(token)}`;
+      const auth = preview ? 'preview=1' : `token=${encodeURIComponent(token)}`;
+      const url = `/api/overlay/${encodeURIComponent(creatorId)}/stream?${auth}`;
       const es = new EventSource(url);
       source = es;
 
@@ -223,26 +245,32 @@ export function OverlayClient({
       if (timer) clearTimeout(timer);
       source?.close();
     };
-  }, [creatorId, token]);
+  }, [creatorId, token, preview]);
 
   const align = positionClass[position] ?? positionClass.BOTTOM_CENTER;
 
   return (
-    <div className={`pointer-events-none flex h-screen w-screen bg-transparent p-8 ${align}`}>
+    <div className="pointer-events-none fixed inset-0 h-screen w-screen bg-transparent">
+      {/* 파티클은 배너를 끈 구간에서도 재생된다 */}
+      {current && !leaving ? <EffectLayer effect={effectOf(current)} /> : null}
+
+      <div className={`relative flex h-full w-full p-8 ${align}`}>
+        {current && bannerOf(current) ? (
+          <DonationCard payload={current} leaving={leaving} maxMessageLen={maxMessageLen} />
+        ) : null}
+      </div>
+
       {debug ? (
         <span className="fixed left-3 top-3 rounded-md bg-ink-900/80 px-2 py-1 text-[11px] font-semibold text-white">
           {connected ? '연결됨' : '재연결 중'} · 대기 {queueLen}
+          {current?.tierLabel ? ` · ${current.tierLabel}` : ''}
         </span>
-      ) : null}
-
-      {current ? (
-        <DonationCard payload={current} leaving={leaving} maxMessageLen={maxMessageLen} />
       ) : null}
     </div>
   );
 }
 
-// ------------------------------------------------------------------ 알림 카드
+// ------------------------------------------------------------------ 알림 배너
 
 function DonationCard({
   payload,
@@ -260,7 +288,7 @@ function DonationCard({
   return (
     <div
       className={`relative w-[560px] max-w-full rounded-[28px] border border-white/40 bg-white/95 px-7 py-6 shadow-[0_18px_48px_rgba(19,26,58,0.28)] ${
-        leaving ? 'animate-tornado-out' : 'animate-tornado-in'
+        leaving ? 'animate-tornado-out' : 'animate-banner-in'
       }`}
     >
       {payload.isTest ? (
@@ -282,56 +310,9 @@ function DonationCard({
       </div>
 
       <div className="mt-4 flex items-center justify-between">
-        <ThanksSticker variant={payload.sticker} />
+        <ThanksSticker variant={effectOf(payload)} />
         <span className="text-[12px] font-semibold tracking-[0.16em] text-ink-300">DONAIDO</span>
       </div>
-
-      {/* 감사 애니메이션: 카드 등장과 함께 하트/별 파티클이 떠오른다 */}
-      {payload.sticker !== 'NONE' && !leaving ? <ThanksBurst variant={payload.sticker} /> : null}
-    </div>
-  );
-}
-
-/** 후원 도착 시 카드 주위로 떠오르는 감사 파티클 */
-function ThanksBurst({ variant }: { variant: string }) {
-  // 렌더 순수성을 위해 인덱스 기반 결정적 배치를 사용한다 (매 후원마다 동일한 패턴이지만 충분히 자연스럽다)
-  const particles = React.useMemo(
-    () =>
-      Array.from({ length: 12 }, (_, i) => ({
-        left: 4 + ((i * 37 + 11) % 92),
-        delay: (i % 5) * 0.26,
-        duration: 1.8 + (i % 4) * 0.34,
-        size: 14 + (i % 4) * 4,
-        drift: ((i * 53 + 17) % 48) - 24,
-        kind: variant === 'HEART' ? 'heart' : variant === 'STAR' ? 'star' : i % 2 === 0 ? 'heart' : 'star',
-      })),
-    [variant],
-  );
-
-  return (
-    <div aria-hidden className="pointer-events-none absolute inset-x-0 -top-2 bottom-0 overflow-visible">
-      {particles.map((p, i) => (
-        <span
-          key={i}
-          className="animate-thanks-float absolute bottom-2"
-          style={{
-            left: `${p.left}%`,
-            animationDelay: `${p.delay}s`,
-            animationDuration: `${p.duration}s`,
-            ['--drift' as string]: `${p.drift}px`,
-          }}
-        >
-          {p.kind === 'heart' ? (
-            <svg width={p.size} height={p.size} viewBox="0 0 24 24" fill="#f4506b" aria-hidden>
-              <path d="M12 20.5 4.8 13.3a4.4 4.4 0 0 1 6.2-6.2l1 1 1-1a4.4 4.4 0 0 1 6.2 6.2Z" />
-            </svg>
-          ) : (
-            <svg width={p.size} height={p.size} viewBox="0 0 24 24" fill="#fbb914" aria-hidden>
-              <path d="M12 2.5l2.6 5.9 6.4.6-4.8 4.3 1.4 6.2L12 16.2 6.4 19.5l1.4-6.2L3 9l6.4-.6z" />
-            </svg>
-          )}
-        </span>
-      ))}
     </div>
   );
 }
