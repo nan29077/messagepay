@@ -2,7 +2,6 @@ import Link from 'next/link';
 import {
   CircleAlert,
   CircleCheck,
-  MessageSquareText,
   ChevronRight,
   Info,
 } from 'lucide-react';
@@ -11,12 +10,13 @@ import { PageHeader } from '@/components/layout/console-shell';
 import { BannerStrip } from '@/components/public/banner-strip';
 import { PAID_STATUSES } from '@/components/studio/shared';
 import { OnboardingChecklist } from '@/components/studio/onboarding-checklist';
+import { DonationCardGrid } from '@/components/studio/donation-cards';
 import { requireCreator } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { getSettlementSummary } from '@/server/services/settlement';
 import { formatNumber, formatWon } from '@/lib/money';
-import { formatKst, kstMonthKey, kstStartOfDay } from '@/lib/datetime';
-import { donationStatusLabel, moNumberStatusLabel } from '@/lib/labels';
+import { kstMonthKey, kstStartOfDay } from '@/lib/datetime';
+import { moNumberStatusLabel } from '@/lib/labels';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,8 +99,11 @@ export default async function StudioDashboardPage() {
         message: true,
         amount: true,
         status: true,
+        channel: true,
         receivedAt: true,
         anonymous: true,
+        // 전화번호는 저장 시점에 마스킹된 값만 읽는다(원문/암호문은 화면으로 내리지 않는다).
+        donor: { select: { phoneMasked: true } },
       },
     }),
   ]);
@@ -247,16 +250,27 @@ export default async function StudioDashboardPage() {
           </ul>
         </Card>
 
-        {/* 3) 최근 후원 메시지 */}
-        <Card padded={false}>
-          <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3">
-            <p className="text-[13px] font-bold text-ink-900">최근 후원 메시지</p>
-            <Link href="/studio/messages" className="text-[12.5px] font-semibold text-brand-700 hover:underline">
-              문자 관리
-            </Link>
+        {/* 3) 최근 문자 후원 내역 — 카드로 한 건씩 읽히게 */}
+        <section>
+          <div className="mb-2.5 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-[15px] font-bold tracking-tight text-ink-900">최근 문자 후원 내역</h2>
+              <p className="mt-0.5 text-[12px] text-ink-400">
+                최근 {recent.length}건입니다. 카드를 누르면 후원 상세로 이동합니다.
+              </p>
+            </div>
+            <span className="flex shrink-0 items-center gap-3">
+              <Link href="/studio/messages" className="text-[12.5px] font-semibold text-ink-500 hover:underline">
+                문자 관리
+              </Link>
+              <Link href="/studio/donations" className="text-[12.5px] font-semibold text-brand-700 hover:underline">
+                전체 보기
+              </Link>
+            </span>
           </div>
+
           {recent.length === 0 ? (
-            <div className="p-4">
+            <Card>
               <EmptyState
                 title="아직 후원 내역이 없습니다"
                 description="방송 화면에 후원 번호를 안내하면 후원이 시작됩니다. 안내 문구는 문자 관리에서 복사할 수 있습니다."
@@ -266,41 +280,25 @@ export default async function StudioDashboardPage() {
                   </LinkButton>
                 }
               />
-            </div>
+            </Card>
           ) : (
-            <ul>
-              {recent.map((d) => {
-                const label = donationStatusLabel[d.status];
-                return (
-                  <li key={d.id} className="border-b border-ink-100 last:border-0">
-                    <Link href={`/studio/donations/${d.id}`} className="block px-4 py-3 transition-colors hover:bg-ink-50">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-[13.5px] font-bold text-ink-900">
-                              {d.anonymous ? '익명의 후원자' : d.displayName}
-                            </span>
-                            <Badge tone={label.tone}>{label.text}</Badge>
-                          </div>
-                          <p className="mt-1 flex items-start gap-1.5 text-[12.5px] leading-relaxed text-ink-500">
-                            <MessageSquareText size={14} strokeWidth={1.6} className="mt-0.5 shrink-0 text-ink-300" />
-                            <span className="line-clamp-1">{d.message || '(내용 없음)'}</span>
-                          </p>
-                          <p className="mt-1 text-[11px] text-ink-300">
-                            {d.transactionNo} · {formatKst(d.receivedAt, false)}
-                          </p>
-                        </div>
-                        <span className="shrink-0 text-[14.5px] font-extrabold tabular-nums text-ink-900">
-                          {formatWon(d.amount)}
-                        </span>
-                      </div>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+            <DonationCardGrid
+              dense
+              items={recent.map((d) => ({
+                id: d.id,
+                transactionNo: d.transactionNo,
+                receivedAt: d.receivedAt,
+                displayName: d.displayName,
+                anonymous: d.anonymous,
+                message: d.message,
+                amount: d.amount,
+                status: d.status,
+                channel: d.channel,
+                phoneMasked: d.donor?.phoneMasked ?? null,
+              }))}
+            />
           )}
-        </Card>
+        </section>
       </div>
     </>
   );

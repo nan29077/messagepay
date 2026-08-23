@@ -1,8 +1,9 @@
 import Link from 'next/link';
-import { Search } from 'lucide-react';
-import { Badge, Button, Card, EmptyState, Field, Input, Select, Table, Td, Th } from '@/components/ui';
+import { LayoutGrid, Rows3, Search } from 'lucide-react';
+import { Badge, Button, Card, EmptyState, Field, Input, Select, Table, Td, Th, cx } from '@/components/ui';
 import { PageHeader } from '@/components/layout/console-shell';
 import { buildQuery, one, type SearchParamsRecord } from '@/components/studio/shared';
+import { DonationCardGrid } from '@/components/studio/donation-cards';
 import { requireCreator } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { formatNumber, formatWon } from '@/lib/money';
@@ -22,6 +23,18 @@ const PERIODS = [
 ] as const;
 
 const STATUS_VALUES = Object.keys(donationStatusLabel) as DonationStatus[];
+
+/**
+ * 보기 방식. 기본은 카드다.
+ * 표는 컬럼이 12개라 모바일에서 가로 스크롤 없이는 읽을 수 없으므로,
+ * 한 건씩 세로로 읽히는 카드를 기본으로 두고 표는 선택할 수 있게 남긴다.
+ */
+const VIEWS = [
+  { value: 'card', label: '카드', icon: LayoutGrid },
+  { value: 'table', label: '표', icon: Rows3 },
+] as const;
+
+type ViewMode = (typeof VIEWS)[number]['value'];
 
 function periodStart(period: string): Date | null {
   const now = new Date();
@@ -43,6 +56,8 @@ export default async function StudioDonationsPage({
   const status = one(sp.status);
   const q = one(sp.q).trim();
   const page = Math.max(1, Number(one(sp.page)) || 1);
+  const rawView = one(sp.view);
+  const view: ViewMode = VIEWS.some((v) => v.value === rawView) ? (rawView as ViewMode) : 'card';
 
   const where: Prisma.DonationWhereInput = { creatorId };
   const gte = periodStart(period);
@@ -77,7 +92,8 @@ export default async function StudioDonationsPage({
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const base = { period, status, q };
+  // 보기 방식은 페이지를 넘겨도 유지된다.
+  const base = { period, status, q, view };
 
   return (
     <>
@@ -115,11 +131,61 @@ export default async function StudioDonationsPage({
               <Search size={16} strokeWidth={1.7} />
               조회
             </Button>
+            {/* 조회해도 보기 방식이 초기화되지 않게 함께 넘긴다 */}
+            <input type="hidden" name="view" value={view} />
           </form>
         </Card>
 
+        {/* 보기 전환 */}
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[12.5px] text-ink-400">
+            후원 {formatNumber(total)}건 중 {formatNumber(rows.length)}건 표시
+          </p>
+          <nav
+            aria-label="보기 방식"
+            className="flex shrink-0 items-center gap-1 rounded-xl border border-ink-100 bg-white p-1"
+          >
+            {VIEWS.map((v) => {
+              const Icon = v.icon;
+              const active = view === v.value;
+              return (
+                <Link
+                  key={v.value}
+                  href={`/studio/donations${buildQuery(base, { view: v.value, page })}`}
+                  aria-current={active ? 'page' : undefined}
+                  className={cx(
+                    'inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-[12.5px] font-bold transition-colors',
+                    active ? 'bg-brand-400 text-ink-900 shadow-sm' : 'text-ink-400 hover:bg-ink-50 hover:text-ink-800',
+                  )}
+                >
+                  <Icon size={15} strokeWidth={1.7} />
+                  {v.label}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+
         {rows.length === 0 ? (
           <EmptyState title="조건에 맞는 후원 내역이 없습니다" description="기간이나 상태 조건을 바꿔서 다시 조회해 보세요." />
+        ) : view === 'card' ? (
+          <DonationCardGrid
+            items={rows.map((d) => ({
+              id: d.id,
+              transactionNo: d.transactionNo,
+              receivedAt: d.receivedAt,
+              displayName: d.displayName,
+              anonymous: d.anonymous,
+              message: d.message,
+              amount: d.amount,
+              status: d.status,
+              channel: d.channel,
+              // 마스킹된 값만 내려온다. 원문 전화번호는 크리에이터에게 제공하지 않는다.
+              phoneMasked: d.donor?.phoneMasked ?? null,
+              delivery: { youtube: d.youtubeStatus, overlay: d.overlayStatus, mt: d.mtStatus },
+              refundStatus: d.refunds[0]?.status ?? null,
+            }))}
+          />
         ) : (
           <Table className="min-w-full">
             <thead>
