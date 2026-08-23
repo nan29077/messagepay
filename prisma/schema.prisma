@@ -481,6 +481,11 @@ model CreatorProfile {
   /// 크리에이터별 결제 모드 오버라이드 (null 이면 전역 설정)
   paymentMode      PaymentMode?  @map("payment_mode")
   businessNo       String?       @map("business_no")
+  /// 온보딩 체크리스트 중 자동 판별이 불가능해 크리에이터가 직접 체크하는 항목.
+  /// OBS/프리즘 등 방송 프로그램에 오버레이 URL 을 등록했는지 여부.
+  onboardingObsLinked Boolean    @default(false) @map("onboarding_obs_linked")
+  /// 테스트 후원 미리보기로 실제 화면에 표시되는 것까지 확인했는지 여부.
+  onboardingTestDone  Boolean    @default(false) @map("onboarding_test_done")
   approvedAt       DateTime?     @map("approved_at") @db.Timestamptz(3)
   suspendedAt      DateTime?     @map("suspended_at") @db.Timestamptz(3)
   createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)

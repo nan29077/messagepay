@@ -287,6 +287,50 @@ const POSITIONS = [
   'BOTTOM_RIGHT',
 ] as const;
 
+// ===========================================================================
+// 온보딩 체크리스트 (수동 체크 항목)
+// ===========================================================================
+
+/** 크리에이터가 직접 체크하는 온보딩 항목. 서버가 자동 판별할 수 없는 두 가지다. */
+const MANUAL_ONBOARDING_STEPS = {
+  obsLinked: {
+    field: 'onboardingObsLinked',
+    done: 'OBS/프리즘에 오버레이 URL 등록을 완료로 표시했습니다.',
+  },
+  testDone: {
+    field: 'onboardingTestDone',
+    done: '테스트 후원 확인을 완료로 표시했습니다.',
+  },
+} as const;
+
+type ManualOnboardingStep = keyof typeof MANUAL_ONBOARDING_STEPS;
+
+function isManualOnboardingStep(v: string): v is ManualOnboardingStep {
+  return Object.prototype.hasOwnProperty.call(MANUAL_ONBOARDING_STEPS, v);
+}
+
+/**
+ * 온보딩 체크리스트의 수동 항목을 완료로 표시한다.
+ * 화면 안내용 플래그일 뿐이며 결제·송출 동작에는 영향을 주지 않는다.
+ */
+export async function completeOnboardingStepAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withCreator(async (creatorId) => {
+    const step = text(formData, 'step');
+    if (!isManualOnboardingStep(step)) {
+      return { ok: false, message: '알 수 없는 항목입니다. 화면을 새로고침한 뒤 다시 시도해 주세요.' };
+    }
+
+    const { field, done } = MANUAL_ONBOARDING_STEPS[step];
+    await prisma.creatorProfile.update({ where: { id: creatorId }, data: { [field]: true } });
+
+    revalidatePath('/studio');
+    return { ok: true, message: done };
+  });
+}
+
 /**
  * 브라우저 소스 URL 재발급.
  * tokenHash 만 저장하므로 원문 복구가 불가능하다. 발급 직후 1회만 전체 URL 을 반환한다.

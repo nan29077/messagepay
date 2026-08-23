@@ -10,6 +10,7 @@ import { Badge, Card, EmptyState, LinkButton } from '@/components/ui';
 import { PageHeader } from '@/components/layout/console-shell';
 import { BannerStrip } from '@/components/public/banner-strip';
 import { PAID_STATUSES } from '@/components/studio/shared';
+import { OnboardingChecklist } from '@/components/studio/onboarding-checklist';
 import { requireCreator } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { getSettlementSummary } from '@/server/services/settlement';
@@ -137,6 +138,9 @@ export default async function StudioDashboardPage() {
 
       <div className="space-y-4">
         <BannerStrip position="CONSOLE_TOP" />
+
+        {/* 0) 신규 크리에이터 온보딩 체크리스트 — 모두 완료되면 스스로 사라진다 */}
+        <OnboardingChecklist creatorId={creatorId} />
 
         {nextStep ? (
           <Link
