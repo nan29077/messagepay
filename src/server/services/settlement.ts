@@ -82,13 +82,104 @@ export function calculateWithholding(amount: bigint): WithholdingBreakdown {
   return { incomeTax, localTax, total: incomeTax + localTax, exempt: false };
 }
 
+/** 부가가치세율 10% */
+export const VAT_RATE = 0.1;
+
 export interface FeeBreakdown {
   gross: bigint;
+  /** 결제수수료 차감액 (부가세 포함 총액) */
   pgFee: bigint;
+  /** 결제수수료 공급가액 (부가세 제외) */
+  pgFeeSupply: bigint;
+  /** 결제수수료에 붙는 부가세 */
+  pgFeeVat: bigint;
+  /** 플랫폼수수료 차감액 (부가세 포함 총액) */
   platformFee: bigint;
+  /** 플랫폼수수료 공급가액 (부가세 제외) */
+  platformFeeSupply: bigint;
+  /** 플랫폼수수료에 붙는 부가세 */
+  platformFeeVat: bigint;
+  /** 부가세 합계 = pgFeeVat + platformFeeVat */
+  vat: bigint;
   net: bigint;
   pgFeeRate: string;
   platformFeeRate: string;
+  /** 적용된 정책의 부가세 포함 여부 */
+  vatIncluded: boolean;
+}
+
+/** computeFees 가 필요로 하는 수수료 정책 값. FeePolicy 행을 그대로 넘길 수 있다. */
+export interface FeeRates {
+  pgFeeRate: string | number;
+  pgFixedFee?: bigint | null;
+  platformFeeRate: string | number;
+  vatIncluded: boolean;
+}
+
+/** 유효한 수수료 정책이 없을 때 쓰는 기본값. FeePolicy 스키마 기본값과 같아야 한다. */
+export const FALLBACK_FEE_RATES: FeeRates = {
+  pgFeeRate: '0.018',
+  pgFixedFee: 0n,
+  platformFeeRate: '0.15',
+  vatIncluded: true,
+};
+
+/**
+ * 수수료 계산 (부가세 포함).
+ *
+ *   공급가액  = 후원금 x 요율            (원 미만 버림)
+ *   부가세    = 공급가액 x 10%           (원 미만 버림)
+ *   차감액    = 공급가액 + 부가세
+ *   정산금    = 후원금 - 결제수수료 차감액 - 플랫폼수수료 차감액
+ *
+ * `vatIncluded = true` 이면 요율 자체에 부가세가 이미 포함된 것으로 보고
+ * **부가세를 추가로 차감하지 않는다.** (요율 10% = 부가세 포함 10%)
+ *
+ * 예) 3,000원 후원 / 플랫폼 10% / vatIncluded=false / 결제수수료 0%
+ *     공급가액 300원 + 부가세 30원 = 330원 차감 -> 크리에이터 정산 2,670원
+ *
+ * 예) 같은 조건에 vatIncluded=true
+ *     300원만 차감 -> 크리에이터 정산 2,700원
+ */
+export function computeFees(amount: bigint, rates: FeeRates): FeeBreakdown {
+  const pgRate = String(rates.pgFeeRate);
+  const platformRate = String(rates.platformFeeRate);
+
+  const pgFeeSupply = applyRate(amount, pgRate, rates.pgFixedFee ?? 0n);
+  const platformFeeSupply = applyRate(amount, platformRate);
+
+  const pgFeeVat = rates.vatIncluded ? 0n : applyRate(pgFeeSupply, VAT_RATE);
+  const platformFeeVat = rates.vatIncluded ? 0n : applyRate(platformFeeSupply, VAT_RATE);
+
+  const pgFee = pgFeeSupply + pgFeeVat;
+  const platformFee = platformFeeSupply + platformFeeVat;
+  const net = amount - pgFee - platformFee;
+
+  return {
+    gross: amount,
+    pgFee,
+    pgFeeSupply,
+    pgFeeVat,
+    platformFee,
+    platformFeeSupply,
+    platformFeeVat,
+    vat: pgFeeVat + platformFeeVat,
+    net: net < 0n ? 0n : net,
+    pgFeeRate: pgRate,
+    platformFeeRate: platformRate,
+    vatIncluded: rates.vatIncluded,
+  };
+}
+
+/** FeePolicy 행(또는 null)을 computeFees 입력으로 바꾼다. */
+export function feeRatesOf(policy: FeeRates | null | undefined): FeeRates {
+  if (!policy) return FALLBACK_FEE_RATES;
+  return {
+    pgFeeRate: policy.pgFeeRate,
+    pgFixedFee: policy.pgFixedFee ?? 0n,
+    platformFeeRate: policy.platformFeeRate,
+    vatIncluded: policy.vatIncluded,
+  };
 }
 
 export async function resolveFeePolicy(creatorId: string, now: Date = new Date()) {
@@ -107,22 +198,19 @@ export async function resolveFeePolicy(creatorId: string, now: Date = new Date()
 
 export async function calculateFees(creatorId: string, amount: bigint): Promise<FeeBreakdown> {
   const policy = await resolveFeePolicy(creatorId);
-  const pgRate = policy ? policy.pgFeeRate.toString() : '0.018';
-  const platformRate = policy ? policy.platformFeeRate.toString() : '0.15';
-  const pgFixed = policy?.pgFixedFee ?? 0n;
-
-  const pgFee = applyRate(amount, pgRate, pgFixed);
-  const platformFee = applyRate(amount, platformRate);
-  const net = amount - pgFee - platformFee;
-
-  return {
-    gross: amount,
-    pgFee,
-    platformFee,
-    net: net < 0n ? 0n : net,
-    pgFeeRate: pgRate,
-    platformFeeRate: platformRate,
-  };
+  return computeFees(
+    amount,
+    feeRatesOf(
+      policy
+        ? {
+            pgFeeRate: policy.pgFeeRate.toString(),
+            pgFixedFee: policy.pgFixedFee,
+            platformFeeRate: policy.platformFeeRate.toString(),
+            vatIncluded: policy.vatIncluded,
+          }
+        : null,
+    ),
+  );
 }
 
 export interface LedgerInput {
@@ -161,6 +249,15 @@ export async function appendLedger(entries: LedgerInput[], client: LedgerClient 
 }
 
 /**
+ * 수수료 분개 메모.
+ * 부가세는 별도 분개를 만들지 않고 해당 수수료 분개에 포함해 차감하되(원장 잔액 = 실제 정산금),
+ * 얼마가 부가세인지 메모로 남겨 사후 대사가 가능하게 한다.
+ */
+function feeMemo(label: string, rate: string, vat: bigint): string {
+  return vat > 0n ? `${label} ${rate} (부가세 ${vat.toString()}원 포함)` : `${label} ${rate}`;
+}
+
+/**
  * 후원 결제 성공 시 3분개 (총액 / PG수수료 / 플랫폼수수료).
  *
  * 반드시 결제 승인 기록과 **같은 트랜잭션**에서 호출한다(client 로 tx 전달).
@@ -192,11 +289,13 @@ export async function postDonationSettlement(
       },
       {
         creatorId: input.creatorId, entryType: 'PG_FEE', amount: -input.fees.pgFee,
-        donationId: input.donationId, occurredAt: input.occurredAt, memo: `결제수수료 ${input.fees.pgFeeRate}`,
+        donationId: input.donationId, occurredAt: input.occurredAt,
+        memo: feeMemo('결제수수료', input.fees.pgFeeRate, input.fees.pgFeeVat),
       },
       {
         creatorId: input.creatorId, entryType: 'PLATFORM_FEE', amount: -input.fees.platformFee,
-        donationId: input.donationId, occurredAt: input.occurredAt, memo: `플랫폼수수료 ${input.fees.platformFeeRate}`,
+        donationId: input.donationId, occurredAt: input.occurredAt,
+        memo: feeMemo('플랫폼수수료', input.fees.platformFeeRate, input.fees.platformFeeVat),
       },
     ],
     client,

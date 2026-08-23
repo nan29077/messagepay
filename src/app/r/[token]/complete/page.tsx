@@ -1,11 +1,12 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { CircleCheck, CircleX, Landmark, MessageSquare, RefreshCw, ShieldCheck } from 'lucide-react';
+import { CircleCheck, CircleX, CreditCard, Landmark, MessageSquare, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Card, CardTitle, DataRow, LinkButton, Notice } from '@/components/ui';
 import { prisma } from '@/server/db';
 import { tokenHash } from '@/lib/crypto';
 import { completeRegistrationAction } from '@/app/actions/registration';
 import { LinkShell } from '../link-shell';
+import { CompleteRedirect } from '../complete-redirect';
 
 /**
  * 결제창(현재는 Mock) 복귀 처리 화면.
@@ -67,7 +68,9 @@ export default async function RegistrationCompletePage({
   const [link, owner] = await Promise.all([
     prisma.secureLink.findUnique({
       where: { tokenHash: tokenHash(token) },
-      select: { purpose: true, phoneHash: true },
+      // creatorId 는 완료 후 이동할 후원 페이지를 찾는 데 쓴다.
+      // (등록 건에 크리에이터가 비어 있는 예전 데이터의 대비책)
+      select: { purpose: true, phoneHash: true, creatorId: true },
     }),
     registration
       ? prisma.donorProfile.findUnique({ where: { id: registration.donorId }, select: { phoneHash: true } })
@@ -114,17 +117,20 @@ export default async function RegistrationCompletePage({
   // 이미 완료된 등록이면 재실행하지 않는다(1회용 링크 보호).
   let ok = registration.status === 'COMPLETED';
   let message: string | undefined;
-  let resultBankName: string | null = null;
+  let resultIssuer: string | null = null;
   let resultTail4: string | null = null;
+  // 계좌 빌키와 카드 빌링키를 같은 화면에서 다룬다. 표기 문구만 달라진다.
+  let resultMethod: 'ACCOUNT' | 'CARD' = registration.method;
 
   if (ok) {
     const active = await prisma.paymentMethodToken.findFirst({
       where: { donorId: registration.donorId, status: 'ACTIVE' },
       orderBy: { registeredAt: 'desc' },
-      select: { bankName: true, accountTail4: true },
+      select: { method: true, bankName: true, accountTail4: true, cardIssuer: true, cardTail4: true },
     });
-    resultBankName = active?.bankName ?? null;
-    resultTail4 = active?.accountTail4 ?? null;
+    resultMethod = active?.method ?? resultMethod;
+    resultIssuer = (resultMethod === 'CARD' ? active?.cardIssuer : active?.bankName) ?? null;
+    resultTail4 = (resultMethod === 'CARD' ? active?.cardTail4 : active?.accountTail4) ?? null;
   } else {
     const res = await completeRegistrationAction({
       token,
@@ -133,8 +139,9 @@ export default async function RegistrationCompletePage({
     });
     ok = res.ok;
     message = res.message;
-    resultBankName = res.bankName ?? null;
-    resultTail4 = res.accountTail4 ?? null;
+    resultMethod = res.method ?? resultMethod;
+    resultIssuer = (resultMethod === 'CARD' ? res.cardIssuer : res.bankName) ?? null;
+    resultTail4 = (resultMethod === 'CARD' ? res.cardTail4 : res.accountTail4) ?? null;
   }
 
   if (!ok) {
@@ -142,23 +149,26 @@ export default async function RegistrationCompletePage({
       <LinkShell>
         <FailCard
           token={token}
-          title="계좌 등록에 실패했습니다"
-          message={message ?? '계좌 등록을 완료하지 못했습니다.'}
+          title={resultMethod === 'CARD' ? '카드 등록에 실패했습니다' : '계좌 등록에 실패했습니다'}
+          message={message ?? '결제수단 등록을 완료하지 못했습니다.'}
         />
       </LinkShell>
     );
   }
 
-  const creator = registration.creatorId
+  // 어느 크리에이터로 돌아가야 하는지: 등록 건에 기록된 값을 우선하고, 없으면 링크에 기록된 값을 쓴다.
+  const creatorId = registration.creatorId ?? link?.creatorId ?? null;
+
+  const creator = creatorId
     ? await prisma.creatorProfile.findUnique({
-        where: { id: registration.creatorId },
+        where: { id: creatorId },
         select: { code: true, displayName: true },
       })
     : null;
 
-  const moNumber = registration.creatorId
+  const moNumber = creatorId
     ? await prisma.creatorMoNumber.findFirst({
-        where: { creatorId: registration.creatorId, status: 'ASSIGNED' },
+        where: { creatorId, status: 'ASSIGNED' },
         select: { phoneNumber: true, keyword: true },
       })
     : null;
@@ -166,18 +176,28 @@ export default async function RegistrationCompletePage({
   return (
     <LinkShell>
       <div className="space-y-3">
+        {/* 가입 완료 후에는 바로 문자를 보낼 수 있도록 크리에이터 후원 페이지로 이동시킨다. */}
+        {creator ? <CompleteRedirect creatorCode={creator.code} creatorName={creator.displayName} /> : null}
+
         <Card>
           <div className="flex items-center gap-2 text-success-500">
             <CircleCheck size={20} strokeWidth={1.7} />
-            <p className="text-[17px] font-extrabold text-ink-900">계좌 등록이 완료되었습니다</p>
+            <p className="text-[17px] font-extrabold text-ink-900">
+              {resultMethod === 'CARD' ? '카드 등록이 완료되었습니다' : '계좌 등록이 완료되었습니다'}
+            </p>
           </div>
           <div className="mt-3">
             <DataRow
-              label="등록 계좌"
+              label={resultMethod === 'CARD' ? '등록 카드' : '등록 계좌'}
               value={
                 <span className="inline-flex items-center gap-1.5">
-                  <Landmark size={14} strokeWidth={1.7} className="text-brand-700" />
-                  {resultBankName ?? '등록 은행'} {resultTail4 ? `****${resultTail4}` : ''}
+                  {resultMethod === 'CARD' ? (
+                    <CreditCard size={14} strokeWidth={1.7} className="text-brand-700" />
+                  ) : (
+                    <Landmark size={14} strokeWidth={1.7} className="text-brand-700" />
+                  )}
+                  {resultIssuer ?? (resultMethod === 'CARD' ? '등록 카드사' : '등록 은행')}{' '}
+                  {resultTail4 ? `****${resultTail4}` : ''}
                 </span>
               }
             />
@@ -195,13 +215,16 @@ export default async function RegistrationCompletePage({
             ) : null}
           </div>
           <p className="mt-3 text-[12px] leading-relaxed text-ink-400">
-            계좌번호 원문은 도네이도에 저장되지 않습니다. 은행명과 끝 4자리만 보관합니다.
+            {resultMethod === 'CARD'
+              ? '카드번호 원문은 도네이도에 저장되지 않습니다. 카드사명과 끝 4자리만 보관합니다.'
+              : '계좌번호 원문은 도네이도에 저장되지 않습니다. 은행명과 끝 4자리만 보관합니다.'}
           </p>
         </Card>
 
         <Notice tone="brand" title="이제 같은 번호로 문자를 보내면 후원이 접수됩니다">
-          문자를 보내면 확인 링크가 발송되고, 확인 버튼을 누르면 등록한 계좌에서 후원금이 출금됩니다. 문자 1건마다
-          출금이 요청되니 반복 발송에 주의해 주세요.
+          문자를 보내면 확인 링크가 발송되고, 확인 버튼을 누르면 등록한
+          {resultMethod === 'CARD' ? ' 카드로 후원금이 결제됩니다' : ' 계좌에서 후원금이 출금됩니다'}. 문자 1건마다
+          결제가 요청되니 반복 발송에 주의해 주세요.
         </Notice>
 
         {moNumber ? (

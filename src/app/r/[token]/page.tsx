@@ -15,7 +15,8 @@ import { resolveSecureLink } from '@/server/services/secure-link';
 import { loadRegistrationContext } from '@/server/services/donor-registration';
 import { loadConfirmContext } from '@/server/services/donation-confirm';
 import { resolvePolicy } from '@/server/services/limits';
-import { applyRate, formatWon } from '@/lib/money';
+import { formatWon } from '@/lib/money';
+import { computeFees } from '@/server/services/settlement';
 import { LinkShell } from './link-shell';
 import { RegisterForm, type TermsItem } from './register-form';
 import { ConfirmPanel } from './confirm-panel';
@@ -173,11 +174,14 @@ async function RegisterScreen({ token }: { token: string }) {
   ]);
 
   const amount = ctx.donationAmount;
-  const pgRate = feePolicy ? feePolicy.pgFeeRate.toString() : '0.018';
-  const platformRate = feePolicy ? feePolicy.platformFeeRate.toString() : '0.15';
+  // 실제 정산과 같은 계산식을 쓴다. 화면에서 따로 계산하면 부가세 처리가 어긋난다.
+  const fees = computeFees(amount, {
+    pgFeeRate: feePolicy ? feePolicy.pgFeeRate.toString() : '0.018',
+    pgFixedFee: feePolicy?.pgFixedFee ?? 0n,
+    platformFeeRate: feePolicy ? feePolicy.platformFeeRate.toString() : '0.15',
+    vatIncluded: feePolicy ? feePolicy.vatIncluded : true,
+  });
   const pgFixed = feePolicy?.pgFixedFee ?? 0n;
-  const pgFee = applyRate(amount, pgRate, pgFixed);
-  const platformFee = applyRate(amount, platformRate);
   const pct = (rate: string) => `${(Number(rate) * 100).toFixed(1)}%`;
 
   // 동일 유형의 약관이 여러 버전 활성화된 경우 최신(effectiveFrom 최신) 1건만 노출한다.
@@ -242,11 +246,15 @@ async function RegisterScreen({ token }: { token: string }) {
         </div>
         <DataRow label="문자 1건당 후원금" value={formatWon(amount)} />
         <DataRow label="후원자 출금 금액" value={`${formatWon(amount)} (수수료 별도 부담 없음)`} />
-        <DataRow label="결제 수수료" value={`${pct(pgRate)}${pgFixed > 0n ? ` + ${formatWon(pgFixed)}` : ''} (${formatWon(pgFee)})`} />
-        <DataRow label="플랫폼 수수료" value={`${pct(platformRate)} (${formatWon(platformFee)})`} />
+        <DataRow
+          label="결제 수수료"
+          value={`${pct(fees.pgFeeRate)}${pgFixed > 0n ? ` + ${formatWon(pgFixed)}` : ''} (${formatWon(fees.pgFeeSupply)})`}
+        />
+        <DataRow label="플랫폼 수수료" value={`${pct(fees.platformFeeRate)} (${formatWon(fees.platformFeeSupply)})`} />
+        {fees.vat > 0n ? <DataRow label="수수료 부가세 (10%)" value={formatWon(fees.vat)} /> : null}
         <p className="mt-2 text-[12px] leading-relaxed text-ink-400">
-          수수료는 크리에이터 정산금에서 차감되며, 후원자는 문자 1건당 후원금만 출금됩니다. 문자 발송 요금은 통신사
-          정책에 따라 별도로 부과될 수 있습니다.
+          수수료{fees.vat > 0n ? '와 그 부가세는' : '는'} 크리에이터 정산금에서 차감되며, 후원자는 문자 1건당
+          후원금만 출금됩니다. 문자 발송 요금은 통신사 정책에 따라 별도로 부과될 수 있습니다.
         </p>
       </Card>
 

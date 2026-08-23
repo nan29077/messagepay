@@ -1,13 +1,14 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { Camera, Music2, Radio, Video } from 'lucide-react';
+import { Camera, MessageSquareText, Music2, Radio, Video } from 'lucide-react';
 import { Badge, Card, CardTitle, DataRow, Field, Input, Notice, SectionTitle, Textarea, cx } from '@/components/ui';
 import { DEFAULT_BANNERS, defaultBannerFor } from '@/lib/banners';
 import { PageHeader } from '@/components/layout/console-shell';
 import { ActionForm } from '@/components/studio/action-form';
 import { ImageUploadField } from '@/components/studio/image-upload-field';
 import { DonationPageShare } from '@/components/studio/donation-page-share';
-import { updateDonationSettingsAction, updateDonationPageAction } from '@/app/actions/studio';
+import { updateDonationSettingsAction, updateDonationPageAction, updateThanksMessageAction } from '@/app/actions/studio';
+import { THANKS_MT_MAX_LENGTH, THANKS_MT_VARIABLES, tplDonationSuccess } from '@/server/services/mt-templates';
 import { requireCreator } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { resolvePolicy } from '@/server/services/limits';
@@ -20,10 +21,20 @@ export const dynamic = 'force-dynamic';
 
 const SETTINGS_TABS = [
   { key: 'amount', label: '후원금' },
+  { key: 'thanks', label: '감사문자' },
   { key: 'payment', label: '결제 모드' },
   { key: 'number', label: '문자번호' },
   { key: 'page', label: '후원페이지' },
 ] as const;
+
+/** 감사 문자 미리보기 예시값. 실제 발송과 같은 템플릿 함수에 넣어 결과를 보여준다. */
+const THANKS_PREVIEW = {
+  donorName: '홍길동',
+  creatorName: '도네이도',
+  amount: 3_000n,
+  message: '오늘 방송 정말 재밌었어요',
+  cumulative: 12_000n,
+} as const;
 
 type SettingsTab = (typeof SETTINGS_TABS)[number]['key'];
 
@@ -50,6 +61,7 @@ export default async function StudioSettingsPage({
         minAmount: true,
         maxAmount: true,
         paymentMode: true,
+        thanksMtMessage: true,
         bannerUrl: true,
         liveOn: true,
         liveUrl: true,
@@ -75,13 +87,24 @@ export default async function StudioSettingsPage({
   const effMax = creator.maxAmount < policy.maxAmount ? creator.maxAmount : policy.maxAmount;
   const donationPageUrl = `${await getPublicBaseUrl()}/c/${creator.code}`;
 
+  // 지금 설정으로 실제 발송되는 문장과, 설정을 비웠을 때의 기본 문장.
+  const thanksPreview = tplDonationSuccess({
+    ...THANKS_PREVIEW,
+    creatorName: creator.displayName,
+    custom: creator.thanksMtMessage,
+  }).text;
+  const thanksDefaultPreview = tplDonationSuccess({
+    ...THANKS_PREVIEW,
+    creatorName: creator.displayName,
+  }).text;
+
   return (
     <>
       <PageHeader title="후원 설정" description="문자 1건당 후원금과 수신번호, 후원 페이지 정보를 관리합니다." />
 
       <nav
         aria-label="후원 설정 메뉴"
-        className="mb-5 grid grid-cols-4 overflow-hidden rounded-2xl border border-ink-100 bg-white p-1 shadow-[0_8px_24px_rgba(23,22,26,0.05)]"
+        className="mb-5 grid grid-cols-5 overflow-hidden rounded-2xl border border-ink-100 bg-white p-1 shadow-[0_8px_24px_rgba(23,22,26,0.05)]"
       >
         {SETTINGS_TABS.map((tab) => (
           <Link
@@ -122,6 +145,74 @@ export default async function StudioSettingsPage({
               <DataRow label="한도 정책 1건 허용 범위" value={`${formatWon(policy.minAmount)} ~ ${formatWon(policy.maxAmount)}`} />
               <DataRow label="후원자 1인 1일 한도" value={formatWon(policy.donorDailyLimit)} />
               <DataRow label="내 채널 기준 후원자 1일 한도" value={formatWon(policy.perCreatorDailyLimit)} />
+            </div>
+          </Card>
+        </section> : null}
+
+        {activeTab === 'thanks' ? <section>
+          <SectionTitle
+            title="감사 문자 내용 설정"
+            description="후원 결제가 완료됐을 때 후원자에게 발송되는 문자 본문입니다."
+          />
+          <Card>
+            <ActionForm action={updateThanksMessageAction} submitLabel="감사 문자 저장">
+              <Field
+                label="감사 문자 본문"
+                hint={`${THANKS_MT_MAX_LENGTH}자 이내. 비워두면 기본 문구로 발송됩니다.`}
+              >
+                <Textarea
+                  name="thanksMtMessage"
+                  rows={4}
+                  maxLength={THANKS_MT_MAX_LENGTH}
+                  defaultValue={creator.thanksMtMessage ?? ''}
+                  placeholder={'{후원자}님 감사합니다! {금액} 후원 잘 받았어요. 남겨주신 말: {메시지}'}
+                />
+              </Field>
+
+              <div className="rounded-2xl border border-ink-100 bg-ink-50 px-4 py-3">
+                <p className="flex items-center gap-1.5 text-[12.5px] font-extrabold text-ink-900">
+                  <MessageSquareText size={16} strokeWidth={1.7} className="text-brand-700" />
+                  사용할 수 있는 치환자
+                </p>
+                <ul className="mt-2 space-y-1">
+                  {THANKS_MT_VARIABLES.map((v) => (
+                    <li key={v.token} className="flex items-center gap-2 text-[12px] text-ink-700">
+                      <span className="rounded bg-white px-1.5 py-0.5 font-mono text-[11.5px] font-bold text-brand-700">
+                        {v.token}
+                      </span>
+                      {v.label}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </ActionForm>
+
+            <div className="mt-5">
+              <p className="text-[13px] font-bold text-ink-900">현재 설정으로 발송되는 문자</p>
+              <p className="mt-2 whitespace-pre-wrap rounded-2xl bg-brand-50 px-4 py-3 text-[13px] leading-relaxed text-ink-900">
+                {thanksPreview}
+              </p>
+              <p className="mt-1.5 text-[11.5px] text-ink-400">
+                후원자 이름·금액·메시지는 실제 후원 값으로 바뀝니다. 저장한 뒤 화면이 갱신되면 위 미리보기도 함께
+                바뀝니다.
+              </p>
+            </div>
+
+            {creator.thanksMtMessage ? (
+              <div className="mt-4">
+                <p className="text-[13px] font-bold text-ink-900">기본 문구 (설정을 비우면 이 문구로 발송)</p>
+                <p className="mt-2 whitespace-pre-wrap rounded-2xl bg-ink-50 px-4 py-3 text-[13px] leading-relaxed text-ink-500">
+                  {thanksDefaultPreview}
+                </p>
+              </div>
+            ) : null}
+
+            <div className="mt-4">
+              <Notice tone="warning" title="링크와 개인정보는 넣을 수 없습니다">
+                감사 문자에 링크(http, www)나 전화번호·계좌번호를 넣으면 저장되지 않습니다. 통신사 스팸 차단으로 문자
+                자체가 전달되지 않거나 후원자가 피싱으로 오인할 수 있기 때문입니다. 발신 주체 표기 [도네이도] 는 항상 문장
+                앞에 자동으로 붙습니다.
+              </Notice>
             </div>
           </Card>
         </section> : null}

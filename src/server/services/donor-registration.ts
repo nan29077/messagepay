@@ -5,7 +5,7 @@ import { logger } from '@/lib/logger';
 import { env } from '@/lib/env';
 import { getPaymentAdapter } from '@/server/adapters/payment';
 import { resolveSecureLink, consumeSecureLink } from './secure-link';
-import type { ConsentType } from '@/generated/prisma/enums';
+import type { ConsentType, PaymentMethodKind } from '@/generated/prisma/enums';
 
 /**
  * 후원자 계좌 등록 (헥토 내통장결제 0원 인증 후 빌키 발급 흐름).
@@ -63,10 +63,16 @@ export interface ConsentInput {
   agreed: boolean;
 }
 
-/** 결제창 세션 생성. 필수 동의가 모두 있어야 진행한다. */
+/**
+ * 결제창 세션 생성. 필수 동의가 모두 있어야 진행한다.
+ *
+ * `method` 로 계좌(ACCOUNT) / 카드(CARD) 빌키를 구분한다.
+ * 카드 빌링키는 아직 실 연동 전이라 어댑터가 실패를 돌려주며, 여기서는 구조만 준비해 둔다.
+ */
 export async function startRegistration(input: {
   token: string;
   consents: ConsentInput[];
+  method?: PaymentMethodKind;
   ip?: string;
   userAgent?: string;
 }) {
@@ -103,12 +109,15 @@ export async function startRegistration(input: {
     });
   }
 
+  const method: PaymentMethodKind = input.method ?? 'ACCOUNT';
+
   const registration = await prisma.paymentRegistration.create({
     data: {
       id: newId(),
       donorId: ctx.donorId,
       creatorId: ctx.creatorId,
       provider: env.payment.provider,
+      method,
     },
   });
 
@@ -117,6 +126,7 @@ export async function startRegistration(input: {
     donorRef: registration.id,
     returnUrl: `${env.baseUrl}/r/${input.token}/complete`,
     notifyUrl: `${env.baseUrl}/api/payments/notify`,
+    method,
   });
   if (!session.ok || !session.data) throw new Error(session.message ?? '결제창 생성에 실패했습니다.');
 
@@ -140,16 +150,19 @@ export async function completeRegistration(input: {
   if (!loaded.ok) throw new Error(loaded.reason);
   const { ctx } = loaded;
 
-  const adapter = getPaymentAdapter();
-  const res = await adapter.completeRegistration(input.providerPayload);
-
   // registrationId 는 클라이언트가 보낸 값이다. 링크 소유자(donorId)의 등록 건이 아니면 거절한다.
+  // 사업자 호출보다 먼저 확인한다. 남의 등록번호로 빌키를 발급받아 버리고 나서 거절하면
+  // 사업자 쪽에는 쓰지도 않을 빌키가 남는다.
   const owned = await prisma.paymentRegistration.findFirst({
     where: { id: input.registrationId, donorId: ctx.donorId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, method: true },
   });
   if (!owned) throw new Error('등록 요청 정보가 올바르지 않습니다. 처음부터 다시 진행해 주세요.');
   if (owned.status === 'COMPLETED') throw new Error('이미 완료된 등록 요청입니다.');
+
+  const adapter = getPaymentAdapter();
+  // 결제수단 종류는 결제창 응답이 아니라 우리가 시작할 때 기록한 값이 기준이다.
+  const res = await adapter.completeRegistration({ ...input.providerPayload, method: owned.method });
 
   if (!res.ok || !res.data) {
     await prisma.paymentRegistration.update({
@@ -165,16 +178,23 @@ export async function completeRegistration(input: {
     data: { status: 'REVOKED', revokedAt: new Date() },
   });
 
+  // 빌키 종류는 사업자 응답을 우선하고, 없으면 등록을 시작할 때 기록해 둔 값을 쓴다.
+  const method: PaymentMethodKind = res.data.method ?? owned.method ?? 'ACCOUNT';
+
   const token = await prisma.paymentMethodToken.create({
     data: {
       id: newId(),
       donorId: ctx.donorId,
       provider: env.payment.provider,
+      method,
       billKeyEnc: encrypt(res.data.billKey),
       billKeyHint: maskSecret(res.data.billKey),
       bankCode: res.data.bankCode ?? null,
       bankName: res.data.bankName ?? null,
       accountTail4: res.data.accountTail4 ?? null,
+      // 카드 원문은 저장하지 않는다. 발급사명과 끝 4자리만 보관한다.
+      cardIssuer: res.data.cardIssuer ?? null,
+      cardTail4: res.data.cardTail4 ?? null,
     },
   });
 
@@ -199,7 +219,15 @@ export async function completeRegistration(input: {
   // 링크는 1회만 사용 가능
   await consumeSecureLink(ctx.linkId, input.ip, input.userAgent);
 
-  return { tokenId: token.id, donorId: ctx.donorId, bankName: token.bankName, accountTail4: token.accountTail4 };
+  return {
+    tokenId: token.id,
+    donorId: ctx.donorId,
+    method: token.method,
+    bankName: token.bankName,
+    accountTail4: token.accountTail4,
+    cardIssuer: token.cardIssuer,
+    cardTail4: token.cardTail4,
+  };
 }
 
 /** 자동출금 동의 해지 = 등록 결제수단 폐기 */

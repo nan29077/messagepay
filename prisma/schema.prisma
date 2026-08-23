@@ -484,6 +484,9 @@ model CreatorProfile {
   maxAmount        BigInt        @default(50000) @map("max_amount")
   /// 크리에이터별 결제 모드 오버라이드 (null 이면 전역 설정)
   paymentMode      PaymentMode?  @map("payment_mode")
+  /// 후원 감사 MT 문자 본문. null/빈 값이면 기본 템플릿을 사용한다.
+  /// 치환자: {후원자} {크리에이터} {금액} {메시지} {누적}
+  thanksMtMessage  String?       @map("thanks_mt_message")
   businessNo       String?       @map("business_no")
   /// 온보딩 체크리스트 중 자동 판별이 불가능해 크리에이터가 직접 체크하는 항목.
   /// OBS/프리즘 등 방송 프로그램에 오버레이 URL 을 등록했는지 여부.
@@ -652,11 +655,21 @@ model SecureLink {
 // 결제
 // ===========================================================================
 
+/// 결제수단 종류. 현재는 계좌(내통장결제)만 운영하고 카드 빌링키는 구조만 준비되어 있다.
+enum PaymentMethodKind {
+  ACCOUNT
+  CARD
+
+  @@map("payment_method_kind")
+}
+
 model PaymentRegistration {
   id            String             @id
   donorId       String             @map("donor_id")
   creatorId     String?            @map("creator_id")
   provider      String             @default("HECTO")
+  /// 등록하려는 결제수단 종류
+  method        PaymentMethodKind  @default(ACCOUNT)
   providerTid   String?            @map("provider_tid")
   status        RegistrationStatus @default(STARTED)
   resultCode    String?            @map("result_code")
@@ -677,6 +690,8 @@ model PaymentMethodToken {
   id           String             @id
   donorId      String             @map("donor_id")
   provider     String             @default("HECTO")
+  /// 빌키 종류. ACCOUNT = 내통장결제 계좌 빌키, CARD = 카드 빌링키(추후 연동)
+  method       PaymentMethodKind  @default(ACCOUNT)
   /// 빌키 암호문. 복호화는 결제 워커에서만 수행하며 로그 출력 금지
   billKeyEnc   String             @map("bill_key_enc")
   billKeyHint  String             @map("bill_key_hint")
@@ -684,6 +699,9 @@ model PaymentMethodToken {
   bankName     String?            @map("bank_name")
   /// 계좌 원문 저장 금지. 끝 4자리만 보관
   accountTail4 String?            @map("account_tail4")
+  /// 카드 빌링키용. 카드 원문 저장 금지, 발급사명과 끝 4자리만 보관
+  cardIssuer   String?            @map("card_issuer")
+  cardTail4    String?            @map("card_tail4")
   status       PaymentTokenStatus @default(ACTIVE)
   registeredAt DateTime           @default(now()) @map("registered_at") @db.Timestamptz(3)
   revokedAt    DateTime?          @map("revoked_at") @db.Timestamptz(3)
@@ -716,8 +734,12 @@ model Donation {
   isTest        Boolean        @default(false) @map("is_test")
   anonymous     Boolean        @default(false)
 
+  /// 결제수수료 차감액 (부가세 포함)
   pgFee       BigInt @default(0) @map("pg_fee")
+  /// 플랫폼수수료 차감액 (부가세 포함)
   platformFee BigInt @default(0) @map("platform_fee")
+  /// 위 두 수수료에 포함된 부가세 합계 (표시용. 이미 pgFee/platformFee 에 포함되어 있다)
+  feeVat      BigInt @default(0) @map("fee_vat")
   netAmount   BigInt @default(0) @map("net_amount")
 
   mtStatus      DeliveryStatus @default(PENDING) @map("mt_status")

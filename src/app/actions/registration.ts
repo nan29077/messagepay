@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { startRegistration, completeRegistration } from '@/server/services/donor-registration';
 import { getSessionUser } from '@/server/auth';
 import { prisma } from '@/server/db';
-import type { ConsentType } from '@/generated/prisma/enums';
+import type { ConsentType, PaymentMethodKind } from '@/generated/prisma/enums';
 
 /**
  * 후원자 계좌 등록 서버 액션.
@@ -35,6 +35,8 @@ export interface ActionError {
 export async function startRegistrationAction(
   token: string,
   consents: ConsentPayload[],
+  // 결제수단 종류. 카드 빌링키는 구조만 준비되어 있고 화면에서는 아직 계좌만 넘긴다.
+  method: PaymentMethodKind = 'ACCOUNT',
 ): Promise<ActionError | void> {
   const meta = await requestMeta();
 
@@ -43,6 +45,7 @@ export async function startRegistrationAction(
     const res = await startRegistration({
       token,
       consents,
+      method,
       ip: meta.ip,
       userAgent: meta.userAgent,
     });
@@ -58,8 +61,11 @@ export async function startRegistrationAction(
 export interface CompleteResult {
   ok: boolean;
   message?: string;
+  method?: PaymentMethodKind;
   bankName?: string | null;
   accountTail4?: string | null;
+  cardIssuer?: string | null;
+  cardTail4?: string | null;
 }
 
 /** 결제창 복귀 처리. 성공 시 보안링크는 소비되어 다시 사용할 수 없다. */
@@ -98,7 +104,14 @@ export async function completeRegistrationAction(input: {
       // 연결 실패가 계좌 등록 성공을 뒤집지 않는다. 마이페이지에서 수동 연결 가능.
     }
 
-    return { ok: true, bankName: res.bankName, accountTail4: res.accountTail4 };
+    return {
+      ok: true,
+      method: res.method,
+      bankName: res.bankName,
+      accountTail4: res.accountTail4,
+      cardIssuer: res.cardIssuer,
+      cardTail4: res.cardTail4,
+    };
   } catch (e) {
     return { ok: false, message: (e as Error).message || '계좌 등록을 완료하지 못했습니다.' };
   }

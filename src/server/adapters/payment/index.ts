@@ -18,6 +18,12 @@ import { hectoPaymentAdapter } from './hecto';
  *       도네이도는 CONFIRM_LINK 유효시간을 그보다 짧게(기본 300초) 운용한다.
  */
 
+/**
+ * 등록할 결제수단 종류.
+ * ACCOUNT = 내통장결제 계좌 빌키(현재 운영), CARD = 카드 빌링키(구조만 준비, 실 연동 전).
+ */
+export type PaymentMethodKind = 'ACCOUNT' | 'CARD';
+
 export interface RegistrationSession {
   /** 결제창 리다이렉트 URL */
   redirectUrl: string;
@@ -28,9 +34,14 @@ export interface RegistrationSession {
 export interface RegistrationResult {
   providerTid: string;
   billKey: string;
+  /** 발급된 빌키의 종류. 응답에 없으면 ACCOUNT 로 본다. */
+  method?: PaymentMethodKind;
   bankCode?: string;
   bankName?: string;
   accountTail4?: string;
+  /** 카드 빌링키일 때만 채워진다. 카드번호 원문은 어떤 경우에도 저장하지 않는다. */
+  cardIssuer?: string;
+  cardTail4?: string;
 }
 
 export interface ApproveRequest {
@@ -55,6 +66,8 @@ export interface PaymentAdapter {
     donorRef: string;
     returnUrl: string;
     notifyUrl: string;
+    /** 생략하면 ACCOUNT. 카드 빌링키는 규격 수령 후 어댑터에서 분기한다. */
+    method?: PaymentMethodKind;
   }): Promise<ProviderResult<RegistrationSession>>;
   completeRegistration(payload: Record<string, unknown>): Promise<ProviderResult<RegistrationResult>>;
   approve(req: ApproveRequest): Promise<ProviderResult<ApproveResult>>;
@@ -93,13 +106,13 @@ export const mockPaymentAdapter: PaymentAdapter = {
     return { provider: 'mock', mode: 'mock', missingCredentials: [] };
   },
 
-  async createRegistrationSession({ donorRef, returnUrl }) {
+  async createRegistrationSession({ donorRef, returnUrl, method = 'ACCOUNT' }) {
     const tid = `MOCKREG${Date.now()}`;
     return {
       ok: true,
       data: {
         // Mock 결제창. 실제 헥토 결제창을 대체하는 내부 화면
-        redirectUrl: `/mock/pg/register?tid=${tid}&ref=${encodeURIComponent(donorRef)}&return=${encodeURIComponent(returnUrl)}`,
+        redirectUrl: `/mock/pg/register?tid=${tid}&ref=${encodeURIComponent(donorRef)}&method=${method}&return=${encodeURIComponent(returnUrl)}`,
         providerTid: tid,
         expiresAt: new Date(Date.now() + 10 * 60 * 1000),
       },
@@ -108,12 +121,29 @@ export const mockPaymentAdapter: PaymentAdapter = {
 
   async completeRegistration(payload) {
     const tid = String(payload.tid ?? `MOCKREG${Date.now()}`);
+    const method: PaymentMethodKind = payload.method === 'CARD' ? 'CARD' : 'ACCOUNT';
+
+    if (method === 'CARD') {
+      const card = String(payload.card ?? '1234567812349876');
+      return {
+        ok: true,
+        data: {
+          providerTid: tid,
+          method,
+          billKey: `MOCKCARDBILL-${tid}-${card.slice(-4)}`,
+          cardIssuer: String(payload.cardIssuer ?? '테스트카드'),
+          cardTail4: card.slice(-4),
+        },
+      };
+    }
+
     const bank = String(payload.bankCode ?? '004');
     const account = String(payload.account ?? '11122233344455');
     return {
       ok: true,
       data: {
         providerTid: tid,
+        method,
         billKey: `MOCKBILL-${tid}-${account.slice(-4)}`,
         bankCode: bank,
         bankName: String(payload.bankName ?? 'KB국민은행'),

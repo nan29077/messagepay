@@ -96,6 +96,9 @@ export default async function StudioDonationDetailPage({ params }: { params: Pro
               <DataRow label="후원 총액" value={formatWon(donation.amount)} />
               <DataRow label="결제수수료" value={formatWon(donation.pgFee)} />
               <DataRow label="플랫폼수수료" value={formatWon(donation.platformFee)} />
+              {donation.feeVat > 0n ? (
+                <DataRow label="수수료 부가세" value={`${formatWon(donation.feeVat)} (위 수수료에 포함)`} />
+              ) : null}
               <DataRow label="정산 예정금" value={formatWon(donation.netAmount)} />
             </div>
             <div className="mt-2">

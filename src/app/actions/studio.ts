@@ -15,6 +15,7 @@ import { createSettlementRequest } from '@/server/services/settlement';
 import { notifySuperAdmins } from '@/server/services/notifications';
 import { formatWon } from '@/lib/money';
 import { loadBannedWords } from '@/server/services/donation-flow';
+import { THANKS_MT_MAX_LENGTH, THANKS_MT_VARIABLES } from '@/server/services/mt-templates';
 import { filterContent } from '@/server/services/content-filter';
 import { getYouTubeAdapter } from '@/server/adapters/youtube';
 import { getStreamAdapter } from '@/server/adapters/stream';
@@ -632,6 +633,71 @@ export async function updateDonationSettingsAction(
     revalidatePath('/studio/settings');
     revalidatePath('/studio');
     return { ok: true, message: '문자 1건당 후원금을 저장했습니다.' };
+  });
+}
+
+// ===========================================================================
+// 감사 문자 내용
+// ===========================================================================
+
+/** 감사 문자 본문에 허용하는 치환자 이름 */
+const THANKS_TOKENS = THANKS_MT_VARIABLES.map((v) => v.token.slice(1, -1));
+
+/**
+ * 후원 감사 MT 문자 본문 저장.
+ *
+ * 검증 규칙
+ *  - 200자 이내. 비우면 기본 문구로 돌아간다.
+ *  - 링크(http/https/www) 금지. 감사 문자를 빌려 후원자를 외부로 유인하는 것을 막는다.
+ *  - 정의되지 않은 치환자를 남기면 후원자에게 `{...}` 가 그대로 발송되므로 저장 단계에서 막는다.
+ *  - 금칙어 필터는 후원자 메시지와 같은 규칙을 적용한다.
+ */
+export async function updateThanksMessageAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withCreator(async (creatorId) => {
+    const raw = text(formData, 'thanksMtMessage');
+
+    if (raw.length === 0) {
+      await prisma.creatorProfile.update({ where: { id: creatorId }, data: { thanksMtMessage: null } });
+      revalidatePath('/studio/settings');
+      return { ok: true, message: '감사 문자를 기본 문구로 되돌렸습니다.' };
+    }
+
+    if (raw.length > THANKS_MT_MAX_LENGTH) {
+      return { ok: false, message: `감사 문자는 ${THANKS_MT_MAX_LENGTH}자 이내로 입력해 주세요. (현재 ${raw.length}자)` };
+    }
+    if (/https?:\/\/|www\./i.test(raw)) {
+      return { ok: false, message: '감사 문자에는 링크를 넣을 수 없습니다. 링크가 포함된 문자는 스팸으로 차단됩니다.' };
+    }
+
+    const unknown = [...raw.matchAll(/\{([^{}]*)\}/g)]
+      .map((m) => m[1])
+      .filter((name) => !THANKS_TOKENS.includes(name));
+    if (unknown.length > 0) {
+      return {
+        ok: false,
+        message: `사용할 수 없는 치환자입니다: {${unknown[0]}} — ${THANKS_MT_VARIABLES.map((v) => v.token).join(' ')} 만 사용할 수 있습니다.`,
+      };
+    }
+
+    // 후원자에게 발송되는 문구이므로 후원 메시지와 같은 금칙어 기준을 적용한다.
+    const rules = await loadBannedWords(creatorId);
+    const filtered = filterContent(raw, { bannedWords: rules, maxLength: THANKS_MT_MAX_LENGTH });
+    if (filtered.action === 'BLOCK') {
+      return {
+        ok: false,
+        message: `운영정책에 어긋나는 표현이 있어 저장할 수 없습니다.${filtered.reasons.length ? ` (${filtered.reasons.join(', ')})` : ''}`,
+      };
+    }
+    if (filtered.containsPersonalInfo) {
+      return { ok: false, message: '전화번호·계좌번호 등 개인정보는 감사 문자에 넣을 수 없습니다.' };
+    }
+
+    await prisma.creatorProfile.update({ where: { id: creatorId }, data: { thanksMtMessage: raw } });
+    revalidatePath('/studio/settings');
+    return { ok: true, message: '감사 문자 내용을 저장했습니다. 다음 후원부터 적용됩니다.' };
   });
 }
 

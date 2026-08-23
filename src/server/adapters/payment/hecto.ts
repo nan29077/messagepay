@@ -210,8 +210,14 @@ export const hectoPaymentAdapter: PaymentAdapter = {
    * 내통장결제 가입(계좌 인증 + 출금이체 동의) 결제창 URL 을 만든다.
    * 결제창 인증 유효시간은 10분이므로 expiresAt 을 그에 맞춘다.
    */
-  async createRegistrationSession({ donorRef, returnUrl }): Promise<ProviderResult<RegistrationSession>> {
+  async createRegistrationSession({ donorRef, returnUrl, method = 'ACCOUNT' }): Promise<ProviderResult<RegistrationSession>> {
     assertConfigured();
+
+    // 카드 빌링키는 결제창 경로·필드 규격이 내통장결제와 다르다.
+    // 규격서를 받기 전까지는 성공으로 처리하지 않는다(계약 없는 연동을 성공 처리하지 않는다는 규칙).
+    if (method === 'CARD') {
+      return { ok: false, code: 'CARD_NOT_SUPPORTED', message: '카드 빌링키는 아직 연동되지 않았습니다.' };
+    }
 
     const now = new Date();
     const trDay = hectoDay(now);
@@ -291,6 +297,8 @@ export const hectoPaymentAdapter: PaymentAdapter = {
       data: {
         providerTid: String(res.json.outTrNo ?? authNo),
         billKey,
+        // 이 경로는 내통장결제(계좌) 전용이다. 카드 빌링키는 별도 규격을 받은 뒤 분기한다.
+        method: 'ACCOUNT',
         bankCode: res.json.outBankCd ? String(res.json.outBankCd) : undefined,
         bankName: res.json.outBankNm ? String(res.json.outBankNm) : undefined,
         accountTail4: account ? account.slice(-4) : undefined,

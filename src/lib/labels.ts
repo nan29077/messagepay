@@ -12,9 +12,16 @@ import type {
   RiskType,
   DonorOnboardingStatus,
   HolidayKind,
+  PaymentMethodKind,
 } from '@/generated/prisma/enums';
 
 export type Tone = 'neutral' | 'brand' | 'success' | 'warning' | 'danger';
+
+/** 결제수단 종류. CARD 는 스키마·로직만 준비된 상태이며 등록 화면은 아직 없다. */
+export const paymentMethodKindLabel: Record<PaymentMethodKind, string> = {
+  ACCOUNT: '계좌 (내통장결제)',
+  CARD: '신용카드',
+};
 
 export const donorOnboardingStatusLabel: Record<DonorOnboardingStatus, { text: string; tone: Tone }> = {
   UNREGISTERED: { text: '최초 안내 전', tone: 'neutral' },

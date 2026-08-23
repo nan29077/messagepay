@@ -5,7 +5,7 @@ import { resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } fro
 import { handleMoInbound } from '@/server/services/donation-flow';
 import { mockMoAdapter } from '@/server/adapters/mo';
 import { resolvePolicy, checkLimits, FALLBACK_POLICY } from '@/server/services/limits';
-import { resolveFeePolicy, resolveRefundFeeReturn, postRefundSettlement, getSettlementSummary } from '@/server/services/settlement';
+import { resolveFeePolicy, resolveRefundFeeReturn, postRefundSettlement, getSettlementSummary, computeFees } from '@/server/services/settlement';
 import { generateNumericCode, randomCodeString } from '@/lib/crypto';
 import { isSameOrigin } from '@/server/request-guard';
 import { env } from '@/lib/env';
@@ -156,7 +156,8 @@ describe('환불 수수료 환입', () => {
       .reduce((a, r) => a + r.amount, 0n);
 
     const half = donation.amount / 2n;
-    const fees = { gross: donation.amount, pgFee: 0n, platformFee: 0n, net: 0n, pgFeeRate: '0', platformFeeRate: '0' };
+    // postRefundSettlement 는 원 거래 분개로 환입액을 산출하므로 fees 값 자체는 쓰이지 않는다.
+    const fees = computeFees(donation.amount, { pgFeeRate: '0', platformFeeRate: '0', vatIncluded: true });
 
     await postRefundSettlement({
       creatorId: fx.creatorId, donationId: donation.id, refundId: newId(), amount: half, fees,

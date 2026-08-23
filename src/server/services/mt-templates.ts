@@ -36,9 +36,20 @@ function maskLink(text: string): string {
   return text.replace(/https?:\/\/[^\s]+/g, '[보안링크]');
 }
 
-export function tplRegisterGuide(creatorName: string, link: string): TemplateOutput {
+/**
+ * 최초 1회 결제수단 등록 안내.
+ *
+ * 계좌(내통장결제)와 카드 빌링키 모두 같은 흐름을 쓴다. 안내 문구만 결제수단에 맞춰 바뀐다.
+ * 카드는 아직 실 연동 전이라 현재 호출부는 모두 기본값(ACCOUNT)을 쓴다.
+ */
+export function tplRegisterGuide(
+  creatorName: string,
+  link: string,
+  method: 'ACCOUNT' | 'CARD' = 'ACCOUNT',
+): TemplateOutput {
+  const what = method === 'CARD' ? '카드 등록' : '계좌 등록';
   const text = withLink(
-    `[도네이도] ${creatorName} 크리에이터 문자후원을 이용하려면 계좌 등록과 이용 동의가 필요합니다. 최초 문자는 후원 처리되지 않았습니다. 등록:`,
+    `[도네이도] ${creatorName} 크리에이터 문자후원을 이용하려면 ${what}과 이용 동의가 필요합니다. 최초 문자는 후원 처리되지 않았습니다. 등록:`,
     link,
   );
   return { code: MT_TEMPLATE.REGISTER_GUIDE, text, masked: maskLink(text) };
@@ -52,17 +63,76 @@ export function tplConfirmPayment(creatorName: string, amount: bigint, link: str
   return { code: MT_TEMPLATE.CONFIRM_PAYMENT, text, masked: maskLink(text) };
 }
 
-export function tplDonationSuccess(input: {
+// ---------------------------------------------------------------------------
+// 후원 감사 문자 (크리에이터 커스터마이즈)
+// ---------------------------------------------------------------------------
+
+export interface DonationSuccessInput {
   donorName: string;
   creatorName: string;
   amount: bigint;
   message: string;
   cumulative: bigint;
-}): TemplateOutput {
-  const text =
-    `[도네이도] ${input.donorName}님, ${input.creatorName} 크리에이터에게 ${formatNumber(input.amount)}원이 후원되었습니다. 감사합니다. ` +
-    `메시지: "${input.message}" 누적 후원: ${formatNumber(input.cumulative)}원`;
-  return { code: MT_TEMPLATE.DONATION_SUCCESS, text, masked: text };
+  /** 크리에이터가 설정한 감사 문자 본문. 비어 있으면 기본 문구를 쓴다. */
+  custom?: string | null;
+}
+
+/** 감사 문자 본문 최대 길이. LMS(2,000byte) 안에 확실히 들어가는 보수적인 값. */
+export const THANKS_MT_MAX_LENGTH = 200;
+
+/** 감사 문자에서 쓸 수 있는 치환자. 스튜디오 설정 화면 안내와 검증에 함께 쓴다. */
+export const THANKS_MT_VARIABLES = [
+  { token: '{후원자}', label: '후원자 이름' },
+  { token: '{크리에이터}', label: '크리에이터 이름' },
+  { token: '{금액}', label: '후원 금액' },
+  { token: '{메시지}', label: '후원자가 보낸 메시지' },
+  { token: '{누적}', label: '누적 후원 금액' },
+] as const;
+
+const THANKS_VALUES: Record<string, (i: DonationSuccessInput) => string> = {
+  '후원자': (i) => i.donorName,
+  '크리에이터': (i) => i.creatorName,
+  '금액': (i) => `${formatNumber(i.amount)}원`,
+  '메시지': (i) => i.message,
+  '누적': (i) => `${formatNumber(i.cumulative)}원`,
+};
+
+const THANKS_TOKEN_RE = /\{(후원자|크리에이터|금액|메시지|누적)\}/g;
+
+/** 문자 본문에 들어가면 안 되는 값(제어문자)을 제거한다. 줄바꿈은 그대로 둔다. */
+function sanitizeLine(v: string): string {
+  return v.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').trim();
+}
+
+/**
+ * 크리에이터가 설정한 본문의 치환자를 실제 값으로 바꾼다.
+ *
+ * 치환값에 `$&` 같은 문자가 들어와도 그대로 남도록 함수형 치환을 쓴다.
+ * (문자열 치환을 쓰면 후원자 이름이나 메시지에 `$` 가 있을 때 본문이 깨진다)
+ */
+export function renderThanksMessage(template: string, input: DonationSuccessInput): string {
+  return sanitizeLine(template.replace(THANKS_TOKEN_RE, (_m, key: string) => THANKS_VALUES[key](input)));
+}
+
+/** 감사 문자 기본 문구 (크리에이터 설정이 없을 때) */
+export function defaultThanksMessage(input: DonationSuccessInput): string {
+  return (
+    `${input.donorName}님, ${input.creatorName} 크리에이터에게 ${formatNumber(input.amount)}원이 후원되었습니다. 감사합니다. ` +
+    `메시지: "${input.message}" 누적 후원: ${formatNumber(input.cumulative)}원`
+  );
+}
+
+/**
+ * 후원 성공 감사 문자.
+ *
+ * 크리에이터가 스튜디오에서 본문을 설정했으면 그 문구를 쓰고, 없으면 기본 문구를 쓴다.
+ * 발신 주체 표기(`[도네이도]`)는 어떤 경우에도 앞에 붙인다.
+ */
+export function tplDonationSuccess(input: DonationSuccessInput): TemplateOutput {
+  const custom = input.custom ? sanitizeLine(input.custom) : '';
+  const body = custom ? renderThanksMessage(custom, input) : defaultThanksMessage(input);
+  const text = `[도네이도] ${body || defaultThanksMessage(input)}`;
+  return { code: MT_TEMPLATE.DONATION_SUCCESS, text, masked: maskLink(text) };
 }
 
 export function tplDonationFailed(creatorName: string, reason?: string): TemplateOutput {

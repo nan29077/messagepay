@@ -6,6 +6,7 @@ import { ActionButton, ActionForm } from '@/components/admin/action-form';
 import { createFeePolicy, deactivateFeePolicy } from '@/app/actions/admin/settlement';
 import { prisma } from '@/server/db';
 import { formatWon, formatNumber } from '@/lib/money';
+import { computeFees } from '@/server/services/settlement';
 import { formatKst, kstDateKey } from '@/lib/datetime';
 
 export const dynamic = 'force-dynamic';
@@ -38,6 +39,15 @@ export default async function AdminFeesPage() {
   const activeGlobal = policies.find((p) => p.active && p.scope === 'GLOBAL');
   const activeCreatorCount = policies.filter((p) => p.active && p.scope === 'CREATOR').length;
 
+  // 실제 정산과 같은 함수로 계산한 예시. 요율만 보고는 부가세 반영 결과를 알기 어렵다.
+  const SAMPLE = 3_000n;
+  const sample = computeFees(SAMPLE, {
+    pgFeeRate: activeGlobal ? activeGlobal.pgFeeRate.toString() : '0.018',
+    pgFixedFee: activeGlobal?.pgFixedFee ?? 0n,
+    platformFeeRate: activeGlobal ? activeGlobal.platformFeeRate.toString() : '0.15',
+    vatIncluded: activeGlobal ? activeGlobal.vatIncluded : true,
+  });
+
   return (
     <>
       <PageHeader
@@ -61,10 +71,35 @@ export default async function AdminFeesPage() {
         <StatTile label="전체 정책 이력" value={formatNumber(policies.length)} sub="최근 100건" />
       </div>
 
+      <Card className="mt-4">
+        <CardTitle>{formatWon(SAMPLE)} 후원 기준 계산 예시</CardTitle>
+        <p className="mt-1 text-[12px] leading-relaxed text-ink-400">
+          현재 활성 전역 정책({sample.vatIncluded ? '부가세 포함 요율' : '부가세 별도 요율'})을 실제 정산 계산식에
+          그대로 넣은 결과입니다.
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-5">
+          <StatTile label="후원 총액" value={formatWon(sample.gross)} />
+          <StatTile
+            label="결제 수수료"
+            value={formatWon(sample.pgFee)}
+            sub={sample.pgFeeVat > 0n ? `공급가 ${formatWon(sample.pgFeeSupply)} + 부가세 ${formatWon(sample.pgFeeVat)}` : '부가세 포함 요율'}
+          />
+          <StatTile
+            label="플랫폼 수수료"
+            value={formatWon(sample.platformFee)}
+            sub={sample.platformFeeVat > 0n ? `공급가 ${formatWon(sample.platformFeeSupply)} + 부가세 ${formatWon(sample.platformFeeVat)}` : '부가세 포함 요율'}
+          />
+          <StatTile label="부가세 합계" value={formatWon(sample.vat)} />
+          <StatTile label="크리에이터 정산금" value={formatWon(sample.net)} tone="brand" />
+        </div>
+      </Card>
+
+      <div className="mt-4">
       <Notice tone="warning" title="정책 변경은 과거 거래에 소급되지 않습니다">
         수수료는 결제 승인 시점의 활성 정책으로 계산되어 정산 원장에 확정 기록됩니다. 새 정책을 등록해도 이미 쌓인
         원장 분개는 변경되지 않으며, 정정이 필요하면 조정(ADJUSTMENT) 분개를 사용해야 합니다.
       </Notice>
+      </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-3">
         <Card>
@@ -105,6 +140,10 @@ export default async function AdminFeesPage() {
               <input type="checkbox" name="vatIncluded" defaultChecked className="h-4 w-4 rounded border-ink-300" />
               부가세 포함 요율
             </label>
+            <p className="text-[11.5px] leading-relaxed text-ink-400">
+              체크하면 위 요율에 부가세가 이미 포함된 것으로 보고 부가세를 추가로 차감하지 않습니다. 체크를 해제하면
+              (부가세 별도) 각 수수료의 10%가 부가세로 추가 차감됩니다.
+            </p>
           </ActionForm>
         </Card>
 

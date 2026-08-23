@@ -175,6 +175,14 @@ export default async function AdminCreatorDetailPage({ params }: { params: Promi
                 <DataRow label="적용 범위" value={feePolicy ? feePolicy.scope : '기본값(정책 미등록)'} />
                 <DataRow label="결제 수수료" value={feePolicy ? `${feePolicy.pgFeeRate.toString()} + ${formatWon(feePolicy.pgFixedFee)}` : '0.018'} />
                 <DataRow label="플랫폼 수수료" value={feePolicy ? feePolicy.platformFeeRate.toString() : '0.15'} />
+                <DataRow
+                  label="부가세"
+                  value={
+                    (feePolicy ? feePolicy.vatIncluded : true)
+                      ? '요율에 포함 (추가 차감 없음)'
+                      : '별도 (수수료의 10% 추가 차감)'
+                  }
+                />
                 <DataRow label="문자 원가" value={feePolicy ? formatWon(feePolicy.smsCost) : '-'} />
               </div>
             </div>

@@ -7,6 +7,7 @@ import { WithdrawForm } from '@/components/my/withdraw-form';
 import { requireDonorContext } from '@/components/my/donor';
 import { prisma } from '@/server/db';
 import { formatKst } from '@/lib/datetime';
+import { paymentMethodKindLabel } from '@/lib/labels';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,8 +36,11 @@ export default async function MyAccountPage() {
     take: 10,
     select: {
       id: true,
+      method: true,
       bankName: true,
       accountTail4: true,
+      cardIssuer: true,
+      cardTail4: true,
       billKeyHint: true,
       status: true,
       registeredAt: true,
@@ -46,6 +50,13 @@ export default async function MyAccountPage() {
 
   const active = tokens.find((t) => t.status === 'ACTIVE') ?? null;
   const history = tokens.filter((t) => t.id !== active?.id);
+
+  /** 계좌/카드 공통 표기. 원문은 저장하지 않으므로 발급처명과 끝 4자리만 보여준다. */
+  const methodTitle = (m: 'ACCOUNT' | 'CARD') => (m === 'CARD' ? '발급사 · 카드' : '은행 · 계좌');
+  const methodIssuer = (t: { method: 'ACCOUNT' | 'CARD'; bankName: string | null; cardIssuer: string | null }) =>
+    t.method === 'CARD' ? t.cardIssuer ?? '등록 카드사' : t.bankName ?? '등록 은행';
+  const methodTail = (t: { method: 'ACCOUNT' | 'CARD'; accountTail4: string | null; cardTail4: string | null }) =>
+    (t.method === 'CARD' ? t.cardTail4 : t.accountTail4) ?? '****';
 
   return (
     <div className="space-y-5">
@@ -65,24 +76,31 @@ export default async function MyAccountPage() {
                 <Landmark size={18} strokeWidth={1.7} />
               </span>
               <div>
-                <CardTitle>등록된 출금 계좌</CardTitle>
-                <p className="mt-1 text-[13px] text-ink-500">문자후원 시 이 계좌에서 후원금이 출금됩니다.</p>
+                <CardTitle>{active.method === 'CARD' ? '등록된 결제 카드' : '등록된 출금 계좌'}</CardTitle>
+                <p className="mt-1 text-[13px] text-ink-500">
+                  {active.method === 'CARD'
+                    ? '문자후원 시 이 카드로 후원금이 결제됩니다.'
+                    : '문자후원 시 이 계좌에서 후원금이 출금됩니다.'}
+                </p>
               </div>
             </div>
             <Badge tone="success">사용 중</Badge>
           </div>
 
           <div className="mt-4 rounded-2xl bg-ink-50 px-4 py-4">
-            <p className="text-[12px] font-semibold text-ink-400">은행 · 계좌</p>
+            <p className="text-[12px] font-semibold text-ink-400">{methodTitle(active.method)}</p>
             <p className="mt-1 text-[20px] font-extrabold tracking-tight text-ink-900">
-              {active.bankName ?? '등록 은행'} <span className="font-mono">****{active.accountTail4 ?? '****'}</span>
+              {methodIssuer(active)} <span className="font-mono">****{methodTail(active)}</span>
             </p>
             <p className="mt-1 text-[12px] text-ink-400">
-              계좌번호 원문은 저장하지 않으며 끝 4자리만 표시합니다.
+              {active.method === 'CARD'
+                ? '카드번호 원문은 저장하지 않으며 끝 4자리만 표시합니다.'
+                : '계좌번호 원문은 저장하지 않으며 끝 4자리만 표시합니다.'}
             </p>
           </div>
 
           <div className="mt-3">
+            <DataRow label="결제수단" value={paymentMethodKindLabel[active.method]} />
             <DataRow label="등록 일시" value={formatKst(active.registeredAt, false)} />
             <DataRow label="결제수단 식별자" value={<span className="font-mono">{active.billKeyHint}</span>} />
             <DataRow label="자동출금 동의" value={<Badge tone="success">동의 중</Badge>} />
@@ -157,7 +175,7 @@ export default async function MyAccountPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-[13.5px] font-bold text-ink-900">
-                      {t.bankName ?? '등록 은행'} <span className="font-mono">****{t.accountTail4 ?? '****'}</span>
+                      {methodIssuer(t)} <span className="font-mono">****{methodTail(t)}</span>
                     </p>
                     <p className="mt-0.5 text-[12px] text-ink-400">
                       등록 {formatKst(t.registeredAt, false)}

@@ -862,6 +862,7 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
         paidAt: approved!.approvedAt,
         pgFee: fees.pgFee,
         platformFee: fees.platformFee,
+        feeVat: fees.vat,
         netAmount: fees.net,
       },
     });
@@ -911,6 +912,8 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
       amount: donation.amount,
       message: donation.message,
       cumulative: link?.totalAmount ?? donation.amount,
+      // 크리에이터가 스튜디오에서 설정한 감사 문자 본문. 없으면 기본 문구가 쓰인다.
+      custom: donation.creator.thanksMtMessage,
     }),
     donationId,
     donation.creatorId,

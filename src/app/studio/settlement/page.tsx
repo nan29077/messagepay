@@ -8,7 +8,7 @@ import { ResidentField } from '@/components/studio/resident-field';
 import { requestSettlementAction, saveSettlementAccountAction } from '@/app/actions/studio';
 import { requireCreator } from '@/server/auth';
 import { prisma } from '@/server/db';
-import { getSettlementSummary, resolveFeePolicy, calculateWithholding } from '@/server/services/settlement';
+import { getSettlementSummary, resolveFeePolicy, calculateWithholding, computeFees } from '@/server/services/settlement';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst, kstDateKey, kstMonthKey } from '@/lib/datetime';
 import { settlementDateFor, toDateKey, formatDateKeyKo, SETTLEMENT_BUSINESS_DAYS } from '@/lib/business-day';
@@ -98,6 +98,14 @@ export default async function StudioSettlementPage({
       select: { residentMasked: true },
     }),
   ]);
+
+  // 적용 중인 수수료 정책을 실제 정산 계산식에 넣은 예시(후원 1건 기준).
+  const feeSample = computeFees(3_000n, {
+    pgFeeRate: feePolicy ? feePolicy.pgFeeRate.toString() : '0.018',
+    pgFixedFee: feePolicy?.pgFixedFee ?? 0n,
+    platformFeeRate: feePolicy ? feePolicy.platformFeeRate.toString() : '0.15',
+    vatIncluded: feePolicy ? feePolicy.vatIncluded : true,
+  });
 
   // ── 공휴일 로드 (정산일 계산용) ──────────────────────────────────
   // 영업일 = 토·일과 공휴일을 뺀 날. 공휴일 표는 관리자가 관리한다.
@@ -608,8 +616,24 @@ export default async function StudioSettlementPage({
                     <DataRow label="결제 건당 고정비" value={formatWon(feePolicy.pgFixedFee)} />
                     <DataRow label="플랫폼수수료율" value={ratePercent(feePolicy.platformFeeRate.toString())} />
                     <DataRow label="문자 원가" value={formatWon(feePolicy.smsCost)} />
-                    <DataRow label="부가세 포함 여부" value={feePolicy.vatIncluded ? '포함' : '미포함'} />
+                    <DataRow
+                      label="부가세"
+                      value={feePolicy.vatIncluded ? '요율에 포함 (추가 차감 없음)' : '별도 (수수료의 10% 추가 차감)'}
+                    />
                     <DataRow label="적용 시작" value={formatKst(feePolicy.effectiveFrom, false)} />
+                    <DataRow
+                      label={`${formatWon(feeSample.gross)} 후원 시 정산금`}
+                      value={
+                        <span>
+                          {formatWon(feeSample.net)}
+                          <span className="text-ink-400">
+                            {' '}
+                            (수수료 {formatWon(feeSample.pgFee + feeSample.platformFee)}
+                            {feeSample.vat > 0n ? `, 이 중 부가세 ${formatWon(feeSample.vat)}` : ''} 차감)
+                          </span>
+                        </span>
+                      }
+                    />
                   </div>
                 ) : (
                   <Notice tone="warning">적용 중인 수수료 정책이 없습니다. 고객센터로 문의해 주세요.</Notice>
