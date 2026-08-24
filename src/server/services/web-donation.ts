@@ -4,16 +4,30 @@ import { encrypt } from '@/lib/crypto';
 import { filterContent } from './content-filter';
 import { checkLimits } from './limits';
 import { acquireIdempotency } from './idempotency';
-import { executePayment, loadBannedWords, resolvePaymentMode } from './donation-flow';
+import { executePayment, loadBannedWords, resolvePaymentMode, startPinAuthorization } from './donation-flow';
+import { allowLegacyWebInstantPay } from '@/lib/env';
 import type { DonationStatus } from '@/generated/prisma/enums';
 
 /**
  * 후원샵(웹, PC) 후원 파이프라인.
  *
  * 모바일 MO 문자 흐름과 동일한 안전장치(금칙어 필터, 한도, 멱등, 원장)를 그대로 거치되,
- * 접수 채널만 WEB 이다. 사용자가 화면에서 금액을 확인하고 "결제하고 후원하기"를 눌렀으므로
- * 확인 문자 단계 없이 곧바로 결제를 실행한다. 결제가 성공한 후원만 유튜브 댓글·오버레이로 전달된다.
+ * 접수 채널만 WEB 이다. 결제가 성공한 후원만 유튜브 댓글·오버레이로 전달된다.
+ *
+ * 결제 단계는 두 갈래다.
+ *  - `PIN`(기본): 결제사 PIN 입력 링크를 문자로 보내고, 후원자가 PIN 을 넣어야 결제된다.
+ *                 MO 문자 흐름과 같은 startPinAuthorization() 을 그대로 재사용한다.
+ *  - `LEGACY_INSTANT`(**deprecated**): 화면 버튼 클릭 즉시 빌키로 출금한다.
+ *                 ALLOW_LEGACY_WEB_INSTANT_PAY=true 일 때만 사용한다.
  */
+
+export type WebDonationChannel = 'PIN' | 'LEGACY_INSTANT';
+
+export function resolveWebDonationChannel(
+  allowLegacy: boolean = allowLegacyWebInstantPay(),
+): WebDonationChannel {
+  return allowLegacy ? 'LEGACY_INSTANT' : 'PIN';
+}
 
 export interface WebDonationInput {
   /** 전화번호 인증을 마친 후원자의 phoneHash */
@@ -31,6 +45,10 @@ export interface WebDonationResult {
   donationId?: string;
   transactionNo?: string;
   message: string;
+  /** PIN 흐름에서만: 인증 링크 만료 시각 (대기 화면 카운트다운용) */
+  pinExpiresAt?: Date;
+  /** PIN 흐름에서만: 결제사 실연동이 아닌 mock 링크인지 */
+  pinMock?: boolean;
 }
 
 export async function createWebDonation(input: WebDonationInput): Promise<WebDonationResult> {
@@ -111,7 +129,23 @@ export async function createWebDonation(input: WebDonationInput): Promise<WebDon
   });
   await idem.release(donation.id);
 
-  // 화면에서 금액을 확인하고 버튼을 눌렀으므로 곧바로 결제를 실행한다.
+  // 기본 경로: 결제사 PIN 입력 링크를 문자로 보낸다. 이 시점에는 출금이 일어나지 않는다.
+  if (resolveWebDonationChannel() === 'PIN') {
+    const pin = await startPinAuthorization(donation.id);
+    return {
+      ok: pin.ok,
+      status: pin.status,
+      donationId: donation.id,
+      transactionNo: donation.transactionNo,
+      message: pin.message,
+      pinExpiresAt: pin.expiresAt,
+      pinMock: pin.mock,
+    };
+  }
+
+  // ── deprecated: 즉시 결제 ─────────────────────────────────────────────
+  // 화면에서 금액을 확인하고 버튼을 눌렀다는 것만으로 곧바로 출금한다.
+  // ALLOW_LEGACY_WEB_INSTANT_PAY=true 일 때만 이 경로를 탄다.
   const paid = await executePayment(donation.id);
   return {
     ok: paid.ok,

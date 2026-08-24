@@ -198,6 +198,35 @@ export async function completePinAuthorization(input: PinCallbackInput): Promise
 }
 
 /**
+ * 인증 세션 한 건이 만료됐으면 그 자리에서 취소 처리한다.
+ *
+ * 배치가 돌기 전이라도 대기 화면(웹 후원 폴링)이 만료를 즉시 보여줄 수 있어야 한다.
+ * 선점(updateMany)에 성공한 호출만 후원 상태를 바꾸므로 중복 실행돼도 안전하다.
+ *
+ * @returns 이 호출이 실제로 만료 처리했으면 true
+ */
+export async function expirePinSessionIfStale(donationId: string, now = new Date()): Promise<boolean> {
+  const session = await prisma.paymentPinSession.findUnique({
+    where: { donationId },
+    select: { id: true, status: true, expiresAt: true },
+  });
+  if (!session || session.status !== 'PENDING' || session.expiresAt.getTime() >= now.getTime()) return false;
+
+  const claimed = await prisma.paymentPinSession.updateMany({
+    where: { id: session.id, status: 'PENDING' },
+    data: { status: 'EXPIRED', resultNote: 'PIN 입력 시간 초과' },
+  });
+  if (claimed.count !== 1) return false;
+
+  const d = await prisma.donation.findUnique({ where: { id: donationId }, select: { status: true } });
+  // 이미 결제로 넘어간 건(PENDING_PAYMENT 이후)은 건드리지 않는다.
+  if (d?.status !== 'PENDING_PIN') return false;
+  // setStatus 를 거쳐야 DonationStatusLog 감사 이력이 남는다
+  await setStatus(donationId, 'PAYMENT_FAILED', 'PIN 입력 시간 초과로 자동 취소');
+  return true;
+}
+
+/**
  * 만료된 PIN 인증 대기 건 정리 (배치).
  *
  * PIN 을 입력하지 않은 후원은 자동 취소한다. 출금이 없었으므로 원장 분개도 없고,
@@ -207,22 +236,12 @@ export async function completePinAuthorization(input: PinCallbackInput): Promise
 export async function expireStalePinSessions(now = new Date()): Promise<number> {
   const stale = await prisma.paymentPinSession.findMany({
     where: { status: 'PENDING', expiresAt: { lt: now } },
-    select: { id: true, donationId: true },
+    select: { donationId: true },
   });
 
   let count = 0;
   for (const s of stale) {
-    const claimed = await prisma.paymentPinSession.updateMany({
-      where: { id: s.id, status: 'PENDING' },
-      data: { status: 'EXPIRED', resultNote: 'PIN 입력 시간 초과' },
-    });
-    if (claimed.count !== 1) continue;
-
-    const d = await prisma.donation.findUnique({ where: { id: s.donationId }, select: { status: true } });
-    if (d?.status !== 'PENDING_PIN') continue;
-    // setStatus 를 거쳐야 DonationStatusLog 감사 이력이 남는다
-    await setStatus(s.donationId, 'PAYMENT_FAILED', 'PIN 입력 시간 초과로 자동 취소');
-    count += 1;
+    if (await expirePinSessionIfStale(s.donationId, now)) count += 1;
   }
   return count;
 }

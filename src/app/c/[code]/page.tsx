@@ -2,11 +2,12 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
   MessageSquare, CreditCard, ShieldCheck, CircleAlert,
-  Gauge, Flag, Phone, BellRing,
+  Gauge, Flag, Phone, BellRing, Smartphone,
 } from 'lucide-react';
 import { CreatorCodeForm } from '@/components/creator-code-form';
 import { CopyButton } from '@/components/public/copy-button';
 import { WebDonationPanel } from '@/components/public/web-donation-panel';
+import { WebDonationPinPanel } from '@/components/public/web-donation-pin-panel';
 import { defaultBannerFor } from '@/lib/banners';
 import { maskDisplayName } from '@/components/public/mask';
 import { Logo } from '@/components/brand/logo';
@@ -18,6 +19,7 @@ import { formatKst } from '@/lib/datetime';
 import { prisma } from '@/server/db';
 import { resolvePolicy } from '@/server/services/limits';
 import { getPaymentAdapter } from '@/server/adapters/payment';
+import { resolveWebDonationChannel } from '@/server/services/web-donation';
 
 export const dynamic = 'force-dynamic';
 
@@ -180,14 +182,26 @@ export default async function CreatorDonationPage({ params }: Params) {
               <p className="mb-4 text-center text-[16px] font-black tracking-[-0.02em] text-ink-900">
                 {creator.displayName} 님에게 후원하기
               </p>
-              <WebDonationPanel
-                creatorId={creator.id}
-                creatorName={creator.displayName}
-                defaultAmount={creator.donationAmount.toString()}
-                minAmount={effMin.toString()}
-                maxAmount={effMax.toString()}
-                paymentMock={paymentMock}
-              />
+              {/* 기본은 PIN 인증 흐름이다. 구 즉시결제 화면은 되돌림 플래그를 켰을 때만 쓴다. */}
+              {resolveWebDonationChannel() === 'PIN' ? (
+                <WebDonationPinPanel
+                  creatorId={creator.id}
+                  creatorName={creator.displayName}
+                  defaultAmount={creator.donationAmount.toString()}
+                  minAmount={effMin.toString()}
+                  maxAmount={effMax.toString()}
+                  paymentMock={paymentMock}
+                />
+              ) : (
+                <WebDonationPanel
+                  creatorId={creator.id}
+                  creatorName={creator.displayName}
+                  defaultAmount={creator.donationAmount.toString()}
+                  minAmount={effMin.toString()}
+                  maxAmount={effMax.toString()}
+                  paymentMock={paymentMock}
+                />
+              )}
             </div>
 
             {route ? (
@@ -266,12 +280,18 @@ export default async function CreatorDonationPage({ params }: Params) {
             />
             <Step
               no="2"
-              icon={<CreditCard size={17} strokeWidth={1.7} />}
-              title="본인 인증 후 바로 결제됩니다"
-              body="휴대전화 본인 인증을 마치면 등록된 내통장결제 계좌에서 선택한 금액이 출금됩니다. 처음이라면 인증 후 가입 창에서 계좌를 1회 등록합니다."
+              icon={<Smartphone size={17} strokeWidth={1.7} />}
+              title="휴대전화 번호를 입력합니다"
+              body="입력한 번호로 결제 PIN 입력 링크를 문자로 보내드립니다. 이 단계까지는 출금되지 않습니다. 처음이라면 등록 창에서 계좌를 1회 등록합니다."
             />
             <Step
               no="3"
+              icon={<CreditCard size={17} strokeWidth={1.7} />}
+              title="PIN 을 입력하면 결제됩니다"
+              body="문자로 받은 링크에서 결제 PIN 을 입력하면 등록된 계좌에서 선택한 금액이 출금됩니다. 유효시간 안에 입력하지 않으면 자동 취소됩니다."
+            />
+            <Step
+              no="4"
               icon={<ShieldCheck size={17} strokeWidth={1.7} />}
               title="유튜브와 방송에 표시됩니다"
               body="결제가 완료된 후원만 유튜브 라이브 채팅과 방송 오버레이, 음성 안내로 전달됩니다. 결제되지 않은 메시지는 표시되지 않습니다."

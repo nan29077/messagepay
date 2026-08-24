@@ -198,6 +198,17 @@ export function allowLegacyConfirmLink(): boolean {
   return bool('ALLOW_LEGACY_CONFIRM_LINK', false);
 }
 
+/**
+ * 후원샵 PC 웹 후원에서 구(舊) 즉시 결제를 계속 쓸지 여부. **deprecated**
+ *
+ * 기본값 false — 웹 후원도 결제사 PIN 인증 링크를 문자로 보내고, PIN 입력 후에 결제된다.
+ * 되돌림(롤백)이 필요할 때만 ALLOW_LEGACY_WEB_INSTANT_PAY=true 로 연다.
+ * (allowLegacyConfirmLink 와 같은 이유로 함수로 노출한다)
+ */
+export function allowLegacyWebInstantPay(): boolean {
+  return bool('ALLOW_LEGACY_WEB_INSTANT_PAY', false);
+}
+
 export const isProd = env.appEnv === 'prod';
 /** 개발 전용 기능(테스트 로그인, MO 시뮬레이터, 개발 아웃박스)을 열어도 되는 환경인지. */
 export const isLocal = env.appEnv === 'local';

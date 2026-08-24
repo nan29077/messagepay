@@ -249,6 +249,9 @@ export async function verifyWebDonateCode(_prev: WebDonateState, formData: FormD
 }
 
 // ---------------------------------------------------------------- 3) 후원 제출 (즉시 결제)
+//
+// **deprecated** — 기본 경로는 PIN 인증(web-donation-pin.ts)이다.
+// 이 액션은 ALLOW_LEGACY_WEB_INSTANT_PAY=true 일 때 쓰이는 구 화면 전용이다.
 
 export async function submitWebDonation(_prev: WebDonateState, formData: FormData): Promise<WebDonateState> {
   const creatorId = String(formData.get('creatorId') ?? '');
@@ -273,6 +276,12 @@ export async function submitWebDonation(_prev: WebDonateState, formData: FormDat
     message,
     requestId,
   });
+
+  // 플래그가 중간에 꺼져 PIN 흐름으로 접수된 경우.
+  // 아직 출금 전이므로 '완료'로 표시하지 않는다(결제 성공과 인증 대기를 같은 상태로 취급하지 않는다).
+  if (result.ok && result.status === 'PENDING_PIN') {
+    return { ok: true, step: 'ready', session, message: result.message };
+  }
 
   if (!result.ok) {
     // 결제수단 미등록으로 실패한 경우 가입 단계로 되돌린다
