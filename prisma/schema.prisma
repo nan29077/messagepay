@@ -334,6 +334,7 @@ model User {
   sessions       UserSession[]
   consents       ConsentRecord[]
   notifications  Notification[]
+  passwordResets PasswordResetToken[]
 
   @@index([role, status])
   @@map("app_user")
@@ -354,6 +355,26 @@ model UserSession {
   @@index([userId])
   @@index([expiresAt])
   @@map("user_session")
+}
+
+/// 비밀번호 재설정 1회용 토큰.
+/// 원문 토큰은 메일(현재는 콘솔/화면)로만 전달하고 DB 에는 해시만 남긴다.
+model PasswordResetToken {
+  id        String    @id
+  userId    String    @map("user_id")
+  /// tokenHash(SESSION_SECRET HMAC). 원문 저장 금지.
+  tokenHash String    @unique @map("token_hash")
+  requestIp String?   @map("request_ip")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(3)
+  usedIp    String?   @map("used_ip")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_token")
 }
 
 model AdminProfile {

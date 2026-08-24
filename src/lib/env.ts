@@ -116,6 +116,15 @@ export const env = {
     pinTtlSec: num('PAYMENT_PIN_TTL_SEC', 300),
     /** PIN 완료 콜백 검증용 공유 비밀 (X-Pin-Secret). 실연동 시 결제사 서명 검증으로 대체한다. */
     pinCallbackSecret: str('PAYMENT_PIN_CALLBACK_SECRET'),
+    /**
+     * PIN 완료 콜백에서 "인증 성공"으로 인정할 결과코드 목록 (대문자, 콤마 구분).
+     * 이 목록에 없는 코드는 인증 실패로 처리하고 승인(출금)을 실행하지 않는다.
+     * 실연동 시 결제사 규격의 성공 코드로 교체한다.
+     */
+    pinSuccessCodes: str('PAYMENT_PIN_SUCCESS_CODES', '0000,OK,SUCCESS,MOCK')
+      .split(',')
+      .map((v) => v.trim().toUpperCase())
+      .filter(Boolean),
   },
 
   mo: {
@@ -177,6 +186,15 @@ export const env = {
     publicBase: str('S3_PUBLIC_BASE'),
   },
 
+  /**
+   * 정리 배치(/api/cron/cleanup) 호출용 공유 비밀.
+   * 외부 스케줄러(AWS EventBridge Scheduler 등)가 Authorization: Bearer 로 보낸다.
+   * 비어 있으면 로컬에서만 호출을 허용한다(fail-closed).
+   */
+  cron: {
+    secret: str('CRON_SECRET'),
+  },
+
   safety: {
     /** 금융사 서면승인 등록 전에는 DIRECT_TRIGGER 를 열지 않는다. */
     allowDirectTrigger: bool('ALLOW_DIRECT_TRIGGER', false),
@@ -218,6 +236,10 @@ export function assertProductionSafety(): string[] {
   const problems: string[] = [];
   if (!isProd) return problems;
   if (env.crypto.provider !== 'aws-kms') problems.push('운영에서는 CRYPTO_PROVIDER=aws-kms 여야 합니다.');
+  // KMS 키 ID 가 없으면 provider 주입이 실패해 암호화가 전건 예외가 된다.
+  if (env.crypto.provider === 'aws-kms' && !env.crypto.kmsKeyId) {
+    problems.push('CRYPTO_PROVIDER=aws-kms 인데 AWS_KMS_KEY_ID 가 비어 있습니다.');
+  }
   if (env.crypto.sessionSecret.startsWith('dev-only')) problems.push('SESSION_SECRET 이 기본값입니다.');
   if (env.crypto.phoneHashSecret.startsWith('dev-only')) problems.push('PHONE_HASH_SECRET 이 기본값입니다.');
   if (env.allowInMemoryFallback) problems.push('운영에서는 ALLOW_INMEMORY_FALLBACK=false 여야 합니다.');
@@ -242,6 +264,27 @@ export function assertProductionSafety(): string[] {
     }
   }
   return problems;
+}
+
+/**
+ * 기동을 막지는 않지만 운영자가 확인해야 하는 설정.
+ *
+ * "없으면 서비스가 위험한 값"은 assertProductionSafety() 에서 기동을 중단시키고,
+ * "없으면 특정 기능만 멈추는 값"은 여기서 경고만 남긴다.
+ */
+export function bootWarnings(): string[] {
+  const warnings: string[] = [];
+  if (isProd && !env.cron.secret) {
+    warnings.push(
+      'CRON_SECRET 이 비어 있습니다. 정리 배치(/api/cron/cleanup)가 전건 401 로 거절되어 ' +
+        '만료된 PIN 인증/확인 링크가 자동 취소되지 않습니다.',
+    );
+  }
+  // provider=local 인데 마스터키가 없으면 개인정보 암호화가 호출 시점에 예외가 된다.
+  if (env.crypto.provider === 'local' && !env.crypto.masterKey) {
+    warnings.push('CRYPTO_MASTER_KEY 가 비어 있습니다. 개인정보 암호화가 호출 시점에 실패합니다.');
+  }
+  return warnings;
 }
 
 /**

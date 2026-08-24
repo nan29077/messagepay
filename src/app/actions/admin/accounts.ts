@@ -7,6 +7,7 @@ import { notifyUser } from '@/server/services/notifications';
 import { newId, newCreatorCode } from '@/lib/id';
 import { env } from '@/lib/env';
 import type { AdminActionState } from '@/components/admin/state';
+import { issueTemporaryPassword } from '@/server/services/password-reset';
 import { run, text, optText, money, optMoney, enumValue, requiredId } from './shared';
 
 /**
@@ -48,6 +49,56 @@ export async function updateUserStatus(_prev: AdminActionState, fd: FormData): P
     });
     revalidatePath('/admin/users');
     return `${before.email ?? userId} 회원 상태를 변경했습니다.`;
+  });
+}
+
+/**
+ * 임시 비밀번호 발급.
+ *
+ * 고객센터 경로로 **본인 확인을 마친 뒤에만** 사용한다. 발급 즉시 기존 비밀번호는
+ * 사용할 수 없게 되고, 해당 계정의 모든 세션이 끊기며, 살아 있던 재설정 링크도 무효가 된다.
+ *
+ * 발급된 비밀번호는 이 응답에서 **한 번만** 볼 수 있다(해시만 저장한다).
+ * 감사 로그에도 비밀번호 원문은 남기지 않는다.
+ */
+export async function issueTemporaryPasswordAction(
+  _prev: AdminActionState,
+  fd: FormData,
+): Promise<AdminActionState> {
+  return run(async (admin) => {
+    if (admin.adminPermission === 'READ_ONLY') throw new Error('읽기 전용 권한입니다.');
+    const userId = requiredId(fd, 'userId', '회원');
+
+    const target = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, status: true, deletedAt: true, role: true },
+    });
+    if (!target) throw new Error('회원을 찾을 수 없습니다.');
+    if (target.deletedAt || target.status !== 'ACTIVE') {
+      throw new Error('활성 상태의 계정에만 임시 비밀번호를 발급할 수 있습니다.');
+    }
+    if (target.id === admin.id) {
+      throw new Error('본인 계정에는 임시 비밀번호를 발급할 수 없습니다.');
+    }
+    // 관리자 계정 비밀번호 초기화는 최고관리자만 할 수 있게 한다(권한 상승 경로 차단).
+    if (target.role === 'ADMIN' && admin.adminPermission !== 'SUPER_ADMIN') {
+      throw new Error('관리자 계정의 임시 비밀번호 발급은 SUPER_ADMIN 만 수행할 수 있습니다.');
+    }
+
+    const { password } = await issueTemporaryPassword(userId);
+
+    await writeAudit({
+      adminUserId: admin.id,
+      action: 'USER_TEMP_PASSWORD_ISSUE',
+      targetType: 'User',
+      targetId: userId,
+      after: { email: target.email, sessionsRevoked: true },
+    });
+    revalidatePath('/admin/users');
+    return {
+      message: `${target.email ?? userId} 계정의 임시 비밀번호를 발급했습니다. 이 값은 지금 화면에서만 확인할 수 있습니다.`,
+      detail: { tempPassword: password },
+    };
   });
 }
 

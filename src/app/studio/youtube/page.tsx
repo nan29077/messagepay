@@ -112,6 +112,16 @@ export default async function StudioYouTubePage({
               {connLabel ? <Badge tone={connLabel.tone}>{connLabel.text}</Badge> : <Badge tone="neutral">미연결</Badge>}
             </div>
 
+            {connection?.status === 'EXPIRED' ? (
+              <div className="mb-3">
+                <Notice tone="warning" title="로그인 유효기간이 만료되었습니다">
+                  일시적인 오류일 수 있습니다. 아래 [현재 라이브 방송 조회]를 눌러 자동 복구를 한 번 시도해 보시고,
+                  계속 실패하면 [다른 채널로 다시 연결]로 구글 계정 연결을 새로 해 주세요. 복구 전까지는 후원 메시지가
+                  라이브 채팅에 올라가지 않습니다.
+                </Notice>
+              </div>
+            ) : null}
+
             {connection ? (
               <div>
                 <DataRow label="채널 ID" value={<span className="font-mono text-[12px]">{connection.channelId}</span>} />
@@ -131,7 +141,7 @@ export default async function StudioYouTubePage({
             <div className="mt-4 flex flex-wrap items-start gap-2">
               {authUrl ? (
                 <LinkButton href={authUrl} prefetch={false} size="sm">
-                  {connected ? '다른 채널로 다시 연결' : '구글 계정으로 채널 연결'}
+                  {connection ? '다른 채널로 다시 연결' : '구글 계정으로 채널 연결'}
                 </LinkButton>
               ) : null}
               {connected ? (

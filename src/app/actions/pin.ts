@@ -3,6 +3,7 @@
 import { prisma } from '@/server/db';
 import { formatNumber } from '@/lib/money';
 import { completePinAuthorization } from '@/server/services/pin-authorization';
+import { assertMockPaymentAllowed } from '@/server/mock-guard';
 
 /**
  * 모의 PIN 화면 전용 서버 액션.
@@ -21,6 +22,10 @@ export interface MockPinResult {
 }
 
 export async function submitMockPinAction(sessionId: string, pin: string): Promise<MockPinResult> {
+  // 실제 결제사가 연결된 환경에서는 이 액션 자체를 열지 않는다.
+  // (세션 ID 만 알면 PIN 인증을 건너뛰고 출금이 일어날 수 있다)
+  assertMockPaymentAllowed();
+
   const digits = String(pin ?? '').replace(/[^0-9]/g, '');
   if (digits.length !== 6) {
     return { ok: false, message: 'PIN 6자리를 입력해 주세요.' };

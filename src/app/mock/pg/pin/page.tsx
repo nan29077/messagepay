@@ -1,9 +1,11 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 import { Logo } from '@/components/brand/logo';
 import { Card, Notice } from '@/components/ui';
 import { prisma } from '@/server/db';
 import { formatNumber } from '@/lib/money';
 import { MockPinForm } from './mock-pin-form';
+import { isMockPaymentAllowed } from '@/server/mock-guard';
 
 /**
  * Mock PIN 입력창 (결제사 PIN 인증 화면 대체).
@@ -29,6 +31,9 @@ function one(v: string | string[] | undefined): string {
 }
 
 export default async function MockPgPinPage({ searchParams }: { searchParams: Promise<Search> }) {
+  // 실결제 환경에서는 존재하지 않는 화면으로 취급한다.
+  if (!isMockPaymentAllowed()) notFound();
+
   const sp = await searchParams;
   const sessionId = one(sp.session);
 

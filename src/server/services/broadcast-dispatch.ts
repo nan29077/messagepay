@@ -54,8 +54,30 @@ export async function dispatchBroadcast(donationId: string): Promise<DispatchRes
 
   await prisma.donation.update({ where: { id: donationId }, data: { status: 'BROADCAST_PENDING' } });
 
-  const overlayOk = await sendOverlay(donationId);
-  const yt = await sendYouTube(donationId);
+  // 각 송출은 독립이다. 한쪽이 예외를 던져도 나머지를 계속 시도하고,
+  // 아래 상태 확정(BROADCASTED / PARTIAL_DELIVERY_FAILED)은 **반드시** 수행한다.
+  // 예외가 그대로 새어 나가면 후원이 BROADCAST_PENDING 에 영구히 고착되어
+  // 결제는 끝났는데 정산 대기로 넘어가지 않는다.
+  let overlayOk = false;
+  try {
+    overlayOk = await sendOverlay(donationId);
+  } catch (e) {
+    logger.error('오버레이 송출 오류 (결제는 정상 완료)', { donationId, message: (e as Error).message });
+    await prisma.donation
+      .update({ where: { id: donationId }, data: { overlayStatus: 'FAILED' } })
+      .catch(() => undefined);
+  }
+
+  let yt: { ok: boolean; reason?: string } = { ok: false, reason: 'NOT_ATTEMPTED' };
+  try {
+    yt = await sendYouTube(donationId);
+  } catch (e) {
+    logger.error('유튜브 송출 오류 (결제는 정상 완료)', { donationId, message: (e as Error).message });
+    yt = { ok: false, reason: 'DISPATCH_ERROR' };
+    await prisma.donation
+      .update({ where: { id: donationId }, data: { youtubeStatus: 'FAILED' } })
+      .catch(() => undefined);
+  }
 
   const allOk = overlayOk && yt.ok;
   await prisma.donation.update({
@@ -205,13 +227,16 @@ async function sendYouTube(donationId: string): Promise<{ ok: boolean; reason?: 
     return { ok: true, reason };
   };
 
-  if (!conn || conn.status !== 'CONNECTED') return skip('NO_CONNECTION');
+  // EXPIRED 는 "이전 갱신이 한 번 실패했다"는 뜻일 뿐 영구 실패가 아니다.
+  // (일시적인 네트워크 오류로 EXPIRED 가 되면 다시는 시도하지 않아 채팅 전송이 영영 멈춘다)
+  // REVOKED / ERROR 는 사람이 다시 연결해야 하므로 시도하지 않는다.
+  if (!conn || (conn.status !== 'CONNECTED' && conn.status !== 'EXPIRED')) return skip('NO_CONNECTION');
 
   const adapter = getYouTubeAdapter();
 
-  // 액세스 토큰 만료 시 갱신
+  // 액세스 토큰 만료 시 갱신. EXPIRED 상태면 만료 시각과 무관하게 한 번 더 갱신을 시도한다.
   let accessToken = decrypt(conn.accessTokenEnc);
-  if (conn.expiresAt.getTime() < Date.now() + 60_000) {
+  if (conn.status === 'EXPIRED' || conn.expiresAt.getTime() < Date.now() + 60_000) {
     const refreshed = await adapter.refresh(decrypt(conn.refreshTokenEnc));
     if (!refreshed.ok || !refreshed.data) {
       await prisma.youTubeConnection.update({
@@ -232,8 +257,25 @@ async function sendYouTube(donationId: string): Promise<{ ok: boolean; reason?: 
     });
   }
 
+  // 조회 실패(API 오류)와 "방송 없음"은 원인이 완전히 다르다.
+  //  - API_ERROR      : 우리 쪽/구글 쪽 문제. 로그와 lastError 로 추적해야 한다.
+  //  - NO_ACTIVE_BROADCAST : 크리에이터가 방송 중이 아님. 정상 상황이다.
   const live = await adapter.findActiveBroadcast(accessToken);
-  if (!live.ok || !live.data || !live.data.liveChatId) return skip('NO_ACTIVE_BROADCAST');
+  if (!live.ok) {
+    await prisma.youTubeConnection
+      .update({
+        where: { id: conn.id },
+        data: { lastError: live.message ?? '라이브 방송 조회 실패', lastCheckedAt: new Date() },
+      })
+      .catch(() => undefined);
+    logger.warn('유튜브 라이브 방송 조회 실패', {
+      donationId,
+      code: live.code ?? null,
+      message: live.message ?? null,
+    });
+    return skip('BROADCAST_LOOKUP_FAILED');
+  }
+  if (!live.data || !live.data.liveChatId) return skip('NO_ACTIVE_BROADCAST');
 
   const broadcast = await prisma.youTubeBroadcast.upsert({
     where: { creatorId_broadcastId: { creatorId: donation.creatorId, broadcastId: live.data.broadcastId } },

@@ -6,6 +6,7 @@ import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
 import { createSession, hashPassword } from '@/server/auth';
 import { isLocal } from '@/lib/env';
+import { consumeIpRateLimit } from '@/server/rate-limit';
 
 /**
  * 후원자 회원가입.
@@ -57,6 +58,12 @@ export async function signupDonor(_prev: SignupFormState, formData: FormData): P
   const parsed = schema.safeParse(raw);
   if (!parsed.success) {
     return { ok: false, message: parsed.error.issues[0]?.message ?? '입력값을 확인해 주세요.', values };
+  }
+
+  // 자동화 도구로 계정을 대량 생성하는 것을 막는다. (같은 IP 기준 분당 5회)
+  const limited = await consumeIpRateLimit('signup', 5, 60);
+  if (!limited.ok) {
+    return { ok: false, message: '가입 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.', values };
   }
 
   const email = parsed.data.email;

@@ -87,6 +87,11 @@ export default async function LoginPage({
             로그인
             <LogIn size={16} strokeWidth={1.7} />
           </Button>
+          <p className="text-center text-[13px] text-ink-500">
+            <Link href="/reset-password" className="font-semibold text-brand-700">
+              비밀번호 재설정
+            </Link>
+          </p>
         </form>
 
         <div className="mt-5">

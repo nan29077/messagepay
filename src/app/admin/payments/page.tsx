@@ -3,6 +3,8 @@ import { PageHeader } from '@/components/layout/console-shell';
 import { Badge, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
 import { AdminField, AdminInput, AdminSelect, FilterBar, Pager } from '@/components/admin/controls';
 import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
+import { ActionForm } from '@/components/admin/action-form';
+import { reconcilePaymentAction } from '@/app/actions/admin/transactions';
 import { prisma } from '@/server/db';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
@@ -32,7 +34,7 @@ const txSelect = {
 
 type TxRow = Prisma.PaymentTransactionGetPayload<{ select: typeof txSelect }>;
 
-function TxRows({ rows }: { rows: TxRow[] }) {
+function TxRows({ rows, reconcilable = false }: { rows: TxRow[]; reconcilable?: boolean }) {
   return (
     <tbody>
       {rows.map((t) => (
@@ -98,9 +100,57 @@ function TxRows({ rows }: { rows: TxRow[] }) {
               </div>
             </details>
           </Td>
+          {reconcilable ? (
+            <Td>
+              <ReconcileCell transactionId={t.id} orderNo={t.orderNo} />
+            </Td>
+          ) : null}
         </tr>
       ))}
     </tbody>
+  );
+}
+
+/**
+ * 결과 미확인 결제의 수동 확정.
+ * PG 관리자 화면에서 실제 승인 여부를 대사한 뒤에만 사용한다. 되돌릴 수 없다.
+ */
+function ReconcileCell({ transactionId, orderNo }: { transactionId: string; orderNo: string }) {
+  return (
+    <div className="flex min-w-[210px] flex-col gap-2">
+      <ActionForm
+        action={reconcilePaymentAction}
+        submitLabel="결제 확정"
+        variant="primary"
+        compact
+        confirm={`${orderNo} 건을 결제 승인으로 확정합니다.
+PG 관리자에서 실제 출금을 확인하셨나요? 정산 원장에 분개가 추가되며 되돌릴 수 없습니다.`}
+      >
+        <input type="hidden" name="transactionId" value={transactionId} />
+        <input type="hidden" name="decision" value="APPROVE" />
+        <input
+          name="memo"
+          placeholder="대사 근거 (예: PG 조회 결과 승인)"
+          className="h-8 w-full rounded-lg border border-ink-200 px-2 text-[12px] text-ink-900 focus:border-brand-400 focus:outline-none"
+        />
+      </ActionForm>
+      <ActionForm
+        action={reconcilePaymentAction}
+        submitLabel="결제 취소"
+        variant="danger"
+        compact
+        confirm={`${orderNo} 건을 결제 취소로 확정합니다.
+출금이 없었음을 확인하셨나요? 후원은 실패로 확정되며 되돌릴 수 없습니다.`}
+      >
+        <input type="hidden" name="transactionId" value={transactionId} />
+        <input type="hidden" name="decision" value="CANCEL" />
+        <input
+          name="memo"
+          placeholder="대사 근거 (예: PG 조회 결과 미승인)"
+          className="h-8 w-full rounded-lg border border-ink-200 px-2 text-[12px] text-ink-900 focus:border-brand-400 focus:outline-none"
+        />
+      </ActionForm>
+    </div>
   );
 }
 
@@ -186,13 +236,28 @@ export default async function AdminPaymentsPage({
       {needsCheck.length > 0 ? (
         <section className="mb-6">
           <Notice tone="danger" title={`결과 확인이 필요한 결제 ${needsCheck.length}건`}>
-            PG 응답이 타임아웃되었거나 결과를 알 수 없는 거래입니다. 실제 승인 여부를 PG 관리자에서 대사한 뒤 처리해야
-            합니다. 확인 전까지는 중복 결제를 유발할 수 있는 재시도를 하지 마세요.
+            PG 응답이 타임아웃되었거나 결과를 알 수 없는 거래입니다. 실제 승인 여부를 PG 관리자에서 대사한 뒤 오른쪽
+            [수동 확정]으로 결론을 반영해 주세요. 확인 전까지는 중복 결제를 유발할 수 있는 재시도를 하지 마세요.
+            [결제 확정]은 정산 원장에 분개를 추가하고, [결제 취소]는 후원을 실패로 확정하며 한도 집계를 되돌립니다.
+            어느 쪽도 되돌릴 수 없으므로 대사 근거를 반드시 남겨 주세요. 대사 시점에는 방송이 끝났을 수 있어
+            오버레이·유튜브 송출은 다시 하지 않습니다.
           </Notice>
           <div className="mt-3">
-            <Table className="min-w-[1200px]">
-              {HEAD}
-              <TxRows rows={needsCheck} />
+            <Table className="min-w-[1400px]">
+              <thead>
+                <tr>
+                  <Th>주문번호</Th>
+                  <Th>거래번호</Th>
+                  <Th>크리에이터 / 후원자</Th>
+                  <Th className="text-right">금액</Th>
+                  <Th>상태</Th>
+                  <Th>결과</Th>
+                  <Th>시각</Th>
+                  <Th>PG 시도 이력</Th>
+                  <Th>수동 확정</Th>
+                </tr>
+              </thead>
+              <TxRows rows={needsCheck} reconcilable />
             </Table>
           </div>
         </section>

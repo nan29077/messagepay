@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { AlertTriangle, KeyRound, MessageSquare, ShieldCheck } from 'lucide-react';
 import { Card, CardTitle, Notice } from '@/components/ui';
 import { Logo } from '@/components/brand/logo';
+import { isMockYouTubeAllowed } from '@/server/mock-guard';
 
 /**
  * Mock 구글 동의화면.
@@ -27,6 +29,9 @@ function one(v: string | string[] | undefined): string {
 }
 
 export default async function MockYouTubeConsentPage({ searchParams }: { searchParams: Promise<Search> }) {
+  // 실제 구글 OAuth 가 연결된 환경에서는 존재하지 않는 화면으로 취급한다.
+  if (!isMockYouTubeAllowed()) notFound();
+
   const sp = await searchParams;
   const state = one(sp.state);
   const q = `state=${encodeURIComponent(state)}`;

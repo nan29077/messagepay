@@ -5,6 +5,7 @@ import { prisma } from '@/server/db';
 import { writeAudit } from '@/server/auth';
 import { newId } from '@/lib/id';
 import { requestRefund, approveRefund, rejectRefund } from '@/server/services/refund';
+import { reconcileUnknownPayment } from '@/server/services/payment-reconcile';
 import type { AdminActionState } from '@/components/admin/state';
 import { run, text, optText, money, enumValue, requiredId } from './shared';
 
@@ -130,6 +131,51 @@ export async function changeMoNumberStatus(_prev: AdminActionState, fd: FormData
     });
     revalidatePath('/admin/mo-numbers');
     return `${before.phoneNumber} 번호 상태를 변경했습니다.`;
+  });
+}
+
+// =========================================================== 결과 미확인 결제 수동 대사
+
+/**
+ * UNKNOWN / TIMEOUT 결제의 수동 확정.
+ *
+ * PG 관리자 화면에서 **실제 승인 여부를 대사한 뒤에만** 사용한다.
+ *  - [결제 확정] : 출금이 확인된 건. 정산 원장에 분개가 추가된다.
+ *  - [결제 취소] : 출금이 없었던 건. 후원은 실패로 확정되고 한도 집계가 되돌아간다.
+ *
+ * 되돌릴 수 없는 작업이므로 재무/운영 권한에서만 허용하고, 근거를 메모로 남기게 한다.
+ */
+export async function reconcilePaymentAction(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
+  return run(async (admin) => {
+    if (admin.adminPermission === 'SUPPORT') {
+      throw new Error('결제 수동 확정은 재무/운영 권한에서만 가능합니다.');
+    }
+    const transactionId = requiredId(fd, 'transactionId', '결제 거래');
+    const decision = enumValue(fd, 'decision', ['APPROVE', 'CANCEL'] as const, '처리 구분');
+    const memo = optText(fd, 'memo');
+    if (!memo || memo.length < 2) {
+      throw new Error('PG 대사 근거를 2자 이상 입력해 주세요. (예: PG 관리자 조회 결과 승인됨)');
+    }
+
+    const before = await prisma.paymentTransaction.findUnique({
+      where: { id: transactionId },
+      select: { id: true, orderNo: true, status: true, donation: { select: { status: true } } },
+    });
+    if (!before) throw new Error('결제 거래를 찾을 수 없습니다.');
+
+    const result = await reconcileUnknownPayment(transactionId, decision, memo);
+
+    await writeAudit({
+      adminUserId: admin.id,
+      action: decision === 'APPROVE' ? 'PAYMENT_RECONCILE_APPROVE' : 'PAYMENT_RECONCILE_CANCEL',
+      targetType: 'PaymentTransaction',
+      targetId: transactionId,
+      before: { status: before.status, donationStatus: before.donation.status },
+      after: { status: decision === 'APPROVE' ? 'APPROVED' : 'CANCELED', orderNo: before.orderNo, memo },
+    });
+    revalidatePath('/admin/payments');
+    revalidatePath('/admin/settlements');
+    return result.message;
   });
 }
 

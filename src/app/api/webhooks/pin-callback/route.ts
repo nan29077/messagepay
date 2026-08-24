@@ -4,7 +4,8 @@ import { newId } from '@/lib/id';
 import { env, isLocal } from '@/lib/env';
 import { safeEqual } from '@/lib/crypto';
 import { logger, scrub } from '@/lib/logger';
-import { completePinAuthorization } from '@/server/services/pin-authorization';
+import { completePinAuthorization, failPinAuthorization } from '@/server/services/pin-authorization';
+import { isMockPaymentAllowed } from '@/server/mock-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,8 +20,9 @@ export const dynamic = 'force-dynamic';
  * 처리 순서
  *  1) 본문 크기 제한 → 원문 보존(WebhookLog)
  *  2) 서명 검증 (현재는 X-Pin-Secret 공유 비밀. TODO: 실연동 시 결제사 서명으로 교체)
- *  3) 인증 세션 확인 + 멱등 처리 → executePayment
- *  4) 재전송 폭주를 막기 위해 처리 결과는 200 으로 응답한다.
+ *  3) 결과코드 검증 → 성공 코드가 아니면 인증 실패로 확정(승인하지 않는다)
+ *  4) 인증 세션 확인 + 멱등 처리 → executePayment
+ *  5) 재전송 폭주를 막기 위해 처리 결과는 200 으로 응답한다.
  *     (서명 실패만 401 로 명확히 거절한다)
  *
  * Mock 단계에서는 모의 PIN 화면(/mock/pg/pin)과 수동 테스트가 이 엔드포인트를 사용한다.
@@ -57,6 +59,26 @@ function verifyCallback(headerSecret: string | null): { ok: boolean; reason?: st
   }
   if (!headerSecret) return { ok: false, reason: 'X-Pin-Secret 헤더 없음' };
   return safeEqual(expected, headerSecret) ? { ok: true } : { ok: false, reason: '공유 비밀 불일치' };
+}
+
+/**
+ * 결과코드 판정.
+ *
+ * PAYMENT_PIN_SUCCESS_CODES 에 없는 코드는 인증 실패로 본다. 결제사가 실패를 통지했는데
+ * 승인으로 넘어가면 인증되지 않은 출금이 일어난다.
+ *
+ * 결과코드가 아예 없는 요청은 mock 어댑터 환경(모의 PIN 화면, 수동 테스트)에서만 성공으로
+ * 인정한다. 실제 결제사가 연결된 환경에서는 코드 없는 통지를 신뢰하지 않는다(fail-closed).
+ */
+function verifyResultCode(code: string | null): { ok: boolean; reason?: string } {
+  if (!code) {
+    return isMockPaymentAllowed()
+      ? { ok: true }
+      : { ok: false, reason: 'resultCode 가 없습니다.' };
+  }
+  return env.payment.pinSuccessCodes.includes(code.toUpperCase())
+    ? { ok: true }
+    : { ok: false, reason: `성공 코드가 아닙니다 (resultCode=${code})` };
 }
 
 export async function POST(req: Request) {
@@ -119,12 +141,31 @@ export async function POST(req: Request) {
     });
   }
 
+  const resultCode = str(parsed.resultCode);
+  const resultMessage = str(parsed.resultMessage);
+
   try {
+    // 결제사가 실패를 통지한 건은 절대 승인 단계로 넘기지 않는다.
+    const verdict = verifyResultCode(resultCode);
+    if (!verdict.ok) {
+      const failed = await failPinAuthorization(
+        { sessionId, donationId },
+        [verdict.reason, resultMessage].filter(Boolean).join(' / '),
+      );
+      logger.warn('PIN 콜백 - 인증 실패 통지', { reason: verdict.reason, code: failed.code });
+      return finish(200, failed.code, {
+        ok: false,
+        code: failed.code,
+        status: failed.status ?? null,
+        message: failed.message,
+      });
+    }
+
     const result = await completePinAuthorization({
       sessionId,
       donationId,
-      resultCode: str(parsed.resultCode),
-      resultMessage: str(parsed.resultMessage),
+      resultCode,
+      resultMessage,
     });
     return finish(200, result.code, {
       ok: result.ok,

@@ -47,6 +47,22 @@ export interface OverlayPayload {
 const OUT_MS = 360; // globals.css 의 .animate-tornado-out 길이와 맞춘다
 const MAX_BACKOFF_MS = 30000;
 
+/**
+ * SSE 연결 상태.
+ *
+ * 방송 화면에는 절대 표시하지 않는다(디버그 배지와 스튜디오 미리보기 전용).
+ * 크리에이터는 스튜디오 미리보기 창에서 이 상태를 보고 OBS 연결 문제를 판별한다.
+ */
+export type LinkPhase = 'connecting' | 'connected' | 'retrying';
+
+interface LinkState {
+  phase: LinkPhase;
+  /** 재연결까지 남은 대기 시간(초). retrying 일 때만 의미가 있다. */
+  retrySec?: number;
+  /** 재연결 직후 서버가 다시 보내 준 놓친 알림 수 */
+  recovered?: number;
+}
+
 const positionClass: Record<string, string> = {
   TOP_LEFT: 'items-start justify-start',
   TOP_CENTER: 'items-start justify-center',
@@ -120,6 +136,15 @@ function bannerOf(payload: OverlayPayload): boolean {
   return payload.banner !== false;
 }
 
+/** 디버그 배지 문구. 방송 화면(디버그 미사용)에는 나타나지 않는다. */
+function linkLabel(link: LinkState): string {
+  if (link.phase === 'retrying') {
+    return link.retrySec && link.retrySec > 0 ? `재연결 중 ${link.retrySec}초 후` : '재연결 중';
+  }
+  if (link.phase === 'connecting') return '연결 중';
+  return link.recovered ? `연결됨 · 복구 ${link.recovered}건` : '연결됨';
+}
+
 export function OverlayClient({
   creatorId,
   token,
@@ -143,13 +168,20 @@ export function OverlayClient({
 }) {
   const [current, setCurrent] = React.useState<OverlayPayload | null>(null);
   const [leaving, setLeaving] = React.useState(false);
-  const [connected, setConnected] = React.useState(false);
+  const [link, setLink] = React.useState<LinkState>({ phase: 'connecting' });
   const [queueLen, setQueueLen] = React.useState(0);
 
   const queue = React.useRef<OverlayPayload[]>([]);
   const busy = React.useRef(false);
   const seen = React.useRef<Set<string>>(new Set());
   const playNextRef = React.useRef<() => void>(() => {});
+  /**
+   * 마지막으로 받은 이벤트 ID.
+   * 재연결할 때 서버에 알려 주면 끊긴 사이에 쌓인 후원 알림을 다시 받아 재생한다.
+   * (표준 EventSource 는 브라우저가 직접 재연결할 때만 Last-Event-ID 헤더를 보낸다.
+   *  여기서는 지수 백오프를 위해 직접 다시 연결하므로 쿼리로 함께 보낸다)
+   */
+  const lastEventId = React.useRef<string>('');
 
   // 브라우저 음성 목록은 비동기로 로드되므로 미리 한 번 요청해 둔다.
   React.useEffect(() => {
@@ -255,40 +287,79 @@ export function OverlayClient({
     let source: EventSource | null = null;
     let retry = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let countdown: ReturnType<typeof setInterval> | null = null;
+    /** 이번 연결에서 서버가 재전송해 준 알림 수 (재연결 직후에만 올라간다) */
+    let recovered = 0;
+    let resuming = false;
+
+    /** 스튜디오 미리보기(iframe) 부모 창에 상태를 알린다. 방송 화면에는 아무것도 그리지 않는다. */
+    const notifyParent = (type: string, extra?: Record<string, unknown>) => {
+      if (!preview || typeof window === 'undefined' || window.parent === window) return;
+      try {
+        window.parent.postMessage({ type, creatorId, ...extra }, window.location.origin);
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const clearCountdown = () => {
+      if (countdown) clearInterval(countdown);
+      countdown = null;
+    };
 
     const connect = () => {
       if (disposed) return;
-      const auth = preview ? 'preview=1' : `token=${encodeURIComponent(token)}`;
-      const url = `/api/overlay/${encodeURIComponent(creatorId)}/stream?${auth}`;
+      clearCountdown();
+      recovered = 0;
+
+      const params = new URLSearchParams();
+      if (preview) params.set('preview', '1');
+      else params.set('token', token);
+      // 끊긴 사이에 쌓인 알림을 돌려받기 위해 마지막으로 받은 이벤트 ID 를 함께 보낸다.
+      if (lastEventId.current) params.set('lastEventId', lastEventId.current);
+      resuming = Boolean(lastEventId.current);
+
+      const url = `/api/overlay/${encodeURIComponent(creatorId)}/stream?${params.toString()}`;
       const es = new EventSource(url);
       source = es;
 
-      es.onopen = () => {
+      const markConnected = () => {
         retry = 0;
-        setConnected(true);
+        clearCountdown();
+        setLink({ phase: 'connected', recovered });
+        notifyParent('donaido-overlay-status', { phase: 'connected', recovered });
+      };
+
+      es.onopen = () => {
+        markConnected();
         console.log('[overlay] 연결됨');
       };
 
       es.addEventListener('ready', () => {
-        retry = 0;
-        setConnected(true);
+        markConnected();
         // 스튜디오 미리보기(iframe)에 구독 완료를 알린다. 구독 전에 보낸 테스트 이벤트는
         // 서버가 보관하지 않으므로, 부모 창은 이 신호를 받은 뒤에 자동 발동해야 한다.
-        if (preview && typeof window !== 'undefined' && window.parent !== window) {
-          try {
-            window.parent.postMessage({ type: 'donaido-overlay-ready', creatorId }, window.location.origin);
-          } catch {
-            /* ignore */
-          }
-        }
+        notifyParent('donaido-overlay-ready');
       });
 
       es.addEventListener('donation', (ev) => {
         try {
-          const payload = JSON.parse((ev as MessageEvent).data) as OverlayPayload;
+          const message = ev as MessageEvent;
+          // 서버가 붙인 이벤트 ID. 다음 재연결 때 이 지점부터 다시 받는다.
+          if (message.lastEventId) lastEventId.current = message.lastEventId;
+
+          const payload = JSON.parse(message.data) as OverlayPayload;
           if (!payload?.eventId || seen.current.has(payload.eventId)) return;
           seen.current.add(payload.eventId);
           if (seen.current.size > 500) seen.current = new Set();
+
+          // 재연결 직후 되돌려받은 건은 별도로 센다(디버그 배지/미리보기 표시용).
+          if (resuming) {
+            recovered += 1;
+            setLink({ phase: 'connected', recovered });
+            notifyParent('donaido-overlay-status', { phase: 'connected', recovered });
+          }
+
           queue.current.push(payload);
           setQueueLen(queue.current.length);
           playNextRef.current();
@@ -298,12 +369,23 @@ export function OverlayClient({
       });
 
       es.onerror = () => {
-        setConnected(false);
         es.close();
         if (disposed) return;
-        // 지수 백오프 (최대 30초). 재연결 상태는 화면에 표시하지 않는다.
+        resuming = false;
+        // 지수 백오프 (최대 30초). 재연결 상태는 방송 화면에 표시하지 않는다.
         const wait = Math.min(MAX_BACKOFF_MS, 1000 * 2 ** retry);
         retry += 1;
+
+        let remain = Math.round(wait / 1000);
+        setLink({ phase: 'retrying', retrySec: remain });
+        notifyParent('donaido-overlay-status', { phase: 'retrying', retrySec: remain });
+        clearCountdown();
+        countdown = setInterval(() => {
+          remain = Math.max(0, remain - 1);
+          setLink({ phase: 'retrying', retrySec: remain });
+          notifyParent('donaido-overlay-status', { phase: 'retrying', retrySec: remain });
+        }, 1000);
+
         console.log(`[overlay] 연결 끊김. ${Math.round(wait / 1000)}초 후 재연결`);
         timer = setTimeout(connect, wait);
       };
@@ -314,6 +396,7 @@ export function OverlayClient({
     return () => {
       disposed = true;
       if (timer) clearTimeout(timer);
+      clearCountdown();
       source?.close();
     };
   }, [creatorId, token, preview]);
@@ -333,8 +416,12 @@ export function OverlayClient({
       </div>
 
       {debug ? (
-        <span className="fixed left-3 top-3 rounded-md bg-ink-900/80 px-2 py-1 text-[11px] font-semibold text-white">
-          {connected ? '연결됨' : '재연결 중'} · 대기 {queueLen} · 테마 {themeName}
+        <span
+          className={`fixed left-3 top-3 rounded-md px-2 py-1 text-[11px] font-semibold text-white ${
+            link.phase === 'connected' ? 'bg-ink-900/80' : 'bg-danger-500/85'
+          }`}
+        >
+          {linkLabel(link)} · 대기 {queueLen} · 테마 {themeName}
           {current?.tierLabel ? ` · ${current.tierLabel}` : ''}
         </span>
       ) : null}

@@ -15,6 +15,7 @@ import { prisma } from '@/server/db';
 import { env } from '@/lib/env';
 import { formatKst } from '@/lib/datetime';
 import { listOverlayTiers } from '@/server/services/overlay-tiers';
+import { countOverlayConnections, MAX_OVERLAY_CONNECTIONS } from '@/server/services/overlay-connections';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,6 +48,10 @@ export default async function StudioOverlayPage() {
   const ingestUrl = channel?.ingestUrl ?? env.stream.ingestBase;
   const playbackUrl = channel?.playbackUrl ?? `${env.stream.playbackBase}/${creatorId}.m3u8`;
 
+  // OBS 브라우저 소스가 실제로 붙어 있는지 크리에이터가 확인할 수 있게 현재 연결 수를 보여 준다.
+  // (이 서버 인스턴스 기준. 다중 인스턴스 배포에서는 인스턴스별 수치다)
+  const liveConnections = countOverlayConnections(creatorId);
+
   const urlBase = `${env.baseUrl}/overlay/${creatorId}?token=`;
 
   return (
@@ -73,6 +78,16 @@ export default async function StudioOverlayPage() {
                   value={<span className="font-mono text-[12px]">{setting?.tokenMasked ?? '-'}</span>}
                 />
                 <DataRow label="마지막 변경" value={formatKst(setting?.updatedAt)} />
+                <DataRow
+                  label="현재 연결"
+                  value={
+                    liveConnections > 0 ? (
+                      <Badge tone="success">{liveConnections}개 연결됨</Badge>
+                    ) : (
+                      <Badge tone="neutral">연결 없음</Badge>
+                    )
+                  }
+                />
               </div>
               <div className="mt-3 space-y-3">
                 <CopyField
@@ -80,6 +95,12 @@ export default async function StudioOverlayPage() {
                   value={`${urlBase}<발급된 토큰>`}
                   hint="토큰은 해시로만 저장되어 원문을 다시 확인할 수 없습니다. 전체 URL은 발급 직후 한 번만 표시되니 그때 복사해 두세요."
                 />
+                <p className="text-[12px] leading-relaxed text-ink-400">
+                  OBS · PRISM 에서 브라우저 소스를 열어 두면 위 [현재 연결] 수치가 올라갑니다. 한 페이지에
+                  동시에 열 수 있는 연결은 최대 {MAX_OVERLAY_CONNECTIONS}개이며, 넘으면 가장 오래된 연결부터 자동으로
+                  정리됩니다. 방송 중 연결이 끊겼다가 다시 붙으면 끊긴 사이의 후원 알림(최근 5분 이내)을
+                  자동으로 다시 받아 재생합니다.
+                </p>
                 <LinkButton
                   href={`/overlay/${creatorId}?preview=1&debug=1`}
                   target="_blank"

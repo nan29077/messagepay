@@ -209,12 +209,18 @@ export async function refreshYouTubeBroadcastAction(
   return withCreator(async (creatorId) => {
     const conn = await prisma.youTubeConnection.findUnique({ where: { creatorId } });
     if (!conn) return { ok: false, message: '유튜브 채널이 연결되어 있지 않습니다.' };
-    if (conn.status !== 'CONNECTED') return { ok: false, message: '유튜브 연결 상태가 정상이 아닙니다. 채널을 다시 연결해 주세요.' };
+    // EXPIRED 는 토큰 갱신이 한 번 실패했다는 뜻이다. 일시적인 오류였을 수 있으므로
+    // 크리에이터가 이 버튼으로 직접 재시도할 수 있게 허용한다.
+    // (REVOKED / ERROR 는 구글 쪽에서 권한이 회수된 상태라 재연결이 필요하다)
+    if (conn.status === 'REVOKED' || conn.status === 'ERROR') {
+      return { ok: false, message: '유튜브 연결 권한이 해제되었습니다. 채널을 다시 연결해 주세요.' };
+    }
 
     const adapter = getYouTubeAdapter();
     let accessToken = decrypt(conn.accessTokenEnc);
 
-    if (conn.expiresAt.getTime() < Date.now() + 60_000) {
+    // EXPIRED 상태면 만료 시각과 무관하게 갱신을 한 번 더 시도한다.
+    if (conn.status === 'EXPIRED' || conn.expiresAt.getTime() < Date.now() + 60_000) {
       const refreshed = await adapter.refresh(decrypt(conn.refreshTokenEnc));
       if (!refreshed.ok || !refreshed.data) {
         await prisma.youTubeConnection.update({
@@ -222,7 +228,11 @@ export async function refreshYouTubeBroadcastAction(
           data: { status: 'EXPIRED', lastError: refreshed.message ?? '토큰 갱신 실패' },
         });
         revalidatePath('/studio/youtube');
-        return { ok: false, message: '액세스 토큰 갱신에 실패했습니다. 채널을 다시 연결해 주세요.' };
+        return {
+          ok: false,
+          message:
+            '액세스 토큰 갱신에 실패했습니다. 잠시 후 [라이브 방송 조회]로 다시 시도해 보시고, 계속 실패하면 채널을 다시 연결해 주세요.',
+        };
       }
       accessToken = refreshed.data.accessToken;
       await prisma.youTubeConnection.update({

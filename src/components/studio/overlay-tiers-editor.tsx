@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { MonitorPlay, Play, Plus, Trash2, Volume2, X } from 'lucide-react';
+import { Loader, MonitorPlay, Play, PlugZap, Plus, Trash2, Volume2, Wifi, X } from 'lucide-react';
 import { Badge, Button, Checkbox, Field, Input, Notice, Select, cx } from '@/components/ui';
 import { previewOverlayTierAction, saveOverlayTiersAction } from '@/app/actions/studio';
 import type { StudioActionState } from '@/app/actions/studio';
@@ -437,6 +437,38 @@ function TierRow({
 
 // ---------------------------------------------------------------- 미리보기 창
 
+/**
+ * 오버레이 연결 상태 배지.
+ *
+ * 방송 화면(OBS 브라우저 소스)에는 어떤 상태도 그리지 않는다. 크리에이터가 연결 문제를
+ * 확인할 수 있는 곳은 이 미리보기 창뿐이므로 여기에만 표시한다.
+ */
+function ConnectionBadge({ link }: { link: { phase: string; retrySec?: number; recovered?: number } | null }) {
+  if (!link || link.phase === 'connecting') {
+    return (
+      <Badge tone="neutral">
+        <Loader size={13} strokeWidth={1.7} className="mr-1 inline-block animate-spin align-[-2px]" />
+        연결 중
+      </Badge>
+    );
+  }
+  if (link.phase === 'retrying') {
+    return (
+      <Badge tone="warning">
+        <PlugZap size={13} strokeWidth={1.7} className="mr-1 inline-block align-[-2px]" />
+        재연결 중{link.retrySec ? ` (${link.retrySec}초 후 재시도)` : ''}
+      </Badge>
+    );
+  }
+  return (
+    <Badge tone="success">
+      <Wifi size={13} strokeWidth={1.7} className="mr-1 inline-block align-[-2px]" />
+      연결됨{link.recovered ? ` · 놓친 알림 ${link.recovered}건 복구` : ''}
+    </Badge>
+  );
+}
+
+
 function PreviewModal({
   creatorId,
   tiers,
@@ -449,6 +481,7 @@ function PreviewModal({
   onClose: () => void;
 }) {
   const [ready, setReady] = React.useState(false);
+  const [link, setLink] = React.useState<{ phase: string; retrySec?: number; recovered?: number } | null>(null);
   const [note, setNote] = React.useState<string | null>(null);
   const [sending, setSending] = React.useState(false);
   const [amount, setAmount] = React.useState(initialAmount ?? '5000');
@@ -481,8 +514,16 @@ function PreviewModal({
   React.useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (e.origin !== window.location.origin) return;
-      const data = e.data as { type?: string; creatorId?: string } | null;
-      if (data?.type === 'donaido-overlay-ready' && data.creatorId === creatorId) setReady(true);
+      const data = e.data as
+        | { type?: string; creatorId?: string; phase?: string; retrySec?: number; recovered?: number }
+        | null;
+      if (!data || data.creatorId !== creatorId) return;
+      if (data.type === 'donaido-overlay-ready') setReady(true);
+      // 오버레이가 알려 주는 연결 상태. OBS 에서도 같은 방식으로 붙으므로
+      // 여기서 '연결됨'이 보이면 브라우저 소스 설정 문제는 아니라고 판단할 수 있다.
+      if (data.type === 'donaido-overlay-status' && data.phase) {
+        setLink({ phase: data.phase, retrySec: data.retrySec, recovered: data.recovered });
+      }
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -513,6 +554,9 @@ function PreviewModal({
             <p className="mt-0.5 text-[12px] text-ink-400">
               실제 오버레이 페이지를 그대로 띄웁니다. 저장된 구간 설정으로 재생됩니다.
             </p>
+            <div className="mt-1.5">
+              <ConnectionBadge link={link} />
+            </div>
           </div>
           <button
             type="button"

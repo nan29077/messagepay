@@ -33,6 +33,8 @@ export type PinCallbackCode =
   | 'NOT_FOUND'
   | 'EXPIRED'
   | 'INVALID_STATE'
+  /** 결제사가 PIN 인증 실패를 통지한 경우(결과코드가 성공이 아님) */
+  | 'AUTH_FAILED'
   | 'PAYMENT_FAILED';
 
 export interface PinCallbackResult {
@@ -194,6 +196,86 @@ export async function completePinAuthorization(input: PinCallbackInput): Promise
     donationId: session.donationId,
     status: paid.status,
     message: paid.message,
+  };
+}
+
+/**
+ * 결제사가 **PIN 인증 실패**를 통지한 경우.
+ *
+ * 성공 통지(completePinAuthorization)와 대칭되는 경로다. 승인(출금)은 절대 실행하지 않고
+ * 인증 세션과 후원을 실패로 확정한다. 후원자에게는 별도 문자를 보내지 않는다
+ * (결제사 화면에서 이미 실패를 봤고, 문자가 또 가면 이중 청구로 오해할 수 있다).
+ *
+ * 선점(updateMany)에 성공한 요청만 상태를 바꾸므로 중복 통지에도 안전하다.
+ */
+export async function failPinAuthorization(
+  input: PinCallbackInput,
+  note: string,
+): Promise<PinCallbackResult> {
+  const session = await findSession(input);
+  if (!session) {
+    return { ok: false, code: 'NOT_FOUND', message: '인증 세션을 찾을 수 없습니다.' };
+  }
+
+  const donation = await prisma.donation.findUnique({
+    where: { id: session.donationId },
+    select: { id: true, status: true },
+  });
+  if (!donation) {
+    return { ok: false, code: 'NOT_FOUND', message: '후원 거래를 찾을 수 없습니다.' };
+  }
+
+  // 이미 끝난 세션은 다시 건드리지 않는다. 특히 COMPLETED 는 이미 승인이 끝났을 수 있어
+  // 여기서 실패로 덮으면 출금된 건이 실패로 기록된다.
+  if (session.status !== 'PENDING') {
+    await prisma.paymentPinSession.update({
+      where: { id: session.id },
+      data: { callbackCount: { increment: 1 }, lastCallbackAt: new Date() },
+    });
+    logger.warn('이미 종료된 인증 세션에 실패 통지가 도착했습니다.', {
+      donationId: session.donationId,
+      sessionStatus: session.status,
+    });
+    return {
+      ok: false,
+      code: 'INVALID_STATE',
+      donationId: session.donationId,
+      status: donation.status,
+      message: '이미 처리된 인증 요청입니다.',
+    };
+  }
+
+  const claimed = await prisma.paymentPinSession.updateMany({
+    where: { id: session.id, status: 'PENDING' },
+    data: {
+      status: 'FAILED',
+      lastCallbackAt: new Date(),
+      callbackCount: { increment: 1 },
+      resultNote: note.slice(0, 500),
+    },
+  });
+  if (claimed.count !== 1) {
+    return {
+      ok: false,
+      code: 'DUPLICATE',
+      donationId: session.donationId,
+      status: donation.status,
+      message: '이미 처리된 인증입니다.',
+    };
+  }
+
+  if (donation.status === 'PENDING_PIN') {
+    // setStatus 를 거쳐야 DonationStatusLog 감사 이력이 남는다
+    await setStatus(session.donationId, 'PAYMENT_FAILED', `PIN 인증 실패: ${note}`.slice(0, 500));
+  }
+
+  logger.warn('PIN 인증 실패 통지', { donationId: session.donationId, note });
+  return {
+    ok: false,
+    code: 'AUTH_FAILED',
+    donationId: session.donationId,
+    status: 'PAYMENT_FAILED',
+    message: 'PIN 인증에 실패했습니다. 결제는 진행되지 않았습니다.',
   };
 }
 

@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { PageHeader } from '@/components/layout/console-shell';
-import { Badge, EmptyState, Notice, StatTile, Table, Td, Th } from '@/components/ui';
+import { Badge, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
 import { AdminField, AdminInput, AdminSelect, FilterBar, Pager } from '@/components/admin/controls';
 import { SelectActionForm } from '@/components/admin/action-form';
 import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
-import { updateUserStatus } from '@/app/actions/admin/accounts';
+import { issueTemporaryPasswordAction, updateUserStatus } from '@/app/actions/admin/accounts';
+import { TempPasswordButton } from '@/components/admin/temp-password-button';
 import { prisma } from '@/server/db';
 import { formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
@@ -27,6 +28,7 @@ export default async function AdminUsersPage({
   searchParams: Promise<{ q?: string; role?: string; status?: string; page?: string }>;
 }) {
   const sp = await searchParams;
+  const now = new Date();
   const page = parsePage(sp.page);
   const q = (sp.q ?? '').trim();
   const role = sp.role && sp.role in roleLabel ? (sp.role as UserRole) : undefined;
@@ -45,7 +47,7 @@ export default async function AdminUsersPage({
       : {}),
   };
 
-  const [total, users, byStatus] = await Promise.all([
+  const [total, users, byStatus, resetRequests] = await Promise.all([
     prisma.user.count({ where }),
     prisma.user.findMany({
       where,
@@ -61,6 +63,19 @@ export default async function AdminUsersPage({
       },
     }),
     prisma.user.groupBy({ by: ['status'], _count: { _all: true } }),
+    // 이메일 발송 연동 전이라 재설정 링크 원문은 서버 로그에만 남는다.
+    // 여기서는 "요청이 실제로 접수됐는지" 만 확인할 수 있게 최근 요청을 보여 준다.
+    prisma.passwordResetToken.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      select: {
+        id: true,
+        createdAt: true,
+        expiresAt: true,
+        usedAt: true,
+        user: { select: { email: true } },
+      },
+    }),
   ]);
 
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -126,6 +141,7 @@ export default async function AdminUsersPage({
                   <Th>최근 로그인</Th>
                   <Th>가입일</Th>
                   <Th>상태 변경</Th>
+                  <Th>비밀번호</Th>
                 </tr>
               </thead>
               <tbody>
@@ -182,6 +198,13 @@ export default async function AdminUsersPage({
                         confirm={`${u.email ?? u.id} 회원의 상태를 변경합니다. 계속할까요?`}
                       />
                     </Td>
+                    <Td>
+                      <TempPasswordButton
+                        action={issueTemporaryPasswordAction}
+                        userId={u.id}
+                        label={u.email ?? u.id}
+                      />
+                    </Td>
                   </tr>
                 ))}
               </tbody>
@@ -195,6 +218,54 @@ export default async function AdminUsersPage({
             />
           </>
         )}
+      </div>
+
+      <div className="mt-4">
+        <SectionTitle
+          title="최근 비밀번호 재설정 요청"
+          description="사용자가 로그인 화면에서 직접 요청한 건입니다. 최근 10건."
+        />
+        <Notice tone="warning" title="재설정 링크 원문은 관리자도 볼 수 없습니다">
+          링크 토큰은 해시로만 저장됩니다. 이메일 발송 연동 전까지는 링크 원문이 서버 로그에만 남으므로,
+          사용자에게 직접 안내해야 할 때는 본인 확인 후 회원 목록의 [임시 비밀번호] 버튼을 사용해 주세요.
+        </Notice>
+        <div className="mt-3">
+          {resetRequests.length === 0 ? (
+            <EmptyState title="접수된 재설정 요청이 없습니다" />
+          ) : (
+            <Table>
+              <thead>
+                <tr>
+                  <Th>이메일</Th>
+                  <Th>요청 시각</Th>
+                  <Th>만료 시각</Th>
+                  <Th>상태</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {resetRequests.map((r) => {
+                  const expired = r.expiresAt.getTime() < now.getTime();
+                  return (
+                    <tr key={r.id}>
+                      <Td className="max-w-[220px] break-all">{r.user.email ?? '-'}</Td>
+                      <Td className="whitespace-nowrap">{formatKst(r.createdAt)}</Td>
+                      <Td className="whitespace-nowrap">{formatKst(r.expiresAt)}</Td>
+                      <Td>
+                        {r.usedAt ? (
+                          <Badge tone="success">사용됨</Badge>
+                        ) : expired ? (
+                          <Badge tone="neutral">만료</Badge>
+                        ) : (
+                          <Badge tone="brand">대기 중</Badge>
+                        )}
+                      </Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          )}
+        </div>
       </div>
     </>
   );

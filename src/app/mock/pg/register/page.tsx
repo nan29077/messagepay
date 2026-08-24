@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 import { Logo } from '@/components/brand/logo';
 import { MockRegisterForm } from './mock-register-form';
+import { isMockPaymentAllowed } from '@/server/mock-guard';
 
 /**
  * Mock 결제창 (헥토파이낸셜 내통장결제 결제창 대체 화면).
@@ -26,6 +28,9 @@ function one(v: string | string[] | undefined): string {
 }
 
 export default async function MockPgRegisterPage({ searchParams }: { searchParams: Promise<Search> }) {
+  // 실결제 환경에서는 존재하지 않는 화면으로 취급한다.
+  if (!isMockPaymentAllowed()) notFound();
+
   const sp = await searchParams;
   const tid = one(sp.tid);
   const ref = one(sp.ref);

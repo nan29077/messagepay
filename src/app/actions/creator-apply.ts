@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { newId, newCreatorCode } from '@/lib/id';
 import { createSession, getSessionUser, hashPassword } from '@/server/auth';
+import { consumeIpRateLimit } from '@/server/rate-limit';
 
 /**
  * 크리에이터 가입 신청.
@@ -93,6 +94,12 @@ export async function applyCreator(_prev: CreatorApplyState, formData: FormData)
     return { ok: false, message: parsed.error.issues[0]?.message ?? '입력값을 확인해 주세요.', values };
   }
   const data = parsed.data;
+
+  // 자동화 도구로 신청을 대량 생성하는 것을 막는다. (같은 IP 기준 분당 5회)
+  const limited = await consumeIpRateLimit('creator-apply', 5, 60);
+  if (!limited.ok) {
+    return { ok: false, message: '신청 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.', values };
+  }
 
   const session = await getSessionUser();
 

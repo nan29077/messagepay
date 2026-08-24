@@ -142,7 +142,56 @@ Mock        /mock/pg/register           헥토 결제창 대체 (실연동 시 �
 | `POST /api/auth/login` `POST /api/auth/logout` | 인증 |
 | `GET /api/youtube/oauth/callback` | 구글 OAuth 콜백 |
 | `GET /api/health` | DB/캐시 상태, provider 모드, 운영 경고 |
+| `POST /api/webhooks/pin-callback` | 결제사 PIN 인증 완료 콜백 (공유 비밀 + 결과코드 검증) |
+| `GET /api/cron/cleanup` | 정리 배치 (외부 스케줄러가 1분 간격 호출). 아래 [정리 배치](#정리-배치-외부-크론) 참고 |
 | `GET /api/dev/outbox` | **개발 전용** 모의 MT 발송함 (`APP_ENV=local` 에서만) |
+
+---
+
+## 정리 배치 (외부 크론)
+
+앱 안에 스케줄러를 두지 않습니다. 다중 인스턴스에서 같은 작업이 동시에 도는 것을 막고,
+컨테이너가 재시작돼도 일정이 유실되지 않게 하기 위해 **외부 스케줄러가 HTTP 로 호출**합니다.
+
+```
+GET  {APP_BASE_URL}/api/cron/cleanup
+Authorization: Bearer {CRON_SECRET}
+```
+
+| 항목 | 값 |
+|---|---|
+| 주기 | **1분** |
+| 인증 | `Authorization: Bearer ${CRON_SECRET}` (fail-closed) |
+| 비밀 미설정 시 | `APP_ENV=local` 에서만 통과, 그 외 환경은 전건 401 |
+| 동시 실행 | Redis 잠금으로 1개만 수행 (겹치면 `skipped: true` 응답) |
+
+수행 작업
+
+| 작업 | 내용 |
+|---|---|
+| `expireStalePinSessions` | PIN 을 입력하지 않아 TTL 이 지난 후원을 자동 취소한다. **결제사 콜백 미수신 건의 보정 경로**이기도 하다 |
+| `expireStaleConfirmations` | 구 확인 링크(CONFIRM_LINK) 만료 건을 자동 취소한다 |
+| `purgeExpiredIdempotencyKeys` | 만료된 멱등키를 지운다 |
+| `purgeExpiredResetTokens` | 만료된 비밀번호 재설정 토큰을 지운다 |
+
+### AWS EventBridge Scheduler 설정
+
+1. **Secrets Manager** 에 `CRON_SECRET` 을 저장하고 앱 태스크에 주입합니다.
+2. **EventBridge Scheduler** 에서 일정을 만듭니다.
+   - 일정 유형: `rate(1 minute)`
+   - 대상: **API destination** (또는 ALB 앞단 HTTP 엔드포인트)
+   - HTTP 메서드: `GET`
+   - 헤더: `Authorization: Bearer {CRON_SECRET}`
+   - 재시도: 2회 / 최대 이벤트 수명 1분 (다음 주기가 이어서 처리하므로 길게 잡지 않습니다)
+3. 응답 본문의 `steps` 로 각 작업 결과를 확인합니다. 한 작업이 실패해도 나머지는 계속 수행됩니다.
+
+로컬에서는 비밀 없이 바로 호출해 확인할 수 있습니다.
+
+```bash
+curl http://localhost:3025/api/cron/cleanup
+```
+
+cron / Task Scheduler 등 다른 스케줄러를 써도 됩니다. 조건은 "1분 간격 GET + Bearer 헤더" 하나뿐입니다.
 
 ---
 
@@ -152,6 +201,8 @@ Mock        /mock/pg/register           헥토 결제창 대체 (실연동 시 �
 |---|---|---|
 | `SAFE_MODE` | `true` | 실제 결제 승인과 실제 MT 발송을 차단하고 mock 으로 대체 |
 | `ALLOW_DIRECT_TRIGGER` | `false` | MO 수신 즉시 결제(`DIRECT_TRIGGER`) 허용 여부. 금융사 서면승인 등록 전에는 반드시 `false` |
+| `PAYMENT_PIN_SUCCESS_CODES` | `0000,OK,SUCCESS,MOCK` | PIN 완료 콜백에서 인증 성공으로 인정할 결과코드. 목록 밖의 코드는 인증 실패로 확정되고 승인(출금)하지 않음 |
+| `CRON_SECRET` | (없음) | 정리 배치 호출용 공유 비밀. 비어 있으면 `APP_ENV=local` 외 환경에서 배치가 전건 401 |
 | `PAYMENT_PROVIDER` 외 | `mock` | 각 외부 연동의 실 사업자 전환 스위치 |
 
 `GET /api/health` 와 `/admin` 대시보드에서 현재 상태를 항상 확인할 수 있습니다.
