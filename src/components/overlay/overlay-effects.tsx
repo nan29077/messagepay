@@ -21,12 +21,22 @@ function rand(i: number, salt: number) {
   return x - Math.floor(x);
 }
 
-export function EffectLayer({ effect }: { effect: string }) {
+export function EffectLayer({ effect, theme = 'TORNADO' }: { effect: string; theme?: string }) {
   const name = (effect || 'DEFAULT').toUpperCase() as EffectName;
   if (name === 'NONE') return null;
 
+  // 테마별 파티클 보정.
+  //  - MINIMAL: 효과를 절제한다(반투명).
+  //  - NEON: 형광 글로우를 더한다. 컨테이너에 filter 를 걸어 자식 absolute 배치 기준은 그대로 둔다.
+  const themeClass =
+    theme === 'MINIMAL'
+      ? 'opacity-50'
+      : theme === 'NEON'
+        ? '[filter:drop-shadow(0_0_8px_rgba(34,211,238,0.55))]'
+        : '';
+
   return (
-    <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
+    <div aria-hidden className={`pointer-events-none fixed inset-0 overflow-hidden ${themeClass}`}>
       {name === 'CONFETTI' ? <Confetti /> : null}
       {name === 'FIREWORK' ? <Fireworks /> : null}
       {name === 'HEART' || name === 'STAR' || name === 'COIN' || name === 'DEFAULT' ? (

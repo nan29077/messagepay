@@ -13,6 +13,7 @@ import { EffectLayer } from '@/components/overlay/overlay-effects';
  *  - TTS 재생이 끝나기 전에는 다음 항목으로 넘어가지 않는다(표시시간과 음성 길이 중 긴 쪽 기준).
  *  - 연결 상태는 방송 화면에 표시하지 않는다. 디버그 모드에서만 배지를 노출한다.
  *  - 금액 구간(effect/banner/durationMs)이 없는 예전 이벤트도 그대로 재생돼야 한다.
+ *  - 테마(TORNADO/MINIMAL/NEON)는 서버에서 조회한 설정을 prop 으로 받아 CSS 클래스로만 적용한다.
  */
 
 export interface OverlayTts {
@@ -57,6 +58,59 @@ const positionClass: Record<string, string> = {
   BOTTOM_RIGHT: 'items-end justify-end',
 };
 
+// ------------------------------------------------------------------- 테마
+
+export type OverlayTheme = 'TORNADO' | 'MINIMAL' | 'NEON';
+
+/** DB 에 저장된 문자열을 알고 있는 테마로 좁힌다. 모르는 값은 기본 테마로 동작한다. */
+function themeOf(value?: string): OverlayTheme {
+  const t = (value || 'TORNADO').toUpperCase();
+  return t === 'MINIMAL' || t === 'NEON' ? t : 'TORNADO';
+}
+
+interface ThemeClasses {
+  card: string;
+  title: string;
+  message: string;
+  swirl: string;
+  sticker: string;
+  footer: string;
+  test: string;
+}
+
+const THEME_CLASSES: Record<OverlayTheme, ThemeClasses> = {
+  /** 기본: 밝은 카드형 배너 (기존 스타일) */
+  TORNADO: {
+    card: 'border-white/40 bg-white/95 shadow-[0_18px_48px_rgba(19,26,58,0.28)]',
+    title: 'text-ink-900',
+    message: 'text-ink-700',
+    swirl: 'bg-brand-50 text-brand-700',
+    sticker: 'border-brand-200 bg-brand-50 text-brand-700',
+    footer: 'text-ink-300',
+    test: 'bg-ink-100 text-ink-500',
+  },
+  /** 미니멀: 반투명 검정 + 흰 텍스트 */
+  MINIMAL: {
+    card: 'border-white/10 bg-black/60 shadow-[0_12px_36px_rgba(0,0,0,0.4)] backdrop-blur-md',
+    title: 'text-white',
+    message: 'text-white/80',
+    swirl: 'bg-white/10 text-white',
+    sticker: 'border-white/25 bg-white/10 text-white',
+    footer: 'text-white/40',
+    test: 'bg-white/15 text-white/70',
+  },
+  /** 네온: 어두운 바탕 + 형광 글로우 */
+  NEON: {
+    card: 'border-[#22d3ee]/50 bg-[#0a0e1f]/90 shadow-[0_0_28px_rgba(34,211,238,0.4)]',
+    title: 'text-[#e8fdff] [text-shadow:0_0_12px_rgba(34,211,238,0.85)]',
+    message: 'text-[#9be9f5] [text-shadow:0_0_8px_rgba(34,211,238,0.5)]',
+    swirl: 'bg-[#22d3ee]/10 text-[#22d3ee] [filter:drop-shadow(0_0_6px_rgba(34,211,238,0.8))]',
+    sticker: 'border-[#f0abfc]/40 bg-[#f0abfc]/10 text-[#f0abfc] [filter:drop-shadow(0_0_5px_rgba(240,171,252,0.7))]',
+    footer: 'text-[#22d3ee]/60',
+    test: 'bg-[#22d3ee]/15 text-[#9be9f5]',
+  },
+};
+
 /** 배너를 끈 경우에도 효과 재생 시간은 유지된다. */
 function effectOf(payload: OverlayPayload): string {
   return payload.effect || payload.sticker || 'DEFAULT';
@@ -73,6 +127,7 @@ export function OverlayClient({
   position = 'BOTTOM_CENTER',
   defaultDurationMs = 7000,
   maxMessageLen = 80,
+  theme = 'TORNADO',
   debug = false,
 }: {
   creatorId: string;
@@ -82,6 +137,8 @@ export function OverlayClient({
   position?: string;
   defaultDurationMs?: number;
   maxMessageLen?: number;
+  /** OverlaySetting.theme 값. TORNADO / MINIMAL / NEON 외의 값은 기본 테마로 동작한다. */
+  theme?: string;
   debug?: boolean;
 }) {
   const [current, setCurrent] = React.useState<OverlayPayload | null>(null);
@@ -118,13 +175,18 @@ export function OverlayClient({
           const synth = window.speechSynthesis;
           const utter = new SpeechSynthesisUtterance(tts.text);
           const voices = synth.getVoices();
-          const matched =
+          // 저장된 목소리 이름으로 찾되, 한국어(ko) 음성만 허용한다.
+          // 이름이 없거나 한국어가 아니면 설치된 첫 번째 한국어 음성으로 폴백한다.
+          const isKo = (v: SpeechSynthesisVoice) => v.lang?.toLowerCase().startsWith('ko');
+          let matched =
             voices.find((v) => v.name === tts.voice) ??
             voices.find((v) => v.voiceURI === tts.voice) ??
-            voices.find((v) => v.lang?.toLowerCase().startsWith('ko')) ??
             null;
+          if (!matched || !isKo(matched)) {
+            matched = voices.find(isKo) ?? matched;
+          }
           if (matched) utter.voice = matched;
-          utter.lang = matched?.lang ?? 'ko-KR';
+          utter.lang = 'ko-KR';
           utter.rate = Math.min(2, Math.max(0.5, Number(tts.speed) || 1));
           utter.pitch = Math.min(2, Math.max(0, Number(tts.pitch ?? 1)));
           utter.volume = Math.min(1, Math.max(0, Number(tts.volume ?? 1)));
@@ -257,21 +319,22 @@ export function OverlayClient({
   }, [creatorId, token, preview]);
 
   const align = positionClass[position] ?? positionClass.BOTTOM_CENTER;
+  const themeName = themeOf(theme);
 
   return (
     <div className="pointer-events-none fixed inset-0 h-screen w-screen bg-transparent">
       {/* 파티클은 배너를 끈 구간에서도 재생된다 */}
-      {current && !leaving ? <EffectLayer effect={effectOf(current)} /> : null}
+      {current && !leaving ? <EffectLayer effect={effectOf(current)} theme={themeName} /> : null}
 
       <div className={`relative flex h-full w-full p-8 ${align}`}>
         {current && bannerOf(current) ? (
-          <DonationCard payload={current} leaving={leaving} maxMessageLen={maxMessageLen} />
+          <DonationCard payload={current} leaving={leaving} maxMessageLen={maxMessageLen} theme={themeName} />
         ) : null}
       </div>
 
       {debug ? (
         <span className="fixed left-3 top-3 rounded-md bg-ink-900/80 px-2 py-1 text-[11px] font-semibold text-white">
-          {connected ? '연결됨' : '재연결 중'} · 대기 {queueLen}
+          {connected ? '연결됨' : '재연결 중'} · 대기 {queueLen} · 테마 {themeName}
           {current?.tierLabel ? ` · ${current.tierLabel}` : ''}
         </span>
       ) : null}
@@ -285,51 +348,54 @@ function DonationCard({
   payload,
   leaving,
   maxMessageLen,
+  theme,
 }: {
   payload: OverlayPayload;
   leaving: boolean;
   maxMessageLen: number;
+  theme: OverlayTheme;
 }) {
+  const t = THEME_CLASSES[theme];
   const amountText = payload.amount ? `${formatNumber(BigInt(payload.amount))}원` : '';
   const message =
     payload.message.length > maxMessageLen ? `${payload.message.slice(0, maxMessageLen)}...` : payload.message;
 
   return (
     <div
-      className={`relative w-[560px] max-w-full rounded-[28px] border border-white/40 bg-white/95 px-7 py-6 shadow-[0_18px_48px_rgba(19,26,58,0.28)] ${
+      className={`relative w-[560px] max-w-full rounded-[28px] border px-7 py-6 ${t.card} ${
         leaving ? 'animate-tornado-out' : 'animate-banner-in'
       }`}
     >
       {payload.isTest ? (
-        <span className="absolute right-4 top-4 rounded-md bg-ink-100 px-2 py-0.5 text-[11px] font-bold text-ink-500">
+        <span className={`absolute right-4 top-4 rounded-md px-2 py-0.5 text-[11px] font-bold ${t.test}`}>
           테스트
         </span>
       ) : null}
 
       <div className="flex items-center gap-4">
-        <TornadoSwirl />
+        <TornadoSwirl className={t.swirl} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[22px] font-extrabold leading-tight tracking-tight text-ink-900">
+          <p className={`truncate text-[22px] font-extrabold leading-tight tracking-tight ${t.title}`}>
             {payload.donorName}님이 {amountText ? `${amountText}을 ` : ''}후원했습니다
           </p>
           {message ? (
-            <p className="mt-2 break-words text-[17px] leading-snug text-ink-700">{message}</p>
+            <p className={`mt-2 break-words text-[17px] leading-snug ${t.message}`}>{message}</p>
           ) : null}
         </div>
       </div>
 
       <div className="mt-4 flex items-center justify-between">
-        <ThanksSticker variant={effectOf(payload)} />
-        <span className="text-[12px] font-semibold tracking-[0.16em] text-ink-300">DONAIDO</span>
+        <ThanksSticker variant={effectOf(payload)} className={t.sticker} />
+        <span className={`text-[12px] font-semibold tracking-[0.16em] ${t.footer}`}>DONAIDO</span>
       </div>
     </div>
   );
 }
 
 /** 회오리 라인 애니메이션 */
-function TornadoSwirl() {
+function TornadoSwirl({ className }: { className: string }) {
   return (
-    <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-brand-50 text-brand-700">
+    <span className={`grid h-16 w-16 shrink-0 place-items-center rounded-2xl ${className}`}>
       <svg
         width={40}
         height={40}
@@ -353,10 +419,12 @@ function TornadoSwirl() {
 }
 
 /** 감사 스티커 (라인 배지) */
-function ThanksSticker({ variant }: { variant: string }) {
+function ThanksSticker({ variant, className }: { variant: string; className: string }) {
   const label = variant === 'SIMPLE' ? '고맙습니다' : '감사합니다';
   return (
-    <span className="animate-thanks-bounce inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-[13px] font-bold text-brand-700">
+    <span
+      className={`animate-thanks-bounce inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[13px] font-bold ${className}`}
+    >
       <svg
         width={18}
         height={18}

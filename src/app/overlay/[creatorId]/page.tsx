@@ -64,6 +64,7 @@ export default async function OverlayPage({
       position={setting?.position ?? 'BOTTOM_CENTER'}
       defaultDurationMs={setting?.durationMs ?? 7000}
       maxMessageLen={setting?.maxMessageLen ?? 80}
+      theme={setting?.theme ?? 'TORNADO'}
       debug={debug}
     />
   );

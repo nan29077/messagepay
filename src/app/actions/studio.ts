@@ -415,6 +415,33 @@ export async function updateOverlaySettingAction(
       },
     });
 
+    // 간편 설정 폼에서만 TTS 값을 함께 보낸다(withTts=1).
+    // 고급 설정 폼에는 이 필드가 없으므로 기존 동작은 그대로다.
+    if (text(formData, 'withTts') === '1') {
+      const tts = z
+        .object({ voice: z.string().max(120), speed: z.coerce.number().min(0.5).max(2) })
+        .safeParse({ voice: text(formData, 'ttsVoice'), speed: text(formData, 'ttsSpeed') || '1' });
+      if (!tts.success) {
+        return { ok: false, message: '음성 설정값을 확인해 주세요. 속도는 0.5 ~ 2.0 사이입니다.' };
+      }
+      const ttsEnabled = checked(formData, 'ttsEnabled');
+      await prisma.ttsSetting.upsert({
+        where: { creatorId },
+        // 간편 설정에는 최소 금액 항목이 없다. 새로 만들 때 0 으로 두어야
+        // 화면의 [읽어주기] 스위치와 실제 동작이 어긋나지 않는다.
+        // 이미 값이 있는 크리에이터의 최소 금액·글자수 설정은 건드리지 않는다.
+        create: {
+          id: newId(),
+          creatorId,
+          enabled: ttsEnabled,
+          voice: tts.data.voice,
+          speed: tts.data.speed,
+          minAmount: 0n,
+        },
+        update: { enabled: ttsEnabled, voice: tts.data.voice, speed: tts.data.speed },
+      });
+    }
+
     revalidatePath('/studio/overlay');
     return { ok: true, message: '오버레이 설정을 저장했습니다.' };
   });
