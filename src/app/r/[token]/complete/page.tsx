@@ -222,7 +222,7 @@ export default async function RegistrationCompletePage({
         </Card>
 
         <Notice tone="brand" title="이제 같은 번호로 문자를 보내면 후원이 접수됩니다">
-          문자를 보내면 확인 링크가 발송되고, 확인 버튼을 누르면 등록한
+          문자를 보내면 결제 PIN 입력 링크가 발송되고, PIN 을 입력하면 등록한
           {resultMethod === 'CARD' ? ' 카드로 후원금이 결제됩니다' : ' 계좌에서 후원금이 출금됩니다'}. 문자 1건마다
           결제가 요청되니 반복 발송에 주의해 주세요.
         </Notice>

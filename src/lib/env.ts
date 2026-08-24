@@ -112,6 +112,10 @@ export const env = {
     hectoCallbackUrl: str('HECTO_CALLBACK_URL'),
     /** 헥토 공식 제한은 결제인증 후 10분. 그보다 짧게 운용한다. */
     confirmTtlSec: num('PAYMENT_CONFIRM_TTL_SEC', 300),
+    /** PIN 입력 링크 유효시간. 결제사 인증창 유효시간(10분)을 넘지 않게 잡는다. */
+    pinTtlSec: num('PAYMENT_PIN_TTL_SEC', 300),
+    /** PIN 완료 콜백 검증용 공유 비밀 (X-Pin-Secret). 실연동 시 결제사 서명 검증으로 대체한다. */
+    pinCallbackSecret: str('PAYMENT_PIN_CALLBACK_SECRET'),
   },
 
   mo: {
@@ -181,6 +185,19 @@ export const env = {
   },
 } as const;
 
+/**
+ * 구(舊) CONFIRM_LINK 경로(토네이도 자체 확인 페이지)를 계속 쓸지 여부. **deprecated**
+ *
+ * 기본값 false — CONFIRM_LINK 모드는 결제사 PIN 인증 링크를 사용한다.
+ * 되돌림(롤백)이 필요할 때만 ALLOW_LEGACY_CONFIRM_LINK=true 로 연다.
+ *
+ * `env` 객체가 아니라 함수로 노출하는 이유: 이 값은 운영 중 전환 가능한 스위치이고,
+ * 테스트에서 두 경로를 모두 검증하려면 호출 시점에 읽어야 한다.
+ */
+export function allowLegacyConfirmLink(): boolean {
+  return bool('ALLOW_LEGACY_CONFIRM_LINK', false);
+}
+
 export const isProd = env.appEnv === 'prod';
 /** 개발 전용 기능(테스트 로그인, MO 시뮬레이터, 개발 아웃박스)을 열어도 되는 환경인지. */
 export const isLocal = env.appEnv === 'local';
@@ -195,6 +212,8 @@ export function assertProductionSafety(): string[] {
   if (env.allowInMemoryFallback) problems.push('운영에서는 ALLOW_INMEMORY_FALLBACK=false 여야 합니다.');
   if (env.mo.allowedIps.length === 0) problems.push('MO_ALLOWED_IPS 가 비어 있습니다.');
   if (!env.mo.webhookSecret) problems.push('MO_WEBHOOK_SECRET 이 비어 있습니다.');
+  // 비어 있으면 PIN 완료 콜백이 전건 거절되어 결제가 영원히 완료되지 않는다.
+  if (!env.payment.pinCallbackSecret) problems.push('PAYMENT_PIN_CALLBACK_SECRET 이 비어 있습니다.');
   if (env.payment.provider === 'mock') problems.push('PAYMENT_PROVIDER 가 mock 입니다.');
   if (!env.baseUrl.startsWith('https://')) problems.push('운영에서는 APP_BASE_URL 이 https 여야 합니다.');
   // 로컬 디스크 저장은 다중 인스턴스에서 이미지가 안 보이고 재배포 때 사라진다.

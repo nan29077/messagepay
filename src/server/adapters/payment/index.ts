@@ -3,6 +3,9 @@ import { logger } from '@/lib/logger';
 import { AdapterNotConfiguredError, type AdapterInfo, type ProviderResult } from '../types';
 // hecto.ts 는 이 파일에서 '타입만' 가져오므로 런타임 순환 참조는 생기지 않는다.
 import { hectoPaymentAdapter } from './hecto';
+import { mockPinUrl } from './mock-pin';
+
+export { mockPinUrl } from './mock-pin';
 
 /**
  * 결제 어댑터 (헥토파이낸셜 내통장결제 EzAuth 기준 인터페이스).
@@ -10,9 +13,11 @@ import { hectoPaymentAdapter } from './hecto';
  * 실제 흐름
  *   1) 결제창에서 계좌 인증 + 출금이체 등록  → createRegistrationSession / completeRegistration
  *   2) 빌키(자동결제 키) 발급               → completeRegistration 결과
- *   3) MO 수신 시 빌키로 승인               → approve
- *   4) 타임아웃 시 거래결과조회로 확정      → inquire
- *   5) 취소/환불                            → cancel
+ *   3) MO 수신 시 PIN 인증 링크 발급        → requestPinLink
+ *   4) 후원자가 PIN 입력 → 결제사 콜백      → (앱: /api/webhooks/pin-callback)
+ *   5) 콜백 수신 후 빌키로 승인             → approve
+ *   6) 타임아웃 시 거래결과조회로 확정      → inquire
+ *   7) 취소/환불                            → cancel
  *
  * 주의: 헥토 공식 제약상 결제인증 완료 후 10분 이내에 승인 API 를 호출해야 한다.
  *       도네이도는 CONFIRM_LINK 유효시간을 그보다 짧게(기본 300초) 운용한다.
@@ -44,6 +49,25 @@ export interface RegistrationResult {
   cardTail4?: string;
 }
 
+/**
+ * 결제사가 발급하는 PIN 입력 세션.
+ *
+ * 후원자는 이 URL 에서 PIN 을 입력하고, 결제사가 완료 콜백을 보내면
+ * 그때 승인(approve)이 실행된다. 링크 발급 자체는 출금이 아니다.
+ */
+export interface PinLinkSession {
+  /** 후원자에게 MT 로 보낼 PIN 입력 URL */
+  pinUrl: string;
+  /** 결제사 인증 세션 식별자 */
+  sessionId: string;
+  expiresAt: Date;
+  /**
+   * 실제 결제사 연동이 아니라 mock 발급인지 여부.
+   * true 이면 화면·문자·로그에 [MOCK] 을 표시해야 한다(계약 전 연동을 성공으로 오인하지 않도록).
+   */
+  mock: boolean;
+}
+
 export interface ApproveRequest {
   orderNo: string;
   amount: bigint;
@@ -70,6 +94,23 @@ export interface PaymentAdapter {
     method?: PaymentMethodKind;
   }): Promise<ProviderResult<RegistrationSession>>;
   completeRegistration(payload: Record<string, unknown>): Promise<ProviderResult<RegistrationResult>>;
+  /**
+   * 등록된 빌키로 결제하기 위한 PIN 입력 링크를 결제사에 요청한다.
+   *
+   * 이 호출은 출금을 일으키지 않는다. 후원자가 PIN 을 입력해야 결제사가 콜백을 보내고,
+   * 그 콜백을 받은 뒤에야 approve() 로 실제 승인이 이루어진다.
+   *
+   * @param donationId 후원 거래 ID. 콜백에서 거래를 식별하는 키로 쓴다.
+   * @param amount     결제 금액(원). 금액은 전 구간 bigint 로 다룬다.
+   * @param phone      후원자 전화번호(정규화된 원문). 결제사 인증 대상 확인용이며 저장하지 않는다.
+   * @param method     인증할 결제수단 종류. 생략하면 ACCOUNT(내통장결제 계좌 빌키).
+   */
+  requestPinLink(
+    donationId: string,
+    amount: bigint,
+    phone: string,
+    method?: PaymentMethodKind,
+  ): Promise<ProviderResult<PinLinkSession>>;
   approve(req: ApproveRequest): Promise<ProviderResult<ApproveResult>>;
   /** 타임아웃/불확실 상태에서 반드시 호출하여 최종 상태를 확정한다. */
   inquire(orderNo: string): Promise<ProviderResult<{ status: InquiryStatus; providerTid?: string; amount?: bigint }>>;
@@ -83,16 +124,22 @@ export interface PaymentAdapter {
 //   ...999 → 승인 실패
 //   ...888 → 타임아웃 (이후 inquire 로 APPROVED 확정)
 //   ...777 → 타임아웃 (이후 inquire 로 FAILED 확정)
-//   그 외   → 승인 성공
+//   ...555 → PIN 링크 발급 실패 (승인 단계까지 가지 않는다)
+//   그 외   → PIN 링크 발급 성공 / 승인 성공
+// PIN 을 끝까지 입력하지 않는 시나리오는 콜백을 호출하지 않는 것으로 재현한다.
 // ---------------------------------------------------------------------------
 
 const approvedOrders = new Map<string, { tid: string; amount: bigint; at: Date; canceled?: boolean }>();
 const timeoutOrders = new Map<string, 'APPROVED' | 'FAILED'>();
+let mockPinSeq = 0;
 
 export function resetMockPaymentState() {
   approvedOrders.clear();
   timeoutOrders.clear();
+  mockPinSeq = 0;
 }
+
+
 
 export class MockPaymentTimeout extends Error {
   constructor(public orderNo: string) {
@@ -149,6 +196,28 @@ export const mockPaymentAdapter: PaymentAdapter = {
         bankName: String(payload.bankName ?? 'KB국민은행'),
         accountTail4: account.slice(-4),
       },
+    };
+  },
+
+  /**
+   * Mock PIN 링크 발급.
+   * 실제 결제사에 아무것도 보내지 않으며, 토네이도 내부의 모의 PIN 화면 주소를 돌려준다.
+   */
+  async requestPinLink(donationId, amount, _phone, method = 'ACCOUNT') {
+    if (Number(amount % 1000n) === 555) {
+      return { ok: false, code: 'M0555', message: 'PIN 인증창을 생성하지 못했습니다.' };
+    }
+    mockPinSeq += 1;
+    const sessionId = `MOCKPIN-${donationId}-${mockPinSeq}`;
+    return {
+      ok: true,
+      data: {
+        pinUrl: mockPinUrl(sessionId),
+        sessionId,
+        expiresAt: new Date(Date.now() + env.payment.pinTtlSec * 1000),
+        mock: true,
+      },
+      raw: { method } as Record<string, unknown>,
     };
   },
 

@@ -4,8 +4,18 @@ import { tokenHash } from '@/lib/crypto';
 import { executePayment, setStatus } from './donation-flow';
 
 /**
- * CONFIRM_LINK 모드: 후원자가 MT 로 받은 링크에서 직접 확인 버튼을 눌러야 결제가 진행된다.
- * (금융사 심사 대응 기본값)
+ * **deprecated — 구(舊) CONFIRM_LINK 경로.**
+ *
+ * 후원자가 MT 로 받은 토네이도 자체 확인 링크에서 버튼을 누르면 빌키로 곧바로 승인한다.
+ * 현재 기본 경로는 결제사 PIN 인증(`pin-authorization.ts`)이며, 이 경로는
+ * `ALLOW_LEGACY_CONFIRM_LINK=true` 일 때만 새 링크가 발급된다
+ * (발급 지점: donation-flow.ts 의 resolveConfirmChannel).
+ *
+ * 링크 해석·확인 함수 자체는 계속 동작한다. 플래그를 끄는 순간 이미 발송된 링크까지
+ * 막아 버리면, 문자를 받아 둔 후원자의 대기 건이 갈 곳 없이 멈추기 때문이다.
+ * (미확인 건은 기존대로 expireStaleConfirmations 로 자동 취소된다)
+ *
+ * PIN 인증 흐름이 안정화되면 이 파일과 /r/[token] 확인 화면을 함께 제거한다.
  */
 
 export interface ConfirmContext {

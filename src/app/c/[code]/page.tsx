@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
   MessageSquare, CreditCard, ShieldCheck, CircleAlert,
-  Gauge, Flag, Phone,
+  Gauge, Flag, Phone, BellRing,
 } from 'lucide-react';
 import { CreatorCodeForm } from '@/components/creator-code-form';
 import { CopyButton } from '@/components/public/copy-button';
@@ -220,7 +220,7 @@ export default async function CreatorDonationPage({ params }: Params) {
                 문자후원하기
               </a>
               <p className="mt-2.5 text-center text-[11.5px] leading-relaxed text-ink-400">
-                문자 앱이 열리며 후원 번호가 자동 입력됩니다. 문자 1통을 보내면{' '}
+                문자 앱이 열리며 후원 번호가 자동 입력됩니다. 문자를 보내면 결제 PIN 입력 문자가 오고, PIN 을 입력하면{' '}
                 {formatWon(creator.donationAmount)}이 등록된 내통장결제 계좌에서 결제됩니다.
               </p>
               </div>
@@ -293,11 +293,17 @@ export default async function CreatorDonationPage({ params }: Params) {
               no="2"
               icon={<MessageSquare size={17} strokeWidth={1.7} />}
               title="응원 문자를 보냅니다"
-              body={`위 번호로 메시지를 보내면 문자 1통당 ${formatWon(creator.donationAmount)}이 등록된 계좌에서 결제됩니다.`}
+              body={`위 번호로 메시지를 보내면 문자 1통당 ${formatWon(creator.donationAmount)}의 결제 PIN 입력 문자가 도착합니다.`}
             />
             <Step
               no="3"
               icon={<ShieldCheck size={17} strokeWidth={1.7} />}
+              title="PIN 을 입력하면 결제됩니다"
+              body="문자로 받은 링크에서 결제 PIN 을 입력하면 등록한 계좌에서 후원금이 출금됩니다. PIN 을 입력하지 않으면 결제되지 않습니다."
+            />
+            <Step
+              no="4"
+              icon={<BellRing size={17} strokeWidth={1.7} />}
               title="방송에 표시됩니다"
               body="결제가 완료된 후원만 유튜브 채팅과 방송 오버레이, 음성 안내로 전달됩니다. 결제되지 않은 메시지는 표시되지 않습니다."
             />

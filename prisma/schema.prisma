@@ -96,6 +96,8 @@ enum DonationStatus {
   LIMIT_BLOCKED
   CONTENT_BLOCKED
   PENDING_CONFIRM
+  /// 결제사(헥토/카드) PIN 인증 대기. 후원자가 PIN 을 입력해야 승인 단계로 넘어간다.
+  PENDING_PIN
   PENDING_PAYMENT
   PAYMENT_SUCCESS
   PAYMENT_FAILED
@@ -764,6 +766,7 @@ model Donation {
   overlayEvents  OverlayEvent[]
   ledgerEntries  SettlementLedger[]
   secureLink     SecureLink?
+  pinSession     PaymentPinSession?
   statusLogs     DonationStatusLog[]
 
   @@index([creatorId, receivedAt])
@@ -834,6 +837,52 @@ model PaymentAttempt {
 
   @@index([transactionId])
   @@map("payment_attempt")
+}
+
+/// 결제사 PIN 인증 세션 상태
+enum PinSessionStatus {
+  PENDING
+  COMPLETED
+  EXPIRED
+  FAILED
+
+  @@map("pin_session_status")
+}
+
+/// 결제사(헥토 내통장결제 / 카드 빌링키)의 PIN 인증 세션.
+///
+/// MO 수신 후 빌키가 있는 후원자에게는 토네이도 자체 확인 링크 대신
+/// 결제사가 발급한 PIN 입력 링크를 MT 로 보낸다. 후원자가 PIN 을 넣으면
+/// 결제사가 콜백을 보내고, 그때 승인(executePayment)이 실행된다.
+///
+/// 후원 1건당 세션 1건(donationId UNIQUE)이며, 이 유니크 제약이
+/// 콜백 중복 수신에 대한 마지막 방어선이 된다.
+model PaymentPinSession {
+  id            String            @id
+  donationId    String            @unique @map("donation_id")
+  provider      String
+  /// 인증 대상 결제수단 종류 (계좌 빌키 / 카드 빌링키)
+  method        PaymentMethodKind @default(ACCOUNT)
+  /// 결제사가 발급한 인증 세션 식별자
+  sessionId     String            @unique @map("session_id")
+  /// PIN 입력 URL. 토큰이 포함되므로 마스킹해 저장한다(원문 저장 금지)
+  pinUrlMasked  String            @map("pin_url_masked")
+  amount        BigInt
+  status        PinSessionStatus  @default(PENDING)
+  /// 실제 결제사 연동이 아니라 mock 발급인지 여부. 화면/로그에 [MOCK] 로 표시한다.
+  mock          Boolean           @default(false)
+  callbackCount Int               @default(0) @map("callback_count")
+  resultNote    String?           @map("result_note")
+  expiresAt     DateTime          @map("expires_at") @db.Timestamptz(3)
+  completedAt   DateTime?         @map("completed_at") @db.Timestamptz(3)
+  lastCallbackAt DateTime?        @map("last_callback_at") @db.Timestamptz(3)
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  donation Donation @relation(fields: [donationId], references: [id], onDelete: Cascade)
+
+  @@index([status, expiresAt])
+  @@map("payment_pin_session")
 }
 
 model Refund {

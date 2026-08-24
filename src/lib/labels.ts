@@ -37,6 +37,7 @@ export const donationStatusLabel: Record<DonationStatus, { text: string; tone: T
   LIMIT_BLOCKED: { text: '한도차단', tone: 'warning' },
   CONTENT_BLOCKED: { text: '내용차단', tone: 'danger' },
   PENDING_CONFIRM: { text: '확인대기', tone: 'brand' },
+  PENDING_PIN: { text: 'PIN인증대기', tone: 'brand' },
   PENDING_PAYMENT: { text: '결제요청', tone: 'brand' },
   PAYMENT_SUCCESS: { text: '결제성공', tone: 'success' },
   PAYMENT_FAILED: { text: '결제실패', tone: 'danger' },

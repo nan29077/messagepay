@@ -240,6 +240,7 @@ async function main() {
   if (donationCount === 0) {
     try {
       const { handleMoInbound, executePayment } = await import('../src/server/services/donation-flow');
+      const { completePinAuthorization } = await import('../src/server/services/pin-authorization');
       const { requestRefund } = await import('../src/server/services/refund');
 
       // 수신번호는 시드에 정의된 크리에이터 MO 번호를 그대로 사용한다.
@@ -268,7 +269,10 @@ async function main() {
           receivedAt: new Date(Date.now() - (samples.length - i) * 86_400_000),
         });
         if (s.pay && result.donationId) {
-          await executePayment(result.donationId);
+          // PIN 인증 흐름에서는 후원자가 PIN 을 입력한 것과 같은 경로로 결제를 마친다.
+          // (직접 executePayment 를 부르면 인증 세션이 대기 상태로 남아 실제 데이터와 달라진다)
+          if (result.status === 'PENDING_PIN') await completePinAuthorization({ donationId: result.donationId });
+          else await executePayment(result.donationId);
           if (i === 1) refundTarget = result.donationId;
         }
       }

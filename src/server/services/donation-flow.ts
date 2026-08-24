@@ -2,7 +2,7 @@ import { prisma } from '@/server/db';
 import { newId, newOrderNo, newTransactionNo } from '@/lib/id';
 import { decrypt, encrypt, maskPhone, normalizePhone, phoneHash as hashPhone } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
-import { env } from '@/lib/env';
+import { env, allowLegacyConfirmLink } from '@/lib/env';
 import type { MoInbound } from '@/server/adapters/mo';
 import { getMtAdapter, decideMessageType } from '@/server/adapters/mt';
 import { getPaymentAdapter, MockPaymentTimeout } from '@/server/adapters/payment';
@@ -272,6 +272,21 @@ export function resolvePaymentMode(
     return 'CONFIRM_LINK';
   }
   return desired;
+}
+
+/**
+ * CONFIRM_LINK 모드에서 후원자에게 무엇을 보낼지 결정한다.
+ *
+ *  - `PIN`(기본): 결제사(헥토/카드)가 발급한 PIN 입력 링크를 보낸다.
+ *                 PIN 을 입력해야 결제사가 콜백을 보내고 그때 승인이 실행된다.
+ *  - `LEGACY_LINK`(**deprecated**): 토네이도 자체 확인 페이지 링크를 보낸다.
+ *                 확인 버튼을 누르면 빌키로 곧바로 승인한다.
+ *                 되돌림이 필요한 경우에만 ALLOW_LEGACY_CONFIRM_LINK=true 로 연다.
+ */
+export type ConfirmChannel = 'PIN' | 'LEGACY_LINK';
+
+export function resolveConfirmChannel(allowLegacy: boolean = allowLegacyConfirmLink()): ConfirmChannel {
+  return allowLegacy ? 'LEGACY_LINK' : 'PIN';
 }
 
 // ---------------------------------------------------------------------------
@@ -583,6 +598,21 @@ async function processMoRow(
 
   // (8) 결제 모드에 따른 분기
   if (donation.paymentMode === 'CONFIRM_LINK') {
+    // 기본 경로: 결제사 PIN 인증 링크. 이 문자만으로는 출금이 일어나지 않는다.
+    if (resolveConfirmChannel() === 'PIN') {
+      const pin = await startPinAuthorization(donation.id);
+      return {
+        result: 'ROUTED',
+        moMessageId: moRow.id,
+        donationId: donation.id,
+        status: pin.status,
+        message: pin.message,
+      };
+    }
+
+    // ── deprecated: 토네이도 자체 확인 링크 ────────────────────────────────
+    // ALLOW_LEGACY_CONFIRM_LINK=true 일 때만 이 경로를 탄다.
+    // 확인 버튼 클릭이 곧 출금이므로, PIN 인증 흐름이 안정화되면 제거한다.
     await setStatus(donation.id, 'PENDING_CONFIRM', '후원자 확인 대기');
     const link = await issueSecureLink({
       purpose: 'CONFIRM_PAYMENT',
@@ -618,6 +648,175 @@ async function processMoRow(
     donationId: donation.id,
     status: paid.status,
     message: paid.message,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// PIN 인증 링크 발급
+// ---------------------------------------------------------------------------
+
+export interface PinStartOutcome {
+  ok: boolean;
+  status: DonationStatus;
+  message: string;
+  /** 결제사 인증 세션 ID (있을 때만) */
+  sessionId?: string;
+  expiresAt?: Date;
+  /** 결제사 실연동이 아닌 mock 링크인지 */
+  mock?: boolean;
+}
+
+/** 링크 원문을 DB 에 남기지 않는다. 세션 토큰이 들어 있는 쿼리스트링을 지운다. */
+function maskPinUrl(url: string): string {
+  const cut = url.indexOf('?');
+  return cut < 0 ? url : `${url.slice(0, cut)}?[마스킹]`;
+}
+
+/** 어댑터가 상대경로(mock 화면)를 주면 문자로 보낼 수 있게 절대 URL 로 바꾼다. */
+function toAbsolutePinUrl(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${env.baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+}
+
+/**
+ * 결제사에 PIN 입력 링크를 요청하고, 받은 링크를 후원자에게 MT 로 보낸다.
+ *
+ * 이 함수는 **출금을 일으키지 않는다.** 후원자가 PIN 을 입력하면 결제사가
+ * `/api/webhooks/pin-callback` 으로 통지하고, 그때 executePayment() 가 실행된다.
+ *
+ * 멱등: 후원 1건당 인증 세션은 1건(payment_pin_session.donation_id UNIQUE)이다.
+ * 같은 후원으로 두 번 들어와도 링크를 두 장 발급하지 않는다.
+ */
+export async function startPinAuthorization(donationId: string): Promise<PinStartOutcome> {
+  const donation = await prisma.donation.findUnique({
+    where: { id: donationId },
+    include: { creator: true, donor: true },
+  });
+  if (!donation) return { ok: false, status: 'PAYMENT_FAILED', message: '후원 거래를 찾을 수 없습니다.' };
+  if (!donation.donor) return { ok: false, status: 'UNREGISTERED', message: '후원자 정보가 없습니다.' };
+
+  // 이미 발급된 세션이 있으면 새로 만들지 않는다(문자 재수신 시 링크가 늘어나는 것을 막는다).
+  const existing = await prisma.paymentPinSession.findUnique({ where: { donationId } });
+  if (existing) {
+    return {
+      ok: existing.status === 'PENDING',
+      status: donation.status,
+      message:
+        existing.status === 'PENDING'
+          ? '이미 발송된 PIN 입력 링크가 있습니다. 받으신 문자에서 진행해 주세요.'
+          : '이미 처리된 후원입니다.',
+      sessionId: existing.sessionId,
+      expiresAt: existing.expiresAt,
+      mock: existing.mock,
+    };
+  }
+
+  const token = await prisma.paymentMethodToken.findFirst({
+    where: { donorId: donation.donorId!, status: 'ACTIVE' },
+    orderBy: { registeredAt: 'desc' },
+  });
+  if (!token) {
+    await setStatus(donationId, 'UNREGISTERED', '활성 결제수단 없음');
+    return { ok: false, status: 'UNREGISTERED', message: '등록된 결제수단이 없습니다.' };
+  }
+
+  await setStatus(donationId, 'PENDING_PIN', 'PIN 인증 대기');
+
+  const adapter = getPaymentAdapter();
+  const phone = decrypt(donation.donor.phoneEnc);
+
+  let issued: Awaited<ReturnType<typeof adapter.requestPinLink>>;
+  try {
+    issued = await adapter.requestPinLink(donationId, donation.amount, phone, token.method);
+  } catch (e) {
+    issued = { ok: false, code: 'ERROR', message: (e as Error).message };
+  }
+
+  if (!issued.ok || !issued.data) {
+    // 링크 발급 실패는 출금이 없는 실패다. 한도 카운터도 아직 쓰지 않았다.
+    const reason = issued.message ?? 'PIN 인증창을 생성하지 못했습니다.';
+    await setStatus(donationId, 'PAYMENT_FAILED', `PIN 링크 발급 실패: ${reason}`);
+    await sendMtForDonor(
+      donation.donorId!,
+      tpl.tplDonationFailed(donation.creator.displayName, reason),
+      donationId,
+      donation.creatorId,
+    );
+    logger.warn('PIN 링크 발급 실패', { donationId, code: issued.code, phone: donation.donor.phoneMasked });
+    return { ok: false, status: 'PAYMENT_FAILED', message: reason };
+  }
+
+  const pinUrl = toAbsolutePinUrl(issued.data.pinUrl);
+  const ttlMin = Math.max(1, Math.floor((issued.data.expiresAt.getTime() - Date.now()) / 60_000));
+
+  try {
+    await prisma.paymentPinSession.create({
+      data: {
+        id: newId(),
+        donationId,
+        provider: adapter.info().provider,
+        method: token.method,
+        sessionId: issued.data.sessionId,
+        pinUrlMasked: maskPinUrl(pinUrl),
+        amount: donation.amount,
+        mock: issued.data.mock,
+        expiresAt: issued.data.expiresAt,
+      },
+    });
+  } catch {
+    // 동시 요청 경합: donation_id UNIQUE 에 걸린 쪽은 링크를 또 보내지 않는다.
+    const now = await prisma.paymentPinSession.findUnique({ where: { donationId } });
+    return {
+      ok: Boolean(now),
+      status: 'PENDING_PIN',
+      message: '이미 발송된 PIN 입력 링크가 있습니다. 받으신 문자에서 진행해 주세요.',
+      sessionId: now?.sessionId,
+      expiresAt: now?.expiresAt,
+      mock: now?.mock,
+    };
+  }
+
+  const sent = await sendMt({
+    phone,
+    template: tpl.tplPinRequest({
+      creatorName: donation.creator.displayName,
+      amount: donation.amount,
+      pinUrl,
+      ttlMin,
+      mock: issued.data.mock,
+    }),
+    donationId,
+    creatorId: donation.creatorId,
+  });
+
+  if (!sent) {
+    // 링크를 받지 못한 후원자가 결제될 수는 없다. 세션을 닫고 실패로 확정한다.
+    // (아직 승인 전이므로 출금은 발생하지 않았다)
+    await prisma.paymentPinSession.updateMany({
+      where: { donationId, status: 'PENDING' },
+      data: { status: 'FAILED', resultNote: 'PIN 링크 문자 발송 실패' },
+    });
+    await setStatus(donationId, 'PAYMENT_FAILED', 'PIN 링크 문자 발송 실패');
+    return { ok: false, status: 'PAYMENT_FAILED', message: 'PIN 입력 안내 문자를 보내지 못했습니다.' };
+  }
+
+  if (issued.data.mock) {
+    logger.warn('[MOCK] PIN 인증 링크 발송 — 실제 결제사 연동이 아닙니다.', {
+      donationId,
+      provider: adapter.info().provider,
+      phone: donation.donor.phoneMasked,
+    });
+  }
+
+  return {
+    ok: true,
+    status: 'PENDING_PIN',
+    message: issued.data.mock
+      ? '[MOCK] PIN 입력 링크를 발송했습니다. PIN 입력 후 결제가 완료됩니다.'
+      : 'PIN 입력 링크를 발송했습니다. PIN 입력 후 결제가 완료됩니다.',
+    sessionId: issued.data.sessionId,
+    expiresAt: issued.data.expiresAt,
+    mock: issued.data.mock,
   };
 }
 

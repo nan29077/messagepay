@@ -10,6 +10,7 @@ import { formatNumber } from '@/lib/money';
 export const MT_TEMPLATE = {
   REGISTER_GUIDE: 'REGISTER_GUIDE',
   CONFIRM_PAYMENT: 'CONFIRM_PAYMENT',
+  PIN_REQUEST: 'PIN_REQUEST',
   DONATION_SUCCESS: 'DONATION_SUCCESS',
   DONATION_FAILED: 'DONATION_FAILED',
   ACCOUNT_INACTIVE: 'ACCOUNT_INACTIVE',
@@ -61,6 +62,31 @@ export function tplConfirmPayment(creatorName: string, amount: bigint, link: str
     link,
   );
   return { code: MT_TEMPLATE.CONFIRM_PAYMENT, text, masked: maskLink(text) };
+}
+
+/**
+ * 결제 PIN 입력 요청.
+ *
+ * 결제사(헥토/카드)가 발급한 PIN 입력 링크를 후원자에게 보낸다.
+ * 이 문자를 받은 시점에는 아직 출금이 일어나지 않았고, PIN 을 입력해야 결제가 완료된다.
+ *
+ * @param mock 결제사 실연동이 아닌 mock 링크이면 본문에 [MOCK] 을 명시한다.
+ *             (계약 전 연동을 실제 결제로 오인하지 않게 하기 위한 표시다)
+ */
+export function tplPinRequest(input: {
+  creatorName: string;
+  amount: bigint;
+  pinUrl: string;
+  ttlMin: number;
+  mock: boolean;
+}): TemplateOutput {
+  const tag = input.mock ? ' [MOCK]' : '';
+  const text = withLink(
+    `[도네이도]${tag} ${input.creatorName} 크리에이터에게 ${formatNumber(input.amount)}원 후원을 진행합니다. ` +
+      `아직 결제되지 않았습니다. 결제 PIN 입력 링크: `,
+    `${input.pinUrl} (유효시간: ${input.ttlMin}분)`,
+  );
+  return { code: MT_TEMPLATE.PIN_REQUEST, text, masked: maskLink(text) };
 }
 
 // ---------------------------------------------------------------------------

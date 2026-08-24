@@ -1,9 +1,9 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/server/db';
 import { mockMoAdapter } from '@/server/adapters/mo';
 import { readMockOutbox } from '@/server/adapters/mt';
 import { setMockLive } from '@/server/adapters/youtube';
-import { handleMoInbound, resolvePaymentMode } from '@/server/services/donation-flow';
+import { handleMoInbound, resolveConfirmChannel, resolvePaymentMode } from '@/server/services/donation-flow';
 import { loadConfirmContext, confirmDonation, expireStaleConfirmations } from '@/server/services/donation-confirm';
 import { startRegistration, completeRegistration } from '@/server/services/donor-registration';
 import { requestRefund, approveRefund } from '@/server/services/refund';
@@ -392,10 +392,16 @@ describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
   });
 });
 
-describe('CONFIRM_LINK 모드 (기본값)', () => {
+describe('CONFIRM_LINK + 구(舊) 확인 링크 (ALLOW_LEGACY_CONFIRM_LINK=true)', () => {
   beforeEach(async () => {
     await resetDb();
+    // 되돌림용으로 남겨 둔 경로다. 이 블록에서만 켠다.
+    process.env.ALLOW_LEGACY_CONFIRM_LINK = 'true';
     fx = await seedBasics({ paymentMode: 'CONFIRM_LINK' });
+  });
+
+  afterEach(() => {
+    delete process.env.ALLOW_LEGACY_CONFIRM_LINK;
   });
 
   it('MO 수신만으로는 결제되지 않고 확인 링크가 발송된다', async () => {
@@ -443,6 +449,11 @@ describe('CONFIRM_LINK 모드 (기본값)', () => {
     const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
     expect(donation.status).toBe('PAYMENT_FAILED');
     expect(await prisma.paymentTransaction.count()).toBe(0);
+  });
+
+  it('플래그를 켜야만 구 확인 링크 경로를 탄다', () => {
+    expect(resolveConfirmChannel(true)).toBe('LEGACY_LINK');
+    expect(resolveConfirmChannel(false)).toBe('PIN');
   });
 
   it('ALLOW_DIRECT_TRIGGER=false 이면 DIRECT_TRIGGER 설정도 CONFIRM_LINK 로 강등된다', () => {

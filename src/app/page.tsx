@@ -68,8 +68,8 @@ export default async function HomePage() {
           <StepCard
             no={3}
             icon={<ShieldCheck size={18} strokeWidth={1.7} />}
-            title="문자 후원 확인"
-            body="등록 후 문자를 보내면 확인 링크가 발송됩니다. 확인 버튼을 누르면 등록한 계좌에서 후원금이 출금됩니다."
+            title="문자 후원 PIN 인증"
+            body="등록 후 문자를 보내면 결제 PIN 입력 링크가 발송됩니다. PIN 을 입력하면 등록한 계좌에서 후원금이 출금됩니다."
           />
           <StepCard
             no={4}
@@ -81,8 +81,8 @@ export default async function HomePage() {
 
         <div className="mt-3">
           <Notice tone="warning" title="꼭 확인해 주세요">
-            문자를 보내면 등록한 계좌에서 후원금이 출금됩니다. 결제되지 않은 메시지는 방송에 표시되지 않으며, 최초
-            문자는 후원 처리되지 않습니다.
+            문자를 보낸 뒤 결제 PIN 을 입력하면 등록한 계좌에서 후원금이 출금됩니다. 결제되지 않은 메시지는 방송에
+            표시되지 않으며, 최초 문자는 후원 처리되지 않습니다.
           </Notice>
         </div>
       </section>

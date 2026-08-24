@@ -7,9 +7,12 @@ import type {
   ApproveResult,
   InquiryStatus,
   PaymentAdapter,
+  PaymentMethodKind,
+  PinLinkSession,
   RegistrationResult,
   RegistrationSession,
 } from './index';
+import { mockPinUrl } from './mock-pin';
 
 /**
  * 헥토파이낸셜 내통장결제(EzAuth) 어댑터.
@@ -40,6 +43,12 @@ export const HECTO_SPEC = {
   cancelPath: '/v3/APIPayCancel.do',
   /** 빌키 발급/해지 */
   billKeyPath: '/v3/APIRegularpayKey.do',
+  /**
+   * 결제 PIN 인증창 발급.
+   * TODO(계약 후): 연동규격서를 받아 실제 경로·필드명으로 교체한다.
+   * 지금 값은 추정이며, 실제 호출에는 사용하지 않는다(아래 requestPinLink 참고).
+   */
+  pinAuthPath: '/v3/APIPayAuth.do',
   /** 성공 응답 코드 */
   successCode: '0000',
 } as const;
@@ -304,6 +313,46 @@ export const hectoPaymentAdapter: PaymentAdapter = {
         accountTail4: account ? account.slice(-4) : undefined,
       },
       latencyMs: res.latencyMs,
+    };
+  },
+
+  /**
+   * 결제 PIN 인증창 발급. **현재는 Mock 이다.**
+   *
+   * 헥토 PIN 인증창 연동규격서를 아직 받지 못했다. 규격 없이 추정 필드로 실 API 를 호출하면
+   * 전건 실패하거나 최악의 경우 잘못된 승인으로 이어지므로, 실제 호출은 하지 않는다.
+   * 대신 토네이도 내부의 모의 PIN 화면 주소를 돌려주고 `mock: true` 를 세워
+   * 상위 흐름이 문자·화면·로그에 [MOCK] 을 표시하게 한다.
+   *
+   * TODO(계약 후): HECTO_SPEC.pinAuthPath 로 실제 인증창 발급 API 를 호출하고
+   *                응답의 인증 URL·세션ID·만료시각을 그대로 반환하도록 교체한다.
+   *                교체 시 `mock: false` 로 바꾸는 것을 잊지 말 것.
+   */
+  async requestPinLink(
+    donationId: string,
+    amount: bigint,
+    _phone: string,
+    method: PaymentMethodKind = 'ACCOUNT',
+  ): Promise<ProviderResult<PinLinkSession>> {
+    assertConfigured();
+
+    const sessionId = `HECTOPIN-MOCK-${donationId}`;
+    logger.warn('[MOCK] 헥토 PIN 인증창 발급 — 실제 결제사 연동이 아닙니다.', {
+      donationId,
+      amount: amount.toString(),
+      method,
+      note: '연동규격서 수령 후 실제 API 로 교체해야 합니다.',
+    });
+
+    return {
+      ok: true,
+      data: {
+        pinUrl: mockPinUrl(sessionId),
+        sessionId,
+        // 헥토 결제인증 유효시간(10분)을 넘지 않게 앱 설정값을 따른다.
+        expiresAt: new Date(Date.now() + env.payment.pinTtlSec * 1000),
+        mock: true,
+      },
     };
   },
 

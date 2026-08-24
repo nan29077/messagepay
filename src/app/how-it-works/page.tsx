@@ -57,9 +57,9 @@ export default async function HowItWorksPage() {
           <Step
             no={3}
             icon={<ShieldCheck size={18} strokeWidth={1.7} />}
-            title="문자를 보내고 확인 링크로 결제 승인"
-            body="등록을 마친 뒤 다시 문자를 보내면 결제 확인 문자가 도착합니다. 확인 버튼을 누르는 순간 등록한 계좌에서 후원금이 출금됩니다."
-            note="확인하지 않은 요청은 일정 시간이 지나면 자동으로 만료되고 결제되지 않습니다."
+            title="문자를 보내고 PIN 인증으로 결제"
+            body="등록을 마친 뒤 다시 문자를 보내면 결제 PIN 입력 링크가 도착합니다. 결제사 화면에서 PIN 을 입력하는 순간 등록한 계좌에서 후원금이 출금됩니다."
+            note="PIN 을 입력하지 않은 요청은 일정 시간이 지나면 자동으로 만료되고 결제되지 않습니다."
           />
           <Step
             no={4}
@@ -85,14 +85,14 @@ export default async function HowItWorksPage() {
             <Line
               icon={<Landmark size={17} strokeWidth={1.7} />}
               tone="danger"
-              title="등록 후 문자 — 계좌에서 출금"
-              body="계좌 등록을 마친 뒤 보내는 문자는 결제 확인 절차를 거쳐 등록한 계좌에서 후원금이 바로 출금됩니다."
+              title="등록 후 문자 — PIN 입력 시 출금"
+              body="계좌 등록을 마친 뒤 보내는 문자는 결제 PIN 인증을 거쳐 등록한 계좌에서 후원금이 출금됩니다."
             />
             <Line
               icon={<Clock size={17} strokeWidth={1.7} />}
               tone="neutral"
-              title="확인하지 않은 요청 — 자동 만료"
-              body="결제 확인 링크를 누르지 않으면 요청은 만료되고 출금되지 않습니다. 만료된 요청은 방송에도 표시되지 않습니다."
+              title="PIN 을 입력하지 않은 요청 — 자동 만료"
+              body="결제 PIN 을 입력하지 않으면 요청은 만료되고 출금되지 않습니다. 만료된 요청은 방송에도 표시되지 않습니다."
             />
           </div>
         </Card>
