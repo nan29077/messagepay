@@ -13,7 +13,6 @@ const providerRows: Array<{ key: string; label: string }> = [
   { key: 'mt', label: 'MT 발송' },
   { key: 'youtube', label: '유튜브' },
   { key: 'tts', label: 'TTS' },
-  { key: 'stream', label: '스트리밍' },
 ];
 
 export function SafetyBanner() {
@@ -23,7 +22,6 @@ export function SafetyBanner() {
     mt: env.mt.provider,
     youtube: env.youtube.provider,
     tts: env.tts.provider,
-    stream: env.stream.provider,
   };
   const warnings = assertProductionSafety();
   const mockCount = providerRows.filter((r) => providers[r.key] === 'mock').length;
@@ -52,7 +50,7 @@ export function SafetyBanner() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-5">
         {providerRows.map((r) => {
           const mode = providers[r.key];
           const isMock = mode === 'mock';

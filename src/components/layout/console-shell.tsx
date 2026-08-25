@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   Activity, BadgeCheck, BookOpenText, CalendarDays, ClipboardList, CreditCard, FlaskConical,
   Flag, Gauge, HeartHandshake, Home, Images, KeyRound, LayoutDashboard, LogOut,
-  Menu, MessageCircleQuestion, MessageSquareText, PanelsTopLeft, Percent, PhoneCall, RadioTower,
+  Menu, MessageCircleQuestion, MessageSquareText, PanelsTopLeft, Percent, PhoneCall,
   ScrollText, Send, ServerCog, ShieldAlert, ShieldBan,
   SlidersHorizontal, Undo2, UserCog, CircleUserRound, UserRoundCog,
   UsersRound, Video, Volume2, WalletCards, X,
@@ -33,7 +33,7 @@ export type ConsoleIconName =
   | 'activity' | 'admins' | 'audit' | 'banners' | 'codes' | 'contents' | 'creators'
   | 'dashboard' | 'donations' | 'donors' | 'fees' | 'holidays' | 'inquiries' | 'messages'
   | 'moderation' | 'numbers' | 'overlay' | 'payments' | 'policies' | 'profile'
-  | 'refunds' | 'reports' | 'risk' | 'settlement' | 'simulator' | 'stream'
+  | 'refunds' | 'reports' | 'risk' | 'settlement' | 'simulator'
   | 'system' | 'terms' | 'tts' | 'users' | 'youtube' | 'settings' | 'send';
 
 const CONSOLE_ICONS = {
@@ -62,7 +62,6 @@ const CONSOLE_ICONS = {
   risk: ShieldAlert,
   settlement: WalletCards,
   simulator: FlaskConical,
-  stream: RadioTower,
   system: ServerCog,
   terms: ScrollText,
   tts: Volume2,

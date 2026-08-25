@@ -42,7 +42,6 @@ const groups: NavGroup[] = [
     title: '방송',
     items: [
       { href: '/admin/youtube', label: '유튜브 연동', icon: 'youtube' },
-      { href: '/admin/streams', label: '방송·스트림', icon: 'stream' },
       { href: '/admin/tts', label: 'TTS 연동', icon: 'tts' },
       { href: '/admin/overlay', label: '오버레이', icon: 'overlay' },
     ],

@@ -40,7 +40,6 @@ export default async function StudioDashboardPage() {
     monthLedger,
     summary,
     youtube,
-    stream,
     moNumber,
     recent,
   ] = await Promise.all([
@@ -67,10 +66,6 @@ export default async function StudioDashboardPage() {
     prisma.youTubeConnection.findUnique({
       where: { creatorId },
       select: { status: true, channelTitle: true, lastError: true },
-    }),
-    prisma.streamChannel.findUnique({
-      where: { creatorId },
-      select: { live: true, ingestUrl: true, keys: { where: { status: 'ACTIVE' }, select: { id: true } } },
     }),
     // 배정 중인 번호를 우선 보여 준다. 나중에 배정됐다 회수된 번호가 있어도 현재 번호가 가려지지 않게.
     prisma.creatorMoNumber
@@ -109,10 +104,9 @@ export default async function StudioDashboardPage() {
   ]);
 
   const ytConnected = youtube?.status === 'CONNECTED';
-  const streamReady = Boolean(stream && stream.keys.length > 0);
   const moAssigned = moNumber?.status === 'ASSIGNED';
 
-  const links: { label: string; ok: boolean; value: string; href: string; optional?: boolean }[] = [
+  const links: { label: string; ok: boolean; value: string; href: string }[] = [
     {
       label: '유튜브 채널',
       ok: ytConnected,
@@ -127,18 +121,10 @@ export default async function StudioDashboardPage() {
         : '배정된 번호 없음',
       href: '/studio/messages',
     },
-    {
-      label: '자체 방송',
-      ok: streamReady,
-      value: streamReady ? (stream?.live ? '방송 중' : '스트림 키 발급됨') : '스트림 키 없음',
-      href: '/studio/overlay#stream',
-      // 자체 방송은 아직 미디어 인프라가 없는 4단계 기능이라 '다음 할 일' 로 요구하지 않는다.
-      optional: true,
-    },
   ];
 
   // 연동 미완료 항목이 있으면 최상단에 '다음 할 일' 로 안내한다 (온보딩 완주 유도)
-  const nextStep = links.find((l) => !l.ok && !l.optional) ?? null;
+  const nextStep = links.find((l) => !l.ok) ?? null;
 
   return (
     <>

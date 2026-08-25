@@ -48,7 +48,6 @@ export async function GET() {
         mt: env.mt.provider,
         youtube: env.youtube.provider,
         tts: env.tts.provider,
-        stream: env.stream.provider,
       },
       checks,
       productionWarnings: assertProductionSafety(),

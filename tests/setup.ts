@@ -6,7 +6,6 @@ process.env.MO_PROVIDER = 'mock';
 process.env.MT_PROVIDER = 'mock';
 process.env.YOUTUBE_PROVIDER = 'mock';
 process.env.TTS_PROVIDER = 'mock';
-process.env.STREAM_PROVIDER = 'mock';
 process.env.CRYPTO_PROVIDER = 'local';
 process.env.SAFE_MODE = 'true';
 process.env.ALLOW_DIRECT_TRIGGER = 'true'; // DIRECT_TRIGGER 경로도 테스트한다

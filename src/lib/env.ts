@@ -175,12 +175,6 @@ export const env = {
     apiKey: str('TTS_API_KEY'),
   },
 
-  stream: {
-    provider: str('STREAM_PROVIDER', 'mock') as ProviderMode,
-    ingestBase: str('STREAM_INGEST_BASE', 'rtmps://ingest.tornado.kr/live'),
-    playbackBase: str('STREAM_PLAYBACK_BASE', 'https://play.tornado.kr/hls'),
-  },
-
   storage: {
     bucket: str('S3_BUCKET'),
     publicBase: str('S3_PUBLIC_BASE'),

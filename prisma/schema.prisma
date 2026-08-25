@@ -270,13 +270,6 @@ enum YouTubeConnectionStatus {
   @@map("youtube_connection_status")
 }
 
-enum StreamKeyStatus {
-  ACTIVE
-  REVOKED
-
-  @@map("stream_key_status")
-}
-
 enum ReportStatus {
   OPEN
   REVIEWING
@@ -434,20 +427,20 @@ model DonorProfile {
 
 /// 후원자 x 크리에이터 관계 (동의/차단/누적)
 model DonorCreatorLink {
-  id            String    @id
-  donorId       String    @map("donor_id")
-  creatorId     String    @map("creator_id")
-  consentedAt   DateTime? @map("consented_at") @db.Timestamptz(3)
+  id             String    @id
+  donorId        String    @map("donor_id")
+  creatorId      String    @map("creator_id")
+  consentedAt    DateTime? @map("consented_at") @db.Timestamptz(3)
   /// 후원자가 이 크리에이터를 차단한 시각 (후원자 -> 크리에이터 방향).
   /// 반대 방향(크리에이터 -> 후원자)은 사유·처리자까지 남기는 blocked_donor 테이블에 기록한다.
   /// 한 컬럼에 두 방향을 같이 쓰면 크리에이터가 차단을 해제할 때 후원자가 건 차단까지 풀린다.
   donorBlockedAt DateTime? @map("donor_blocked_at") @db.Timestamptz(3)
-  dailyLimit    BigInt?   @map("daily_limit")
-  totalAmount   BigInt    @default(0) @map("total_amount")
-  totalCount    Int       @default(0) @map("total_count")
-  lastDonatedAt DateTime? @map("last_donated_at") @db.Timestamptz(3)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  dailyLimit     BigInt?   @map("daily_limit")
+  totalAmount    BigInt    @default(0) @map("total_amount")
+  totalCount     Int       @default(0) @map("total_count")
+  lastDonatedAt  DateTime? @map("last_donated_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   donor   DonorProfile   @relation(fields: [donorId], references: [id], onDelete: Cascade)
   creator CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
@@ -478,48 +471,48 @@ model BlockedDonor {
 // ===========================================================================
 
 model CreatorProfile {
-  id               String        @id
-  userId           String        @unique @map("user_id")
+  id                  String        @id
+  userId              String        @unique @map("user_id")
   /// 현재 활성 코드 (이력은 creator_code 테이블)
-  code             String        @unique
-  displayName      String        @map("display_name")
-  channelName      String?       @map("channel_name")
-  avatarUrl        String?       @map("avatar_url")
+  code                String        @unique
+  displayName         String        @map("display_name")
+  channelName         String?       @map("channel_name")
+  avatarUrl           String?       @map("avatar_url")
   /// 후원 페이지 상단 배너 이미지 URL (크리에이터 꾸미기)
-  bannerUrl        String?       @map("banner_url")
-  description      String?
+  bannerUrl           String?       @map("banner_url")
+  description         String?
   /// 방송중 스위치: 켜면 후원 페이지에 온에어 표시 + 라이브 링크 노출
-  liveOn           Boolean       @default(false) @map("live_on")
+  liveOn              Boolean       @default(false) @map("live_on")
   /// 현재 노출 중인 라이브 방송 링크 (플랫폼별 주소에서 선택된 값)
-  liveUrl          String?       @map("live_url")
+  liveUrl             String?       @map("live_url")
   /// 라이브 플랫폼별 주소. livePlatform 이 가리키는 값이 후원샵에 노출된다.
-  livePlatform     String?       @map("live_platform")
-  youtubeLiveUrl   String?       @map("youtube_live_url")
-  instagramLiveUrl String?       @map("instagram_live_url")
-  tiktokLiveUrl    String?       @map("tiktok_live_url")
+  livePlatform        String?       @map("live_platform")
+  youtubeLiveUrl      String?       @map("youtube_live_url")
+  instagramLiveUrl    String?       @map("instagram_live_url")
+  tiktokLiveUrl       String?       @map("tiktok_live_url")
   /// 대표 채널 주소. 신청 때 받은 값을 소개글에 이어 붙이면 소개 길이 제한을 넘겨
   /// 이후 후원샵 설정 저장이 영구히 막히므로 반드시 별도 컬럼에 보관한다.
-  channelUrl       String?       @map("channel_url")
-  status           CreatorStatus @default(PENDING)
+  channelUrl          String?       @map("channel_url")
+  status              CreatorStatus @default(PENDING)
   /// 문자 1건당 후원금 (원)
-  donationAmount   BigInt        @default(3000) @map("donation_amount")
-  minAmount        BigInt        @default(1000) @map("min_amount")
-  maxAmount        BigInt        @default(50000) @map("max_amount")
+  donationAmount      BigInt        @default(3000) @map("donation_amount")
+  minAmount           BigInt        @default(1000) @map("min_amount")
+  maxAmount           BigInt        @default(50000) @map("max_amount")
   /// 크리에이터별 결제 모드 오버라이드 (null 이면 전역 설정)
-  paymentMode      PaymentMode?  @map("payment_mode")
+  paymentMode         PaymentMode?  @map("payment_mode")
   /// 후원 감사 MT 문자 본문. null/빈 값이면 기본 템플릿을 사용한다.
   /// 치환자: {후원자} {크리에이터} {금액} {메시지} {누적}
-  thanksMtMessage  String?       @map("thanks_mt_message")
-  businessNo       String?       @map("business_no")
+  thanksMtMessage     String?       @map("thanks_mt_message")
+  businessNo          String?       @map("business_no")
   /// 온보딩 체크리스트 중 자동 판별이 불가능해 크리에이터가 직접 체크하는 항목.
   /// OBS/프리즘 등 방송 프로그램에 오버레이 URL 을 등록했는지 여부.
-  onboardingObsLinked Boolean    @default(false) @map("onboarding_obs_linked")
+  onboardingObsLinked Boolean       @default(false) @map("onboarding_obs_linked")
   /// 테스트 후원 미리보기로 실제 화면에 표시되는 것까지 확인했는지 여부.
-  onboardingTestDone  Boolean    @default(false) @map("onboarding_test_done")
-  approvedAt       DateTime?     @map("approved_at") @db.Timestamptz(3)
-  suspendedAt      DateTime?     @map("suspended_at") @db.Timestamptz(3)
-  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  onboardingTestDone  Boolean       @default(false) @map("onboarding_test_done")
+  approvedAt          DateTime?     @map("approved_at") @db.Timestamptz(3)
+  suspendedAt         DateTime?     @map("suspended_at") @db.Timestamptz(3)
+  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   codes              CreatorCode[]
@@ -532,7 +525,6 @@ model CreatorProfile {
   ttsSetting         TtsSetting?
   youtubeConnection  YouTubeConnection?
   youtubeBroadcasts  YouTubeBroadcast[]
-  streamChannel      StreamChannel?
   settlementAccount  SettlementAccount?
   ledgerEntries      SettlementLedger[]
   settlementRequests SettlementRequest[]
@@ -879,26 +871,26 @@ enum PinSessionStatus {
 /// 후원 1건당 세션 1건(donationId UNIQUE)이며, 이 유니크 제약이
 /// 콜백 중복 수신에 대한 마지막 방어선이 된다.
 model PaymentPinSession {
-  id            String            @id
-  donationId    String            @unique @map("donation_id")
-  provider      String
+  id             String            @id
+  donationId     String            @unique @map("donation_id")
+  provider       String
   /// 인증 대상 결제수단 종류 (계좌 빌키 / 카드 빌링키)
-  method        PaymentMethodKind @default(ACCOUNT)
+  method         PaymentMethodKind @default(ACCOUNT)
   /// 결제사가 발급한 인증 세션 식별자
-  sessionId     String            @unique @map("session_id")
+  sessionId      String            @unique @map("session_id")
   /// PIN 입력 URL. 토큰이 포함되므로 마스킹해 저장한다(원문 저장 금지)
-  pinUrlMasked  String            @map("pin_url_masked")
-  amount        BigInt
-  status        PinSessionStatus  @default(PENDING)
+  pinUrlMasked   String            @map("pin_url_masked")
+  amount         BigInt
+  status         PinSessionStatus  @default(PENDING)
   /// 실제 결제사 연동이 아니라 mock 발급인지 여부. 화면/로그에 [MOCK] 로 표시한다.
-  mock          Boolean           @default(false)
-  callbackCount Int               @default(0) @map("callback_count")
-  resultNote    String?           @map("result_note")
-  expiresAt     DateTime          @map("expires_at") @db.Timestamptz(3)
-  completedAt   DateTime?         @map("completed_at") @db.Timestamptz(3)
-  lastCallbackAt DateTime?        @map("last_callback_at") @db.Timestamptz(3)
-  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  mock           Boolean           @default(false)
+  callbackCount  Int               @default(0) @map("callback_count")
+  resultNote     String?           @map("result_note")
+  expiresAt      DateTime          @map("expires_at") @db.Timestamptz(3)
+  completedAt    DateTime?         @map("completed_at") @db.Timestamptz(3)
+  lastCallbackAt DateTime?         @map("last_callback_at") @db.Timestamptz(3)
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   donation Donation @relation(fields: [donationId], references: [id], onDelete: Cascade)
 
@@ -1102,39 +1094,6 @@ model YouTubeChatDelivery {
   @@index([donationId])
   @@index([status])
   @@map("youtube_chat_delivery")
-}
-
-model StreamChannel {
-  id          String    @id
-  creatorId   String    @unique @map("creator_id")
-  ingestUrl   String    @map("ingest_url")
-  playbackUrl String?   @map("playback_url")
-  live        Boolean   @default(false)
-  lastLiveAt  DateTime? @map("last_live_at") @db.Timestamptz(3)
-  simulcast   Boolean   @default(false)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
-
-  creator CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-  keys    StreamKey[]
-
-  @@map("stream_channel")
-}
-
-model StreamKey {
-  id        String          @id
-  channelId String          @map("channel_id")
-  /// 원문 저장 금지. 해시 + 마스킹만 보관
-  keyHash   String          @unique @map("key_hash")
-  keyMasked String          @map("key_masked")
-  status    StreamKeyStatus @default(ACTIVE)
-  issuedAt  DateTime        @default(now()) @map("issued_at") @db.Timestamptz(3)
-  revokedAt DateTime?       @map("revoked_at") @db.Timestamptz(3)
-
-  channel StreamChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
-
-  @@index([channelId, status])
-  @@map("stream_key")
 }
 
 model OverlaySetting {

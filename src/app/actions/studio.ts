@@ -18,7 +18,6 @@ import { loadBannedWords } from '@/server/services/donation-flow';
 import { THANKS_MT_MAX_LENGTH, THANKS_MT_VARIABLES } from '@/server/services/mt-templates';
 import { filterContent } from '@/server/services/content-filter';
 import { getYouTubeAdapter } from '@/server/adapters/youtube';
-import { getStreamAdapter } from '@/server/adapters/stream';
 import { bankName } from '@/components/studio/banks';
 
 /**
@@ -578,56 +577,6 @@ export async function previewOverlayTierAction(
 
     await sendTestOverlay(creatorId, { donorName, amount, message });
     return { ok: true, message: `${formatWon(amount)} 미리보기를 오버레이로 보냈습니다.` };
-  });
-}
-
-// ===========================================================================
-// 자체 방송 스트림 키
-// ===========================================================================
-
-export async function reissueStreamKeyAction(
-  _prev: StudioActionState,
-  _formData: FormData,
-): Promise<StudioActionState> {
-  return withCreator(async (creatorId) => {
-    const adapter = getStreamAdapter();
-    const issued = await adapter.issueKey(creatorId);
-    if (!issued.ok || !issued.data) {
-      return { ok: false, message: issued.message ?? '스트림 키 발급에 실패했습니다.' };
-    }
-
-    const channel = await prisma.streamChannel.upsert({
-      where: { creatorId },
-      create: {
-        id: newId(),
-        creatorId,
-        ingestUrl: issued.data.ingestUrl,
-        playbackUrl: issued.data.playbackUrl,
-      },
-      update: { ingestUrl: issued.data.ingestUrl, playbackUrl: issued.data.playbackUrl },
-    });
-
-    await prisma.streamKey.updateMany({
-      where: { channelId: channel.id, status: 'ACTIVE' },
-      data: { status: 'REVOKED', revokedAt: new Date() },
-    });
-    await prisma.streamKey.create({
-      data: {
-        id: newId(),
-        channelId: channel.id,
-        keyHash: tokenHash(issued.data.key),
-        keyMasked: issued.data.keyMasked,
-      },
-    });
-
-    revalidatePath('/studio/stream');
-    return {
-      ok: true,
-      message: '새 스트림 키를 발급했습니다. 기존 키는 즉시 무효화되었습니다.',
-      secret: issued.data.key,
-      secretLabel: '스트림 키',
-      secretHint: '이 값은 지금 한 번만 표시됩니다. 방송 프로그램에 즉시 등록해 주세요.',
-    };
   });
 }
 

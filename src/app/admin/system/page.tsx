@@ -72,7 +72,6 @@ export default async function AdminSystemPage() {
     { label: 'MT 발송', mode: env.mt.provider },
     { label: '유튜브', mode: env.youtube.provider },
     { label: 'TTS', mode: env.tts.provider },
-    { label: '스트리밍', mode: env.stream.provider },
     { label: '암호화', mode: env.crypto.provider },
   ];
 

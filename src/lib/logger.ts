@@ -6,7 +6,7 @@
 const SENSITIVE_KEYS = [
   'phone', 'phoneNumber', 'mobile', 'msisdn',
   'billKey', 'billkey', 'cardNo', 'account', 'accountNo', 'accountNumber',
-  'token', 'accessToken', 'refreshToken', 'streamKey', 'password',
+  'token', 'accessToken', 'refreshToken', 'password',
   'authorization', 'signature', 'secret', 'apiKey', 'licenseKey',
 ];
 

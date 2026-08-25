@@ -11,7 +11,6 @@ export async function resetDb() {
     'admin_audit_log', 'webhook_log', 'consent_record', 'notification', 'report',
     'youtube_chat_delivery', 'youtube_broadcast', 'youtube_connection',
     'overlay_event', 'overlay_setting', 'tts_setting',
-    'stream_key', 'stream_channel',
     'settlement_ledger', 'settlement_request', 'settlement_account', 'fee_policy',
     'payment_attempt', 'payment_transaction', 'refund',
     'donation_status_log', 'secure_link', 'mt_outbound_message', 'donation',

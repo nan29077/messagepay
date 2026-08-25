@@ -160,23 +160,6 @@ async function main() {
       update: {},
     });
 
-    const channel = await prisma.streamChannel.upsert({
-      where: { creatorId: creator.id },
-      create: {
-        id: newId(), creatorId: creator.id,
-        ingestUrl: 'rtmps://ingest.tornado.kr/live',
-        playbackUrl: `https://play.tornado.kr/hls/${creator.id}.m3u8`,
-      },
-      update: {},
-    });
-    const keyExists = await prisma.streamKey.findFirst({ where: { channelId: channel.id, status: 'ACTIVE' } });
-    if (!keyExists) {
-      const raw = `tor_${generateToken(18)}`;
-      await prisma.streamKey.create({
-        data: { id: newId(), channelId: channel.id, keyHash: tokenHash(raw), keyMasked: maskSecret(raw) },
-      });
-    }
-
     await prisma.settlementAccount.upsert({
       where: { creatorId: creator.id },
       create: {
