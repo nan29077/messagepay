@@ -511,7 +511,15 @@ export default async function StudioSettlementPage({
                             ) : null}
                           </Td>
                           <Td className="text-right tabular-nums">{formatWon(r.amount)}</Td>
-                          <Td className="text-right tabular-nums text-danger-500">-{formatWon(r.withholding)}</Td>
+                          {/* 공제액이라 음수로 보여주되, 소액부징수(0원)일 때 "-0원" 이 되지 않게 한다. */}
+                          <Td
+                            className={cx(
+                              'text-right tabular-nums',
+                              r.withholding > 0n ? 'text-danger-500' : 'text-ink-400',
+                            )}
+                          >
+                            {r.withholding > 0n ? `-${formatWon(r.withholding)}` : '0원'}
+                          </Td>
                           <Td className="text-right font-semibold tabular-nums text-ink-900">{formatWon(r.payoutAmount)}</Td>
                           <Td>
                             {/* 관리자 반려/처리 메모를 크리에이터가 볼 수 있게 노출한다. */}

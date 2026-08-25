@@ -123,6 +123,8 @@ try {
     r.ok('요청 내역 표에 요청 건이 생긴다', !res.includes('정산 요청 내역이 없습니다'));
     r.ok('요청 금액이 그대로 기록된다', res.includes(Number(amount).toLocaleString('ko-KR')), amount);
     r.ok('요청 즉시 정산 가능금이 0원으로 잠긴다', res.includes('현재 정산 가능한 금액이 없습니다'));
+    // 소액부징수(원천징수 0원)일 때 "-0원" 으로 찍히면 안 된다.
+    r.ok('원천징수 0원이 "-0원" 으로 표시되지 않는다', !res.includes('-0원'), res.slice(-200));
   }
   await cctx.close();
 
