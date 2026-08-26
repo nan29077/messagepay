@@ -99,9 +99,9 @@ export function ConsoleShell({
   }, [groups, pathname]);
 
   return (
-    <div className="relative min-h-dvh bg-[#f7f5ef]">
+    <div className="console-canvas relative min-h-dvh">
       <ConsoleCornerMascot />
-      <header className="sticky top-0 z-40 border-b border-ink-100/80 bg-white/92 backdrop-blur-xl">
+      <header className="console-header sticky top-0 z-40 border-b backdrop-blur-xl">
         <div className="flex h-16 items-center gap-3 px-4 lg:px-6">
           <button
             type="button"
@@ -132,13 +132,13 @@ export function ConsoleShell({
 
         <aside
           className={cx(
-            'fixed bottom-0 left-0 top-16 z-30 w-[260px] flex-col border-r border-ink-100 bg-white shadow-2xl',
+            'console-sidebar fixed bottom-0 left-0 top-16 z-30 w-[260px] flex-col border-r shadow-2xl',
             'lg:sticky lg:top-16 lg:ml-4 lg:mt-4 lg:h-[calc(100dvh-5rem)] lg:w-[244px] lg:rounded-[24px] lg:border lg:shadow-[0_14px_40px_rgba(23,22,26,0.08)]',
             open ? 'flex' : 'hidden lg:flex',
           )}
         >
           {/* 메뉴 (이 영역만 스크롤) */}
-          <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-5">
+          <nav className="console-navigation min-h-0 flex-1 overflow-y-auto px-3 py-5">
             {groups.map((g) => (
               <div key={g.title} className="mb-5 last:mb-0">
                 <p className="mb-2 px-3 text-[10px] font-extrabold tracking-[0.12em] text-ink-300">{g.title}</p>
@@ -176,9 +176,9 @@ export function ConsoleShell({
           </nav>
 
           {/* 하단 고정: 프로필 · 메인으로 · 로그아웃 */}
-          <div className="shrink-0 border-t border-ink-100 bg-white px-3 py-3 lg:rounded-b-[24px]">
+          <div className="console-account shrink-0 border-t px-3 py-3 lg:rounded-b-[24px]">
             {user ? (
-              <div className="mb-2 flex items-center gap-2.5 rounded-xl bg-ink-50 px-3 py-2.5">
+              <div className="console-profile mb-2 flex items-center gap-2.5 rounded-xl px-3 py-2.5">
                 <ProfileAvatar
                   seed={user.avatarSeed ?? user.id}
                   avatarIndex={user.avatarIndex}
@@ -214,7 +214,7 @@ export function ConsoleShell({
           </div>
         </aside>
 
-        <main className="min-w-0 max-w-full flex-1 overflow-x-hidden px-3 py-4 sm:px-4 sm:py-5 lg:px-7 lg:py-7">
+        <main className="console-content min-w-0 max-w-full flex-1 overflow-x-hidden px-3 py-4 sm:px-4 sm:py-5 lg:px-7 lg:py-7">
           <div className="mx-auto w-full max-w-[1480px]">{children}</div>
         </main>
       </div>
@@ -232,7 +232,7 @@ export function PageHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="console-page-header relative mb-5 flex min-h-[66px] flex-col items-stretch justify-between gap-3 overflow-hidden rounded-[20px] border border-white/75 bg-white/55 px-4 py-3.5 shadow-[0_8px_26px_rgba(23,22,26,0.035)] backdrop-blur-sm sm:flex-row sm:flex-wrap sm:items-end sm:px-5">
+    <div className="console-page-header relative mb-5 flex min-h-[66px] flex-col items-stretch justify-between gap-3 overflow-hidden rounded-[20px] border px-4 py-3.5 backdrop-blur-sm sm:flex-row sm:flex-wrap sm:items-end sm:px-5">
       <div className="relative min-w-0 flex-1 lg:pr-20">
         <h1 className="break-keep text-[21px] font-black tracking-[-0.035em] text-ink-900 sm:text-[22px]">{title}</h1>
         {description ? (

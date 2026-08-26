@@ -70,8 +70,8 @@ export default async function StudioLayout({ children }: { children: React.React
   if (session.creatorStatus !== 'APPROVED') {
     const notice = STATUS_NOTICE[session.creatorStatus ?? 'PENDING'] ?? STATUS_NOTICE.PENDING;
     return (
-      <div className="mx-auto flex min-h-screen max-w-[560px] flex-col justify-center px-5 py-16">
-        <div className="rounded-2xl border border-ink-100 bg-white p-7 shadow-sm">
+      <div className="console-canvas mx-auto flex min-h-screen max-w-[560px] flex-col justify-center px-5 py-16">
+        <div className="card p-7">
           <h1 className="text-[19px] font-bold text-ink-900">{notice.title}</h1>
           <p className="mt-3 text-[14px] leading-relaxed text-ink-500">{notice.body}</p>
           <div className="mt-6 flex flex-wrap gap-2">
