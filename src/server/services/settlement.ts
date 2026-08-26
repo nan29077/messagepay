@@ -346,16 +346,24 @@ export async function resolveRefundFeeReturn(
   };
 }
 
-/** 환불 시 반대 분개 (수수료 환입 정책 포함) */
-export async function postRefundSettlement(input: {
-  creatorId: string;
-  donationId: string;
-  refundId: string;
-  amount: bigint;
-  fees: FeeBreakdown;
-  returnPlatformFee?: boolean;
-  occurredAt?: Date;
-}) {
+/**
+ * 환불 시 반대 분개 (수수료 환입 정책 포함).
+ *
+ * 환불 확정 기록과 **같은 트랜잭션**에서 호출한다(client 로 tx 전달).
+ * 분리되면 커밋 사이에 프로세스가 죽었을 때 원장에 환불 분개가 누락된다.
+ */
+export async function postRefundSettlement(
+  input: {
+    creatorId: string;
+    donationId: string;
+    refundId: string;
+    amount: bigint;
+    fees: FeeBreakdown;
+    returnPlatformFee?: boolean;
+    occurredAt?: Date;
+  },
+  client: LedgerClient = prisma,
+) {
   const entries: LedgerInput[] = [
     {
       creatorId: input.creatorId, entryType: 'REFUND', amount: -input.amount,
@@ -373,7 +381,7 @@ export async function postRefundSettlement(input: {
       });
     }
   }
-  await appendLedger(entries);
+  await appendLedger(entries, client);
 }
 
 export interface SettlementSummary {

@@ -529,21 +529,29 @@ async function processMoRow(
     };
   }
 
-  const donation = await prisma.donation.create({
-    data: {
-      id: newId(),
-      transactionNo: newTransactionNo(),
-      creatorId: creator.id,
-      donorId: donor.id,
-      moMessageId: moRow.id,
-      amount,
-      displayName,
-      message: filtered.clean,
-      messageRawEnc: encrypt(routed.body),
-      status: 'RECEIVED',
-      paymentMode: resolvePaymentMode(creator.paymentMode),
-    },
-  });
+  let donation;
+  try {
+    donation = await prisma.donation.create({
+      data: {
+        id: newId(),
+        transactionNo: newTransactionNo(),
+        creatorId: creator.id,
+        donorId: donor.id,
+        moMessageId: moRow.id,
+        amount,
+        displayName,
+        message: filtered.clean,
+        messageRawEnc: encrypt(routed.body),
+        status: 'RECEIVED',
+        paymentMode: resolvePaymentMode(creator.paymentMode),
+      },
+    });
+  } catch (error) {
+    // 후원 생성에 실패했는데 멱등키를 IN_PROGRESS 로 남기면 TTL(7일) 동안
+    // 재전송이 전부 DUPLICATE 로 막혀 문자가 유실된다. 키를 지워 재시도를 허용한다.
+    await idem.abort();
+    throw error;
+  }
   await idem.release(donation.id);
 
   await prisma.moInboundMessage.update({

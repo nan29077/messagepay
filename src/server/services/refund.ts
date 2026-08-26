@@ -104,28 +104,32 @@ export async function approveRefund(refundId: string, adminUserId?: string) {
   const fees = await calculateFees(refund.donation.creatorId, refund.amount);
   const now = new Date();
 
-  await prisma.$transaction([
-    prisma.refund.update({
+  // 환불 확정 기록과 정산 원장 반대 분개는 반드시 같은 트랜잭션이어야 한다.
+  // 분리하면 커밋 사이에 프로세스가 죽었을 때 "환불은 완료인데 원장에는 없는" 상태가 된다.
+  await prisma.$transaction(async (tx) => {
+    await tx.refund.update({
       where: { id: refundId },
       data: { status: 'DONE', approvedBy: adminUserId ?? null, processedAt: now, providerTid: txn.providerTid },
-    }),
-    prisma.paymentTransaction.update({ where: { id: txn.id }, data: { status: 'CANCELED', canceledAt: now } }),
-    prisma.donation.update({
+    });
+    await tx.paymentTransaction.update({ where: { id: txn.id }, data: { status: 'CANCELED', canceledAt: now } });
+    await tx.donation.update({
       where: { id: refund.donationId },
       data: { status: 'REFUNDED', refundedAt: now },
-    }),
-    prisma.donationStatusLog.create({
+    });
+    await tx.donationStatusLog.create({
       data: { id: newId(), donationId: refund.donationId, toStatus: 'REFUNDED', actor: adminUserId ?? 'admin', reason: refund.reason },
-    }),
-  ]);
-
-  await postRefundSettlement({
-    creatorId: refund.donation.creatorId,
-    donationId: refund.donationId,
-    refundId: refund.id,
-    amount: refund.amount,
-    fees,
-    occurredAt: now,
+    });
+    await postRefundSettlement(
+      {
+        creatorId: refund.donation.creatorId,
+        donationId: refund.donationId,
+        refundId: refund.id,
+        amount: refund.amount,
+        fees,
+        occurredAt: now,
+      },
+      tx,
+    );
   });
 
   if (refund.donation.donorId && refund.donation.paidAt) {
@@ -148,10 +152,15 @@ export async function approveRefund(refundId: string, adminUserId?: string) {
 export async function rejectRefund(refundId: string, adminUserId?: string, memo?: string) {
   const refund = await prisma.refund.findUnique({ where: { id: refundId } });
   if (!refund) throw new Error('환불 요청을 찾을 수 없습니다.');
-  await prisma.refund.update({
-    where: { id: refundId },
+  // 동시 승인·거절 경합 방어: 요청(REQUESTED) 상태만 조건부 UPDATE 로 선점한다.
+  // 무조건 REJECTED 로 덮으면 승인 흐름이 먼저 선점한 건(APPROVED·DONE)까지 되돌려 원장과 어긋난다.
+  const claimed = await prisma.refund.updateMany({
+    where: { id: refundId, status: 'REQUESTED' },
     data: { status: 'REJECTED', approvedBy: adminUserId ?? null, resultMessage: memo ?? null, processedAt: new Date() },
   });
+  if (claimed.count === 0) {
+    throw new Error('이미 처리된 환불입니다. 목록을 새로고침해 현재 상태를 확인해 주세요.');
+  }
   // 환불 요청 직전 상태(BROADCASTED·SETTLED 등)로 되돌린다. 이력이 없는 예전 건은 정산대기로 둔다.
   const transition = await prisma.donationStatusLog.findFirst({
     where: { donationId: refund.donationId, toStatus: 'REFUND_REQUESTED' },

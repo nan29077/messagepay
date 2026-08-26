@@ -110,23 +110,31 @@ export async function createWebDonation(input: WebDonationInput): Promise<WebDon
     return { ok: false, message: '이미 처리 중인 후원입니다. 잠시 후 후원 내역에서 확인해 주세요.' };
   }
 
-  const donation = await prisma.donation.create({
-    data: {
-      id: newId(),
-      transactionNo: newTransactionNo(),
-      creatorId: creator.id,
-      donorId: donor.id,
-      channel: 'WEB',
-      amount: input.amount,
-      // donor.phoneMasked 는 이미 마스킹된 값이라 다시 마스킹하면 '***' 만 남는다.
-      displayName: donor.displayName || '익명의 후원자',
-      message: filtered.clean,
-      messageRawEnc: encrypt(input.message),
-      status: 'RECEIVED',
-      statusReason: '후원샵 웹 후원',
-      paymentMode: resolvePaymentMode(creator.paymentMode),
-    },
-  });
+  let donation;
+  try {
+    donation = await prisma.donation.create({
+      data: {
+        id: newId(),
+        transactionNo: newTransactionNo(),
+        creatorId: creator.id,
+        donorId: donor.id,
+        channel: 'WEB',
+        amount: input.amount,
+        // donor.phoneMasked 는 이미 마스킹된 값이라 다시 마스킹하면 '***' 만 남는다.
+        displayName: donor.displayName || '익명의 후원자',
+        message: filtered.clean,
+        messageRawEnc: encrypt(input.message),
+        status: 'RECEIVED',
+        statusReason: '후원샵 웹 후원',
+        paymentMode: resolvePaymentMode(creator.paymentMode),
+      },
+    });
+  } catch (error) {
+    // 후원 생성에 실패했는데 멱등키를 IN_PROGRESS 로 남기면 TTL(7일) 동안
+    // 같은 requestId 재제출이 전부 DUPLICATE 로 막힌다. 키를 지워 재시도를 허용한다.
+    await idem.abort();
+    throw error;
+  }
   await idem.release(donation.id);
 
   // 기본 경로: 결제사 PIN 입력 링크를 문자로 보낸다. 이 시점에는 출금이 일어나지 않는다.

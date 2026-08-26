@@ -6,6 +6,15 @@ import { newId } from '../src/lib/id';
 import { encrypt, phoneHash, maskPhone, generateToken, tokenHash, maskSecret } from '../src/lib/crypto';
 import { SEED_VERSION, SEED_VERSION_KEY } from './seed-version.mjs';
 
+// 운영 환경 가드: 시드는 테스트 계정(admin@tornado.kr 등)과 샘플 데이터를 만들므로
+// 운영 DB 에서는 절대 실행하지 않는다. (APP_ENV 별칭 규칙은 src/lib/env.ts 와 동일하게 prod/production 을 본다)
+const appEnv = (process.env.APP_ENV ?? '').trim().toLowerCase();
+const isProd = appEnv === 'prod' || appEnv === 'production' || process.env.NODE_ENV === 'production';
+if (isProd) {
+  console.log('[seed] 운영 환경에서는 관리자 시드 계정을 생성하지 않습니다.');
+  process.exit(0);
+}
+
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
