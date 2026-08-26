@@ -8,7 +8,8 @@ import { getYouTubeAdapter, formatChatMessage } from '@/server/adapters/youtube'
 import { buildTtsText } from '@/server/adapters/tts';
 import { publishOverlayEvent, type OverlayEventPayload } from './overlay-bus';
 import { resolveOverlayTier, type ResolvedTier } from './overlay-tiers';
-import { decrypt, encrypt } from '@/lib/crypto';
+import { decrypt, encrypt, phoneTail4 } from '@/lib/crypto';
+import { normalizeTtsProvider } from './tts/naver';
 
 /**
  * 결제 성공 건의 방송 전송.
@@ -98,6 +99,30 @@ export async function dispatchBroadcast(donationId: string): Promise<DispatchRes
   return { overlay: overlayOk, youtube: yt.ok, youtubeSkippedReason: yt.reason };
 }
 
+/** 마스킹된 전화번호 표시명. 예: 010-****-1234 */
+const MASKED_PHONE = /^\d{2,3}-\*+-\d{4}$/;
+
+/**
+ * 오버레이·TTS 에 쓸 후원자 표시명.
+ *
+ * 별명을 등록하지 않은 MO 후원자는 표시명이 마스킹된 전화번호로 저장된다.
+ * 방송 화면과 음성에서는 끝 4자리만 부르는 편이 자연스러우므로 여기서만 줄인다.
+ * (후원 원장에 저장된 displayName 은 그대로 둔다)
+ */
+function overlayDonorName(displayName: string): string {
+  const value = (displayName || '').trim();
+  if (!MASKED_PHONE.test(value) && !/^\+?\d{9,13}$/.test(value)) return value;
+  return phoneTail4(value) || value;
+}
+
+/** 효과음 재생값. 설정이 없으면 기본(켜짐 / 80)으로 본다. */
+function soundOf(overlay: { soundEnabled: boolean; soundVolume: number } | null) {
+  return {
+    soundEnabled: overlay?.soundEnabled ?? true,
+    soundVolume: Math.min(100, Math.max(0, overlay?.soundVolume ?? 80)),
+  };
+}
+
 /**
  * 금액 구간과 전역 설정을 합쳐 오버레이 재생값을 정한다.
  * 구간이 없으면 전역 설정만으로 기존과 동일하게 동작한다.
@@ -157,7 +182,8 @@ export async function buildOverlayPayload(donationId: string, isTest = false): P
 
   const overlay = donation.creator.overlaySetting;
   const tts = donation.creator.ttsSetting;
-  const donorName = overlay?.anonymize || donation.anonymous ? '익명의 후원자' : donation.displayName;
+  const donorName =
+    overlay?.anonymize || donation.anonymous ? '익명의 후원자' : overlayDonorName(donation.displayName);
   const message = overlay?.showMessage === false ? '' : donation.message;
 
   const tier = await resolveOverlayTier(donation.creatorId, donation.amount);
@@ -175,6 +201,8 @@ export async function buildOverlayPayload(donationId: string, isTest = false): P
     banner: merged.banner,
     tierLabel: merged.tierLabel,
     tts: buildTts(tier, tts, { donorName, amount: donation.amount, message }),
+    ttsMode: normalizeTtsProvider(tts?.provider) === 'naver' ? 'server' : 'browser',
+    ...soundOf(overlay),
     durationMs: merged.durationMs,
     occurredAt: new Date().toISOString(),
     isTest,
@@ -361,6 +389,8 @@ export async function sendTestOverlay(
     banner: merged.banner,
     tierLabel: merged.tierLabel,
     tts: buildTts(tier, creator.ttsSetting, input),
+    ttsMode: normalizeTtsProvider(creator.ttsSetting?.provider) === 'naver' ? 'server' : 'browser',
+    ...soundOf(creator.overlaySetting),
     durationMs: merged.durationMs,
     occurredAt: new Date().toISOString(),
     isTest: true,

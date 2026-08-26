@@ -170,10 +170,20 @@ export default async function StudioOverlayPage() {
                 position: setting.position,
                 theme: setting.theme,
                 stickerSet: setting.stickerSet,
+                soundEnabled: setting.soundEnabled,
+                soundVolume: setting.soundVolume,
               }}
               tts={
                 ttsSetting
-                  ? { enabled: ttsSetting.enabled, voice: ttsSetting.voice, speed: ttsSetting.speed }
+                  ? {
+                      enabled: ttsSetting.enabled,
+                      voice: ttsSetting.voice,
+                      speed: ttsSetting.speed,
+                      provider: ttsSetting.provider,
+                      // 인증 정보 원문은 어떤 경로로도 화면에 내려보내지 않는다.
+                      naverClientIdMasked: ttsSetting.naverClientIdMasked,
+                      hasNaverKey: Boolean(ttsSetting.naverClientIdEnc && ttsSetting.naverClientSecretEnc),
+                    }
                   : null
               }
             />

@@ -173,6 +173,15 @@ export const env = {
   tts: {
     provider: str('TTS_PROVIDER', 'mock') as ProviderMode,
     apiKey: str('TTS_API_KEY'),
+    /**
+     * 네이버 클로바 Voice 기본 인증 정보(플랫폼 공용).
+     * 크리에이터가 스튜디오에서 직접 키를 입력하면 그 값이 우선한다.
+     */
+    naver: {
+      clientId: str('NAVER_TTS_CLIENT_ID'),
+      clientSecret: str('NAVER_TTS_CLIENT_SECRET'),
+      speaker: str('NAVER_TTS_SPEAKER', 'nara'),
+    },
   },
 
   storage: {

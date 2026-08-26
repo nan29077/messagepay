@@ -1,8 +1,9 @@
 'use client';
 
 import * as React from 'react';
-import { Ban, ChevronDown, Coins, Heart, PartyPopper, Shapes, Sparkles, Star, Volume2 } from 'lucide-react';
+import { AudioLines, Ban, ChevronDown, Coins, Globe, Heart, KeyRound, PartyPopper, Server, Shapes, Sparkles, Star, Volume2 } from 'lucide-react';
 import { Button, Checkbox, Field, Input, Notice, SectionTitle, Select, cx } from '@/components/ui';
+import { playEffectSound } from '@/components/overlay/overlay-sound';
 import { updateOverlaySettingAction } from '@/app/actions/studio';
 import type { StudioActionState } from '@/app/actions/studio';
 
@@ -16,6 +17,9 @@ import type { StudioActionState } from '@/app/actions/studio';
  *    모든 후원에 이 효과가 재생된다(broadcast-dispatch 의 mergeTier 참고).
  *  - TTS 목소리는 오버레이를 여는 브라우저(OBS)에 설치된 음성 기준이다.
  *    스튜디오에서는 ko(한국어) 음성만 골라 보여 준다.
+ *  - 외부 TTS(네이버 클로바 Voice)를 고르면 목소리 목록이 클로바 화자로 바뀌고,
+ *    Client ID/Secret 은 서버에서 암호화 저장된다. 저장된 원문은 다시 표시하지 않는다.
+ *  - 효과음은 오버레이가 Web Audio 로 직접 합성한다(음원 파일 없음).
  */
 
 export interface OverlaySettingInput {
@@ -28,12 +32,20 @@ export interface OverlaySettingInput {
   position: string;
   theme: string;
   stickerSet: string;
+  soundEnabled: boolean;
+  soundVolume: number;
 }
 
 export interface TtsSettingInput {
   enabled: boolean;
   voice: string;
   speed: number;
+  /** browser = 오버레이 브라우저 음성, naver = 네이버 클로바 Voice */
+  provider: string;
+  /** 저장된 Client ID 의 마스킹 값. 없으면 null */
+  naverClientIdMasked: string | null;
+  /** 서버에 저장된 인증 정보가 있는지 */
+  hasNaverKey: boolean;
 }
 
 const POSITIONS = [
@@ -69,6 +81,36 @@ const THEMES = [
   { value: 'NEON', label: '네온', desc: '형광빛 글로우 효과' },
 ];
 
+const TTS_PROVIDERS = [
+  {
+    value: 'browser',
+    label: '브라우저 기본',
+    desc: 'OBS 브라우저에 설치된 음성으로 읽습니다. 추가 비용이 없습니다.',
+    Icon: Globe,
+  },
+  {
+    value: 'naver',
+    label: '네이버 클로바 Voice',
+    desc: '서버에서 합성한 음성으로 읽습니다. 네이버 클라우드 플랫폼 이용료가 발생합니다.',
+    Icon: Server,
+  },
+];
+
+/** 클로바 Voice 화자. 값은 네이버가 정한 speaker 이름 그대로다. */
+const CLOVA_SPEAKERS = [
+  { value: 'nara', label: '아라 (여성)' },
+  { value: 'nminyoung', label: '민영 (여성)' },
+  { value: 'nyejin', label: '예진 (여성)' },
+  { value: 'njihun', label: '지훈 (남성)' },
+  { value: 'nsinu', label: '신우 (남성)' },
+  { value: 'ngaram', label: '가람 (어린이)' },
+];
+
+function clampVolume(v: number) {
+  const n = Number(v);
+  return Math.min(100, Math.max(0, Number.isFinite(n) ? Math.round(n) : 80));
+}
+
 function clampSpeed(v: number) {
   return Math.min(2, Math.max(0.5, Number.isFinite(v) ? v : 1));
 }
@@ -86,6 +128,14 @@ export function OverlayQuickSettings({
   const [ttsVoice, setTtsVoice] = React.useState(tts?.voice ?? '');
   const [ttsSpeed, setTtsSpeed] = React.useState(String(clampSpeed(tts?.speed ?? 1)));
   const [voices, setVoices] = React.useState<SpeechSynthesisVoice[]>([]);
+  const [ttsProvider, setTtsProvider] = React.useState(tts?.provider === 'naver' ? 'naver' : 'browser');
+  const [clovaSpeaker, setClovaSpeaker] = React.useState(
+    CLOVA_SPEAKERS.some((sp) => sp.value === tts?.voice) ? (tts?.voice as string) : 'nara',
+  );
+  const [naverClientId, setNaverClientId] = React.useState('');
+  const [naverClientSecret, setNaverClientSecret] = React.useState('');
+  const [soundOn, setSoundOn] = React.useState(setting.soundEnabled);
+  const [soundVolume, setSoundVolume] = React.useState(String(clampVolume(setting.soundVolume)));
 
   const [state, formAction, pending] = React.useActionState<StudioActionState, FormData>(
     updateOverlaySettingAction,
@@ -130,8 +180,15 @@ export function OverlayQuickSettings({
       <input type="hidden" name="withTts" value="1" />
       <input type="hidden" name="stickerSet" value={effect} />
       <input type="hidden" name="theme" value={theme} />
-      <input type="hidden" name="ttsVoice" value={autoSelected ? '' : ttsVoice} />
+      <input
+        type="hidden"
+        name="ttsVoice"
+        value={ttsProvider === 'naver' ? clovaSpeaker : autoSelected ? '' : ttsVoice}
+      />
+      <input type="hidden" name="ttsProvider" value={ttsProvider} />
+      <input type="hidden" name="soundVolume" value={soundVolume} />
       {ttsOn ? <input type="hidden" name="ttsEnabled" value="on" /> : null}
+      {soundOn ? <input type="hidden" name="soundEnabled" value="on" /> : null}
 
       {/* ── 효과 선택 ─────────────────────────────────────────── */}
       <section>
@@ -168,6 +225,83 @@ export function OverlayQuickSettings({
           금액대별로 다른 효과를 쓰고 싶다면 아래 [고급 설정]의 금액 구간에서 정할 수 있습니다. 구간이 있으면 구간
           설정이 우선합니다.
         </p>
+      </section>
+
+      {/* ── 효과음 ───────────────────────────────────────────── */}
+      <section>
+        <SectionTitle
+          title="효과음"
+          description="효과가 재생될 때 함께 나오는 소리입니다. 효과 종류에 맞는 소리가 자동으로 재생됩니다."
+        />
+        <div className="rounded-2xl border border-ink-100 bg-white p-4">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={soundOn}
+            onClick={() => setSoundOn((v) => !v)}
+            className="flex w-full items-center justify-between gap-3"
+          >
+            <span className="flex items-center gap-2.5">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-ink-50 text-ink-700">
+                <AudioLines size={18} strokeWidth={1.7} />
+              </span>
+              <span className="text-left">
+                <span className="block text-[14px] font-bold text-ink-900">효과음 {soundOn ? '켜짐' : '꺼짐'}</span>
+                <span className="block text-[12px] text-ink-400">
+                  {soundOn ? '후원 알림과 함께 효과음이 재생됩니다.' : '켜면 후원 알림과 함께 효과음이 재생됩니다.'}
+                </span>
+              </span>
+            </span>
+            <span
+              className={cx(
+                'relative h-7 w-12 shrink-0 rounded-full transition-colors',
+                soundOn ? 'bg-brand-400' : 'bg-ink-200',
+              )}
+            >
+              <span
+                className={cx(
+                  'absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all',
+                  soundOn ? 'left-6' : 'left-1',
+                )}
+              />
+            </span>
+          </button>
+
+          {soundOn ? (
+            <div className="mt-4 space-y-3 border-t border-ink-100 pt-4">
+              <Field label={`음량 ${clampVolume(Number(soundVolume))}`}>
+                <div className="flex items-center gap-3">
+                  <span className="text-[12px] text-ink-400">작게</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={soundVolume}
+                    onChange={(e) => setSoundVolume(e.target.value)}
+                    className="h-10 w-full accent-brand-500"
+                    aria-label="효과음 음량"
+                  />
+                  <span className="text-[12px] text-ink-400">크게</span>
+                </div>
+              </Field>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[12px] leading-relaxed text-ink-400">
+                  효과음은 방송 화면(OBS 브라우저 소스)에서 재생됩니다. 소리가 나지 않으면 브라우저 소스의 음소거
+                  설정을 확인해 주세요.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => playEffectSound(effect, clampVolume(Number(soundVolume)))}
+                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 text-[12.5px] font-semibold text-ink-700 hover:bg-ink-50"
+                >
+                  <Volume2 size={16} strokeWidth={1.7} />
+                  효과음 미리듣기
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
       </section>
 
       {/* ── 테마 ─────────────────────────────────────────────── */}
@@ -240,38 +374,128 @@ export function OverlayQuickSettings({
           {ttsOn ? (
             <div className="mt-4 space-y-4 border-t border-ink-100 pt-4">
               <div>
-                <p className="mb-1.5 text-[13px] font-semibold text-ink-700">목소리</p>
-                {voices.length === 0 ? (
-                  <p className="rounded-xl bg-ink-50 px-3 py-2.5 text-[12.5px] leading-relaxed text-ink-500">
-                    이 브라우저에서 한국어 음성을 찾지 못했습니다. 저장하면 오버레이를 여는 브라우저(OBS)의 기본
-                    한국어 음성으로 재생됩니다.
-                  </p>
-                ) : (
-                  <div className="overflow-hidden rounded-xl border border-ink-100">
-                    <VoiceRow
-                      name="기본 (한국어 자동 선택)"
-                      lang=""
-                      selected={autoSelected}
-                      onSelect={() => setTtsVoice('')}
-                      onPreview={() => speakPreview('')}
-                    />
-                    {voices.map((v) => (
-                      <VoiceRow
-                        key={v.voiceURI}
-                        name={v.name}
-                        lang={v.lang}
-                        selected={!autoSelected && ttsVoice === v.name}
-                        onSelect={() => setTtsVoice(v.name)}
-                        onPreview={() => speakPreview(v.name)}
-                      />
-                    ))}
-                  </div>
-                )}
-                <p className="mt-1.5 text-[12px] text-ink-400">
-                  목소리는 오버레이를 여는 브라우저(OBS 브라우저 소스)에 설치된 음성 기준입니다. 선택한 목소리가
-                  없으면 한국어 첫 번째 음성으로 재생됩니다.
-                </p>
+                <p className="mb-1.5 text-[13px] font-semibold text-ink-700">TTS 제공사</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {TTS_PROVIDERS.map((o) => {
+                    const active = ttsProvider === o.value;
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() => setTtsProvider(o.value)}
+                        aria-pressed={active}
+                        className={cx(
+                          'flex items-start gap-2.5 rounded-2xl border px-3.5 py-3 text-left transition-all',
+                          active
+                            ? 'border-brand-400 bg-brand-50 shadow-[0_6px_16px_rgba(237,166,0,0.18)]'
+                            : 'border-ink-100 bg-white hover:border-ink-200 hover:bg-ink-50',
+                        )}
+                      >
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white text-ink-700">
+                          <o.Icon size={18} strokeWidth={1.7} />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-[13px] font-bold text-ink-900">{o.label}</span>
+                          <span className="mt-0.5 block text-[11.5px] leading-snug text-ink-400">{o.desc}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
+
+              {ttsProvider === 'naver' ? (
+                <div className="space-y-3">
+                  <div>
+                    <p className="mb-1.5 text-[13px] font-semibold text-ink-700">클로바 화자</p>
+                    <Select value={clovaSpeaker} onChange={(e) => setClovaSpeaker(e.target.value)}>
+                      {CLOVA_SPEAKERS.map((sp) => (
+                        <option key={sp.value} value={sp.value}>
+                          {sp.label}
+                        </option>
+                      ))}
+                    </Select>
+                    <p className="mt-1.5 text-[12px] text-ink-400">
+                      네이버 클라우드 플랫폼 [Clova Voice Premium] 에서 사용 가능한 화자입니다.
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-ink-100 bg-ink-50/60 p-3.5">
+                    <p className="flex items-center gap-1.5 text-[13px] font-semibold text-ink-900">
+                      <KeyRound size={16} strokeWidth={1.7} className="text-ink-500" />
+                      API 인증 정보
+                    </p>
+                    <p className="mt-1 text-[12px] leading-relaxed text-ink-400">
+                      네이버 클라우드 플랫폼 콘솔 &gt; AI·Application Service &gt; Clova Voice 에서 발급한 값을
+                      입력하세요. 저장하면 암호화되어 보관되며 원문은 다시 표시되지 않습니다.
+                    </p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <Field
+                        label="Client ID"
+                        hint={tts?.hasNaverKey ? `저장됨 ${tts.naverClientIdMasked ?? ''}` : '영문/숫자 8~64자'}
+                      >
+                        <Input
+                          name="naverClientId"
+                          value={naverClientId}
+                          onChange={(e) => setNaverClientId(e.target.value)}
+                          placeholder={tts?.hasNaverKey ? '변경할 때만 입력' : 'X-NCP-APIGW-API-KEY-ID'}
+                          autoComplete="off"
+                          maxLength={64}
+                        />
+                      </Field>
+                      <Field label="Client Secret" hint={tts?.hasNaverKey ? '변경할 때만 입력' : '발급받은 비밀키'}>
+                        <Input
+                          name="naverClientSecret"
+                          type="password"
+                          value={naverClientSecret}
+                          onChange={(e) => setNaverClientSecret(e.target.value)}
+                          placeholder={tts?.hasNaverKey ? '변경할 때만 입력' : 'X-NCP-APIGW-API-KEY'}
+                          autoComplete="new-password"
+                          maxLength={200}
+                        />
+                      </Field>
+                    </div>
+                    <p className="mt-2 text-[12px] leading-relaxed text-ink-400">
+                      두 칸을 비워 두면 이미 저장된 키를 그대로 사용합니다. 서버 합성에 실패하면 방송이 끊기지 않도록
+                      브라우저 음성으로 자동 대체됩니다.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <p className="mb-1.5 text-[13px] font-semibold text-ink-700">목소리</p>
+                  {voices.length === 0 ? (
+                    <p className="rounded-xl bg-ink-50 px-3 py-2.5 text-[12.5px] leading-relaxed text-ink-500">
+                      이 브라우저에서 한국어 음성을 찾지 못했습니다. 저장하면 오버레이를 여는 브라우저(OBS)의 기본
+                      한국어 음성으로 재생됩니다.
+                    </p>
+                  ) : (
+                    <div className="overflow-hidden rounded-xl border border-ink-100">
+                      <VoiceRow
+                        name="기본 (한국어 자동 선택)"
+                        lang=""
+                        selected={autoSelected}
+                        onSelect={() => setTtsVoice('')}
+                        onPreview={() => speakPreview('')}
+                      />
+                      {voices.map((v) => (
+                        <VoiceRow
+                          key={v.voiceURI}
+                          name={v.name}
+                          lang={v.lang}
+                          selected={!autoSelected && ttsVoice === v.name}
+                          onSelect={() => setTtsVoice(v.name)}
+                          onPreview={() => speakPreview(v.name)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-1.5 text-[12px] text-ink-400">
+                    목소리는 오버레이를 여는 브라우저(OBS 브라우저 소스)에 설치된 음성 기준입니다. 선택한 목소리가
+                    없으면 한국어 첫 번째 음성으로 재생됩니다.
+                  </p>
+                </div>
+              )}
 
               <Field label={`속도 ${Number(ttsSpeed).toFixed(2)}배`}>
                 <div className="flex items-center gap-3">

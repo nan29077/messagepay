@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { formatNumber } from '@/lib/money';
 import { EffectLayer } from '@/components/overlay/overlay-effects';
+import { playEffectSound } from '@/components/overlay/overlay-sound';
 
 /**
  * OBS / PRISM 브라우저 소스용 오버레이 클라이언트.
@@ -13,6 +14,8 @@ import { EffectLayer } from '@/components/overlay/overlay-effects';
  *  - TTS 재생이 끝나기 전에는 다음 항목으로 넘어가지 않는다(표시시간과 음성 길이 중 긴 쪽 기준).
  *  - 연결 상태는 방송 화면에 표시하지 않는다. 디버그 모드에서만 배지를 노출한다.
  *  - 금액 구간(effect/banner/durationMs)이 없는 예전 이벤트도 그대로 재생돼야 한다.
+ *  - TTS 는 ttsMode 로 갈린다. server 면 서버 합성 mp3 를 재생하고, 실패하면 브라우저 음성으로 되돌아간다.
+ *  - 효과음은 Web Audio 로 직접 합성한다(overlay-sound.ts). soundEnabled/soundVolume 을 따른다.
  *  - 테마(TORNADO/MINIMAL/NEON)는 서버에서 조회한 설정을 prop 으로 받아 CSS 클래스로만 적용한다.
  */
 
@@ -39,6 +42,12 @@ export interface OverlayPayload {
   banner?: boolean;
   tierLabel?: string;
   tts: OverlayTts | null;
+  /** 음성 합성 위치. 없으면(예전 이벤트) 브라우저 합성으로 본다. */
+  ttsMode?: 'browser' | 'server';
+  /** 효과음 재생 여부. 없으면 재생한다. */
+  soundEnabled?: boolean;
+  /** 효과음 음량 0~100. 없으면 80. */
+  soundVolume?: number;
   durationMs: number;
   occurredAt: string;
   isTest: boolean;
@@ -198,9 +207,43 @@ export function OverlayClient({
     // 파이프라인이 재구성되면 이전 재생 상태를 초기화한다(대기열 정지 방지).
     busy.current = false;
 
-    const speak = (tts: OverlayTts | null): Promise<void> =>
+    /**
+     * 서버 합성(mp3) 재생. 성공하면 true.
+     * 키 미등록·합성 실패·자동재생 차단 등 어떤 이유로든 실패하면 false 를 돌려주고,
+     * 호출부가 브라우저 음성으로 되돌아간다.
+     */
+    const speakServer = (tts: OverlayTts): Promise<boolean> =>
       new Promise((resolve) => {
-        if (!tts || !tts.enabled || !tts.text) return resolve();
+        try {
+          const params = new URLSearchParams({ creatorId, text: tts.text });
+          if (preview) params.set('preview', '1');
+          else params.set('token', token);
+          if (tts.voice) params.set('voice', tts.voice);
+          params.set('speed', String(Math.min(2, Math.max(0.5, Number(tts.speed) || 1))));
+          params.set('pitch', String(Math.min(2, Math.max(0, Number(tts.pitch ?? 1)))));
+
+          const audio = new Audio(`/api/tts/synthesize?${params.toString()}`);
+          audio.volume = Math.min(1, Math.max(0, Number(tts.volume ?? 1)));
+
+          let done = false;
+          const finish = (ok: boolean) => {
+            if (done) return;
+            done = true;
+            clearTimeout(guard);
+            resolve(ok);
+          };
+          // 재생이 끝나지 않는 경우를 대비한 안전장치
+          const guard = setTimeout(() => finish(true), 60000);
+          audio.onended = () => finish(true);
+          audio.onerror = () => finish(false);
+          audio.play().catch(() => finish(false));
+        } catch {
+          resolve(false);
+        }
+      });
+
+    const speakBrowser = (tts: OverlayTts): Promise<void> =>
+      new Promise((resolve) => {
         if (typeof window === 'undefined' || !('speechSynthesis' in window)) return resolve();
 
         try {
@@ -240,6 +283,13 @@ export function OverlayClient({
         }
       });
 
+    const speak = async (payload: OverlayPayload): Promise<void> => {
+      const tts = payload.tts;
+      if (!tts || !tts.enabled || !tts.text) return;
+      if ((payload.ttsMode ?? 'browser') === 'server' && (await speakServer(tts))) return;
+      await speakBrowser(tts);
+    };
+
     const playNext = () => {
       if (disposed || busy.current) return;
       const next = queue.current.shift();
@@ -250,11 +300,14 @@ export function OverlayClient({
       setLeaving(false);
       setCurrent(next);
 
+      // 효과음은 효과 애니메이션과 같은 시점에 시작한다. 실패해도 알림 재생에 영향을 주지 않는다.
+      if (next.soundEnabled !== false) playEffectSound(effectOf(next), next.soundVolume ?? 80);
+
       const duration = Math.max(1500, Number(next.durationMs) || defaultDurationMs);
       const shown = new Promise<void>((r) => setTimeout(r, duration));
 
       // 표시 시간과 TTS 재생 시간 중 긴 쪽을 기준으로 다음 항목으로 넘어간다.
-      Promise.all([shown, speak(next.tts)]).then(() => {
+      Promise.all([shown, speak(next)]).then(() => {
         if (disposed) return;
         setLeaving(true);
         setTimeout(() => {
@@ -279,7 +332,7 @@ export function OverlayClient({
         }
       }
     };
-  }, [defaultDurationMs]);
+  }, [defaultDurationMs, creatorId, token, preview]);
 
   // --------------------------------------------------------------- SSE 구독
   React.useEffect(() => {
@@ -463,7 +516,7 @@ function DonationCard({
         <TornadoSwirl className={t.swirl} />
         <div className="min-w-0 flex-1">
           <p className={`truncate text-[22px] font-extrabold leading-tight tracking-tight ${t.title}`}>
-            {payload.donorName}님이 {amountText ? `${amountText}을 ` : ''}후원했습니다
+            {payload.donorName}님이 {amountText ? `${amountText}을 ` : ''}후원하셨습니다
           </p>
           {message ? (
             <p className={`mt-2 break-words text-[17px] leading-snug ${t.message}`}>{message}</p>

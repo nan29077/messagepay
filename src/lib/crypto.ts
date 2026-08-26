@@ -103,6 +103,16 @@ export function maskPhone(phone: string): string {
   return `${head}-****-${tail}`;
 }
 
+/**
+ * 표시용 전화번호 끝 4자리.
+ * 마스킹된 값("010-****-1234")과 원문("01012345678") 모두 받는다.
+ * 숫자가 4자리 미만이면 빈 문자열을 돌려준다.
+ */
+export function phoneTail4(value: string): string {
+  const digits = (value || '').replace(/[^0-9]/g, '');
+  return digits.length >= 4 ? digits.slice(-4) : '';
+}
+
 export function maskName(name: string): string {
   if (!name) return '';
   if (name.length === 1) return name;

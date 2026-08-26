@@ -55,6 +55,40 @@ export function getTtsAdapter(): TtsAdapter {
   }
 }
 
+/**
+ * TTS 로 읽기 좋은 금액 표기.
+ *  3000 → "3천", 15000 → "1만 5천", 1000000 → "100만", 1234 → "1천 2백 34"
+ * 숫자 그대로("3,000") 읽히는 것보다 자연스럽게 들린다.
+ */
+export function speakableAmount(amount: bigint): string {
+  let n = amount < 0n ? -amount : amount;
+  if (n === 0n) return '0';
+
+  const parts: string[] = [];
+  const eok = n / 100_000_000n;
+  if (eok > 0n) {
+    parts.push(`${eok}억`);
+    n %= 100_000_000n;
+  }
+  const man = n / 10_000n;
+  if (man > 0n) {
+    parts.push(`${man}만`);
+    n %= 10_000n;
+  }
+  const chun = n / 1_000n;
+  if (chun > 0n) {
+    parts.push(`${chun}천`);
+    n %= 1_000n;
+  }
+  const baek = n / 100n;
+  if (baek > 0n) {
+    parts.push(`${baek}백`);
+    n %= 100n;
+  }
+  if (n > 0n) parts.push(n.toString());
+  return parts.join(' ');
+}
+
 /** TTS 로 읽을 문장 생성. 이모지/특수문자는 제거한다. */
 export function buildTtsText(input: {
   donorName: string;
@@ -67,8 +101,7 @@ export function buildTtsText(input: {
   const parts: string[] = [];
   if (input.readName) parts.push(`${input.donorName}님`);
   if (input.readAmount) {
-    const amountText = input.amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    parts.push(`${amountText}원 후원`);
+    parts.push(`${speakableAmount(input.amount)}원 후원`);
   }
   const head = parts.join(' ');
   const body = input.message.slice(0, input.maxChars);

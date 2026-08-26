@@ -34,6 +34,11 @@ export interface OverlayEventPayload {
     pitch: number;
     volume: number;
   } | null;
+  /// 음성 합성 위치. browser = 오버레이 브라우저(Web Speech API), server = 서버 합성 mp3
+  ttsMode: 'browser' | 'server';
+  /// 효과음 재생 여부와 음량(0~100). 오버레이가 Web Audio 로 직접 합성한다.
+  soundEnabled: boolean;
+  soundVolume: number;
   durationMs: number;
   occurredAt: string;
   isTest: boolean;

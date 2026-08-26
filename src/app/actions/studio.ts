@@ -307,6 +307,9 @@ const POSITIONS = [
   'BOTTOM_RIGHT',
 ] as const;
 
+/** 음성 합성 제공사. browser = 오버레이 브라우저 음성, naver = 네이버 클로바 Voice 서버 합성 */
+const TTS_PROVIDERS = ['browser', 'naver'] as const;
+
 // ===========================================================================
 // 온보딩 체크리스트 (수동 체크 항목)
 // ===========================================================================
@@ -392,6 +395,7 @@ export async function updateOverlaySettingAction(
         position: z.enum(POSITIONS),
         theme: z.string().min(1).max(30),
         stickerSet: z.string().min(1).max(30),
+        soundVolume: z.coerce.number().int().min(0).max(100),
       })
       .safeParse({
         maxMessageLen: text(formData, 'maxMessageLen'),
@@ -399,9 +403,10 @@ export async function updateOverlaySettingAction(
         position: text(formData, 'position'),
         theme: text(formData, 'theme'),
         stickerSet: text(formData, 'stickerSet'),
+        soundVolume: text(formData, 'soundVolume') || '80',
       });
     if (!parsed.success) {
-      return { ok: false, message: '입력값을 확인해 주세요. 최대 글자 수는 10~200자, 표시 시간은 2000~30000ms 입니다.' };
+      return { ok: false, message: '입력값을 확인해 주세요. 최대 글자 수는 10~200자, 표시 시간은 2000~30000ms, 효과음 음량은 0~100 입니다.' };
     }
 
     const existing = await prisma.overlaySetting.findUnique({ where: { creatorId }, select: { id: true } });
@@ -421,6 +426,8 @@ export async function updateOverlaySettingAction(
         position: parsed.data.position,
         theme: parsed.data.theme,
         stickerSet: parsed.data.stickerSet,
+        soundEnabled: checked(formData, 'soundEnabled'),
+        soundVolume: parsed.data.soundVolume,
       },
     });
 
@@ -428,11 +435,49 @@ export async function updateOverlaySettingAction(
     // 고급 설정 폼에는 이 필드가 없으므로 기존 동작은 그대로다.
     if (text(formData, 'withTts') === '1') {
       const tts = z
-        .object({ voice: z.string().max(120), speed: z.coerce.number().min(0.5).max(2) })
-        .safeParse({ voice: text(formData, 'ttsVoice'), speed: text(formData, 'ttsSpeed') || '1' });
+        .object({
+          voice: z.string().max(120),
+          speed: z.coerce.number().min(0.5).max(2),
+          provider: z.enum(TTS_PROVIDERS),
+        })
+        .safeParse({
+          voice: text(formData, 'ttsVoice'),
+          speed: text(formData, 'ttsSpeed') || '1',
+          provider: text(formData, 'ttsProvider') || 'browser',
+        });
       if (!tts.success) {
         return { ok: false, message: '음성 설정값을 확인해 주세요. 속도는 0.5 ~ 2.0 사이입니다.' };
       }
+
+      // 외부 TTS 인증 정보. 빈 칸으로 저장하면 기존 키를 그대로 둔다(원문은 다시 보여 주지 않는다).
+      const naverClientId = text(formData, 'naverClientId').trim();
+      const naverClientSecret = text(formData, 'naverClientSecret').trim();
+      if ((naverClientId && !naverClientSecret) || (!naverClientId && naverClientSecret)) {
+        return { ok: false, message: 'Client ID 와 Client Secret 을 함께 입력해 주세요.' };
+      }
+      if (naverClientId && !/^[A-Za-z0-9_-]{8,64}$/.test(naverClientId)) {
+        return { ok: false, message: 'Client ID 형식을 확인해 주세요. 영문/숫자 8~64자입니다.' };
+      }
+      if (naverClientSecret && naverClientSecret.length > 200) {
+        return { ok: false, message: 'Client Secret 이 너무 깁니다.' };
+      }
+
+      const existingTts = await prisma.ttsSetting.findUnique({
+        where: { creatorId },
+        select: { naverClientIdEnc: true },
+      });
+      if (tts.data.provider === 'naver' && !naverClientId && !existingTts?.naverClientIdEnc && !env.tts.naver.clientId) {
+        return { ok: false, message: '네이버 클로바 Voice 를 쓰려면 Client ID 와 Client Secret 을 입력해 주세요.' };
+      }
+
+      const credential = naverClientId
+        ? {
+            naverClientIdEnc: encrypt(naverClientId),
+            naverClientSecretEnc: encrypt(naverClientSecret),
+            naverClientIdMasked: maskSecret(naverClientId),
+          }
+        : {};
+
       const ttsEnabled = checked(formData, 'ttsEnabled');
       await prisma.ttsSetting.upsert({
         where: { creatorId },
@@ -446,8 +491,16 @@ export async function updateOverlaySettingAction(
           voice: tts.data.voice,
           speed: tts.data.speed,
           minAmount: 0n,
+          provider: tts.data.provider,
+          ...credential,
         },
-        update: { enabled: ttsEnabled, voice: tts.data.voice, speed: tts.data.speed },
+        update: {
+          enabled: ttsEnabled,
+          voice: tts.data.voice,
+          speed: tts.data.speed,
+          provider: tts.data.provider,
+          ...credential,
+        },
       });
     }
 

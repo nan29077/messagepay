@@ -1113,6 +1113,9 @@ model OverlaySetting {
   durationMs    Int      @default(7000) @map("duration_ms")
   theme         String   @default("TORNADO")
   stickerSet    String   @default("DEFAULT") @map("sticker_set")
+  /// 효과음 재생 여부와 음량(0~100). 효과음은 오버레이에서 Web Audio 로 직접 합성한다.
+  soundEnabled  Boolean  @default(true) @map("sound_enabled")
+  soundVolume   Int      @default(80) @map("sound_volume")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -1178,6 +1181,13 @@ model TtsSetting {
   readName   Boolean  @default(true) @map("read_name")
   minAmount  BigInt   @default(3000) @map("min_amount")
   maxChars   Int      @default(80) @map("max_chars")
+  /// 음성 합성 제공사. browser = 오버레이 브라우저의 Web Speech API, naver = 네이버 클로바 Voice 서버 합성
+  provider   String   @default("browser") @map("tts_provider")
+  /// 네이버 클로바 Voice 인증 정보. 암호화해서 저장하고 화면에는 마스킹만 노출한다.
+  naverClientIdEnc     String? @map("naver_client_id_enc")
+  naverClientSecretEnc String? @map("naver_client_secret_enc")
+  /// 화면 표시용 마스킹 값 (원문 복원 불가)
+  naverClientIdMasked  String? @map("naver_client_id_masked")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
