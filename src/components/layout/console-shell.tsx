@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Activity, BadgeCheck, BookOpenText, CalendarDays, ClipboardList, CreditCard, FlaskConical,
-  Flag, Gauge, HeartHandshake, Home, Images, KeyRound, LayoutDashboard, LogOut,
+  FilePen, Flag, Gauge, HeartHandshake, Home, Images, KeyRound, LayoutDashboard, LogOut,
   Menu, MessageCircleQuestion, MessageSquareText, PanelsTopLeft, Percent, PhoneCall,
   ScrollText, Send, ServerCog, ShieldAlert, ShieldBan,
   SlidersHorizontal, Undo2, UserCog, CircleUserRound, UserRoundCog,
@@ -35,7 +35,7 @@ export type ConsoleIconName =
   | 'dashboard' | 'donations' | 'donors' | 'fees' | 'holidays' | 'inquiries' | 'messages'
   | 'moderation' | 'numbers' | 'overlay' | 'payments' | 'policies' | 'profile'
   | 'refunds' | 'reports' | 'risk' | 'settlement' | 'simulator'
-  | 'system' | 'terms' | 'tts' | 'users' | 'youtube' | 'settings' | 'send';
+  | 'system' | 'templates' | 'terms' | 'tts' | 'users' | 'youtube' | 'settings' | 'send';
 
 const CONSOLE_ICONS = {
   activity: Activity,
@@ -64,6 +64,7 @@ const CONSOLE_ICONS = {
   settlement: WalletCards,
   simulator: FlaskConical,
   system: ServerCog,
+  templates: FilePen,
   terms: ScrollText,
   tts: Volume2,
   users: UsersRound,

@@ -29,17 +29,18 @@ const groups: NavGroup[] = [
     ],
   },
   {
-    title: '거래',
+    title: '거래·결제',
     items: [
       { href: '/admin/mo-messages', label: '수신 문자', icon: 'messages' },
       { href: '/admin/mt-messages', label: 'MT 발송', icon: 'send' },
+      { href: '/admin/mt-templates', label: 'MT 메시지 관리', icon: 'templates' },
       { href: '/admin/payments', label: '결제', icon: 'payments' },
       { href: '/admin/refunds', label: '환불', icon: 'refunds' },
       { href: '/admin/risk', label: '한도·이상거래', icon: 'risk' },
     ],
   },
   {
-    title: '방송',
+    title: '방송·오버레이',
     items: [
       { href: '/admin/youtube', label: '유튜브 연동', icon: 'youtube' },
       { href: '/admin/tts', label: 'TTS 연동', icon: 'tts' },
@@ -47,17 +48,27 @@ const groups: NavGroup[] = [
     ],
   },
   {
-    title: '정산·정책·운영',
+    title: '정산·수수료',
     items: [
       { href: '/admin/settlements', label: '정산', icon: 'settlement' },
-      { href: '/admin/holidays', label: '공휴일 관리', icon: 'holidays' },
       { href: '/admin/fees', label: '수수료 정책', icon: 'fees' },
       { href: '/admin/policies', label: '한도 정책', icon: 'policies' },
+      { href: '/admin/holidays', label: '공휴일 관리', icon: 'holidays' },
+    ],
+  },
+  {
+    title: '콘텐츠·운영',
+    items: [
       { href: '/admin/banners', label: '배너', icon: 'banners' },
       { href: '/admin/contents', label: '공지·FAQ', icon: 'contents' },
       { href: '/admin/moderation', label: '신고·금칙어', icon: 'moderation' },
       { href: '/admin/inquiries', label: '문의 관리', icon: 'inquiries' },
       { href: '/admin/terms', label: '약관 버전', icon: 'terms' },
+    ],
+  },
+  {
+    title: '시스템·보안',
+    items: [
       { href: '/admin/admins', label: '관리자 권한', icon: 'admins' },
       { href: '/admin/audit', label: '감사로그', icon: 'audit' },
       { href: '/admin/simulator', label: 'MO 시뮬레이터', icon: 'simulator' },
