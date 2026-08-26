@@ -13,7 +13,7 @@ import { ProfileAvatar } from '@/components/profile/generated-avatar';
 export const dynamic = 'force-dynamic';
 
 export default async function StudioSettingsProfilePage() {
-  const { creatorId, email } = await requireCreator();
+  const { creatorId, email, avatarIndex } = await requireCreator();
 
   const creator = await prisma.creatorProfile.findUnique({
     where: { id: creatorId },
@@ -50,6 +50,7 @@ export default async function StudioSettingsProfilePage() {
             <div className="mb-5 flex items-center gap-3 rounded-2xl border border-brand-100 bg-brand-50/60 p-4">
               <ProfileAvatar
                 seed={creator.code}
+                avatarIndex={avatarIndex}
                 name={creator.displayName}
                 imageUrl={creator.avatarUrl}
                 className="h-16 w-16"

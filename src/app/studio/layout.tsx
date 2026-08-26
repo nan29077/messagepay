@@ -100,6 +100,7 @@ export default async function StudioLayout({ children }: { children: React.React
         role: '크리에이터',
         avatarUrl: user.creatorAvatarUrl,
         avatarSeed: user.creatorCode ?? user.id,
+        avatarIndex: user.avatarIndex,
       }}
     >
       {children}

@@ -49,7 +49,10 @@ async function findCreator(rawCode: string) {
     },
     // PostgreSQL 은 행 순서를 보장하지 않아, 번호가 2개 이상 배정된 크리에이터는
     // 새로고침마다 다른 번호가 표시될 수 있다. 다른 화면과 동일하게 assignedAt 내림차순으로 고정한다.
-    include: { moRoutes: { where: { status: 'ASSIGNED' }, orderBy: { assignedAt: 'desc' } } },
+    include: {
+      user: { select: { avatarIndex: true } },
+      moRoutes: { where: { status: 'ASSIGNED' }, orderBy: { assignedAt: 'desc' } },
+    },
   });
 }
 
@@ -120,6 +123,7 @@ export default async function CreatorDonationPage({ params }: Params) {
               <a href={creator.liveUrl!} target="_blank" rel="noopener noreferrer" aria-label="라이브 방송 보기">
                 <ProfileAvatar
                   seed={creator.code}
+                  avatarIndex={creator.user.avatarIndex}
                   name={creator.displayName}
                   imageUrl={creator.avatarUrl}
                   className="h-24 w-24 animate-heartbeat border-2 border-danger-500"
@@ -128,6 +132,7 @@ export default async function CreatorDonationPage({ params }: Params) {
             ) : (
               <ProfileAvatar
                 seed={creator.code}
+                avatarIndex={creator.user.avatarIndex}
                 name={creator.displayName}
                 imageUrl={creator.avatarUrl}
                 className="h-24 w-24 border-2 border-brand-400/70"

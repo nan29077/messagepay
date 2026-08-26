@@ -32,6 +32,8 @@ export interface ShellViewer {
   avatarUrl: string | null;
   /** 크리에이터는 재시드에도 바뀌지 않는 크리에이터 코드를 사용한다. */
   avatarSeed: string;
+  /** 가입 시 무작위로 배정되어 DB에 고정된 0~49 캐릭터 번호 */
+  avatarIndex: number;
 }
 
 /** 마이페이지 탭 활성 판정에 쓰는 콘솔 경로들 */
@@ -242,6 +244,7 @@ export function PublicShellClient({
                 >
                   <ProfileAvatar
                     seed={viewer.avatarSeed}
+                    avatarIndex={viewer.avatarIndex}
                     name={viewer.name ?? viewer.email}
                     imageUrl={viewer.avatarUrl}
                     className="h-9 w-9"

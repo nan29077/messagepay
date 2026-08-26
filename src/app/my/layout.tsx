@@ -26,7 +26,7 @@ export default async function MyLayout({ children }: { children: React.ReactNode
   return (
     <PublicShell aside={<MyAside />}>
       <header className="mb-4 flex items-center gap-3">
-        <GeneratedAvatar seed={user.id} name={user.name} className="h-12 w-12" />
+        <GeneratedAvatar seed={user.id} avatarIndex={user.avatarIndex} name={user.name} className="h-12 w-12" />
         <div className="min-w-0">
           <h1 className="truncate text-[18px] font-black tracking-[-0.03em] text-ink-900">
             {user.name ?? '후원자'} 님

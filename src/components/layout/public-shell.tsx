@@ -40,6 +40,7 @@ export async function PublicShell({
         roleLabel: user.role === 'ADMIN' ? '관리자' : user.role === 'CREATOR' ? '크리에이터' : '후원자',
         avatarUrl: creatorAvatar?.avatarUrl ?? null,
         avatarSeed: creatorAvatar?.code ?? user.id,
+        avatarIndex: user.avatarIndex,
       }
     : null;
 

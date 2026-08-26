@@ -79,7 +79,7 @@ export function ConsoleShell({
 }: {
   title: string;
   groups: NavGroup[];
-  user?: { id: string; name: string; role: string; avatarUrl?: string | null; avatarSeed?: string };
+  user?: { id: string; name: string; role: string; avatarUrl?: string | null; avatarSeed?: string; avatarIndex?: number | null };
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -179,6 +179,7 @@ export function ConsoleShell({
               <div className="mb-2 flex items-center gap-2.5 rounded-xl bg-ink-50 px-3 py-2.5">
                 <ProfileAvatar
                   seed={user.avatarSeed ?? user.id}
+                  avatarIndex={user.avatarIndex}
                   name={user.name}
                   imageUrl={user.avatarUrl}
                   className="h-10 w-10"

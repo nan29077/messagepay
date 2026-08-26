@@ -14,17 +14,25 @@ export function avatarIndexFromSeed(seed: string) {
   return Math.abs(hash >>> 0) % 50;
 }
 
+export function normalizeAvatarIndex(index: number | null | undefined, seed: string) {
+  return typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < 50
+    ? index
+    : avatarIndexFromSeed(seed || 'donaido');
+}
+
 export function GeneratedAvatar({
   seed,
+  avatarIndex,
   name,
   className,
 }: {
   seed: string;
+  avatarIndex?: number | null;
   name?: string | null;
   className?: string;
 }) {
-  const index = avatarIndexFromSeed(seed || 'donaido');
-  const avatarSrc = `/avatars/donaido/avatar-${String(index + 1).padStart(2, '0')}.png`;
+  const index = normalizeAvatarIndex(avatarIndex, seed);
+  const avatarSrc = `/avatars/donaido-v2/avatar-${String(index + 1).padStart(2, '0')}.png`;
 
   return (
     // eslint-disable-next-line @next/next/no-img-element
@@ -49,11 +57,13 @@ const CHARACTER_SHEETS = ['/avatars-donaido-a-v1.png', '/avatars-donaido-b-v1.pn
  */
 export function ProfileAvatar({
   seed,
+  avatarIndex,
   name,
   imageUrl,
   className,
 }: {
   seed: string;
+  avatarIndex?: number | null;
   name?: string | null;
   imageUrl?: string | null;
   className?: string;
@@ -74,5 +84,5 @@ export function ProfileAvatar({
     );
   }
 
-  return <GeneratedAvatar seed={seed} name={name} className={className} />;
+  return <GeneratedAvatar seed={seed} avatarIndex={avatarIndex} name={name} className={className} />;
 }

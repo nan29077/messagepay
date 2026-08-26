@@ -21,6 +21,7 @@ export interface SessionUser {
   email: string | null;
   name: string | null;
   role: UserRole;
+  avatarIndex: number;
   creatorId?: string;
   /** 크리에이터 캐릭터를 DB 재생성 후에도 동일하게 유지하는 고정 코드 */
   creatorCode?: string;
@@ -98,6 +99,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     email: u.email,
     name: u.name,
     role: u.role,
+    avatarIndex: u.avatarIndex,
     creatorId: u.creatorProfile?.id,
     creatorCode: u.creatorProfile?.code,
     creatorAvatarUrl: u.creatorProfile?.avatarUrl,

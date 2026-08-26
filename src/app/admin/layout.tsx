@@ -97,6 +97,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         id: admin.id,
         name: admin.name ?? admin.email ?? '관리자',
         role: permissionLabel[admin.adminPermission ?? ''] ?? '권한 미지정',
+        avatarIndex: admin.avatarIndex,
       }}
     >
       {children}

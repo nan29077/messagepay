@@ -94,6 +94,7 @@ export function CreatorCodeForm({ autoFocus = false }: { autoFocus?: boolean }) 
               >
                 <ProfileAvatar
                   seed={m.code}
+                  avatarIndex={m.avatarIndex}
                   name={m.displayName}
                   imageUrl={m.avatarUrl}
                   className="h-12 w-12"

@@ -11,7 +11,7 @@ import { formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import type { Prisma } from '@/generated/prisma/client';
 import type { UserRole, UserStatus } from '@/generated/prisma/enums';
-import { GeneratedAvatar } from '@/components/profile/generated-avatar';
+import { ProfileAvatar } from '@/components/profile/generated-avatar';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,9 +55,9 @@ export default async function AdminUsersPage({
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       select: {
-        id: true, email: true, name: true, role: true, status: true,
+        id: true, email: true, name: true, role: true, status: true, avatarIndex: true,
         phoneMasked: true, lastLoginAt: true, createdAt: true,
-        creatorProfile: { select: { id: true, displayName: true, code: true } },
+        creatorProfile: { select: { id: true, displayName: true, code: true, avatarUrl: true } },
         donorProfile: { select: { id: true } },
         adminProfile: { select: { permission: true } },
       },
@@ -150,7 +150,13 @@ export default async function AdminUsersPage({
                     <Td className="max-w-[220px] break-all">{u.email ?? '-'}</Td>
                     <Td>
                       <div className="flex min-w-[150px] items-center gap-2.5">
-                        <GeneratedAvatar seed={u.id} name={u.name} className="h-9 w-9" />
+                        <ProfileAvatar
+                          seed={u.creatorProfile?.code ?? u.id}
+                          avatarIndex={u.avatarIndex}
+                          imageUrl={u.creatorProfile?.avatarUrl}
+                          name={u.name}
+                          className="h-9 w-9"
+                        />
                         <div className="min-w-0">
                       <span className="block truncate font-semibold text-ink-900">{u.name ?? '-'}</span>
                       {u.creatorProfile ? (

@@ -308,6 +308,8 @@ model User {
   role            UserRole   @default(DONOR)
   status          UserStatus @default(ACTIVE)
   name            String?
+  /// 50종 개별 기본 프로필 캐릭터 번호(0~49). 계정 생성 시 DB에서 무작위 배정되어 유지된다.
+  avatarIndex     Int        @default(dbgenerated("(floor((random() * (50)::double precision)))::integer")) @map("avatar_index")
   /// 검색용 HMAC-SHA256 해시 (키는 KMS 관리)
   phoneHash       String?    @unique @map("phone_hash")
   /// KMS 봉투암호화 결과 (원문 저장 금지)

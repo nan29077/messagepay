@@ -21,6 +21,34 @@ export interface CreatorSearchItem {
   displayName: string;
   channelName: string | null;
   avatarUrl: string | null;
+  avatarIndex: number;
+}
+
+const creatorSearchSelect = {
+  code: true,
+  userId: true,
+  displayName: true,
+  channelName: true,
+  avatarUrl: true,
+  user: { select: { avatarIndex: true } },
+} as const;
+
+function toSearchItem(creator: {
+  code: string;
+  userId: string;
+  displayName: string;
+  channelName: string | null;
+  avatarUrl: string | null;
+  user: { avatarIndex: number };
+}): CreatorSearchItem {
+  return {
+    code: creator.code,
+    userId: creator.userId,
+    displayName: creator.displayName,
+    channelName: creator.channelName,
+    avatarUrl: creator.avatarUrl,
+    avatarIndex: creator.user.avatarIndex,
+  };
 }
 
 export interface LookupResult {
@@ -49,9 +77,9 @@ export async function lookupCreatorCode(input: string): Promise<LookupResult> {
   if (/^TOR-[A-Z0-9]{4,8}$/.test(code)) {
     const byCode = await prisma.creatorProfile.findFirst({
       where: { code, status: 'APPROVED' },
-      select: { code: true, userId: true, displayName: true, channelName: true, avatarUrl: true },
+      select: creatorSearchSelect,
     });
-    if (byCode) return { ok: true, matches: [byCode] };
+    if (byCode) return { ok: true, matches: [toSearchItem(byCode)] };
     // 코드 형태인데 없으면 이름 검색으로 넘어가지 않고 바로 안내한다 (오타 가능성)
     return {
       ok: false,
@@ -70,7 +98,7 @@ export async function lookupCreatorCode(input: string): Promise<LookupResult> {
     },
     orderBy: { displayName: 'asc' },
     take: 8,
-    select: { code: true, userId: true, displayName: true, channelName: true, avatarUrl: true },
+    select: creatorSearchSelect,
   });
 
   if (matches.length === 0) {
@@ -79,5 +107,5 @@ export async function lookupCreatorCode(input: string): Promise<LookupResult> {
       message: '검색 결과가 없습니다. 크리에이터 코드(예: TOR-8K2M) 또는 정확한 채널명·이름으로 다시 검색해 주세요.',
     };
   }
-  return { ok: true, matches };
+  return { ok: true, matches: matches.map(toSearchItem) };
 }
