@@ -12,6 +12,7 @@ import {
   UsersRound, Video, Volume2, WalletCards, X,
 } from 'lucide-react';
 import { Logo } from '@/components/brand/logo';
+import { ConsoleCornerMascot, MascotAccent } from '@/components/brand/mascot-decorations';
 import { NotificationBell } from '@/components/notifications/notification-bell';
 import { ProfileAvatar } from '@/components/profile/generated-avatar';
 import { cx } from '@/components/ui';
@@ -98,7 +99,8 @@ export function ConsoleShell({
   }, [groups, pathname]);
 
   return (
-    <div className="min-h-dvh bg-[#f7f5ef]">
+    <div className="relative min-h-dvh bg-[#f7f5ef]">
+      <ConsoleCornerMascot />
       <header className="sticky top-0 z-40 border-b border-ink-100/80 bg-white/92 backdrop-blur-xl">
         <div className="flex h-16 items-center gap-3 px-4 lg:px-6">
           <button
@@ -118,7 +120,7 @@ export function ConsoleShell({
         </div>
       </header>
 
-      <div className="relative flex items-start">
+      <div className="relative z-[1] flex items-start">
         {open ? (
           <button
             type="button"
@@ -230,12 +232,13 @@ export function PageHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-5 flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-      <div className="min-w-0">
+    <div className="console-page-header relative mb-5 flex min-h-[66px] flex-col items-stretch justify-between gap-3 overflow-hidden rounded-[20px] border border-white/75 bg-white/55 px-4 py-3.5 shadow-[0_8px_26px_rgba(23,22,26,0.035)] backdrop-blur-sm sm:flex-row sm:flex-wrap sm:items-end sm:px-5">
+      <div className="relative min-w-0 flex-1 lg:pr-20">
         <h1 className="break-keep text-[21px] font-black tracking-[-0.035em] text-ink-900 sm:text-[22px]">{title}</h1>
         {description ? (
           <p className="mt-1.5 max-w-3xl text-[13px] leading-relaxed text-ink-500">{description}</p>
         ) : null}
+        <MascotAccent seed={title} className="console-page-mascot absolute -bottom-3 right-0 h-[70px] w-[70px] opacity-80" />
       </div>
       {action ? <div className="w-full sm:w-auto [&>*]:w-full sm:[&>*]:w-auto">{action}</div> : null}
     </div>

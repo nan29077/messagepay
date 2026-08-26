@@ -8,6 +8,7 @@ import {
   LifeBuoy, LogIn, LogOut, Map, Menu, Sparkles, X,
 } from 'lucide-react';
 import { Logo, TornadoMark } from '@/components/brand/logo';
+import { PublicMarginMascots } from '@/components/brand/mascot-decorations';
 import { DonationLookupSheet } from '@/components/public/donation-lookup-sheet';
 import { NotificationBell } from '@/components/notifications/notification-bell';
 import { ProfileAvatar } from '@/components/profile/generated-avatar';
@@ -93,7 +94,8 @@ export function PublicShellClient({
 
   return (
     <div className="public-canvas min-h-dvh pb-20 lg:pb-0">
-      <div className="mx-auto flex w-full max-w-[744px] items-start justify-center">
+      <PublicMarginMascots home={pathname === '/'} />
+      <div className="relative z-[2] mx-auto flex w-full max-w-[744px] items-start justify-center">
         <div className="min-h-dvh w-full min-w-0 max-w-[640px] bg-white shadow-[0_0_60px_rgba(23,22,26,0.10)]">
       <header className="sticky top-0 z-40 border-b border-ink-100/80 bg-white/88 backdrop-blur-xl">
         <div className="flex h-[68px] w-full items-center justify-between px-4 sm:px-6">

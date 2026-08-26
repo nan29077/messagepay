@@ -5,6 +5,7 @@ import {
   CreditCard, BellRing, ListChecks, PlayCircle, MonitorPlay, Volume2,
 } from 'lucide-react';
 import { PublicShell } from '@/components/layout/public-shell';
+import { MascotAccent } from '@/components/brand/mascot-decorations';
 import { CreatorCodeForm } from '@/components/creator-code-form';
 import { HeroSlider } from '@/components/public/hero-slider';
 import { BannerStrip } from '@/components/public/banner-strip';
@@ -174,8 +175,9 @@ export default async function HomePage() {
         <Card className="creator-cta relative overflow-hidden text-white">
           <span className="absolute -right-6 -top-7 h-24 w-24 rounded-full border border-white/15" aria-hidden />
           <span className="absolute right-5 top-5 h-10 w-10 rounded-full border border-white/10" aria-hidden />
+          <MascotAccent seed="크리에이터 시작" className="absolute -bottom-4 right-1 h-28 w-28 opacity-90 sm:right-5 sm:h-32 sm:w-32" />
           <p className="relative text-[13px] font-bold text-white/85">크리에이터라면</p>
-          <p className="relative mt-1 text-[21px] font-black leading-snug tracking-[-0.025em] text-white">
+          <p className="relative max-w-[70%] mt-1 text-[21px] font-black leading-snug tracking-[-0.025em] text-white">
             문자 후원을 방송에
             <br />
             바로 연결해 보세요.
