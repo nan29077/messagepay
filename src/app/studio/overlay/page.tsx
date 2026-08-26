@@ -5,6 +5,8 @@ import { ActionForm } from '@/components/studio/action-form';
 import { CopyField } from '@/components/studio/copy';
 import { OverlayTiersEditor } from '@/components/studio/overlay-tiers-editor';
 import { OverlayQuickSettings } from '@/components/studio/overlay-quick-settings';
+import { OverlayLivePreview } from '@/components/studio/overlay-live-preview';
+import { OverlayTestHistory, type OverlayTestHistoryRow } from '@/components/studio/overlay-test-history';
 import {
   regenerateOverlayTokenAction,
   testOverlayAction,
@@ -12,19 +14,79 @@ import {
 import { requireCreator } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { env } from '@/lib/env';
+import { formatWon } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
+import { deliveryStatusLabel } from '@/lib/labels';
+import { findCharacterSticker } from '@/lib/overlay-effect-catalog';
 import { listOverlayTiers } from '@/server/services/overlay-tiers';
 import { countOverlayConnections, MAX_OVERLAY_CONNECTIONS } from '@/server/services/overlay-connections';
 
 export const dynamic = 'force-dynamic';
 
+/** 테스트 전송 내역에 보여 줄 최근 건수 */
+const TEST_HISTORY_SIZE = 20;
+
+/** 파티클 효과 이름. 캐릭터 스티커는 카탈로그의 라벨을 그대로 쓴다. */
+const EFFECT_LABELS: Record<string, string> = {
+  DEFAULT: '기본',
+  NONE: '없음',
+  HEART: '하트',
+  STAR: '별',
+  COIN: '코인',
+  FIREWORK: '폭죽',
+  CONFETTI: '꽃가루',
+};
+
+function effectLabel(effect: string): string {
+  return EFFECT_LABELS[effect.toUpperCase()] ?? findCharacterSticker(effect)?.label ?? effect;
+}
+
+/**
+ * OverlayEvent.payload 는 Json 이라 타입이 보장되지 않는다.
+ * 예전 형식(효과 값이 sticker 에만 있는 이벤트)도 그대로 읽히도록 방어적으로 꺼낸다.
+ */
+function readTestPayload(payload: unknown): { donorName: string; amount: string; effect: string; tierLabel: string } {
+  const p = (payload ?? {}) as Record<string, unknown>;
+  const rawAmount = typeof p.amount === 'string' ? p.amount : '';
+  const rawEffect =
+    (typeof p.effect === 'string' && p.effect) || (typeof p.sticker === 'string' && p.sticker) || 'DEFAULT';
+  return {
+    donorName: typeof p.donorName === 'string' && p.donorName ? p.donorName : '-',
+    amount: /^\d+$/.test(rawAmount) ? formatWon(BigInt(rawAmount)) : '-',
+    effect: effectLabel(rawEffect),
+    tierLabel: typeof p.tierLabel === 'string' ? p.tierLabel : '',
+  };
+}
+
 export default async function StudioOverlayPage() {
   const { creatorId } = await requireCreator();
-  const [setting, ttsSetting, tiers] = await Promise.all([
+  const [setting, ttsSetting, tiers, testEvents] = await Promise.all([
     prisma.overlaySetting.findUnique({ where: { creatorId } }),
     prisma.ttsSetting.findUnique({ where: { creatorId } }),
     listOverlayTiers(creatorId),
+    // 테스트 전송 기록은 overlay_event 에만 남는다. donation 과는 무관하다.
+    prisma.overlayEvent.findMany({
+      where: { creatorId, isTest: true },
+      orderBy: { createdAt: 'desc' },
+      take: TEST_HISTORY_SIZE,
+      select: { id: true, createdAt: true, status: true, payload: true },
+    }),
   ]);
+
+  const testHistory: OverlayTestHistoryRow[] = testEvents.map((e) => {
+    const { donorName, amount, effect, tierLabel } = readTestPayload(e.payload);
+    const status = deliveryStatusLabel[e.status];
+    return {
+      id: e.id,
+      sentAt: formatKst(e.createdAt),
+      donorName,
+      amount,
+      effect,
+      tierLabel,
+      statusText: status.text,
+      statusTone: status.tone,
+    };
+  });
 
   // BigInt 는 클라이언트 컴포넌트로 넘길 수 없으므로 숫자로 바꿔 전달한다.
   const tierInputs = tiers.map((t) => ({
@@ -223,9 +285,27 @@ export default async function StudioOverlayPage() {
         <section>
           <SectionTitle title="테스트 후원 실행" description="설정한 화면을 실제 방송 전에 확인해 보세요." />
           <Card>
-            <div className="mb-3">
+            <div className="mb-3 space-y-2.5">
               <Notice tone="brand">테스트 후원은 실제 결제와 정산에 반영되지 않습니다.</Notice>
+              {setting && !setting.enabled ? (
+                <Notice tone="warning" title="오버레이 표시가 꺼져 있습니다">
+                  아래 미리보기에는 재생되지만, OBS·PRISM 브라우저 소스에는 아무것도 표시되지 않습니다. [알림 꾸미기]에서
+                  오버레이 표시를 켜 주세요.
+                </Notice>
+              ) : null}
             </div>
+
+            <div className="mb-4">
+              {setting ? (
+                <OverlayLivePreview creatorId={creatorId} />
+              ) : (
+                <Notice tone="warning" title="오버레이 URL을 먼저 발급해주세요">
+                  위 [URL 발급]으로 브라우저 소스 URL을 발급하면, 이 자리에서 실제 방송에 표시되는 화면을 그대로 확인할
+                  수 있습니다.
+                </Notice>
+              )}
+            </div>
+
             <ActionForm action={testOverlayAction} submitLabel="테스트 후원 보내기" variant="secondary">
               <div className="grid gap-3 md:grid-cols-2">
                 <Field label="표시명" hint="20자 이내">
@@ -239,6 +319,17 @@ export default async function StudioOverlayPage() {
                 <Textarea name="message" rows={2} maxLength={200} defaultValue="오늘 방송 재미있어요" />
               </Field>
             </ActionForm>
+          </Card>
+        </section>
+
+        {/* ── 5. 테스트 전송 내역 ─────────────────────────────── */}
+        <section>
+          <SectionTitle
+            title="테스트 전송 내역"
+            description={`최근 테스트 전송 ${TEST_HISTORY_SIZE}건입니다. 후원 내역·매출·정산과는 완전히 분리된 기록입니다.`}
+          />
+          <Card>
+            <OverlayTestHistory rows={testHistory} />
           </Card>
         </section>
       </div>
