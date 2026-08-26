@@ -5,6 +5,7 @@ import { Loader, MonitorPlay, Play, PlugZap, Plus, Trash2, Volume2, Wifi, X } fr
 import { Badge, Button, Checkbox, Field, Input, Notice, Select, cx } from '@/components/ui';
 import { previewOverlayTierAction, saveOverlayTiersAction } from '@/app/actions/studio';
 import type { StudioActionState } from '@/app/actions/studio';
+import { DONAIDO_CHARACTER_STICKERS } from '@/lib/overlay-effect-catalog';
 
 /**
  * 금액 구간별 오버레이 효과 편집기 + 미리보기.
@@ -48,6 +49,7 @@ const EFFECT_OPTIONS = [
   { value: 'FIREWORK', label: '폭죽' },
   { value: 'CONFETTI', label: '꽃가루' },
   { value: 'COIN', label: '동전' },
+  ...DONAIDO_CHARACTER_STICKERS.map((sticker) => ({ value: sticker.value, label: `캐릭터 · ${sticker.label}` })),
   { value: 'NONE', label: '효과 없음' },
 ];
 

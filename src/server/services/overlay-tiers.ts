@@ -1,4 +1,5 @@
 import { prisma } from '@/server/db';
+import { OVERLAY_EFFECT_VALUES } from '@/lib/overlay-effect-catalog';
 
 /**
  * 금액 구간별 오버레이 효과.
@@ -10,7 +11,7 @@ import { prisma } from '@/server/db';
  */
 
 /** 파티클 효과 종류. 오버레이 클라이언트의 렌더러와 값이 일치해야 한다. */
-export const OVERLAY_EFFECTS = ['NONE', 'HEART', 'STAR', 'FIREWORK', 'CONFETTI', 'COIN'] as const;
+export const OVERLAY_EFFECTS = OVERLAY_EFFECT_VALUES;
 
 export interface ResolvedTier {
   id: string;

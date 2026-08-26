@@ -1,11 +1,13 @@
 'use client';
 
 import * as React from 'react';
+import Image from 'next/image';
 import { AudioLines, Ban, ChevronDown, Coins, Globe, Heart, KeyRound, PartyPopper, Server, Shapes, Sparkles, Star, Volume2 } from 'lucide-react';
 import { Button, Checkbox, Field, Input, Notice, SectionTitle, Select, cx } from '@/components/ui';
 import { playEffectSound } from '@/components/overlay/overlay-sound';
 import { updateOverlaySettingAction } from '@/app/actions/studio';
 import type { StudioActionState } from '@/app/actions/studio';
+import { DONAIDO_CHARACTER_STICKERS } from '@/lib/overlay-effect-catalog';
 
 /**
  * 오버레이 간편 설정 (효과 + 테마 + TTS + 세부 표시 설정).
@@ -61,7 +63,9 @@ interface EffectOption {
   value: string;
   label: string;
   desc: string;
-  Icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  Icon?: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  image?: string;
+  animationClass?: string;
   tint: string;
 }
 
@@ -73,6 +77,14 @@ const EFFECTS: EffectOption[] = [
   { value: 'FIREWORK', label: '폭죽', desc: '폭죽이 터짐', Icon: Sparkles, tint: 'bg-warning-50 text-accent-600' },
   { value: 'CONFETTI', label: '꽃가루', desc: '꽃가루가 내림', Icon: PartyPopper, tint: 'bg-ink-100 text-ink-700' },
   { value: 'NONE', label: '없음', desc: '배너만 표시', Icon: Ban, tint: 'bg-ink-50 text-ink-400' },
+  ...DONAIDO_CHARACTER_STICKERS.map((sticker) => ({
+    value: sticker.value,
+    label: sticker.label,
+    desc: sticker.description,
+    image: sticker.image,
+    animationClass: sticker.animationClass,
+    tint: 'bg-[linear-gradient(145deg,#fff9e9,#fff2bf)]',
+  })),
 ];
 
 const THEMES = [
@@ -194,9 +206,9 @@ export function OverlayQuickSettings({
       <section>
         <SectionTitle
           title="효과 선택"
-          description="후원이 들어올 때 재생할 기본 효과입니다. 모든 후원에 적용됩니다."
+          description="기본 파티클 또는 도네이도 캐릭터 스티커를 고르세요. 모든 후원에 적용됩니다."
         />
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {EFFECTS.map((o) => {
             const active = effect === o.value;
             return (
@@ -206,14 +218,29 @@ export function OverlayQuickSettings({
                 onClick={() => setEffect(o.value)}
                 aria-pressed={active}
                 className={cx(
-                  'flex flex-col items-center gap-2 rounded-2xl border px-3 py-4 text-center transition-all',
+                  'relative flex min-h-[154px] flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border px-3 py-4 text-center transition-all',
                   active
                     ? 'border-brand-400 bg-brand-50 shadow-[0_6px_16px_rgba(237,166,0,0.18)]'
                     : 'border-ink-100 bg-white hover:border-ink-200 hover:bg-ink-50',
                 )}
               >
-                <span className={cx('grid h-11 w-11 place-items-center rounded-xl', o.tint)}>
-                  <o.Icon size={20} strokeWidth={1.7} />
+                {o.image ? (
+                  <span className="absolute right-2 top-2 rounded-full bg-brand-500 px-2 py-0.5 text-[9px] font-extrabold text-ink-900 shadow-sm">
+                    캐릭터
+                  </span>
+                ) : null}
+                <span className={cx('grid place-items-center rounded-xl', o.image ? 'h-20 w-20' : 'h-11 w-11', o.tint)}>
+                  {o.image ? (
+                    <Image
+                      src={o.image}
+                      alt=""
+                      width={96}
+                      height={96}
+                      className={cx('h-[76px] w-[76px] object-contain', active && o.animationClass)}
+                    />
+                  ) : o.Icon ? (
+                    <o.Icon size={20} strokeWidth={1.7} />
+                  ) : null}
                 </span>
                 <span className="text-[13px] font-bold text-ink-900">{o.label}</span>
                 <span className="text-[11px] leading-tight text-ink-400">{o.desc}</span>

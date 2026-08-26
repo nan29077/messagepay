@@ -237,6 +237,57 @@ a {
 }
 .animate-firework-burst { animation: donaido-firework-burst 1.6s cubic-bezier(0.2, 0.7, 0.3, 1) infinite; }
 
+/* 도네이도 전용 캐릭터 스티커 */
+@keyframes donaido-sticker-cheer {
+  0% { opacity: 0; transform: translateY(72px) scale(0.35) rotate(-8deg); }
+  24% { opacity: 1; transform: translateY(-12px) scale(1.08) rotate(5deg); }
+  42% { transform: translateY(0) scale(1) rotate(-4deg); }
+  62% { transform: translateY(-14px) scale(1.03) rotate(4deg); }
+  100% { opacity: 1; transform: translateY(0) scale(1) rotate(0deg); }
+}
+@keyframes donaido-sticker-heart {
+  0% { opacity: 0; transform: scale(0.35); }
+  22% { opacity: 1; transform: scale(1.1); }
+  38%, 62% { transform: scale(1); }
+  50%, 74% { transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes donaido-sticker-gift {
+  0% { opacity: 0; transform: translateY(160px) scaleY(0.45) scaleX(0.75); }
+  28% { opacity: 1; transform: translateY(-22px) scaleY(1.08) scaleX(1.04); }
+  48% { transform: translateY(8px) scale(0.98); }
+  68% { transform: translateY(-8px) scale(1.02); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes donaido-sticker-dance {
+  0% { opacity: 0; transform: translateX(-90px) scale(0.55) rotate(-12deg); }
+  22% { opacity: 1; transform: translateX(10px) scale(1.05) rotate(8deg); }
+  42% { transform: translateX(-10px) scale(1) rotate(-7deg); }
+  62% { transform: translateX(9px) rotate(6deg); }
+  82% { transform: translateX(-5px) rotate(-4deg); }
+  100% { opacity: 1; transform: translateX(0) scale(1) rotate(0deg); }
+}
+@keyframes donaido-sticker-bow {
+  0% { opacity: 0; transform: translateY(42px) scale(0.55); }
+  24% { opacity: 1; transform: translateY(0) scale(1.04); }
+  48% { transform: translateY(10px) rotateX(18deg); transform-origin: 50% 82%; }
+  72% { transform: translateY(0) rotateX(0deg); transform-origin: 50% 82%; }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-sticker-cheer { animation: donaido-sticker-cheer 1.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-sticker-heart { animation: donaido-sticker-heart 1.65s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-sticker-gift { animation: donaido-sticker-gift 1.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-sticker-dance { animation: donaido-sticker-dance 1.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-sticker-bow { animation: donaido-sticker-bow 1.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-sticker-cheer,
+  .animate-sticker-heart,
+  .animate-sticker-gift,
+  .animate-sticker-dance,
+  .animate-sticker-bow { animation-duration: 1ms; }
+}
+
 /* 배너 슬라이드인 */
 @keyframes donaido-banner-in {
   0%   { opacity: 0; transform: translateX(-64px) scale(0.97); }

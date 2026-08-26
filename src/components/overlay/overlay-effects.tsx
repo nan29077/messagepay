@@ -1,6 +1,11 @@
 'use client';
 
 import * as React from 'react';
+import Image from 'next/image';
+import {
+  findCharacterSticker,
+  type OverlayEffectValue,
+} from '@/lib/overlay-effect-catalog';
 
 /**
  * 오버레이 파티클 효과 레이어.
@@ -13,7 +18,7 @@ import * as React from 'react';
  *    DEFAULT 는 구간 기능을 쓰지 않는 기존 크리에이터용 값으로, 하트/별을 섞어 뿌린다.
  */
 
-export type EffectName = 'NONE' | 'HEART' | 'STAR' | 'FIREWORK' | 'CONFETTI' | 'COIN' | 'DEFAULT';
+export type EffectName = OverlayEffectValue | 'DEFAULT';
 
 /** 결정적 의사난수. 같은 인덱스는 항상 같은 값을 준다. */
 function rand(i: number, salt: number) {
@@ -25,6 +30,8 @@ export function EffectLayer({ effect, theme = 'TORNADO' }: { effect: string; the
   const name = (effect || 'DEFAULT').toUpperCase() as EffectName;
   if (name === 'NONE') return null;
 
+  const characterSticker = findCharacterSticker(name);
+
   // 테마별 파티클 보정.
   //  - MINIMAL: 효과를 절제한다(반투명).
   //  - NEON: 형광 글로우를 더한다. 컨테이너에 filter 를 걸어 자식 absolute 배치 기준은 그대로 둔다.
@@ -34,6 +41,24 @@ export function EffectLayer({ effect, theme = 'TORNADO' }: { effect: string; the
       : theme === 'NEON'
         ? '[filter:drop-shadow(0_0_8px_rgba(34,211,238,0.55))]'
         : '';
+
+  if (characterSticker) {
+    return (
+      <div aria-hidden className={`pointer-events-none fixed inset-0 z-10 grid place-items-center overflow-hidden ${themeClass}`}>
+        <div className={`w-[clamp(190px,34vw,430px)] drop-shadow-[0_20px_28px_rgba(15,10,0,0.24)] ${characterSticker.animationClass}`}>
+          <Image
+            src={characterSticker.image}
+            alt=""
+            width={640}
+            height={640}
+            priority
+            unoptimized
+            className="h-auto w-full select-none object-contain"
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div aria-hidden className={`pointer-events-none fixed inset-0 overflow-hidden ${themeClass}`}>
