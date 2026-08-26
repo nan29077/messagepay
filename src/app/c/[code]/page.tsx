@@ -35,6 +35,23 @@ export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ code: string }> };
 
+/**
+ * MO 후원번호 표시용 서식. DB 에는 하이픈 없이 저장하므로 화면에서만 끊어 보여 준다.
+ * sms: 링크와 복사 값은 원본(숫자만)을 그대로 쓴다.
+ */
+function formatMoNumber(raw: string) {
+  const digits = raw.replace(/[^0-9]/g, '');
+  if (/^050[0-9]{8}$/.test(digits)) return `${digits.slice(0, 4)}-${digits.slice(4, 8)}-${digits.slice(8)}`;
+  if (/^050[0-9]{7}$/.test(digits)) return `${digits.slice(0, 4)}-${digits.slice(4, 7)}-${digits.slice(7)}`;
+  if (/^1[0-9]{7}$/.test(digits)) return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+  if (/^0[0-9]{9,10}$/.test(digits)) {
+    const head = digits.startsWith('02') ? 2 : 3;
+    const tail = digits.length - head - 4;
+    return `${digits.slice(0, head)}-${digits.slice(head, head + tail)}-${digits.slice(head + tail)}`;
+  }
+  return raw;
+}
+
 async function findCreator(rawCode: string) {
   const code = normalizeCreatorCode(rawCode);
   if (!/^TOR-[A-Z0-9]{2,10}$/.test(code)) return null;
@@ -107,6 +124,7 @@ export default async function CreatorDonationPage({ params }: Params) {
   // 크리에이터마다 050 전용번호가 부여되므로 keyword 없이 번호만으로 라우팅한다.
   // (과거 대표번호 공유 방식의 keyword 선입력 로직 제거)
   const smsHref = route ? `sms:${route.phoneNumber}` : null;
+  const moNumberLabel = route ? formatMoNumber(route.phoneNumber) : null;
 
   return (
     <div className="min-h-dvh bg-[#f7f5ef]">
@@ -209,6 +227,27 @@ export default async function CreatorDonationPage({ params }: Params) {
               )}
             </div>
 
+            {/* PC: 문자 후원번호 안내. 데스크톱에서는 문자를 보낼 수 없으므로 번호만 안내한다. */}
+            {route ? (
+              <div className="mt-5 hidden rounded-2xl border border-brand-200/70 bg-brand-50/60 px-4 py-3.5 sm:block">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-1.5 text-[12px] font-bold text-brand-700">
+                      <Phone size={14} strokeWidth={1.8} />
+                      문자 후원번호
+                    </p>
+                    <p className="mt-1 font-mono text-[22px] font-extrabold leading-none tracking-tight text-ink-900">
+                      {moNumberLabel}
+                    </p>
+                  </div>
+                  <CopyButton value={route.phoneNumber} label="번호 복사" />
+                </div>
+                <p className="mt-2.5 text-[11.5px] leading-relaxed text-ink-500">
+                  휴대폰에서 이 번호로 문자를 보내도 {creator.displayName} 님에게 후원됩니다.
+                </p>
+              </div>
+            ) : null}
+
             {route ? (
               /* 모바일: 문자후원 (문자 1통 = 크리에이터 설정 금액) */
               <div className="sm:hidden">
@@ -217,7 +256,7 @@ export default async function CreatorDonationPage({ params }: Params) {
                 {creator.displayName} 전용 후원 번호
               </p>
               <p className="mt-2 text-center font-mono text-[34px] font-extrabold leading-none tracking-tight text-ink-900">
-                {route.phoneNumber}
+                {moNumberLabel}
               </p>
               <div className="mt-3 flex justify-center">
                 <CopyButton value={route.phoneNumber} label="번호 복사" />
