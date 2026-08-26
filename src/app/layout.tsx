@@ -49,11 +49,12 @@ export async function generateMetadata(): Promise<Metadata> {
     keywords: ['도네이도', '문자후원', '크리에이터 후원', '라이브 방송', 'OBS 오버레이', 'TTS'],
     icons: {
       icon: [
-        { url: '/favicon.ico?v=4', type: 'image/x-icon', sizes: '16x16 32x32 48x48 64x64' },
-        { url: '/donaido-icon-v3.png', type: 'image/png', sizes: '512x512' },
+        { url: '/favicon.ico?v=5', type: 'image/x-icon', sizes: '16x16 32x32 48x48 64x64' },
+        { url: '/donaido-mark-v4.svg', type: 'image/svg+xml' },
+        { url: '/donaido-icon-v4.png', type: 'image/png', sizes: '512x512' },
       ],
-      shortcut: '/favicon.ico?v=4',
-      apple: '/apple-touch-icon-v3.png',
+      shortcut: '/favicon.ico?v=5',
+      apple: '/apple-touch-icon-v4.png',
     },
     openGraph: {
       title: shareTitle,

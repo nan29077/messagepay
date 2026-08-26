@@ -3,7 +3,7 @@ import * as React from 'react';
 /**
  * 도네이도 브랜드 로고 (v3).
  *
- * 노란색 토네이도 소용돌이 + 우측 상단 하트 심볼과
+ * 따뜻한 허니 골드 토네이도 소용돌이 + 코랄 하트 심볼과
  * 볼드 대문자 "DONAIDO" 워드마크로 구성한다.
  * (사용자 제공 로고 시안을 벡터로 재현 — 아이콘은 꿀색 그라데이션,
  *  워드마크는 잉크 블랙. 텍스트는 HTML 로 렌더링해 어떤 해상도에서도 선명하다.)
@@ -12,7 +12,7 @@ import * as React from 'react';
 export function TornadoMark({
   size = 28,
   className,
-  /** true 면 브랜드 노랑 그라데이션, false 면 currentColor 스트로크 */
+  /** true 면 허니 골드 그라데이션, false 면 currentColor 스트로크 */
   colored = true,
 }: {
   size?: number;
@@ -22,7 +22,7 @@ export function TornadoMark({
   // 같은 화면에 여러 개 렌더링돼도 gradient id 가 충돌하지 않게 한다.
   const gradId = React.useId().replace(/[^a-zA-Z0-9]/g, '');
   const stroke = colored ? `url(#g${gradId})` : 'currentColor';
-  const heartFill = colored ? `url(#g${gradId})` : 'currentColor';
+  const heartFill = '#f36f5b';
 
   return (
     <svg
@@ -36,9 +36,9 @@ export function TornadoMark({
       {colored ? (
         <defs>
           <linearGradient id={`g${gradId}`} x1="6" y1="4" x2="42" y2="46" gradientUnits="userSpaceOnUse">
-            <stop offset="0" stopColor="#ffd93d" />
-            <stop offset="0.55" stopColor="#fbb914" />
-            <stop offset="1" stopColor="#eda600" />
+            <stop offset="0" stopColor="#ffdc78" />
+            <stop offset="0.52" stopColor="#f2b541" />
+            <stop offset="1" stopColor="#c77a2b" />
           </linearGradient>
         </defs>
       ) : null}
@@ -88,11 +88,11 @@ function Wordmark({ onDark }: { onDark: boolean }) {
         <span key={`${letter}-${index}`} aria-hidden className="relative inline-block">
           {letter}
           {letter === 'D' ? (
-            <span className="pointer-events-none absolute left-[52%] top-[30%] h-[42%] w-[20%] rounded-full bg-brand-400" />
+            <span className="pointer-events-none absolute left-[52%] top-[30%] h-[42%] w-[20%] rounded-full bg-[#e9a936]" />
           ) : letter === 'O' ? (
-            <span className="pointer-events-none absolute left-[36%] top-[28%] h-[45%] w-[28%] rounded-full bg-brand-400" />
+            <span className="pointer-events-none absolute left-[36%] top-[28%] h-[45%] w-[28%] rounded-full bg-[#e9a936]" />
           ) : letter === 'A' ? (
-            <span className="pointer-events-none absolute left-[40%] top-[50%] h-[14%] w-[20%] bg-brand-400 [clip-path:polygon(50%_0,100%_100%,0_100%)]" />
+            <span className="pointer-events-none absolute left-[40%] top-[50%] h-[14%] w-[20%] bg-[#e9a936] [clip-path:polygon(50%_0,100%_100%,0_100%)]" />
           ) : null}
         </span>
       ))}
