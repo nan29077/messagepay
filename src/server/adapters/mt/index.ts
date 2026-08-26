@@ -1,6 +1,8 @@
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
 import type { AdapterInfo, ProviderResult } from '../types';
+// coolsms.ts 는 이 파일에서 타입과 decideMessageType 만 가져온다 (아래에서 정의됨 → 함수 호출 시점에 해석).
+import { coolsmsMtAdapter } from './coolsms';
 
 export interface MtSendRequest {
   to: string;
@@ -61,6 +63,9 @@ export function getMtAdapter(): MtAdapter {
   switch (env.mt.provider) {
     case 'mock':
       return mockMtAdapter;
+    case 'coolsms':
+      // 껍데기 어댑터. send() 는 아직 예외를 던진다 (계약 전 성공 처리 금지).
+      return coolsmsMtAdapter;
     default:
       throw new Error(
         `MT_PROVIDER=${env.mt.provider} 어댑터가 구현되지 않았습니다. 사업자 계약 확정 후 추가하십시오.`,
