@@ -82,9 +82,12 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // suppressHydrationWarning: 번역기·다크모드·비밀번호 관리자 같은 브라우저 확장이
+  // 하이드레이션 전에 <html>/<body> 속성을 주입해 발생하는 속성 불일치 경고를 막는다.
+  // (한 단계 깊이의 속성에만 적용되므로 내부 콘텐츠의 실제 불일치는 계속 감지된다)
   return (
-    <html lang="ko">
-      <body>{children}</body>
+    <html lang="ko" suppressHydrationWarning>
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }
