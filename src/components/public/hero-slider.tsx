@@ -8,7 +8,7 @@ import { cx } from '@/components/ui';
 
 const slides = [
   {
-    image: '/assets/tornado-hero-creator-v1.png',
+    image: '/assets/tornado-hero-creator-v2.png',
     eyebrow: 'MESSAGE TO LIVE',
     title: '문자 한 통이\n방송을 움직입니다',
     description: '진심을 담아 보낸 메시지가 결제 완료 후 라이브 화면과 음성으로 전달됩니다.',
@@ -16,7 +16,7 @@ const slides = [
     cta: '문자후원 알아보기',
   },
   {
-    image: '/assets/tornado-hero-viewer-v1.png',
+    image: '/assets/tornado-hero-viewer-v2.png',
     eyebrow: 'SIMPLE SUPPORT',
     title: '보는 순간 바로\n응원을 전하세요',
     description: '복잡한 앱 설치 없이 안내된 번호로 문자를 보내고 안전하게 후원하세요.',
@@ -24,7 +24,7 @@ const slides = [
     cta: '이용방법 보기',
   },
   {
-    image: '/assets/tornado-hero-studio-v1.png',
+    image: '/assets/tornado-hero-studio-v2.png',
     eyebrow: 'FOR CREATORS',
     title: '후원의 순간을\n더 특별한 장면으로',
     description: '유튜브·OBS·PRISM·TTS를 연결해 크리에이터만의 후원 경험을 만드세요.',

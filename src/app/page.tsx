@@ -117,7 +117,7 @@ export default async function HomePage() {
         <SectionTitle title="유튜브·OBS·PRISM 연동" description="결제가 완료된 후원만 방송에 노출됩니다." />
         <Card padded={false} className="overflow-hidden">
           <Image
-            src="/assets/tornado-hero-studio-v1.png"
+            src="/assets/tornado-hero-studio-v2.png"
             alt="라이브 방송을 진행하는 크리에이터 스튜디오"
             width={1536}
             height={1024}
@@ -155,7 +155,7 @@ export default async function HomePage() {
       <section className="mt-8">
         <SectionTitle title="후원자 보호와 이용 한도" description="과도한 후원을 막기 위한 안전장치가 기본으로 적용됩니다." />
         <Card padded={false} className="overflow-hidden">
-          <Image src="/assets/tornado-hero-viewer-v1.png" alt="안전하게 문자 후원을 보내는 시청자" width={1536} height={1024} className="h-[210px] w-full object-cover object-center sm:h-[250px]" />
+          <Image src="/assets/tornado-hero-viewer-v2.png" alt="안전하게 문자 후원을 보내는 시청자" width={1536} height={1024} className="h-[210px] w-full object-cover object-center sm:h-[250px]" />
           <div className="grid grid-cols-2 gap-3 p-5 text-[13px]">
             <Guard label="문자 1건당" value="3,000원" />
             <Guard label="1일 최대" value="100,000원" />

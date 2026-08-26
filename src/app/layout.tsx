@@ -40,7 +40,7 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 
   const metadataBase = new URL(siteUrl);
-  const shareImage = new URL('/assets/donaido-og-share-v3.png', metadataBase).toString();
+  const shareImage = new URL('/assets/donaido-og-share-v4.png', metadataBase).toString();
 
   return {
     metadataBase,
