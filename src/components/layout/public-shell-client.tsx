@@ -96,8 +96,8 @@ export function PublicShellClient({
     <div className="public-canvas min-h-dvh pb-20 lg:pb-0">
       <PublicMarginMascots home={pathname === '/'} />
       <div className="relative z-[2] mx-auto flex w-full max-w-[744px] items-start justify-center">
-        <div className="min-h-dvh w-full min-w-0 max-w-[640px] bg-white shadow-[0_0_60px_rgba(23,22,26,0.10)]">
-      <header className="sticky top-0 z-40 border-b border-ink-100/80 bg-white/88 backdrop-blur-xl">
+        <div className="public-app-surface min-h-dvh w-full min-w-0 max-w-[640px] shadow-[0_0_60px_rgba(74,49,25,0.12)]">
+      <header className="public-header sticky top-0 z-40 border-b backdrop-blur-xl">
         <div className="flex h-[68px] w-full items-center justify-between px-4 sm:px-6">
           <Link href="/" aria-label="도네이도 홈">
             <Logo />
@@ -189,7 +189,7 @@ export function PublicShellClient({
           className="sticky top-1/2 hidden max-h-[calc(100dvh-2rem)] w-[96px] shrink-0 -translate-y-1/2 self-start overflow-y-auto pl-2 lg:block"
           aria-label="PC 메뉴"
         >
-          <nav className="flex w-full flex-col items-center gap-0.5 rounded-[24px] border border-white/80 bg-white/90 px-2 py-3 shadow-[0_16px_42px_rgba(23,22,26,0.12)] ring-1 ring-brand-100/35 backdrop-blur-xl">
+          <nav className="public-side-nav flex w-full flex-col items-center gap-0.5 rounded-[24px] border px-2 py-3 backdrop-blur-xl">
             <Link
               href="/"
               aria-label="도네이도 홈"
@@ -286,7 +286,7 @@ export function PublicShellClient({
         </aside>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-ink-100 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
+      <nav className="public-bottom-nav fixed inset-x-0 bottom-0 z-40 border-t pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
         <div className="mx-auto grid max-w-[640px] grid-cols-5">
           {nav.map((t) => {
             const Icon = t.icon;
@@ -332,7 +332,7 @@ export function PublicShellClient({
 
 function Footer() {
   return (
-    <footer className="mt-10 border-t border-ink-100 bg-white">
+    <footer className="public-footer mt-10 border-t">
       <div className="mx-auto w-full max-w-6xl px-4 py-8 text-[12px] leading-relaxed text-ink-400">
         <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 text-[13px] font-semibold text-ink-700">
           <Link href="/terms">이용약관</Link>
