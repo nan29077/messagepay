@@ -71,8 +71,12 @@ function ensureRedis() {
   if (!env.redisUrl) return;
   if (globalForBus.overlayPub && globalForBus.overlaySub) return;
   try {
-    const pub = new Redis(env.redisUrl, { maxRetriesPerRequest: 2 });
-    const sub = new Redis(env.redisUrl, { maxRetriesPerRequest: 2 });
+    // redis.ts 와 동일한 안전 설정:
+    //  - enableOfflineQueue: false  → 연결 끊김 중 쌓인 명령을 flush 할 때 EPIPE 가 프로세스 예외로 터지는 것을 방지
+    //  - retryStrategy 5회 제한     → 무한 재접속 루프 차단 (Redis 미실행 환경에서 수천 번 재시도하며 EPIPE 생성)
+    const retryStrategy = (times: number) => (times > 5 ? null : Math.min(times * 300, 2000));
+    const pub = new Redis(env.redisUrl, { maxRetriesPerRequest: 2, enableOfflineQueue: false, retryStrategy });
+    const sub = new Redis(env.redisUrl, { maxRetriesPerRequest: 2, enableOfflineQueue: false, retryStrategy });
     pub.on('error', (e: Error) => logger.warn('overlay pub error', { message: e.message }));
     sub.on('error', (e: Error) => logger.warn('overlay sub error', { message: e.message }));
     sub.subscribe(CHANNEL).catch((e: Error) => logger.warn('overlay subscribe 실패', { message: e.message }));
