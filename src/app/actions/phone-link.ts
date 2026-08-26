@@ -7,6 +7,7 @@ import { getSessionUser } from '@/server/auth';
 import { newId } from '@/lib/id';
 import { encrypt, generateNumericCode, hmac, maskPhone, normalizePhone, phoneHash, safeEqual } from '@/lib/crypto';
 import { getMtAdapter } from '@/server/adapters/mt';
+import { applyMtTemplateOverride, tplPhoneLinkVerify } from '@/server/services/mt-templates';
 import { env, isLocal } from '@/lib/env';
 import { logger } from '@/lib/logger';
 
@@ -107,11 +108,8 @@ export async function requestPhoneVerification(
   const masked = maskPhone(phone);
 
   const adapter = getMtAdapter();
-  const sent = await adapter.send({
-    to: phone,
-    text: `[도네이도] 휴대폰 번호 확인 인증번호는 ${code} 입니다. 5분 안에 입력해 주세요.`,
-    templateCode: 'PHONE_VERIFY',
-  });
+  const template = await applyMtTemplateOverride(tplPhoneLinkVerify(code));
+  const sent = await adapter.send({ to: phone, text: template.text, templateCode: template.code });
   if (!sent.ok) {
     return { ok: false, message: '인증번호 발송에 실패했습니다. 잠시 후 다시 시도해 주세요.' };
   }

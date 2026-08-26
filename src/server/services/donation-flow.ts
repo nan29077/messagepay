@@ -50,6 +50,9 @@ async function sendMt(input: {
   creatorId?: string | null;
 }) {
   const adapter = getMtAdapter();
+  // 관리자가 화면에서 저장한 본문이 있으면 그 문구로 바꿔 보낸다.
+  // (조회 실패 시에는 원본 템플릿이 그대로 돌아오므로 발송 자체는 막히지 않는다)
+  const template = await tpl.applyMtTemplateOverride(input.template);
   const row = await prisma.mtOutboundMessage.create({
     data: {
       id: newId(),
@@ -57,16 +60,16 @@ async function sendMt(input: {
       phoneEnc: encrypt(normalizePhone(input.phone)),
       phoneMasked: maskPhone(input.phone),
       fromNumber: env.mt.fromNumber,
-      messageType: decideMessageType(input.template.text),
-      templateCode: input.template.code,
-      bodyMasked: input.template.masked,
+      messageType: decideMessageType(template.text),
+      templateCode: template.code,
+      bodyMasked: template.masked,
       donationId: input.donationId ?? null,
       creatorId: input.creatorId ?? null,
     },
   });
 
   try {
-    const res = await adapter.send({ to: normalizePhone(input.phone), text: input.template.text, templateCode: input.template.code });
+    const res = await adapter.send({ to: normalizePhone(input.phone), text: template.text, templateCode: template.code });
     await prisma.mtOutboundMessage.update({
       where: { id: row.id },
       data: {

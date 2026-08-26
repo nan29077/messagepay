@@ -1171,25 +1171,25 @@ model OverlayEvent {
 }
 
 model TtsSetting {
-  id         String   @id
-  creatorId  String   @unique @map("creator_id")
-  enabled    Boolean  @default(true)
-  voice      String   @default("ko-KR-Standard-A")
-  speed      Float    @default(1.0)
-  volume     Float    @default(1.0)
-  readAmount Boolean  @default(true) @map("read_amount")
-  readName   Boolean  @default(true) @map("read_name")
-  minAmount  BigInt   @default(3000) @map("min_amount")
-  maxChars   Int      @default(80) @map("max_chars")
+  id                   String   @id
+  creatorId            String   @unique @map("creator_id")
+  enabled              Boolean  @default(true)
+  voice                String   @default("ko-KR-Standard-A")
+  speed                Float    @default(1.0)
+  volume               Float    @default(1.0)
+  readAmount           Boolean  @default(true) @map("read_amount")
+  readName             Boolean  @default(true) @map("read_name")
+  minAmount            BigInt   @default(3000) @map("min_amount")
+  maxChars             Int      @default(80) @map("max_chars")
   /// 음성 합성 제공사. browser = 오버레이 브라우저의 Web Speech API, naver = 네이버 클로바 Voice 서버 합성
-  provider   String   @default("browser") @map("tts_provider")
+  provider             String   @default("browser") @map("tts_provider")
   /// 네이버 클로바 Voice 인증 정보. 암호화해서 저장하고 화면에는 마스킹만 노출한다.
-  naverClientIdEnc     String? @map("naver_client_id_enc")
-  naverClientSecretEnc String? @map("naver_client_secret_enc")
+  naverClientIdEnc     String?  @map("naver_client_id_enc")
+  naverClientSecretEnc String?  @map("naver_client_secret_enc")
   /// 화면 표시용 마스킹 값 (원문 복원 불가)
-  naverClientIdMasked  String? @map("naver_client_id_masked")
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  naverClientIdMasked  String?  @map("naver_client_id_masked")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   creator CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
 
@@ -1558,4 +1558,27 @@ model PublicHoliday {
 
   @@index([date, active])
   @@map("public_holiday")
+}
+
+/// MT 문자 본문 커스터마이즈.
+///
+/// 안내 문구는 운영 중에 자주 바뀌는데, 그때마다 배포를 하면 반영이 늦고 위험하다.
+/// 관리자 화면(/admin/mt-templates)에서 저장한 본문이 여기에 쌓이고,
+/// 발송 직전에 코드 기본값 대신 이 본문을 사용한다(applyMtTemplateOverride).
+///
+/// - code 는 MT_TEMPLATE 코드값이다. 행이 없으면 코드 기본 문구를 쓴다.
+/// - 보안링크가 들어가는 템플릿(REGISTER_GUIDE / CONFIRM_PAYMENT / PIN_REQUEST)은
+///   링크가 빠지면 흐름이 끊기므로 저장 자체를 막는다(validateMtTemplateBody).
+model MtMessageTemplate {
+  id        String   @id
+  /// MT_TEMPLATE 코드값
+  code      String   @unique
+  /// 치환자({후원자} 등)를 포함한 커스텀 본문
+  body      String
+  /// 마지막으로 수정한 관리자 사용자 ID
+  updatedBy String?  @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("mt_message_template")
 }

@@ -5,6 +5,7 @@ import { kv } from '@/server/redis';
 import { newId } from '@/lib/id';
 import { generateNumericCode, hmac, maskPhone, normalizePhone, phoneHash, safeEqual } from '@/lib/crypto';
 import { getMtAdapter } from '@/server/adapters/mt';
+import { applyMtTemplateOverride, tplLookupVerify } from '@/server/services/mt-templates';
 import { env, isLocal } from '@/lib/env';
 import { logger } from '@/lib/logger';
 import { formatWon } from '@/lib/money';
@@ -90,11 +91,8 @@ export async function requestLookupCode(_prev: LookupState, formData: FormData):
   const ticket = newId();
 
   const adapter = getMtAdapter();
-  const res = await adapter.send({
-    to: phone,
-    text: `[도네이도] 후원내역 확인 인증번호는 ${code} 입니다. 5분 안에 입력해 주세요.`,
-    templateCode: 'LOOKUP_VERIFY',
-  });
+  const template = await applyMtTemplateOverride(tplLookupVerify(code));
+  const res = await adapter.send({ to: phone, text: template.text, templateCode: template.code });
   if (!res.ok) {
     return { ok: false, step: 'phone', message: '인증번호 발송에 실패했습니다. 잠시 후 다시 시도해 주세요.' };
   }

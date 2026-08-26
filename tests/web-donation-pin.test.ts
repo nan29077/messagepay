@@ -99,7 +99,7 @@ describe('후원샵 웹 후원 — PIN 인증 흐름', () => {
     expect(state.mock).toBe(true);
 
     // 인증번호(OTP) 문자는 더 이상 나가지 않는다.
-    expect(await prisma.mtOutboundMessage.count({ where: { templateCode: 'WEBDON_VERIFY' } })).toBe(0);
+    expect(await prisma.mtOutboundMessage.count({ where: { templateCode: 'PAYMENT_VERIFY' } })).toBe(0);
 
     // PIN 링크 문자 1통만 나간다.
     const mt = await prisma.mtOutboundMessage.findFirstOrThrow({ where: { templateCode: 'PIN_REQUEST' } });
