@@ -1,6 +1,7 @@
 import { prisma } from '@/server/db';
 import { newId, newOrderNo, newTransactionNo } from '@/lib/id';
 import { decrypt, encrypt, maskPhone, normalizePhone, phoneHash as hashPhone } from '@/lib/crypto';
+import { donorDisplayName } from '@/lib/donor-name';
 import { logger } from '@/lib/logger';
 import { env, allowLegacyConfirmLink } from '@/lib/env';
 import type { MoInbound } from '@/server/adapters/mo';
@@ -519,7 +520,9 @@ async function processMoRow(
   });
 
   const amount = creator.donationAmount;
-  const displayName = donor.displayName || maskPhone(inbound.fromNumber);
+  // 닉네임을 설정하지 않았으면 번호 끝 4자리로 만든 기본 이름을 쓴다 (예: 후원자5678).
+  // 이 값은 후원 시점에 박제되므로, 나중에 닉네임을 바꿔도 과거 내역은 그대로 남는다.
+  const displayName = donorDisplayName(donor.displayName, inbound.fromNumber);
 
   // (5) 후원 거래 생성 (멱등)
   const idem = await acquireIdempotency('donation', `${creator.id}:${inbound.providerMessageId}`);

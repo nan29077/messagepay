@@ -19,6 +19,7 @@ import { formatWon } from '@/lib/money';
 import { computeFees } from '@/server/services/settlement';
 import { LinkShell } from './link-shell';
 import { RegisterForm, type TermsItem } from './register-form';
+import { defaultDonorName } from '@/lib/donor-name';
 import { ConfirmPanel } from './confirm-panel';
 
 /**
@@ -297,7 +298,7 @@ async function RegisterScreen({ token }: { token: string }) {
         </ul>
       </Card>
 
-      <RegisterForm token={token} terms={terms} />
+      <RegisterForm token={token} terms={terms} defaultName={defaultDonorName(ctx.phoneMasked)} />
     </div>
   );
 }

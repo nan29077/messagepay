@@ -65,8 +65,10 @@ export function tplRegisterGuide(
   method: 'ACCOUNT' | 'CARD' = 'ACCOUNT',
 ): TemplateOutput {
   const what = method === 'CARD' ? '카드 등록' : '계좌 등록';
+  // 등록 화면에서 방송 닉네임도 정할 수 있다는 것을 미리 알려 입력률을 높인다.
+  // (선택 항목이라 안내가 없으면 대부분 그냥 지나친다)
   const text = withLink(
-    `[도네이도] ${creatorName} 크리에이터 문자후원을 이용하려면 ${what}과 이용 동의가 필요합니다. 최초 문자는 후원 처리되지 않았습니다. 등록:`,
+    `[도네이도] ${creatorName} 크리에이터 문자후원을 이용하려면 ${what}과 이용 동의가 필요합니다. 최초 문자는 후원 처리되지 않았습니다. 등록 화면에서 방송에 표시될 닉네임도 정할 수 있습니다. 등록:`,
     link,
   );
   return { code: MT_TEMPLATE.REGISTER_GUIDE, text, masked: maskLink(text) };

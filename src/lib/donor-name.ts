@@ -1,0 +1,90 @@
+import { normalizePhone } from '@/lib/crypto';
+
+/**
+ * 후원자 표시 이름(닉네임) 규칙.
+ *
+ * 문자후원은 휴대폰 번호만 수집하므로, 닉네임을 설정하기 전에는
+ * 크리에이터 화면·오버레이·유튜브 채팅에 번호가 그대로 노출된다.
+ * 그래서 기본값을 "후원자{끝 4자리}" 로 두어
+ *  - 이름처럼 읽히고
+ *  - 앞자리(010 등)가 방송에 나가지 않도록 노출 범위를 좁힌다.
+ *
+ * 여기 있는 함수는 순수 함수만 둔다(브라우저에서도 그대로 쓴다).
+ * 금칙어 검사처럼 DB 가 필요한 검증은 server/services/donor-name.ts 가 담당한다.
+ */
+
+export const DONOR_NAME_MIN = 2;
+export const DONOR_NAME_MAX = 10;
+
+/** 기본 닉네임 접두사. 바꾸면 기존 사용자의 표시 이름도 함께 바뀐다. */
+const DEFAULT_PREFIX = '후원자';
+
+/**
+ * 번호로 기본 닉네임을 만든다. 예) 010-1234-5678 → 후원자5678
+ * 번호가 짧아 끝 4자리를 못 얻으면 접두사만 돌려준다.
+ */
+export function defaultDonorName(phone: string): string {
+  const digits = normalizePhone(phone).replace(/\D/g, '');
+  const tail = digits.slice(-4);
+  return tail.length === 4 ? `${DEFAULT_PREFIX}${tail}` : DEFAULT_PREFIX;
+}
+
+/** 화면에 쓸 표시 이름. 저장된 닉네임이 있으면 그것을, 없으면 기본값을 쓴다. */
+export function donorDisplayName(nickname: string | null | undefined, phone: string): string {
+  const t = (nickname ?? '').trim();
+  return t.length > 0 ? t : defaultDonorName(phone);
+}
+
+/** 기본값으로 자동 생성된 이름인지(= 사용자가 직접 정하지 않았는지) */
+export function isDefaultDonorName(name: string | null | undefined): boolean {
+  const t = (name ?? '').trim();
+  return t === DEFAULT_PREFIX || new RegExp(`^${DEFAULT_PREFIX}\\d{4}$`).test(t);
+}
+
+/**
+ * 입력값 정리.
+ * 제어문자·이모지 조합을 깨뜨리지 않도록 제어문자와 폭 없는 문자만 걷어내고,
+ * 연속 공백을 하나로 줄인 뒤 앞뒤 공백을 없앤다.
+ */
+export function normalizeDonorName(raw: string): string {
+  return raw
+    // 제어문자 제거
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    // 폭 없는 문자·방향 제어 문자 제거 (보이지 않는 글자로 길이 제한을 우회하는 것을 막는다)
+    .replace(/[\u200B-\u200F\u202A-\u202E\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export interface DonorNameCheck {
+  ok: boolean;
+  /** 정리된 값. ok 일 때만 저장에 쓴다. */
+  value: string;
+  message?: string;
+}
+
+/**
+ * 형식 검사(길이·문자). 금칙어는 서버에서 별도로 본다.
+ * 빈 값은 "설정하지 않음"이라 허용한다(기본값이 대신 쓰인다).
+ */
+export function checkDonorName(raw: string): DonorNameCheck {
+  const value = normalizeDonorName(raw);
+  if (value.length === 0) return { ok: true, value: '' };
+
+  // 이모지·한글 등은 코드 포인트 기준으로 세야 길이가 사람 감각과 맞는다.
+  const length = [...value].length;
+  if (length < DONOR_NAME_MIN) {
+    return { ok: false, value, message: `닉네임은 ${DONOR_NAME_MIN}자 이상 입력해 주세요.` };
+  }
+  if (length > DONOR_NAME_MAX) {
+    return { ok: false, value, message: `닉네임은 ${DONOR_NAME_MAX}자 이내로 입력해 주세요.` };
+  }
+  // 방송 화면과 유튜브 채팅에 그대로 나가므로 링크·연락처는 애초에 막는다.
+  if (/(https?:\/\/|www\.)/i.test(value)) {
+    return { ok: false, value, message: '닉네임에는 링크를 넣을 수 없습니다.' };
+  }
+  if (/\d{6,}/.test(value)) {
+    return { ok: false, value, message: '닉네임에 연락처처럼 보이는 숫자는 넣을 수 없습니다.' };
+  }
+  return { ok: true, value };
+}

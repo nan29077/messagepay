@@ -143,7 +143,12 @@ try {
   const mText = await bodyText(m);
 
   r.ok('모바일: 전용 후원 번호 카드', mText.includes(`${SEED.creator1Name} 전용 후원 번호`));
-  r.ok('모바일: 배정된 MO 번호가 보인다', mText.includes(SEED.creator1Mo));
+  {
+    // 화면은 0505-1001-001 처럼 끊어 보여 주고 DB 에는 하이픈 없이 저장한다.
+    // 서식이 바뀌어도 깨지지 않게 숫자만 남겨 비교한다.
+    const digits = mText.replace(/[^0-9]/g, '');
+    r.ok('모바일: 배정된 MO 번호가 보인다', digits.includes(SEED.creator1Mo), '화면에서 번호를 찾지 못함');
+  }
   r.ok('모바일: 번호 복사 버튼', (await m.locator('button:has-text("번호 복사")').count()) > 0);
   r.ok('모바일: sms 링크로 문자 앱을 연다', (await m.locator(`a[href^="sms:"]`).count()) > 0);
   r.ok('모바일: 하단 고정 후원 바', (await m.locator('div.fixed.inset-x-0.bottom-0').count()) > 0);
@@ -159,6 +164,66 @@ try {
   }
   r.ok('모바일: PC 후원 패널은 숨는다', !mText.includes(`${SEED.creator1Name} 님에게 후원하기`));
   await mctx.close();
+
+  // ══════════════ 미등록 후원자 → 등록 화면 (방송 닉네임 입력) ══════════════
+  {
+    const rctx = await b.newContext(desktop);
+    const rp = await rctx.newPage();
+    await gotoReady(rp, SHOP);
+    await rp.locator('div.hidden.sm\\:block button:has-text("문자후원하기")').click();
+    await rp.waitForSelector('text=1. 금액·메시지', { timeout: 20_000 }).catch(() => {});
+    await rp.locator('textarea[maxlength="200"]').fill('첫 후원 시도입니다');
+    await rp.locator('button:has-text("후원 진행 (번호 입력)")').click();
+    await rp.waitForSelector('input[name=phone]', { timeout: 20_000 }).catch(() => {});
+
+    // 시드에 없는 번호 → 등록 안내 문자가 나간다
+    const NEW_PHONE = '010-7788-4321';
+    await rp.fill('input[name=phone]', NEW_PHONE);
+    await rp.locator('button:has-text("PIN 입력 링크 문자로 받기")').click();
+    await rp.waitForTimeout(3000);
+    r.ok('미등록 번호는 결제수단 등록 안내로 넘어간다', (await bodyText(rp)).includes('결제수단 등록이 필요합니다'));
+    r.ok('등록 창 열기 버튼', (await rp.locator('button:has-text("결제수단 등록 창 열기")').count()) > 0);
+
+    // 등록 링크는 화면이 팝업으로 연다. 보안링크 토큰은 어디에도 노출되지 않으므로
+    // 팝업을 그대로 받아 등록 화면을 검증한다.
+    const [reg] = await Promise.all([
+      rp.waitForEvent('popup', { timeout: 20_000 }).catch(() => null),
+      rp.locator('button:has-text("결제수단 등록 창 열기")').click(),
+    ]);
+    r.ok('등록 창이 팝업으로 열린다', Boolean(reg), '팝업을 받지 못함');
+
+    if (reg) {
+      await reg.waitForLoadState('networkidle').catch(() => {});
+      await reg.waitForTimeout(500);
+      const regText = await bodyText(reg);
+      r.ok('등록 화면이 열린다', regText.includes('계좌 등록과 이용 동의'), regText.slice(0, 160));
+
+      // 방송 닉네임 (선택 입력)
+      r.ok('방송 닉네임 입력칸이 있다', regText.includes('방송에 표시될 닉네임 (선택)'));
+      const nickInput = reg.locator('input[aria-label="방송에 표시될 닉네임"]');
+      r.ok('닉네임 입력 필드', (await nickInput.count()) > 0);
+      r.ok('미입력 시 기본 이름 안내(후원자4321)', regText.includes('후원자4321'), regText.slice(0, 240));
+      r.ok('방송 표시 미리보기', regText.includes('방송·유튜브 채팅에 이렇게 표시됩니다'));
+      r.ok('기본 이름으로 미리보기가 나온다', regText.includes('후원자4321님이 3,000원을 후원하셨습니다'));
+      r.ok('나중에 바꿀 수 있다는 안내', regText.includes('마이페이지에서 언제든지 바꿀 수 있습니다'));
+
+      // 입력하면 미리보기가 즉시 바뀐다
+      await nickInput.fill('밤톨이');
+      await reg.waitForTimeout(400);
+      r.ok('닉네임을 넣으면 미리보기가 바뀐다', (await bodyText(reg)).includes('밤톨이님이 3,000원을 후원하셨습니다'));
+
+      // 길이 제한(2~10자)
+      await nickInput.fill('가'.repeat(11));
+      await reg.waitForTimeout(400);
+      r.ok('10자를 넘기면 경고가 뜬다', (await bodyText(reg)).includes('10자 이내'));
+      await nickInput.fill('');
+      await reg.waitForTimeout(300);
+      r.ok('비우면 다시 기본 이름 미리보기로 돌아간다', (await bodyText(reg)).includes('후원자4321님이'));
+
+      await reg.close();
+    }
+    await rctx.close();
+  }
 
   // ══════════════════════════════ 잘못된 코드 ══════════════════════════════
   const nctx = await b.newContext(desktop);

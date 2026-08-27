@@ -2,13 +2,15 @@
 
 import * as React from 'react';
 import { ChevronRight, ShieldCheck } from 'lucide-react';
-import { Button, Card, Checkbox, Notice, cx } from '@/components/ui';
+import { Button, Card, Checkbox, Input, Notice, cx } from '@/components/ui';
 import { startRegistrationAction } from '@/app/actions/registration';
+import { checkDonorName, DONOR_NAME_MAX } from '@/lib/donor-name';
 
 /**
  * 이용 동의 + 계좌 등록 시작.
  * - 필수 항목을 모두 동의하기 전에는 제출할 수 없다.
  * - 마케팅(선택) 동의는 필수 항목과 분리해 표시한다.
+ * - 방송 닉네임은 선택 입력이다. 비워두면 번호 끝 4자리로 만든 기본 이름이 쓰인다.
  */
 
 export interface TermsItem {
@@ -20,13 +22,27 @@ export interface TermsItem {
   version: string;
 }
 
-export function RegisterForm({ token, terms }: { token: string; terms: TermsItem[] }) {
+export function RegisterForm({
+  token,
+  terms,
+  defaultName,
+}: {
+  token: string;
+  terms: TermsItem[];
+  /** 닉네임을 비워둘 경우 쓰이는 이름 (예: 후원자5678) */
+  defaultName: string;
+}) {
   const required = terms.filter((t) => t.required);
   const optional = terms.filter((t) => !t.required);
 
   const [agreed, setAgreed] = React.useState<Record<string, boolean>>({});
+  const [nickname, setNickname] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
+
+  const nameCheck = checkDonorName(nickname);
+  // 입력 도중(1글자)에는 빨간 경고를 띄우지 않는다. 지우고 다시 쓰는 중일 수 있다.
+  const nameError = nickname.trim().length > 1 && !nameCheck.ok ? nameCheck.message : null;
 
   const allRequiredAgreed = required.length > 0 && required.every((t) => agreed[t.type]);
   const allAgreed = terms.every((t) => agreed[t.type]);
@@ -43,19 +59,65 @@ export function RegisterForm({ token, terms }: { token: string; terms: TermsItem
 
   function submit() {
     if (!allRequiredAgreed || pending) return;
+    if (!nameCheck.ok) {
+      setError(nameCheck.message ?? '닉네임을 다시 입력해 주세요.');
+      return;
+    }
     setError(null);
     startTransition(async () => {
       const res = await startRegistrationAction(
         token,
         terms.map((t) => ({ type: t.type as never, agreed: Boolean(agreed[t.type]) })),
+        'ACCOUNT',
+        nameCheck.value,
       );
       // 성공하면 결제창으로 리다이렉트되므로 아래 코드는 실행되지 않는다.
       if (res && res.ok === false) setError(res.message);
     });
   }
 
+  const preview = nameCheck.ok && nameCheck.value.length > 0 ? nameCheck.value : defaultName;
+
   return (
     <div className="space-y-3">
+      {/*
+        방송 닉네임 (선택).
+        후원자는 번호만 남기므로, 설정하지 않으면 크리에이터 화면과 방송에
+        "후원자5678" 처럼 표시된다. 결과를 미리 보여줘야 그냥 넘기지 않는다.
+      */}
+      <Card>
+        <p className="text-[14.5px] font-bold text-ink-900">방송에 표시될 닉네임 (선택)</p>
+        <p className="mt-1 text-[12px] leading-relaxed text-ink-500">
+          유튜브·인스타 등에서 쓰는 닉네임을 적어두면 크리에이터가 누가 보냈는지 알아볼 수 있습니다.
+        </p>
+        <div className="mt-2.5">
+          <Input
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            maxLength={DONOR_NAME_MAX + 4}
+            placeholder="예: 밤톨이"
+            aria-label="방송에 표시될 닉네임"
+            aria-invalid={Boolean(nameError)}
+          />
+        </div>
+        {nameError ? (
+          <p className="mt-1.5 text-[12px] font-semibold text-danger-500">{nameError}</p>
+        ) : (
+          <p className="mt-1.5 text-[12px] text-ink-400">
+            {DONOR_NAME_MAX}자 이내. 비워두면 <b className="font-bold text-ink-700">{defaultName}</b> 로 표시됩니다.
+          </p>
+        )}
+        <div className="mt-2.5 rounded-xl bg-brand-50 px-3.5 py-2.5">
+          <p className="text-[11px] font-bold text-brand-700">방송·유튜브 채팅에 이렇게 표시됩니다</p>
+          <p className="mt-0.5 text-[13px] font-semibold text-ink-900">
+            {preview}님이 3,000원을 후원하셨습니다
+          </p>
+        </div>
+        <p className="mt-2 text-[11.5px] leading-relaxed text-ink-400">
+          닉네임은 나중에 마이페이지에서 언제든지 바꿀 수 있습니다.
+        </p>
+      </Card>
+
       <Card>
         <button
           type="button"

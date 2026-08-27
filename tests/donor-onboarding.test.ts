@@ -75,7 +75,10 @@ describe('전화번호별 내통장결제 가입 상태', () => {
     const success = await prisma.mtOutboundMessage.findFirstOrThrow({
       where: { donationId: donation.id, templateCode: 'DONATION_SUCCESS', status: 'SENT' },
     });
-    expect(success.bodyMasked).toContain('010-****-5678님, 테스트크리에이터 크리에이터에게 3,000원이 후원되었습니다. 감사합니다.');
+    // 닉네임을 정하지 않은 후원자는 번호 끝 4자리로 만든 기본 이름으로 표시된다.
+    // (예전에는 마스킹 번호 010-****-5678 을 그대로 썼다)
+    expect(success.bodyMasked).toContain('후원자5678님, 테스트크리에이터 크리에이터에게 3,000원이 후원되었습니다. 감사합니다.');
+    expect(success.bodyMasked).not.toContain('010-');
   });
 
   it('결제수단 해지 후에는 가입 링크를 재발송하거나 결제하지 않는다', async () => {

@@ -27,6 +27,7 @@ const TITLES = Object.fromEntries([
   ['/admin/codes', '크리에이터 코드 관리'],
   ['/admin/mo-numbers', 'MO 번호 재고·배정'],
   ['/admin/mo-messages', '수신 문자 관리'],
+  ['/admin/mt-templates', 'MT 메시지 관리'],
   ['/admin/mt-messages', 'MT 발송 관리'],
   ['/admin/payments', '결제 관리'],
   ['/admin/refunds', '환불 관리'],
@@ -49,7 +50,8 @@ const TITLES = Object.fromEntries([
   ['/admin/simulator', 'MO 시뮬레이터'],
 ]);
 
-const MENU_GROUPS = ['운영현황', '회원·크리에이터', '거래', '방송', '정산·정책·운영'];
+// 사이드바 그룹 제목. 메뉴 재편이 잦아 목록 자체보다 "그룹이 제대로 서 있는가"를 본다.
+const MENU_GROUPS = ['운영현황', '회원·크리에이터', '거래·결제', '방송·오버레이', '정산·수수료', '콘텐츠·운영', '시스템·보안'];
 
 const POLICY_FIELDS = [
   'defaultAmount', 'minAmount', 'maxAmount',
@@ -71,7 +73,7 @@ try {
   {
     const nav = await p.locator('aside').first().innerText();
     const miss = missingOf(nav, MENU_GROUPS);
-    r.ok('메뉴 그룹 5종', miss.length === 0, miss.join(','));
+    r.ok(`메뉴 그룹 ${MENU_GROUPS.length}종`, miss.length === 0, miss.join(','));
     r.ok('최고관리자에게는 문의 관리 메뉴가 보인다', nav.includes('문의 관리'));
     r.ok('사이드바에 권한이 표기된다', nav.includes('최고 관리자'));
   }

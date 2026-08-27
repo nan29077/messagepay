@@ -1,12 +1,12 @@
 /**
- * 10차 E2E — 알림 버튼 / 영업일 5일 정산주기 표시 / 공휴일 관리 / 오버레이 파이프라인.
+ * 10차 E2E — 알림 버튼 / 방송 닉네임 / 영업일 5일 정산주기 표시 / 공휴일 관리 / 오버레이 파이프라인.
  *
  * "크리에이터가 정산을 요청하면 최고관리자 알림함에 실제로 꽂히는가" 를
  * 화면 클릭만으로 끝까지 확인한다.
  */
 import {
   launch, createReporter, bodyText, missingOf, gotoReady, login, loginAdmin, loginCreator,
-  ACCOUNTS, BASE, desktop, mobile, assertServerUp,
+  ACCOUNTS, BASE, SEED, desktop, mobile, assertServerUp,
 } from './_helpers.mjs';
 
 await assertServerUp();
@@ -64,6 +64,55 @@ try {
     } else {
       r.ok('모바일: 햄버거 버튼을 찾았다', false, '헤더에서 햄버거를 찾지 못함');
     }
+    await ctx.close();
+  }
+
+  // ══════════════ 1-2. 방송 닉네임 (마이페이지 + 후원샵 안내) ══════════════
+  {
+    const ctx = await b.newContext(desktop);
+    const p = await ctx.newPage();
+    await login(p, ACCOUNTS.donor, { expectUrl: /\/(my|)$/ });
+
+    await gotoReady(p, `${BASE}/my/account`);
+    const acc = await bodyText(p);
+    r.ok('마이페이지에 방송 닉네임 섹션이 있다', acc.includes('방송 닉네임'), acc.slice(0, 160));
+    r.ok('닉네임 안내 문구', acc.includes('방송 오버레이·유튜브 채팅에 표시되는 이름'));
+    r.ok('닉네임 입력칸', (await p.locator('input[name=nickname]').count()) > 0);
+    r.ok('방송 표시 미리보기', acc.includes('방송·유튜브 채팅에 이렇게 표시됩니다'));
+    r.ok('과거 후원은 그대로 남는다는 안내', acc.includes('이미 접수된 후원은 그때 표시된 이름이 그대로 남습니다'));
+
+    // 설정 전에는 번호 끝 4자리 기본 이름이 보인다
+    r.ok('설정 전에는 기본 이름(후원자5678)이 미리보기에 나온다', acc.includes('후원자5678'), acc.slice(0, 200));
+
+    // 실제로 저장해 본다
+    const NICK = 'E2E밤톨이';
+    await p.fill('input[name=nickname]', NICK);
+    await p.locator('button:has-text("닉네임 저장")').click();
+    await p.waitForTimeout(3000);
+    const saved = await bodyText(p);
+    r.ok('닉네임이 저장된다', saved.includes('닉네임이 저장되었습니다'), saved.slice(-200));
+    r.ok('저장한 닉네임이 유지된다', (await p.inputValue('input[name=nickname]')) === NICK);
+    r.ok('미리보기가 새 닉네임으로 바뀐다', saved.includes(`${NICK}님이`), '미리보기 문구 불일치');
+
+    // 길이 제한(2~10자)
+    await p.fill('input[name=nickname]', '가'.repeat(11));
+    await p.waitForTimeout(300);
+    r.ok('10자 초과는 화면에서 막힌다', (await bodyText(p)).includes('10자 이내'));
+
+    // 후원샵 안내 배너
+    await gotoReady(p, `${BASE}/c/${SEED.creator1Code}`);
+    const shop = await bodyText(p);
+    r.ok('후원샵에 닉네임 안내가 뜬다', shop.includes(`방송에 ${NICK} 님으로 표시됩니다`), shop.slice(0, 200));
+    r.ok('닉네임 변경 링크', (await p.locator('a[href="/my/account#nickname"]').count()) > 0);
+
+    // 비로그인 방문자에게는 안내하지 않는다
+    const anon = await b.newContext(desktop);
+    const ap = await anon.newPage();
+    await gotoReady(ap, `${BASE}/c/${SEED.creator1Code}`);
+    const anonText = await bodyText(ap);
+    r.ok('비로그인 방문자에게는 닉네임 안내가 없다', !anonText.includes('닉네임 설정하기') && !anonText.includes('님으로 표시됩니다'));
+    await anon.close();
+
     await ctx.close();
   }
 
@@ -225,7 +274,7 @@ try {
     await o.locator('button:has-text("테스트 후원 보내기")').click();
     await ov2.waitForTimeout(4000);
     const shown = await bodyText(ov2);
-    r.ok('테스트 후원이 오버레이에 표시된다', shown.includes('테스트 후원자') && shown.includes('후원했습니다'), shown.slice(0, 160));
+    r.ok('테스트 후원이 오버레이에 표시된다', shown.includes('테스트 후원자') && shown.includes('후원하셨습니다'), shown.slice(0, 160));
     r.ok('금액이 표시된다', shown.includes('3,000원'));
     r.ok('테스트 배지가 붙는다', shown.includes('테스트'));
     r.ok('메시지가 표시된다', shown.includes('오늘 방송 재미있어요'));

@@ -1,6 +1,7 @@
 import { prisma } from '@/server/db';
 import { newId, newTransactionNo } from '@/lib/id';
 import { encrypt } from '@/lib/crypto';
+import { donorDisplayName } from '@/lib/donor-name';
 import { filterContent } from './content-filter';
 import { checkLimits } from './limits';
 import { acquireIdempotency } from './idempotency';
@@ -120,8 +121,9 @@ export async function createWebDonation(input: WebDonationInput): Promise<WebDon
         donorId: donor.id,
         channel: 'WEB',
         amount: input.amount,
-        // donor.phoneMasked 는 이미 마스킹된 값이라 다시 마스킹하면 '***' 만 남는다.
-        displayName: donor.displayName || '익명의 후원자',
+        // 닉네임을 설정하지 않았으면 번호 끝 4자리로 만든 기본 이름을 쓴다 (예: 후원자5678).
+        // phoneMasked(010-****-5678)에도 끝 4자리는 남아 있어 그대로 재료로 쓸 수 있다.
+        displayName: donorDisplayName(donor.displayName, donor.phoneMasked),
         message: filtered.clean,
         messageRawEnc: encrypt(input.message),
         status: 'RECEIVED',

@@ -8,6 +8,7 @@ import { getSessionUser, destroySession } from '@/server/auth';
 import { revokePaymentMethod } from '@/server/services/donor-registration';
 import { requestRefund } from '@/server/services/refund';
 import { resolvePolicy } from '@/server/services/limits';
+import { validateDonorName } from '@/server/services/donor-name';
 import { newId } from '@/lib/id';
 
 /**
@@ -114,6 +115,41 @@ export async function updateDonorLimits(
   });
   revalidatePath('/my/limits');
   return { ok: true, message: '한도가 저장되었습니다.' };
+}
+
+// ---------------------------------------------------------------- 방송 닉네임
+
+/**
+ * 방송에 표시될 닉네임 변경.
+ *
+ * 이미 접수된 후원(Donation.displayName)은 그때의 이름을 그대로 둔다.
+ * 방송에 이미 나간 이름을 나중에 바꾸면 기록이 실제 송출과 어긋나기 때문이다.
+ * 이후 후원부터 새 닉네임이 적용된다.
+ */
+export async function updateDonorNickname(
+  _prev: DonorActionState,
+  formData: FormData,
+): Promise<DonorActionState> {
+  const ctx = await currentDonor();
+  if (!ctx) return { ok: false, message: NO_DONOR };
+
+  const raw = String(formData.get('nickname') ?? '');
+  const checked = await validateDonorName(raw);
+  if (!checked.ok) return { ok: false, message: checked.message ?? '닉네임을 다시 입력해 주세요.' };
+
+  await prisma.donorProfile.update({
+    where: { id: ctx.donor.id },
+    // 빈 값으로 저장하면 기본 이름(후원자5678)으로 되돌아간다.
+    data: { displayName: checked.value.length > 0 ? checked.value : null },
+  });
+  revalidatePath('/my/account');
+  return {
+    ok: true,
+    message:
+      checked.value.length > 0
+        ? '닉네임이 저장되었습니다. 다음 후원부터 적용됩니다.'
+        : '닉네임을 지웠습니다. 기본 이름으로 표시됩니다.',
+  };
 }
 
 // ---------------------------------------------------------------- 크리에이터 차단

@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger';
 import { env } from '@/lib/env';
 import { getPaymentAdapter } from '@/server/adapters/payment';
 import { resolveSecureLink, consumeSecureLink } from './secure-link';
+import { validateDonorName } from './donor-name';
 import type { ConsentType, PaymentMethodKind } from '@/generated/prisma/enums';
 
 /**
@@ -73,6 +74,8 @@ export async function startRegistration(input: {
   token: string;
   consents: ConsentInput[];
   method?: PaymentMethodKind;
+  /** 방송에 표시될 닉네임(선택). 빈 값이면 설정하지 않은 것으로 본다. */
+  nickname?: string;
   ip?: string;
   userAgent?: string;
 }) {
@@ -89,6 +92,17 @@ export async function startRegistration(input: {
 
   const donor = await prisma.donorProfile.findUnique({ where: { id: ctx.donorId } });
   if (!donor) throw new Error('후원자 정보를 찾을 수 없습니다.');
+
+  // 방송 닉네임(선택). 결제창으로 넘어가기 전에 저장해 둔다.
+  // 결제창에서 이탈해도 닉네임은 남으므로 다시 등록할 때 또 입력하지 않아도 된다.
+  if (input.nickname !== undefined && input.nickname.trim().length > 0) {
+    const checked = await validateDonorName(input.nickname);
+    if (!checked.ok) throw new Error(checked.message ?? '닉네임을 다시 입력해 주세요.');
+    await prisma.donorProfile.update({
+      where: { id: donor.id },
+      data: { displayName: checked.value },
+    });
+  }
 
   // 동의 이력 저장 (약관 버전 포함)
   const allTerms = await prisma.termsVersion.findMany({ where: { active: true } });

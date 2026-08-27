@@ -37,6 +37,8 @@ export async function startRegistrationAction(
   consents: ConsentPayload[],
   // 결제수단 종류. 카드 빌링키는 구조만 준비되어 있고 화면에서는 아직 계좌만 넘긴다.
   method: PaymentMethodKind = 'ACCOUNT',
+  // 방송에 표시될 닉네임(선택). 빈 문자열이면 설정하지 않은 것으로 본다.
+  nickname = '',
 ): Promise<ActionError | void> {
   const meta = await requestMeta();
 
@@ -46,6 +48,7 @@ export async function startRegistrationAction(
       token,
       consents,
       method,
+      nickname,
       ip: meta.ip,
       userAgent: meta.userAgent,
     });

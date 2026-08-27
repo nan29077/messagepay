@@ -17,6 +17,8 @@ import { normalizeCreatorCode } from '@/lib/id';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import { prisma } from '@/server/db';
+import { getSessionUser } from '@/server/auth';
+import { defaultDonorName } from '@/lib/donor-name';
 import { resolvePolicy } from '@/server/services/limits';
 import { getPaymentAdapter } from '@/server/adapters/payment';
 import { resolveWebDonationChannel } from '@/server/services/web-donation';
@@ -50,6 +52,23 @@ function formatMoNumber(raw: string) {
     return `${digits.slice(0, head)}-${digits.slice(head, head + tail)}-${digits.slice(head + tail)}`;
   }
   return raw;
+}
+
+/**
+ * 로그인한 방문자의 후원자 프로필. 없으면 null.
+ * 세션·프로필 조회 실패가 후원 페이지 자체를 막지 않도록 전부 흡수한다.
+ */
+async function currentViewerDonor() {
+  try {
+    const user = await getSessionUser();
+    if (!user) return null;
+    return await prisma.donorProfile.findUnique({
+      where: { userId: user.id },
+      select: { displayName: true, phoneMasked: true },
+    });
+  } catch {
+    return null;
+  }
 }
 
 async function findCreator(rawCode: string) {
@@ -109,6 +128,10 @@ export default async function CreatorDonationPage({ params }: Params) {
   // 정책 범위만 보여 주면 본인인증까지 마친 뒤 금액 범위 오류로 거절된다.
   const effMin = creator.minAmount > policy.minAmount ? creator.minAmount : policy.minAmount;
   const effMax = creator.maxAmount < policy.maxAmount ? creator.maxAmount : policy.maxAmount;
+
+  // 로그인한 후원자라면 방송에 어떤 이름으로 표시되는지 알려준다.
+  // 비로그인 방문자에게는 아무것도 보여주지 않는다(안내할 대상이 없다).
+  const viewerDonor = await currentViewerDonor();
 
   const route = creator.moRoutes[0] ?? null;
   const onAir = creator.liveOn && Boolean(creator.liveUrl);
@@ -297,6 +320,35 @@ export default async function CreatorDonationPage({ params }: Params) {
             )}
           </div>
         </section>
+
+        {/*
+          방송 닉네임 안내.
+          로그인한 후원자에게만 보여준다. 닉네임을 정하지 않았으면 번호 끝 4자리로
+          방송에 표시된다는 사실을 알려주고, 정했으면 지금 이름을 확인시켜 준다.
+        */}
+        {viewerDonor ? (
+          <section className="mt-6">
+            <div className="rounded-2xl border border-brand-200/70 bg-brand-50 px-4 py-3.5">
+              <p className="flex items-center gap-1.5 text-[13px] font-bold text-ink-900">
+                <BellRing size={15} strokeWidth={1.8} className="shrink-0 text-brand-700" />
+                {viewerDonor.displayName
+                  ? `방송에 ${viewerDonor.displayName} 님으로 표시됩니다`
+                  : '방송에 휴대폰 번호로 표시됩니다'}
+              </p>
+              <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-700">
+                {viewerDonor.displayName
+                  ? '후원하면 이 이름으로 방송 오버레이와 유튜브 채팅에 표시됩니다.'
+                  : `닉네임을 정하지 않아 ${defaultDonorName(viewerDonor.phoneMasked)} 로 표시됩니다. 닉네임을 정하면 크리에이터가 누가 보냈는지 알아볼 수 있습니다.`}
+              </p>
+              <Link
+                href="/my/account#nickname"
+                className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-bold text-brand-700 underline underline-offset-2"
+              >
+                닉네임 {viewerDonor.displayName ? '변경하기' : '설정하기'}
+              </Link>
+            </div>
+          </section>
+        ) : null}
 
         {/* 첫 문자 안내 (모바일 문자후원) */}
         <section className="mt-6 sm:hidden">

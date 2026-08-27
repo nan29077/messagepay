@@ -3,6 +3,8 @@ import { Landmark, MessageSquare, CreditCard, SlidersHorizontal, Ban, FileText, 
 import { Card, CardTitle, Badge, Notice, DataRow, LinkButton, SectionTitle } from '@/components/ui';
 import { RevokeForm } from '@/components/my/revoke-form';
 import { PhoneLinkForm } from '@/components/my/phone-link-form';
+import { NicknameForm } from '@/components/my/nickname-form';
+import { defaultDonorName } from '@/lib/donor-name';
 import { WithdrawForm } from '@/components/my/withdraw-form';
 import { requireDonorContext } from '@/components/my/donor';
 import { prisma } from '@/server/db';
@@ -15,7 +17,10 @@ export default async function MyAccountPage() {
   const { donorId } = await requireDonorContext('/my/account');
 
   const donor = donorId
-    ? await prisma.donorProfile.findUnique({ where: { id: donorId }, select: { phoneMasked: true } })
+    ? await prisma.donorProfile.findUnique({
+        where: { id: donorId },
+        select: { phoneMasked: true, displayName: true },
+      })
     : null;
 
   if (!donorId) {
@@ -66,6 +71,22 @@ export default async function MyAccountPage() {
           description="문자후원의 후원자 식별 기준입니다. 번호를 변경하면 새 번호의 내역이 표시됩니다."
         />
         <PhoneLinkForm linkedPhoneMasked={donor?.phoneMasked ?? null} />
+      </section>
+
+      {/*
+        방송 닉네임.
+        설정하지 않으면 번호 끝 4자리(후원자5678)로 표시되므로,
+        번호 섹션 바로 아래에 두어 "번호 대신 이렇게 보인다"는 흐름으로 읽히게 한다.
+      */}
+      <section id="nickname">
+        <SectionTitle
+          title="방송 닉네임"
+          description="크리에이터 화면과 방송 오버레이·유튜브 채팅에 표시되는 이름입니다."
+        />
+        <NicknameForm
+          current={donor?.displayName ?? null}
+          defaultName={defaultDonorName(donor?.phoneMasked ?? '')}
+        />
       </section>
 
       {active ? (
