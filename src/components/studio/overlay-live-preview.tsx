@@ -15,6 +15,8 @@ import { Badge, Button } from '@/components/ui';
  *  - 이 창이 SSE 로 붙어 있어야 [테스트 후원 보내기]가 즉시 재생된다.
  *    (오버레이 이벤트는 그 시점의 구독자에게만 전달된다)
  *  - 연결 상태는 오버레이가 postMessage 로 알려 준다(overlay-client 의 notifyParent).
+ *  - 테마 · 표시 위치 · 최대 글자 수는 이벤트 페이로드에 실려 오므로, 설정을 저장한 뒤
+ *    이 iframe 을 다시 불러오지 않아도 다음 테스트 후원부터 곧바로 반영된다.
  */
 
 interface LinkState {
@@ -120,8 +122,9 @@ export function OverlayLivePreview({ creatorId }: { creatorId: string }) {
       </div>
 
       <p className="text-[12px] leading-relaxed text-ink-400">
-        체커보드 무늬는 투명 배경을 보여 주기 위한 것으로, OBS·PRISM 에서는 방송 화면이 그대로 비칩니다. 이 미리보기도
-        오버레이 동시 연결 1개를 사용합니다. 브라우저 자동재생 정책에 따라 이 창에서는 음성이 나오지 않을 수 있습니다.
+        체커보드 무늬는 투명 배경을 보여 주기 위한 것으로, OBS·PRISM 에서는 방송 화면이 그대로 비칩니다. 이 미리보기
+        연결은 방송용 브라우저 소스 연결과 따로 관리되므로 방송 중에 열어 두어도 OBS 연결이 끊기지 않습니다. 브라우저
+        자동재생 정책에 따라 이 창에서는 음성이 나오지 않을 수 있습니다.
       </p>
     </div>
   );

@@ -16,7 +16,10 @@ import { playEffectSound } from '@/components/overlay/overlay-sound';
  *  - 금액 구간(effect/banner/durationMs)이 없는 예전 이벤트도 그대로 재생돼야 한다.
  *  - TTS 는 ttsMode 로 갈린다. server 면 서버 합성 mp3 를 재생하고, 실패하면 브라우저 음성으로 되돌아간다.
  *  - 효과음은 Web Audio 로 직접 합성한다(overlay-sound.ts). soundEnabled/soundVolume 을 따른다.
- *  - 테마(TORNADO/MINIMAL/NEON)는 서버에서 조회한 설정을 prop 으로 받아 CSS 클래스로만 적용한다.
+ *  - 테마(TORNADO/MINIMAL/NEON) · 표시 위치 · 최대 글자 수는 이벤트 페이로드 값을 우선 적용한다.
+ *    브라우저 소스는 방송 내내 열려 있으므로, 페이지를 열 때 받은 prop 만 쓰면 스튜디오에서
+ *    설정을 바꿔 저장해도 새로 고침 전까지 반영되지 않는다. prop 은 값이 없는 예전 이벤트용 기본값이다.
+ *  - 오버레이 표시가 꺼진 동안 도착한 이벤트는 방송 화면에서 무시한다(미리보기에서는 재생한다).
  */
 
 export interface OverlayTts {
@@ -49,6 +52,14 @@ export interface OverlayPayload {
   /** 효과음 음량 0~100. 없으면 80. */
   soundVolume?: number;
   durationMs: number;
+  /** 이 이벤트를 재생할 때 쓸 테마. 없으면(예전 이벤트) 페이지 로드 시 값을 쓴다. */
+  theme?: string;
+  /** 이 이벤트를 재생할 때 쓸 표시 위치. 없으면 페이지 로드 시 값을 쓴다. */
+  position?: string;
+  /** 이 이벤트의 메시지 최대 글자 수. 없으면 페이지 로드 시 값을 쓴다. */
+  maxMessageLen?: number;
+  /** 오버레이 표시 스위치. false 면 방송 화면에서는 재생하지 않는다(미리보기는 재생). */
+  enabled?: boolean;
   occurredAt: string;
   isTest: boolean;
 }
@@ -406,6 +417,10 @@ export function OverlayClient({
           seen.current.add(payload.eventId);
           if (seen.current.size > 500) seen.current = new Set();
 
+          // 오버레이 표시를 끈 상태에서 보낸 이벤트(테스트 등)는 방송 화면에 띄우지 않는다.
+          // 스튜디오 미리보기는 설정 확인이 목적이므로 그대로 재생한다.
+          if (payload.enabled === false && !preview) return;
+
           // 재연결 직후 되돌려받은 건은 별도로 센다(디버그 배지/미리보기 표시용).
           if (resuming) {
             recovered += 1;
@@ -454,8 +469,10 @@ export function OverlayClient({
     };
   }, [creatorId, token, preview]);
 
-  const align = positionClass[position] ?? positionClass.BOTTOM_CENTER;
-  const themeName = themeOf(theme);
+  // 표시값은 이벤트에 실려 온 현재 설정을 우선 적용한다.
+  // (값이 없는 예전 이벤트나 재생 중이 아닐 때는 페이지를 열 때 받은 prop 을 쓴다)
+  const align = positionClass[current?.position || position] ?? positionClass.BOTTOM_CENTER;
+  const themeName = themeOf(current?.theme || theme);
 
   return (
     <div className="pointer-events-none fixed inset-0 h-screen w-screen bg-transparent">
@@ -464,7 +481,12 @@ export function OverlayClient({
 
       <div className={`relative flex h-full w-full p-8 ${align}`}>
         {current && bannerOf(current) ? (
-          <DonationCard payload={current} leaving={leaving} maxMessageLen={maxMessageLen} theme={themeName} />
+          <DonationCard
+            payload={current}
+            leaving={leaving}
+            maxMessageLen={current.maxMessageLen ?? maxMessageLen}
+            theme={themeName}
+          />
         ) : null}
       </div>
 

@@ -124,6 +124,24 @@ function soundOf(overlay: { soundEnabled: boolean; soundVolume: number } | null)
 }
 
 /**
+ * 배너 표시값(테마 · 위치 · 최대 글자 수 · 표시 스위치).
+ *
+ * 오버레이 페이지는 한 번 열면 방송이 끝날 때까지 그대로 떠 있으므로, 페이지를 열 때 읽은
+ * 값만 쓰면 스튜디오에서 테마·위치를 바꿔 저장해도 새로 고침 전까지 반영되지 않는다.
+ * 이벤트마다 현재 값을 실어 보내 브라우저 소스를 다시 로드하지 않아도 적용되게 한다.
+ */
+function displayOf(
+  overlay: { theme: string; position: string; maxMessageLen: number; enabled: boolean } | null,
+) {
+  return {
+    theme: overlay?.theme || 'TORNADO',
+    position: overlay?.position || 'BOTTOM_CENTER',
+    maxMessageLen: overlay?.maxMessageLen ?? 80,
+    enabled: overlay?.enabled ?? true,
+  };
+}
+
+/**
  * 금액 구간과 전역 설정을 합쳐 오버레이 재생값을 정한다.
  * 구간이 없으면 전역 설정만으로 기존과 동일하게 동작한다.
  */
@@ -204,6 +222,7 @@ export async function buildOverlayPayload(donationId: string, isTest = false): P
     ttsMode: normalizeTtsProvider(tts?.provider) === 'naver' ? 'server' : 'browser',
     ...soundOf(overlay),
     durationMs: merged.durationMs,
+    ...displayOf(overlay),
     occurredAt: new Date().toISOString(),
     isTest,
   };
@@ -374,24 +393,31 @@ export async function sendTestOverlay(
   });
   if (!creator) throw new Error('크리에이터를 찾을 수 없습니다.');
 
+  const overlay = creator.overlaySetting;
   const tier = await resolveOverlayTier(creatorId, input.amount);
-  const merged = mergeTier(tier, creator.overlaySetting);
+  const merged = mergeTier(tier, overlay);
+
+  // 테스트는 "실제 방송에 나갈 화면"을 그대로 보여 주는 것이 목적이므로
+  // 익명 처리 · 금액 표시 · 메시지 표시 설정을 실제 후원과 똑같이 적용한다.
+  const donorName = overlay?.anonymize ? '익명의 후원자' : input.donorName;
+  const message = overlay?.showMessage === false ? '' : input.message;
 
   const payload: OverlayEventPayload = {
     eventId: newId(),
     creatorId,
     donationId: null,
-    donorName: input.donorName,
-    amount: input.amount.toString(),
-    message: input.message,
-    sticker: creator.overlaySetting?.stickerSet ?? 'DEFAULT',
+    donorName,
+    amount: overlay?.showAmount === false ? '' : input.amount.toString(),
+    message,
+    sticker: overlay?.stickerSet ?? 'DEFAULT',
     effect: merged.effect,
     banner: merged.banner,
     tierLabel: merged.tierLabel,
-    tts: buildTts(tier, creator.ttsSetting, input),
+    tts: buildTts(tier, creator.ttsSetting, { ...input, donorName, message }),
     ttsMode: normalizeTtsProvider(creator.ttsSetting?.provider) === 'naver' ? 'server' : 'browser',
-    ...soundOf(creator.overlaySetting),
+    ...soundOf(overlay),
     durationMs: merged.durationMs,
+    ...displayOf(overlay),
     occurredAt: new Date().toISOString(),
     isTest: true,
   };

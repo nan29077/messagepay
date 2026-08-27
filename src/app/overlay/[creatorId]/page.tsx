@@ -50,12 +50,11 @@ export default async function OverlayPage({
     );
   }
 
-  // 오버레이가 꺼져 있으면 아무것도 표시하지 않는다(방송 화면 보호).
-  // 다만 미리보기는 설정 확인이 목적이므로 꺼져 있어도 그린다.
-  if (setting && !setting.enabled && !preview) {
-    return <div className="h-screen w-screen bg-transparent" />;
-  }
-
+  // 오버레이가 꺼져 있어도 클라이언트는 그대로 붙여 둔다.
+  //  - 예전에는 여기서 빈 화면을 돌려주고 끝냈는데, 그러면 방송 중에 [오버레이 표시]를 다시 켜도
+  //    OBS 브라우저 소스를 새로 고치기 전까지 영영 아무것도 나오지 않았다(SSE 를 아예 열지 않으므로).
+  //  - 꺼진 동안 도착한 이벤트는 클라이언트가 페이로드의 enabled 값을 보고 무시한다.
+  //    (미리보기는 설정 확인이 목적이므로 꺼져 있어도 재생한다)
   return (
     <OverlayClient
       creatorId={creatorId}

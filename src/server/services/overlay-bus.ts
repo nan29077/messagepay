@@ -12,6 +12,12 @@ import { logger } from '@/lib/logger';
  * 결제 성공 이벤트만 이 버스에 올린다. 결제 실패 건은 절대 올리지 않는다.
  */
 
+/**
+ * 표시 설정은 페이로드에 함께 실어 보낸다.
+ * OBS 브라우저 소스와 스튜디오 미리보기는 한 번 열면 방송이 끝날 때까지 그대로 떠 있으므로,
+ * 페이지를 열 때 읽은 값만 쓰면 테마·위치를 바꿔 저장해도 새로 고침하기 전까지 반영되지 않는다.
+ * 이벤트마다 현재 설정을 실어 보내면 브라우저 소스를 다시 로드하지 않아도 즉시 적용된다.
+ */
 export interface OverlayEventPayload {
   eventId: string;
   creatorId: string;
@@ -40,6 +46,14 @@ export interface OverlayEventPayload {
   soundEnabled: boolean;
   soundVolume: number;
   durationMs: number;
+  /// 알림 배너 테마 (TORNADO | MINIMAL | NEON)
+  theme: string;
+  /// 알림 배너 표시 위치 (TOP_LEFT ... BOTTOM_RIGHT)
+  position: string;
+  /// 메시지 최대 표시 글자 수
+  maxMessageLen: number;
+  /// 오버레이 표시 스위치. false 면 방송 화면(브라우저 소스)에서는 재생하지 않는다.
+  enabled: boolean;
   occurredAt: string;
   isTest: boolean;
 }

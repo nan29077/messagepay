@@ -149,10 +149,10 @@ export default async function StudioOverlayPage() {
                   hint="토큰은 해시로만 저장되어 원문을 다시 확인할 수 없습니다. 전체 URL은 발급 직후 한 번만 표시되니 그때 복사해 두세요."
                 />
                 <p className="text-[12px] leading-relaxed text-ink-400">
-                  OBS · PRISM 에서 브라우저 소스를 열어 두면 위 [현재 연결] 수치가 올라갑니다. 한 페이지에
-                  동시에 열 수 있는 연결은 최대 {MAX_OVERLAY_CONNECTIONS}개이며, 넘으면 가장 오래된 연결부터 자동으로
-                  정리됩니다. 방송 중 연결이 끊겼다가 다시 붙으면 끊긴 사이의 후원 알림(최근 5분 이내)을
-                  자동으로 다시 받아 재생합니다.
+                  OBS · PRISM 에서 브라우저 소스를 열어 두면 위 [현재 연결] 수치가 올라갑니다. 아래 미리보기 창은
+                  이 수치에 포함되지 않습니다. 방송용 브라우저 소스는 최대 {MAX_OVERLAY_CONNECTIONS}개까지 동시에
+                  열 수 있고, 넘으면 가장 오래된 방송용 연결부터 자동으로 정리됩니다. 방송 중 연결이 끊겼다가 다시
+                  붙으면 끊긴 사이의 후원 알림(최근 5분 이내)을 자동으로 다시 받아 재생합니다.
                 </p>
                 <LinkButton
                   href={`/overlay/${creatorId}?preview=1&debug=1`}
