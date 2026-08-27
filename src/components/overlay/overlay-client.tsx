@@ -356,8 +356,12 @@ export function OverlayClient({
     let recovered = 0;
     let resuming = false;
 
+    /** 부모에게 마지막으로 알린 연결 상태. 부모가 다시 물어보면 이 값을 그대로 돌려준다. */
+    let lastStatus: Record<string, unknown> = { phase: 'connecting' };
+
     /** 스튜디오 미리보기(iframe) 부모 창에 상태를 알린다. 방송 화면에는 아무것도 그리지 않는다. */
     const notifyParent = (type: string, extra?: Record<string, unknown>) => {
+      if (type === 'donaido-overlay-status' && extra) lastStatus = extra;
       if (!preview || typeof window === 'undefined' || window.parent === window) return;
       try {
         window.parent.postMessage({ type, creatorId, ...extra }, window.location.origin);
@@ -365,6 +369,20 @@ export function OverlayClient({
         /* ignore */
       }
     };
+
+    /**
+     * 부모(스튜디오 미리보기)의 재문의에 답한다.
+     *
+     * 이 iframe 이 부모보다 먼저 연결되면 첫 상태 알림이 부모의 message 리스너가 붙기 전에
+     * 날아가 버려, 실제로는 연결됐는데도 배지가 [연결 중]에서 멈춘다. 부모가 다시 물어보면
+     * 지금 상태를 그대로 돌려준다.
+     */
+    const onAsk = (e: MessageEvent) => {
+      if (typeof window === 'undefined' || e.origin !== window.location.origin) return;
+      if ((e.data as { type?: string } | null)?.type !== 'donaido-overlay-hello') return;
+      notifyParent('donaido-overlay-status', lastStatus);
+    };
+    if (preview && typeof window !== 'undefined') window.addEventListener('message', onAsk);
 
     const clearCountdown = () => {
       if (countdown) clearInterval(countdown);
@@ -466,6 +484,7 @@ export function OverlayClient({
       if (timer) clearTimeout(timer);
       clearCountdown();
       source?.close();
+      if (typeof window !== 'undefined') window.removeEventListener('message', onAsk);
     };
   }, [creatorId, token, preview]);
 
