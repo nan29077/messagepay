@@ -658,7 +658,7 @@ function ThemePreview({ theme }: { theme: string }) {
     return (
       <span className="grid h-24 place-items-center bg-[#3a3a42] px-3">
         <span className="w-full max-w-[200px] rounded-lg bg-black/60 px-3 py-2 text-center">
-          <span className="block text-[11px] font-bold text-white">홍길동님이 5,000원을 후원했습니다</span>
+          <span className="block text-[11px] font-bold text-white">홍길동님이 5,000원을 후원하셨습니다</span>
         </span>
       </span>
     );
@@ -668,7 +668,7 @@ function ThemePreview({ theme }: { theme: string }) {
       <span className="grid h-24 place-items-center bg-[#0a0e1f] px-3">
         <span className="w-full max-w-[200px] rounded-lg border border-[#22d3ee]/60 bg-[#101636] px-3 py-2 text-center shadow-[0_0_14px_rgba(34,211,238,0.45)]">
           <span className="block text-[11px] font-bold text-[#a5f3fc] [text-shadow:0_0_8px_rgba(34,211,238,0.9)]">
-            홍길동님이 5,000원을 후원했습니다
+            홍길동님이 5,000원을 후원하셨습니다
           </span>
         </span>
       </span>
@@ -677,7 +677,7 @@ function ThemePreview({ theme }: { theme: string }) {
   return (
     <span className="grid h-24 place-items-center bg-[#3a3a42] px-3">
       <span className="w-full max-w-[200px] rounded-lg border border-white/40 bg-white/95 px-3 py-2 text-center shadow">
-        <span className="block text-[11px] font-extrabold text-ink-900">홍길동님이 5,000원을 후원했습니다</span>
+        <span className="block text-[11px] font-extrabold text-ink-900">홍길동님이 5,000원을 후원하셨습니다</span>
       </span>
     </span>
   );
