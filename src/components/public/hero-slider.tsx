@@ -31,6 +31,14 @@ const slides = [
     href: '/creator-apply',
     cta: '크리에이터 시작하기',
   },
+  {
+    image: '/assets/tornado-hero-mascot-v1.png',
+    eyebrow: 'MEET DONAIDO',
+    title: '캐릭터와 함께\n응원이 주인공이 됩니다',
+    description: '마음을 담은 문자 한 통이 도네이도 캐릭터와 방송 효과로 살아납니다.',
+    href: '/how-it-works',
+    cta: '도네이도 경험하기',
+  },
 ];
 
 export function HeroSlider() {
