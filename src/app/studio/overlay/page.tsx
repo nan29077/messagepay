@@ -60,7 +60,7 @@ function readTestPayload(payload: unknown): { donorName: string; amount: string;
 
 export default async function StudioOverlayPage() {
   const { creatorId } = await requireCreator();
-  const [setting, ttsSetting, tiers, testEvents, creator] = await Promise.all([
+  const [setting, ttsSetting, tiers, testEvents] = await Promise.all([
     prisma.overlaySetting.findUnique({ where: { creatorId } }),
     prisma.ttsSetting.findUnique({ where: { creatorId } }),
     listOverlayTiers(creatorId),
@@ -71,8 +71,6 @@ export default async function StudioOverlayPage() {
       take: TEST_HISTORY_SIZE,
       select: { id: true, createdAt: true, status: true, payload: true },
     }),
-    // 미리보기 [모바일] 탭에서 후원자가 보는 후원 페이지(/c/[code])를 띄우는 데 쓴다.
-    prisma.creatorProfile.findUnique({ where: { id: creatorId }, select: { code: true } }),
   ]);
 
   const testHistory: OverlayTestHistoryRow[] = testEvents.map((e) => {
@@ -299,7 +297,7 @@ export default async function StudioOverlayPage() {
 
             <div className="mb-4">
               {setting ? (
-                <OverlayLivePreview creatorId={creatorId} creatorCode={creator?.code} />
+                <OverlayLivePreview creatorId={creatorId} />
               ) : (
                 <Notice tone="warning" title="오버레이 URL을 먼저 발급해주세요">
                   위 [URL 발급]으로 브라우저 소스 URL을 발급하면, 이 자리에서 실제 방송에 표시되는 화면을 그대로 확인할

@@ -422,12 +422,18 @@ export async function sendTestOverlay(
     isTest: true,
   };
 
-  await prisma.overlayEvent.create({
-    data: {
-      id: payload.eventId, creatorId, payload: payload as unknown as object,
-      status: 'SENT', isTest: true, playedAt: new Date(),
-    },
-  });
+  try {
+    await prisma.overlayEvent.create({
+      data: {
+        id: payload.eventId, creatorId, payload: payload as unknown as object,
+        status: 'SENT', isTest: true, playedAt: new Date(),
+      },
+    });
+  } catch (e) {
+    // DB 기록 실패해도 SSE 이벤트는 반드시 발행한다.
+    // 개발 DB 스키마 불일치 등으로 create 가 throw 해도 미리보기가 동작해야 한다.
+    console.error('[overlay] overlayEvent 기록 실패 (SSE 발행은 계속 진행)', e);
+  }
   publishOverlayEvent(payload);
   return payload;
 }
