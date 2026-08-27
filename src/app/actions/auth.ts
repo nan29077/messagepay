@@ -137,7 +137,7 @@ export async function testLogin(_prev: TestLoginState, formData: FormData): Prom
 
   if (!user) {
     return {
-      message: `${account.label} 시드 계정(${account.email})이 없습니다. preview-reset.bat 또는 db-reset.bat 으로 시드를 다시 생성해 주세요.`,
+      message: `${account.label} 시드 계정(${account.email})이 없습니다. 도구_DB초기화.bat 으로 시드를 다시 생성해 주세요.`,
     };
   }
   if (user.status !== 'ACTIVE') {

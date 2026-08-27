@@ -38,12 +38,12 @@ if errorlevel 1 (
 echo.
 echo [4] 프로젝트 파일
 if exist ".env" (echo     .env 있음) else (echo     .env 없음 -^> .env.example 복사 필요)
-if exist "node_modules" (echo     node_modules 있음) else (echo     node_modules 없음 -^> preview.bat 실행 시 자동 설치)
-if exist "node_modules\.package-lock.json" (echo     설치 완료 표식 있음) else (echo     설치 미완료 -^> preview.bat 이 자동으로 다시 설치)
+if exist "node_modules" (echo     node_modules 있음) else (echo     node_modules 없음 -^> 1_미리보기실행.bat 실행 시 자동 설치)
+if exist "node_modules\.package-lock.json" (echo     설치 완료 표식 있음) else (echo     설치 미완료 -^> 1_미리보기실행.bat 이 자동으로 다시 설치)
 if exist "node_modules\.bin\next.cmd" (echo     next 실행 파일 있음) else (echo     next 실행 파일 없음 -^> 설치 미완료)
 if exist "node_modules\.bin\prisma.cmd" (echo     prisma 실행 파일 있음) else (echo     prisma 실행 파일 없음 -^> 설치 미완료)
 if exist "node_modules\@electric-sql\pglite-socket" (echo     내장 DB 패키지 있음) else (echo     내장 DB 패키지 없음 -^> 설치 미완료)
-if exist ".pglite" (echo     내장 DB 데이터 있음) else (echo     내장 DB 데이터 없음 ^(첫 preview.bat 실행 시 생성^)^)
+if exist ".pglite" (echo     내장 DB 데이터 있음) else (echo     내장 DB 데이터 없음 ^(첫 1_미리보기실행.bat 실행 시 생성^)^)
 if exist "src\generated\prisma" (echo     Prisma 클라이언트 있음) else (echo     Prisma 클라이언트 없음 -^> npx prisma generate 필요)
 
 echo.

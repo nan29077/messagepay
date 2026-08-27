@@ -56,7 +56,7 @@ echo [완료] PostgreSQL(5432), Redis(6379) 준비 완료
 :done
 echo.
 echo   컨테이너를 내리려면: docker compose -p tornado down
-echo   다음 단계: setup.bat 실행
+echo   다음 단계: 도구_최초설치.bat 실행
 echo.
 pause
 endlocal

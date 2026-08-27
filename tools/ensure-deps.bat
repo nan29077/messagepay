@@ -5,7 +5,7 @@ rem 다른 배치 파일에서 call 로 호출한다. 성공 0 / 실패 1
 rem ---------------------------------------------------------------------------
 chcp 65001 >nul
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 call :filecheck
 if "%NEEDS%"=="1" goto :install
@@ -25,7 +25,7 @@ exit /b 0
 
 :install
 echo.
-echo [설치] 의존성 설치가 필요합니다. (사유: %WHY%)
+echo [설치] 의존성 설치가 필요합니다. 사유: %WHY%
 echo        첫 설치는 3~7분 걸립니다. 화면이 멈춘 것처럼 보여도 정상이니
 echo        창을 닫지 마시고 끝날 때까지 기다려 주세요.
 echo        EBADENGINE 경고는 사용하지 않는 부가 패키지 경고이므로 무시해도 됩니다.
@@ -71,10 +71,10 @@ echo.
 echo [오류] 의존성 설치를 완료하지 못했습니다.
 echo.
 echo        확인해 볼 것
-echo          1) 인터넷 연결, 사내 방화벽 또는 프록시 설정
-echo          2) npm cache clean --force 실행 후 재시도
-echo          3) 백신이 node_modules 쓰기를 차단하는지 (예외 등록)
-echo          4) 설치 중에 창을 닫거나 Ctrl+C 를 누르지 않았는지
+echo          1. 인터넷 연결 / 사내 방화벽 / 프록시 설정
+echo          2. npm cache clean --force 실행 후 재시도
+echo          3. 백신이 node_modules 쓰기를 차단하는지 - 예외 등록
+echo          4. 설치 중에 창을 닫거나 Ctrl+C 를 누르지 않았는지
 echo.
 endlocal
 exit /b 1

@@ -70,7 +70,7 @@ if (!lock.ok) {
   console.error('[안내] 토네이도 서버가 이미 실행 중입니다.');
   console.error(`       실행 중인 창: PID ${lock.pid} (시작 ${since})`);
   console.error('       먼저 실행된 창을 확인해 주세요.');
-  console.error('       그 창을 닫았는데도 이 메시지가 보이면 stop.bat 을 실행한 뒤 다시 시도하세요.');
+  console.error('       그 창을 닫았는데도 이 메시지가 보이면 3_서버종료.bat 을 실행한 뒤 다시 시도하세요.');
   process.exit(0);
 }
 

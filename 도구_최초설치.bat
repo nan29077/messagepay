@@ -40,7 +40,7 @@ echo       패키지가 700개 이상이라 첫 설치는 3~7분 걸립니다.
 echo       화면이 멈춘 것처럼 보여도 정상이니 창을 닫지 마세요.
 echo       EBADENGINE 경고는 사용하지 않는 부가 패키지 경고이므로 무시해도 됩니다.
 echo.
-call "%~dp0ensure-deps.bat"
+call "%~dp0tools\ensure-deps.bat"
 if errorlevel 1 goto :fail
 
 echo.
@@ -54,7 +54,7 @@ call npm run check:db
 if errorlevel 1 (
   echo.
   echo [중단] 데이터베이스에 연결하지 못해 설치를 멈춥니다.
-  echo        db-up.bat 을 먼저 실행한 뒤 setup.bat 을 다시 실행해 주세요.
+  echo        도구_DB시작.bat 을 먼저 실행한 뒤 도구_최초설치.bat 을 다시 실행해 주세요.
   echo.
   pause
   exit /b 1
@@ -70,7 +70,7 @@ if errorlevel 1 goto :fail
 echo.
 echo ==========================================
 echo   설치가 완료되었습니다.
-echo   start.bat 을 실행하면 앱이 열립니다.
+echo   2_개발서버실행.bat 을 실행하면 앱이 열립니다.
 echo ==========================================
 echo.
 echo   주소       http://localhost:3025
@@ -83,7 +83,7 @@ exit /b 0
 :fail
 echo.
 echo [오류] 설치 중 문제가 발생했습니다. 위 메시지를 확인해 주세요.
-echo        원인을 자동 점검하려면 doctor.bat 을 실행하세요.
+echo        원인을 자동 점검하려면 도구_환경점검.bat 을 실행하세요.
 echo.
 pause
 exit /b 1

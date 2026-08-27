@@ -8,20 +8,20 @@
 
 ## 빠른 시작 (Windows)
 
-### A. 간편 미리보기 — `preview.bat` 하나만 실행 (권장)
+### A. 간편 미리보기 — `1_미리보기실행.bat` 하나만 실행 (권장)
 
 **Node.js LTS 만 있으면 됩니다.** Docker 도, PostgreSQL 설치도 필요 없습니다.
 내장 데이터베이스(PGlite — PostgreSQL 을 WASM 으로 빌드한 임베디드 엔진)를 사용하며, 실제 PostgreSQL 과 동일한 스키마·마이그레이션·트리거가 그대로 적용됩니다.
 
 | 파일 | 설명 |
 |---|---|
-| `preview.bat` | 설치 → 내장 DB 기동 → 마이그레이션 → 시드 → 빌드 → 서버 실행 → 브라우저 자동 열기 |
-| `preview-reset.bat` | 미리보기 데이터 초기화 (`.pglite` 폴더 삭제) |
+| `1_미리보기실행.bat` | 설치 → 내장 DB 기동 → 마이그레이션 → 시드 → 빌드 → 서버 실행 → 브라우저 자동 열기 |
+| `3_서버종료.bat` | 창을 닫아도 남아 있는 서버 정리 |
 
 주소는 **http://localhost:3025** 입니다. 데이터는 `.pglite` 폴더에 보관되어 다음 실행에도 유지됩니다.
 
 > 첫 실행은 `npm install` 3~7분 + 화면 빌드 1~3분이 걸립니다. 멈춘 것처럼 보여도 정상이며, 두 번째부터는 30초 내외입니다.
-> 코드 수정을 즉시 반영하려면 `PREVIEW_MODE=dev` 환경변수를 주고 `npm run preview` 를 실행하세요.
+> 코드를 고치면서 바로 확인하려면 `도구_수정즉시반영.bat` 을 쓰세요. 저장 즉시 화면에 반영됩니다(HMR).
 > `EBADENGINE` 경고는 사용하지 않는 부가 패키지 경고이므로 무시해도 됩니다.
 
 ### B. 정식 개발 환경 — 실제 PostgreSQL 사용
@@ -30,24 +30,24 @@
 
 | 순서 | 파일 | 설명 |
 |---|---|---|
-| 1 | `db-up.bat` | PostgreSQL + Redis 컨테이너 시작 |
-| 2 | `setup.bat` | 의존성 설치 → Prisma 생성 → 마이그레이션 → 시드 |
-| 3 | `start.bat` | 개발 서버 실행 + 준비 완료 후 브라우저 자동 열기 |
+| 1 | `도구_DB시작.bat` | PostgreSQL + Redis 컨테이너 시작 |
+| 2 | `도구_최초설치.bat` | 의존성 설치 → Prisma 생성 → 마이그레이션 → 시드 |
+| 3 | `2_개발서버실행.bat` | 개발 서버 실행 + 준비 완료 후 브라우저 자동 열기 |
 
-> Docker 없이 직접 설치한 PostgreSQL 을 쓰셔도 됩니다. `.env` 의 `DATABASE_URL` 만 바꾸고 `setup.bat` 을 실행하세요.
+> Docker 없이 직접 설치한 PostgreSQL 을 쓰셔도 됩니다. `.env` 의 `DATABASE_URL` 만 바꾸고 `도구_최초설치.bat` 을 실행하세요.
 > Redis 는 없어도 동작합니다. 연결에 실패하면 개발 환경에서는 인메모리로 자동 전환됩니다.
 
 ### 그 외
 
 | 파일 | 설명 |
 |---|---|
-| `doctor.bat` | 환경 자동 점검 (Node·Docker·포트·DB 연결) — 문제가 생기면 이것부터 |
-| `repair.bat` | 깨진 node_modules 복구 (npm ci + 무결성 검사) |
-| `diag.bat` | 상세 진단 로그 생성 (`logs\diag.log`) |
-| `start-prod.bat` | 프로덕션 빌드 후 실행 |
-| `db-reset.bat` | 정식 개발 환경 DB 초기화 + 시드 |
-| `test.bat` | 통합 테스트 27개 실행 후 시드 재생성 |
-| `git-push.bat` | GitHub(`nan29077/tornado`)에 커밋·푸시 |
+| `도구_수정즉시반영.bat` | 내장 DB + HMR 개발 모드. 저장하면 재시작 없이 화면에 반영 |
+| `도구_환경점검.bat` | 환경 자동 점검 (Node·Docker·포트·DB 연결) — 문제가 생기면 이것부터 |
+| `도구_상세진단.bat` | 상세 진단 로그 생성 (`logs\diag.log`) |
+| `도구_설치복구.bat` | 깨진 node_modules 복구 (npm ci + 무결성 검사) |
+| `도구_미리보기복구.bat` | `.next` 빌드 폴더가 잠겨 미리보기가 죽을 때 복구 실행 |
+| `도구_DB초기화.bat` | 정식 개발 환경 DB 초기화 + 시드 |
+| `도구_테스트실행.bat` | 통합 테스트 27개 실행 후 시드 재생성 |
 
 **필요한 사전 설치**: [Node.js LTS](https://nodejs.org) (필수) · [Docker Desktop](https://www.docker.com/products/docker-desktop/) (B 방식만) · [Git](https://git-scm.com) (선택)
 

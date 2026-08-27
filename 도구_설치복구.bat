@@ -48,7 +48,7 @@ echo [작업] Prisma 클라이언트 생성
 call npm run db:generate
 if errorlevel 1 (
   echo.
-  echo [오류] Prisma 클라이언트 생성에 실패했습니다. diag.bat 을 실행해 주세요.
+  echo [오류] Prisma 클라이언트 생성에 실패했습니다. 도구_상세진단.bat 을 실행해 주세요.
   echo.
   pause
   exit /b 1
@@ -57,7 +57,7 @@ if errorlevel 1 (
 echo.
 echo ==========================================
 echo   복구가 완료되었습니다.
-echo   preview.bat 을 실행하세요.
+echo   1_미리보기실행.bat 을 실행하세요.
 echo ==========================================
 echo.
 pause

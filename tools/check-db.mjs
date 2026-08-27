@@ -34,7 +34,7 @@ try {
   );
   console.log(`[정상] 데이터베이스 연결 성공 (${describe(url)}, 테이블 ${t.rows[0].n}개)`);
   if (t.rows[0].n === 0) {
-    console.log('[안내] 테이블이 없습니다. setup.bat 또는 db-reset.bat 을 실행해 주세요.');
+    console.log('[안내] 테이블이 없습니다. 도구_최초설치.bat 또는 도구_DB초기화.bat 을 실행해 주세요.');
   }
   await client.end();
   process.exit(0);
@@ -45,13 +45,13 @@ try {
   console.error('');
   if (/ECONNREFUSED|timeout/i.test(msg)) {
     console.error('  해결 방법');
-    console.error('   1) Docker Desktop 을 사용 중이면 db-up.bat 을 먼저 실행하세요.');
+    console.error('   1) Docker Desktop 을 사용 중이면 도구_DB시작.bat 을 먼저 실행하세요.');
     console.error('   2) 직접 설치한 PostgreSQL 을 쓰신다면 서비스가 실행 중인지 확인하세요.');
     console.error('   3) 포트나 계정이 다르면 .env 의 DATABASE_URL 을 수정하세요.');
   } else if (/password|authentication/i.test(msg)) {
     console.error('  해결 방법: .env 의 DATABASE_URL 계정/비밀번호를 확인하세요.');
   } else if (/does not exist/i.test(msg)) {
-    console.error('  해결 방법: 데이터베이스가 없습니다. db-up.bat 으로 컨테이너를 띄우거나 DB 를 생성하세요.');
+    console.error('  해결 방법: 데이터베이스가 없습니다. 도구_DB시작.bat 으로 컨테이너를 띄우거나 DB 를 생성하세요.');
   }
   try {
     await client.end();

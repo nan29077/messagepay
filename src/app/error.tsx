@@ -28,14 +28,14 @@ export default function ErrorPage({
         <ol className="mt-4 space-y-2 text-[13px] leading-relaxed text-[#2c3563]">
           <li className="rounded-xl bg-[#f2efff] px-3 py-2.5 text-[#5836d6]">
             <span className="font-bold">간편 미리보기 사용 시:</span> 열려 있는 도네이도 서버 창을 모두 닫고{' '}
-            <span className="font-bold">preview.bat</span> 하나만 다시 실행해 주세요.
+            <span className="font-bold">1_미리보기실행.bat</span> 하나만 다시 실행해 주세요.
           </li>
           <li>
-            <span className="font-bold">1.</span> 별도 PostgreSQL 방식이라면 <span className="font-bold">db-up.bat</span> 을 실행해
+            <span className="font-bold">1.</span> 별도 PostgreSQL 방식이라면 <span className="font-bold">도구_DB시작.bat</span> 을 실행해
             PostgreSQL 컨테이너가 켜져 있는지 확인
           </li>
           <li>
-            <span className="font-bold">2.</span> <span className="font-bold">setup.bat</span> 을 실행해
+            <span className="font-bold">2.</span> <span className="font-bold">도구_최초설치.bat</span> 을 실행해
             마이그레이션과 시드가 끝났는지 확인
           </li>
           <li>
@@ -43,7 +43,7 @@ export default function ErrorPage({
             <span className="font-bold">.env</span> 의 DATABASE_URL 확인
           </li>
           <li>
-            <span className="font-bold">4.</span> <span className="font-bold">doctor.bat</span> 을 실행하면
+            <span className="font-bold">4.</span> <span className="font-bold">도구_환경점검.bat</span> 을 실행하면
             원인을 자동으로 점검합니다
           </li>
         </ol>

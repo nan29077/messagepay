@@ -13,7 +13,7 @@ echo   [주의] 테스트는 개발 DB 를 비웁니다.
 echo          끝난 뒤 시드 데이터를 다시 생성합니다.
 echo.
 
-call "%~dp0ensure-deps.bat"
+call "%~dp0tools\ensure-deps.bat"
 if errorlevel 1 (
   pause
   exit /b 1

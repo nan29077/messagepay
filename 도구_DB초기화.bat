@@ -18,7 +18,7 @@ if /i not "%CONFIRM%"=="Y" (
   exit /b 0
 )
 
-call "%~dp0ensure-deps.bat"
+call "%~dp0tools\ensure-deps.bat"
 if errorlevel 1 (
   pause
   exit /b 1
@@ -27,7 +27,7 @@ if errorlevel 1 (
 call npm run check:db
 if errorlevel 1 (
   echo.
-  echo [중단] 데이터베이스에 연결하지 못했습니다. db-up.bat 을 먼저 실행해 주세요.
+  echo [중단] 데이터베이스에 연결하지 못했습니다. 도구_DB시작.bat 을 먼저 실행해 주세요.
   pause
   exit /b 1
 )

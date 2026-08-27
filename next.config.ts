@@ -26,7 +26,7 @@ const nextConfig: NextConfig = {
    *
    * 다만 standalone 빌드는 `next start` 로 실행할 수 없고
    * `node .next/standalone/server.js` 로 띄워야 한다.
-   * 로컬 미리보기(preview.bat → npm run start)를 깨뜨리지 않도록
+   * 로컬 미리보기(1_미리보기실행.bat → npm run start)를 깨뜨리지 않도록
    * 빌드 시 NEXT_OUTPUT=standalone 을 준 경우에만 켠다.
    *
    *   운영 도커 빌드: NEXT_OUTPUT=standalone npm run build

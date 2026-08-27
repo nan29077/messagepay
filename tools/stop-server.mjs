@@ -1,7 +1,7 @@
 /**
  * 실행 중인 토네이도 서버 종료.
  *
- * stop.bat 이 호출한다. 창을 닫아도 남아 있는 서버(고아 프로세스)를 정리한다.
+ * 3_서버종료.bat 이 호출한다. 창을 닫아도 남아 있는 서버(고아 프로세스)를 정리한다.
  *  - 3025 : 앱 서버 (Next.js)
  *  - 5433 : 내장 데이터베이스 (PGlite, 간편 미리보기에서 사용)
  *
@@ -46,7 +46,7 @@ for (const t of running) {
 if (!failed) {
   clearLock();
   console.log('');
-  console.log('이제 preview.bat 으로 최신 코드를 다시 실행할 수 있습니다.');
+  console.log('이제 1_미리보기실행.bat 으로 최신 코드를 다시 실행할 수 있습니다.');
 }
 
 process.exit(failed ? 1 : 0);

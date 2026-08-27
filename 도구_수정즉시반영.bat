@@ -17,8 +17,8 @@ echo   코드를 저장하면 서버 재시작 없이 화면에 바로 반영됩
 echo   내장 데이터베이스(PGlite)를 사용하며 별도 설치가 필요 없습니다.
 echo.
 echo   [차이점]
-echo     preview.bat  : 실제 서비스와 같은 빌드. 처음 실행에 1~3분
-echo     dev.bat      : 수정 즉시 반영. 대신 화면을 처음 열 때 조금 느림
+echo     1_미리보기실행.bat  : 실제 서비스와 같은 빌드. 처음 실행에 1~3분
+echo     도구_수정즉시반영.bat      : 수정 즉시 반영. 대신 화면을 처음 열 때 조금 느림
 echo.
 
 where node >nul 2>nul
@@ -33,7 +33,7 @@ for /f "tokens=*" %%v in ('node -v') do echo [확인] Node.js %%v
 
 if not exist ".env" copy /y ".env.example" ".env" >nul
 
-call "%~dp0ensure-deps.bat"
+call "%~dp0tools\ensure-deps.bat"
 if errorlevel 1 (
   pause
   exit /b 1
@@ -45,7 +45,7 @@ if not exist "src\generated\prisma" (
   call npm run db:generate 2>&1
   if errorlevel 1 (
     echo.
-    echo [오류] Prisma 클라이언트 생성에 실패했습니다. doctor.bat 으로 점검해 주세요.
+    echo [오류] Prisma 클라이언트 생성에 실패했습니다. 도구_환경점검.bat 으로 점검해 주세요.
     echo.
     pause
     exit /b 1
@@ -75,7 +75,7 @@ echo.
 if not "%PREVIEW_EXIT%"=="0" (
   echo ==========================================
   echo   [오류] 개발 모드 미리보기가 정상 종료되지 않았습니다.
-  echo   화면 컴파일 오류가 반복되면 preview.bat 으로 실행해 보세요.
+  echo   화면 컴파일 오류가 반복되면 1_미리보기실행.bat 으로 실행해 보세요.
   echo ==========================================
 ) else (
   echo [종료] 개발 서버가 종료되었습니다.

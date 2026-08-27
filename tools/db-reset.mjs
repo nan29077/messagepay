@@ -60,7 +60,7 @@ try {
   await client.connect();
 } catch (e) {
   console.error(`[중단] 데이터베이스에 연결할 수 없습니다: ${e?.message ?? e}`);
-  console.error('       db-up.bat 으로 컨테이너를 먼저 띄우거나 .env 의 DATABASE_URL 을 확인하세요.');
+  console.error('       도구_DB시작.bat 으로 컨테이너를 먼저 띄우거나 .env 의 DATABASE_URL 을 확인하세요.');
   process.exit(1);
 }
 

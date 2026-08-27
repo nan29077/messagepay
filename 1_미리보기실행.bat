@@ -15,8 +15,8 @@ echo.
 echo   Docker 나 PostgreSQL 설치 없이 실행됩니다.
 echo   내장 데이터베이스(PGlite)를 사용하며 데이터는 .pglite 폴더에 보관됩니다.
 echo.
-echo   코드를 고치면서 바로 확인하려면 dev.bat 을 쓰세요.
-echo   (dev.bat 은 저장 즉시 화면에 반영되어 재빌드를 기다리지 않습니다)
+echo   코드를 고치면서 바로 확인하려면 도구_수정즉시반영.bat 을 쓰세요.
+echo   (도구_수정즉시반영.bat 은 저장 즉시 화면에 반영되어 재빌드를 기다리지 않습니다)
 echo.
 
 where node >nul 2>nul
@@ -39,7 +39,7 @@ if errorlevel 1 (
 
 if not exist ".env" copy /y ".env.example" ".env" >nul
 
-call "%~dp0ensure-deps.bat"
+call "%~dp0tools\ensure-deps.bat"
 if errorlevel 1 (
   pause
   exit /b 1
@@ -52,7 +52,7 @@ if not exist "src\generated\prisma" (
   if errorlevel 1 (
     echo.
     echo [오류] Prisma 클라이언트 생성에 실패했습니다.
-    echo        원인을 확인하려면 diag.bat 을 실행해 주세요.
+    echo        원인을 확인하려면 도구_상세진단.bat 을 실행해 주세요.
     echo        (logs\diag.log 에 상세 로그가 저장됩니다)
     echo.
     pause
@@ -85,7 +85,7 @@ if not "%PREVIEW_EXIT%"=="0" (
   echo ==========================================
   echo   [오류] 미리보기가 정상 종료되지 않았습니다.
   echo   위 메시지를 확인해 주세요.
-  echo   원인 점검: diag.bat  /  설치 복구: repair.bat
+  echo   원인 점검: 도구_상세진단.bat  /  설치 복구: 도구_설치복구.bat
   echo ==========================================
 ) else (
   echo [종료] 미리보기 서버가 종료되었습니다.
