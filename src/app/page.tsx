@@ -157,7 +157,7 @@ export default async function HomePage() {
         <Card padded={false} className="overflow-hidden">
           <Image src="/assets/tornado-hero-viewer-v2.png" alt="안전하게 문자 후원을 보내는 시청자" width={1536} height={1024} className="h-[210px] w-full object-cover object-center sm:h-[250px]" />
           <div className="grid grid-cols-2 gap-3 p-5 text-[13px]">
-            <Guard label="문자 1건당" value="3,000원" />
+            <Guard label="문자 1건당" value="1,000~50,000원" note="크리에이터 설정" />
             <Guard label="1일 최대" value="100,000원" />
             <Guard label="1분 내 최대" value="3건" />
             <Guard label="연속 발송 시" value="자동 대기" />
@@ -182,7 +182,19 @@ export default async function HomePage() {
             <br />
             바로 연결해 보세요.
           </p>
-          <LinkButton href="/creator-apply" variant="secondary" size="lg" className="relative mt-5 border-white/70 bg-white text-brand-700">
+          {/*
+            버튼이 마스코트를 가려서 배경을 85% 로 낮춰 비쳐 보이게 한다.
+            글자색은 brand-700 -> brand-800 으로 한 단계 진하게 내렸다.
+            흰 배경을 낮추면 어두운 카드 바탕이 비쳐 올라와 밝기가 떨어지는데,
+            글자색을 그대로 두면 대비가 4.6:1 에서 3.9:1 로 내려가 읽기 어려워진다.
+            한 단계 내리면 5.1:1 이 되어 지금보다 오히려 또렷하다.
+          */}
+          <LinkButton
+            href="/creator-apply"
+            variant="secondary"
+            size="lg"
+            className="relative mt-5 border-white/45 bg-white/85 text-brand-800 hover:bg-white/95"
+          >
             크리에이터로 시작하기
             <ArrowRight size={16} strokeWidth={1.8} />
           </LinkButton>
@@ -258,11 +270,13 @@ function FeatureLine({ icon, title, body }: { icon: React.ReactNode; title: stri
   );
 }
 
-function Guard({ label, value }: { label: string; value: string }) {
+function Guard({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
     <div className="rounded-xl bg-ink-50 px-3 py-2.5">
       <p className="text-[11.5px] text-ink-400">{label}</p>
       <p className="mt-0.5 text-[14px] font-extrabold text-ink-900">{value}</p>
+      {/* 값만으로는 오해할 수 있는 항목에만 붙인다 (예: 금액은 크리에이터가 정한다) */}
+      {note ? <p className="mt-0.5 text-[11px] text-ink-400">{note}</p> : null}
     </div>
   );
 }
