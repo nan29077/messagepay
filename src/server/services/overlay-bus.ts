@@ -212,11 +212,20 @@ export function publishOverlayEvent(payload: OverlayEventPayload) {
   // OBS 쪽 SSE 연결은 끊기지 않고 살아 있으므로 재연결도, 누락분 재전송도 일어나지 않는다.
   // 그러면 그 후원 알림은 그 화면에 영영 뜨지 않는데 결제·정산은 정상이라 아무도 눈치채지 못한다.
   // 최소한 흔적은 남겨서 사후에 추적할 수 있게 한다.
+  //
+  // 다만 심각도는 나눈다.
+  // Redis 가 아예 연결되지 않은 상태(로컬 개발처럼 Redis 를 안 띄운 경우)는
+  // 이미 'redis error' 로 따로 찍히고 있고, 단일 인스턴스에서는 인메모리 전달만으로 충분하다.
+  // 이 경우까지 error 로 남기면 후원 한 건마다 빨간 줄이 쌓여 진짜 오류가 묻힌다.
+  // 연결은 살아 있는데 발행만 실패한 경우가 진짜 위험한 상황이다.
   globalForBus.overlayPub?.publish(CHANNEL, JSON.stringify(payload)).catch((e: Error) => {
-    logger.error('오버레이 이벤트 Redis 전파 실패. 다른 인스턴스의 오버레이는 이 알림을 받지 못한다.', {
+    const connected = globalForBus.overlayPub?.status === 'ready';
+    const log = connected ? logger.error : logger.warn;
+    log('오버레이 이벤트 Redis 전파 실패. 다른 인스턴스의 오버레이는 이 알림을 받지 못한다.', {
       eventId: payload.eventId,
       creatorId: payload.creatorId,
       donationId: payload.donationId,
+      redisStatus: globalForBus.overlayPub?.status ?? 'none',
       message: e.message,
     });
   });
