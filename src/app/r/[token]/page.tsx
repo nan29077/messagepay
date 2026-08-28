@@ -271,7 +271,7 @@ async function RegisterScreen({ token }: { token: string }) {
         <DataRow label="크리에이터별 1일 최대" value={formatWon(policy.perCreatorDailyLimit)} />
         <DataRow label="신규 후원자 첫날 최대" value={formatWon(policy.newDonorFirstDayLimit)} />
         <DataRow
-          label="연속 발송 제한"
+          label="연속 후원 제한"
           value={`${policy.velocityWindowSec}초 내 ${policy.velocityMaxCount}건`}
         />
         <p className="mt-2 text-[12px] leading-relaxed text-ink-400">

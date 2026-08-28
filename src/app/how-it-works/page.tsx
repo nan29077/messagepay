@@ -111,11 +111,11 @@ export default async function HowItWorksPage() {
           <DataRow label="1개월 최대" value={formatWon(policy.donorMonthlyLimit)} />
           <DataRow label="크리에이터 1명당 1일 최대" value={formatWon(policy.perCreatorDailyLimit)} />
           <DataRow
-            label="연속 발송 제한"
+            label="연속 후원 제한"
             value={`${formatNumber(policy.velocityWindowSec)}초 내 ${formatNumber(policy.velocityMaxCount)}건`}
           />
           <DataRow
-            label="연속 발송 시 대기"
+            label="연속 후원 시 대기"
             value={`${formatNumber(policy.cooldownAfterCount)}건 이후 ${formatNumber(policy.cooldownSec)}초 대기`}
           />
           <DataRow label="신규 후원자 첫날 한도" value={formatWon(policy.newDonorFirstDayLimit)} />

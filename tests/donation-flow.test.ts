@@ -164,7 +164,7 @@ describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
     expect(await prisma.moInboundMessage.count()).toBe(1);
   });
 
-  it('[6] 짧은 시간 연속 발송은 속도 제한에 걸린다', async () => {
+  it('[6] 짧은 시간 연속 후원은 속도 제한에 걸린다', async () => {
     await seedRegisteredDonor(fx.donorPhone);
     const results = [];
     for (let i = 0; i < 5; i += 1) {

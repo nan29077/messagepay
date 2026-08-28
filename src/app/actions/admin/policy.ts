@@ -28,8 +28,8 @@ function readLimitFields(fd: FormData) {
   const donorDailyMaxCount = int(fd, 'donorDailyMaxCount', { min: 1, max: 10000, label: '1인 1일 최대 건수' });
   const velocityWindowSec = int(fd, 'velocityWindowSec', { min: 1, max: 86400, label: '속도 제한 구간(초)' });
   const velocityMaxCount = int(fd, 'velocityMaxCount', { min: 1, max: 1000, label: '속도 제한 건수' });
-  const cooldownAfterCount = int(fd, 'cooldownAfterCount', { min: 1, max: 1000, label: '연속발송 기준 건수' });
-  const cooldownSec = int(fd, 'cooldownSec', { min: 1, max: 86400, label: '연속발송 대기(초)' });
+  const cooldownAfterCount = int(fd, 'cooldownAfterCount', { min: 1, max: 1000, label: '연속 후원 기준 건수' });
+  const cooldownSec = int(fd, 'cooldownSec', { min: 1, max: 86400, label: '연속 후원 대기(초)' });
   const failureLockThreshold = int(fd, 'failureLockThreshold', { min: 1, max: 50, label: '결제 실패 허용' });
 
   if (minAmount > maxAmount) throw new Error('1회 최소 금액이 최대 금액보다 클 수 없습니다.');

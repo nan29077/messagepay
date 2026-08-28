@@ -249,7 +249,7 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
   }
 
   // ------------------------------------------------------------------
-  // 여기부터는 Redis 를 쓰는 판정(연속 발송 대기·속도 제한)이다.
+  // 여기부터는 Redis 를 쓰는 판정(연속 후원 대기·속도 제한)이다.
   //
   // 트랜잭션 안에서는 하지 않는다.
   // 결제 판정(executePayment)은 후원자 행을 FOR UPDATE 로 잠근 채 이 함수를 부르는데,
@@ -263,7 +263,7 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
   if (!input.tx) {
     const cooldownKey = `cooldown:${input.donor.id}`;
     if (await kv.get(cooldownKey)) {
-      return deny('COOLDOWN', '연속 발송으로 대기 중입니다. 잠시 후 다시 시도해 주세요.');
+      return deny('COOLDOWN', '연속 후원으로 대기 중입니다. 잠시 후 다시 시도해 주세요.');
     }
 
     if (input.consumeVelocity !== false) {

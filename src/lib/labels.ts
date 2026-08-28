@@ -127,7 +127,7 @@ export const riskLevelLabel: Record<RiskLevel, { text: string; tone: Tone }> = {
 };
 
 export const riskTypeLabel: Record<RiskType, string> = {
-  VELOCITY: '연속 발송',
+  VELOCITY: '연속 후원',
   DAILY_LIMIT: '일일 한도',
   MONTHLY_LIMIT: '월간 한도',
   REPEATED_FAILURE: '반복 실패',

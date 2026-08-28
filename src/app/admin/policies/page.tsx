@@ -77,10 +77,10 @@ function LimitFields({ v }: { v: LimitValues }) {
       <AdminField label="속도 제한 최대 건수">
         <AdminInput name="velocityMaxCount" inputMode="numeric" defaultValue={v.velocityMaxCount} required />
       </AdminField>
-      <AdminField label="연속발송 기준 건수" hint="이 건수를 넘기면 대기 부여">
+      <AdminField label="연속 후원 기준 건수" hint="이 건수를 넘기면 대기 부여">
         <AdminInput name="cooldownAfterCount" inputMode="numeric" defaultValue={v.cooldownAfterCount} required />
       </AdminField>
-      <AdminField label="연속발송 대기 (초)">
+      <AdminField label="연속 후원 대기 (초)">
         <AdminInput name="cooldownSec" inputMode="numeric" defaultValue={v.cooldownSec} required />
       </AdminField>
       <AdminField label="결제 실패 허용 (회)" hint="초과 시 자동 잠금">
