@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { formatNumber } from '@/lib/money';
-import { EffectLayer } from '@/components/overlay/overlay-effects';
+import { EffectLayer, CharacterStickerInline, isCharacterStickerEffect } from '@/components/overlay/overlay-effects';
 import { playEffectSound } from '@/components/overlay/overlay-sound';
 
 /**
@@ -500,17 +500,23 @@ export function OverlayClient({
 
   return (
     <div className="pointer-events-none fixed inset-0 h-screen w-screen bg-transparent">
-      {/* 파티클은 배너를 끈 구간에서도 재생된다 */}
+      {/* 파티클은 배너를 끈 구간에서도 재생된다. 캐릭터 스티커는 배너 위 인라인으로 처리. */}
       {current && !leaving ? <EffectLayer effect={effectOf(current)} theme={themeName} /> : null}
 
-      <div className={`relative z-20 flex h-full w-full p-8 ${align}`}>
+      <div className={`relative z-20 flex h-full w-full p-6 ${align}`}>
         {current && bannerOf(current) ? (
-          <DonationCard
-            payload={current}
-            leaving={leaving}
-            maxMessageLen={current.maxMessageLen ?? maxMessageLen}
-            theme={themeName}
-          />
+          <div className="flex flex-col items-center gap-0">
+            {/* 캐릭터 스티커: 배너 바로 위에 자연스럽게 붙임 */}
+            {isCharacterStickerEffect(effectOf(current)) && !leaving ? (
+              <CharacterStickerInline effect={effectOf(current)} theme={themeName} />
+            ) : null}
+            <DonationCard
+              payload={current}
+              leaving={leaving}
+              maxMessageLen={current.maxMessageLen ?? maxMessageLen}
+              theme={themeName}
+            />
+          </div>
         ) : null}
       </div>
 
@@ -548,31 +554,31 @@ function DonationCard({
 
   return (
     <div
-      className={`relative w-[560px] max-w-full rounded-[28px] border px-7 py-6 ${t.card} ${
+      className={`relative w-[420px] max-w-full rounded-[18px] border px-5 py-4 ${t.card} ${
         leaving ? 'animate-tornado-out' : 'animate-banner-in'
       }`}
     >
       {payload.isTest ? (
-        <span className={`absolute right-4 top-4 rounded-md px-2 py-0.5 text-[11px] font-bold ${t.test}`}>
+        <span className={`absolute right-3 top-3 rounded-md px-2 py-0.5 text-[10px] font-bold ${t.test}`}>
           테스트
         </span>
       ) : null}
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         <TornadoSwirl className={t.swirl} />
         <div className="min-w-0 flex-1">
-          <p className={`truncate text-[22px] font-extrabold leading-tight tracking-tight ${t.title}`}>
+          <p className={`truncate text-[16px] font-extrabold leading-tight tracking-tight ${t.title}`}>
             {payload.donorName}님이 {amountText ? `${amountText}을 ` : ''}후원하셨습니다
           </p>
           {message ? (
-            <p className={`mt-2 break-words text-[17px] leading-snug ${t.message}`}>{message}</p>
+            <p className={`mt-1.5 break-words text-[13px] leading-snug ${t.message}`}>{message}</p>
           ) : null}
         </div>
       </div>
 
-      <div className="mt-4 flex items-center justify-between">
+      <div className="mt-3 flex items-center justify-between">
         <ThanksSticker variant={effectOf(payload)} className={t.sticker} />
-        <span className={`text-[12px] font-semibold tracking-[0.16em] ${t.footer}`}>DONAIDO</span>
+        <span className={`text-[11px] font-semibold tracking-[0.16em] ${t.footer}`}>DONAIDO</span>
       </div>
     </div>
   );
@@ -581,10 +587,10 @@ function DonationCard({
 /** 회오리 라인 애니메이션 */
 function TornadoSwirl({ className }: { className: string }) {
   return (
-    <span className={`grid h-16 w-16 shrink-0 place-items-center rounded-2xl ${className}`}>
+    <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl ${className}`}>
       <svg
-        width={40}
-        height={40}
+        width={30}
+        height={30}
         viewBox="0 0 32 32"
         fill="none"
         stroke="currentColor"

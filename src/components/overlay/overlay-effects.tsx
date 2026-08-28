@@ -42,23 +42,9 @@ export function EffectLayer({ effect, theme = 'TORNADO' }: { effect: string; the
         ? '[filter:drop-shadow(0_0_8px_rgba(34,211,238,0.55))]'
         : '';
 
-  if (characterSticker) {
-    return (
-      <div aria-hidden className={`pointer-events-none fixed inset-0 z-10 grid place-items-center overflow-hidden ${themeClass}`}>
-        <div className={`w-[clamp(100px,18vw,260px)] drop-shadow-[0_20px_28px_rgba(15,10,0,0.24)] ${characterSticker.animationClass}`}>
-          <Image
-            src={characterSticker.image}
-            alt=""
-            width={640}
-            height={640}
-            priority
-            unoptimized
-            className="h-auto w-full select-none object-contain"
-          />
-        </div>
-      </div>
-    );
-  }
+  // 캐릭터 스티커는 배너 바로 위에 인라인으로 붙인다(CharacterStickerInline).
+  // EffectLayer 에서는 파티클 계열 효과만 담당한다.
+  if (characterSticker) return null;
 
   return (
     <div aria-hidden className={`pointer-events-none fixed inset-0 overflow-hidden ${themeClass}`}>
@@ -233,5 +219,47 @@ function Fireworks() {
         </span>
       ))}
     </>
+  );
+}
+
+// -------------------------------------------------- 캐릭터 스티커 인라인 (배너 위에)
+
+/** 캐릭터 스티커 효과인지 여부 확인. */
+export function isCharacterStickerEffect(effect: string): boolean {
+  const name = (effect || 'DEFAULT').toUpperCase();
+  return Boolean(findCharacterSticker(name));
+}
+
+/**
+ * 캐릭터 스티커를 배너 바로 위에 인라인으로 렌더링한다.
+ * fixed 레이어가 아니므로 배너와 자연스럽게 붙는다.
+ */
+export function CharacterStickerInline({ effect, theme = 'TORNADO' }: { effect: string; theme?: string }) {
+  const name = (effect || 'DEFAULT').toUpperCase() as EffectName;
+  const characterSticker = findCharacterSticker(name);
+  if (!characterSticker) return null;
+
+  const themeClass =
+    theme === 'MINIMAL'
+      ? 'opacity-50'
+      : theme === 'NEON'
+        ? '[filter:drop-shadow(0_0_8px_rgba(34,211,238,0.55))]'
+        : '';
+
+  return (
+    <div
+      aria-hidden
+      className={`w-[clamp(100px,18vw,260px)] drop-shadow-[0_20px_28px_rgba(15,10,0,0.24)] ${characterSticker.animationClass} ${themeClass}`}
+    >
+      <Image
+        src={characterSticker.image}
+        alt=""
+        width={640}
+        height={640}
+        priority
+        unoptimized
+        className="h-auto w-full select-none object-contain"
+      />
+    </div>
   );
 }
