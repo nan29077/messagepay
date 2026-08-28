@@ -158,9 +158,9 @@ export default async function HomePage() {
           <Image src="/assets/tornado-hero-viewer-v2.png" alt="안전하게 문자 후원을 보내는 시청자" width={1536} height={1024} className="h-[210px] w-full object-cover object-center sm:h-[250px]" />
           <div className="grid grid-cols-2 gap-3 p-5 text-[13px]">
             <Guard label="문자 1건당" value="1,000~50,000원" note="크리에이터 설정" />
-            <Guard label="1일 최대" value="100,000원" />
+            <Guard label="후원자별 1일 최대" value="100,000원" note="한도 조정 가능" />
             <Guard label="1분 내 최대" value="3건" />
-            <Guard label="연속 발송 시" value="자동 대기" />
+            <Guard label="연속 후원 시" value="자동 대기" />
             <Guard label="결제 실패 3회" value="자동 잠금" />
             <Guard label="만 19세 미만" value="이용 제한" />
           </div>
