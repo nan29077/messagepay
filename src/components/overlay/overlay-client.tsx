@@ -498,7 +498,7 @@ export function OverlayClient({
       {/* 파티클은 배너를 끈 구간에서도 재생된다 */}
       {current && !leaving ? <EffectLayer effect={effectOf(current)} theme={themeName} /> : null}
 
-      <div className={`relative flex h-full w-full p-8 ${align}`}>
+      <div className={`relative z-20 flex h-full w-full p-8 ${align}`}>
         {current && bannerOf(current) ? (
           <DonationCard
             payload={current}

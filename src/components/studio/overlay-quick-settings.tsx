@@ -521,6 +521,10 @@ export function OverlayQuickSettings({
                     목소리는 오버레이를 여는 브라우저(OBS 브라우저 소스)에 설치된 음성 기준입니다. 선택한 목소리가
                     없으면 한국어 첫 번째 음성으로 재생됩니다.
                   </p>
+                  <Notice tone="warning">
+                    OBS 기본 브라우저(CEF)에는 한국어 TTS 음성이 없을 수 있습니다. TTS를 켠 뒤 실제 OBS에서 음성이
+                    나오는지 확인해 주세요. 음성이 나오지 않으면 [네이버 클로바 Voice]로 전환하거나 TTS를 꺼 주세요.
+                  </Notice>
                 </div>
               )}
 
