@@ -5,6 +5,7 @@ import { ChevronRight, ShieldCheck } from 'lucide-react';
 import { Button, Card, Checkbox, Input, Notice, cx } from '@/components/ui';
 import { startRegistrationAction } from '@/app/actions/registration';
 import { checkDonorName, DONOR_NAME_MAX } from '@/lib/donor-name';
+import { SNS_PLATFORMS, type SnsPlatform, SnsPlatformSelector } from '@/components/shared/sns-platform-selector';
 
 /**
  * 이용 동의 + 계좌 등록 시작.
@@ -37,6 +38,7 @@ export function RegisterForm({
 
   const [agreed, setAgreed] = React.useState<Record<string, boolean>>({});
   const [nickname, setNickname] = React.useState('');
+  const [snsPlatform, setSnsPlatform] = React.useState<SnsPlatform | ''>('');
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
 
@@ -70,6 +72,7 @@ export function RegisterForm({
         terms.map((t) => ({ type: t.type as never, agreed: Boolean(agreed[t.type]) })),
         'ACCOUNT',
         nameCheck.value,
+        snsPlatform || undefined,
       );
       // 성공하면 결제창으로 리다이렉트되므로 아래 코드는 실행되지 않는다.
       if (res && res.ok === false) setError(res.message);
@@ -91,11 +94,14 @@ export function RegisterForm({
           유튜브·인스타 등에서 쓰는 닉네임을 적어두면 크리에이터가 누가 보냈는지 알아볼 수 있습니다.
         </p>
         <div className="mt-2.5">
+          <SnsPlatformSelector value={snsPlatform} onChange={setSnsPlatform} />
+        </div>
+        <div className="mt-2">
           <Input
             value={nickname}
             onChange={(e) => setNickname(e.target.value)}
             maxLength={DONOR_NAME_MAX + 4}
-            placeholder="예: 밤톨이"
+            placeholder={snsPlatform ? `${SNS_PLATFORMS.find(p => p.value === snsPlatform)?.label ?? ''} 닉네임` : '예: 밤톨이'}
             aria-label="방송에 표시될 닉네임"
             aria-invalid={Boolean(nameError)}
           />

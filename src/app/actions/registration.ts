@@ -40,6 +40,8 @@ export async function startRegistrationAction(
   method: PaymentMethodKind = 'ACCOUNT',
   // 방송에 표시될 닉네임(선택). 빈 문자열이면 설정하지 않은 것으로 본다.
   nickname = '',
+  // SNS 플랫폼(선택). 닉네임과 세트로 저장된다.
+  snsPlatform?: string,
 ): Promise<ActionError | void> {
   const meta = await requestMeta();
 
@@ -50,6 +52,7 @@ export async function startRegistrationAction(
       consents,
       method,
       nickname,
+      snsPlatform,
       ip: meta.ip,
       userAgent: meta.userAgent,
     });

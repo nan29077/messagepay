@@ -398,6 +398,8 @@ model DonorProfile {
   phoneEnc               String                @map("phone_enc")
   phoneMasked            String                @map("phone_masked")
   displayName            String?               @map("display_name")
+  /// SNS 플랫폼 (YOUTUBE | INSTAGRAM | FACEBOOK | TIKTOK | OTHER). 닉네임과 세트로 관리.
+  snsPlatform            String?               @map("sns_platform")
   ageVerified            Boolean               @default(false) @map("age_verified")
   /// 후원자 개인 한도 (미설정 시 전역 정책 적용)
   dailyLimit             BigInt?               @map("daily_limit")

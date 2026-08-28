@@ -2,13 +2,16 @@
 
 import * as React from 'react';
 import { CircleCheck, CircleX, Clock, ShieldCheck } from 'lucide-react';
-import { Button, Card, DataRow, Notice } from '@/components/ui';
-import { confirmDonationAction, type ConfirmActionResult } from '@/app/actions/confirm';
+import { Button, Card, DataRow, Field, Input, Notice } from '@/components/ui';
+import { confirmDonationAction, updateDonorNicknameAction, type ConfirmActionResult } from '@/app/actions/confirm';
+import { checkDonorName, DONOR_NAME_MAX, isDefaultDonorName } from '@/lib/donor-name';
+import { SNS_PLATFORMS, type SnsPlatform, SnsPlatformSelector } from '@/components/shared/sns-platform-selector';
 
 /**
  * 문자후원 결제 확인 화면.
  * - 남은 유효시간을 카운트다운으로 표시한다.
  * - 확인 버튼은 1회만 눌리며, 서버에서도 1회용 보안링크로 중복 결제를 막는다.
+ * - PIN 입력 전 SNS 닉네임을 선택 입력할 수 있다 (미등록자는 항상 노출, 등록자는 기존 값 표시 후 수정 허용).
  */
 
 export function ConfirmPanel({
@@ -18,6 +21,9 @@ export function ConfirmPanel({
   buttonText,
   message,
   expiresAtIso,
+  donorId,
+  donorNickname,
+  donorSnsPlatform,
 }: {
   token: string;
   creatorName: string;
@@ -25,12 +31,26 @@ export function ConfirmPanel({
   buttonText: string;
   message: string;
   expiresAtIso: string;
+  donorId?: string;
+  /** 기존에 저장된 닉네임 (없으면 undefined) */
+  donorNickname?: string;
+  /** 기존에 저장된 SNS 플랫폼 (없으면 undefined) */
+  donorSnsPlatform?: string;
 }) {
   const expiresAt = React.useMemo(() => new Date(expiresAtIso).getTime(), [expiresAtIso]);
   const [remainMs, setRemainMs] = React.useState(() => Math.max(0, expiresAt - Date.now()));
   const [pending, startTransition] = React.useTransition();
   const [result, setResult] = React.useState<ConfirmActionResult | null>(null);
   const submitted = React.useRef(false);
+
+  // 닉네임 필드: 기존 값이 기본값(후원자XXXX)이면 비워두고, 직접 입력한 값이면 표시
+  const hasRealNickname = donorNickname && !isDefaultDonorName(donorNickname);
+  const [nickname, setNickname] = React.useState(hasRealNickname ? donorNickname : '');
+  const [snsPlatform, setSnsPlatform] = React.useState<SnsPlatform | ''>(
+    (donorSnsPlatform as SnsPlatform) || '',
+  );
+  const [nicknameError, setNicknameError] = React.useState<string | null>(null);
+  const [nicknameSaved, setNicknameSaved] = React.useState(false);
 
   React.useEffect(() => {
     const id = setInterval(() => setRemainMs(Math.max(0, expiresAt - Date.now())), 500);
@@ -41,10 +61,23 @@ export function ConfirmPanel({
   const mm = String(Math.floor(remainMs / 60000)).padStart(2, '0');
   const ss = String(Math.floor((remainMs % 60000) / 1000)).padStart(2, '0');
 
+  const nameCheck = checkDonorName(nickname);
+  const nameErrorDisplay = nickname.trim().length > 1 && !nameCheck.ok ? nameCheck.message : null;
+
   function submit() {
     if (submitted.current || pending || expired) return;
     submitted.current = true;
     startTransition(async () => {
+      // 닉네임 입력값이 있으면 먼저 저장
+      if (donorId && nickname.trim()) {
+        const res = await updateDonorNicknameAction(donorId, nickname.trim(), snsPlatform || undefined);
+        if (!res.ok) {
+          setNicknameError(res.message ?? '닉네임 저장에 실패했습니다.');
+          submitted.current = false;
+          return;
+        }
+        setNicknameSaved(true);
+      }
       const res = await confirmDonationAction(token);
       setResult(res);
     });
@@ -93,6 +126,8 @@ export function ConfirmPanel({
     );
   }
 
+  const platformLabel = SNS_PLATFORMS.find((p) => p.value === snsPlatform)?.label ?? '';
+
   return (
     <div className="space-y-3">
       <Card>
@@ -110,6 +145,42 @@ export function ConfirmPanel({
         </div>
       </Card>
 
+      {/* SNS 닉네임 (선택) */}
+      {donorId ? (
+        <Card>
+          <p className="text-[13.5px] font-bold text-ink-900">
+            방송에 표시될 닉네임 <span className="font-normal text-ink-400">(선택)</span>
+          </p>
+          <p className="mt-1 text-[12px] leading-relaxed text-ink-500">
+            {hasRealNickname
+              ? '현재 저장된 닉네임입니다. 수정하거나 그대로 두세요.'
+              : '닉네임을 입력하면 방송·채팅에 이름으로 표시됩니다. 입력하지 않으면 번호 끝자리로 표시됩니다.'}
+          </p>
+          <div className="mt-2.5">
+            <SnsPlatformSelector value={snsPlatform} onChange={setSnsPlatform} />
+          </div>
+          <div className="mt-2">
+            <Input
+              value={nickname}
+              onChange={(e) => {
+                setNickname(e.target.value);
+                setNicknameError(null);
+              }}
+              maxLength={DONOR_NAME_MAX + 4}
+              placeholder={snsPlatform ? `${platformLabel} 닉네임` : '예: 밤톨이'}
+              aria-label="방송에 표시될 닉네임"
+            />
+          </div>
+          {nicknameError ?? nameErrorDisplay ? (
+            <p className="mt-1.5 text-[12px] font-semibold text-danger-500">
+              {nicknameError ?? nameErrorDisplay}
+            </p>
+          ) : nicknameSaved ? (
+            <p className="mt-1.5 text-[12px] font-semibold text-success-600">닉네임이 저장되었습니다.</p>
+          ) : null}
+        </Card>
+      ) : null}
+
       {expired ? (
         <Notice tone="warning" title="확인 시간이 지났습니다">
           확인 시간이 지나 후원이 자동 취소되었습니다. 결제는 진행되지 않았습니다. 다시 후원하시려면 크리에이터
@@ -121,9 +192,9 @@ export function ConfirmPanel({
         </Notice>
       )}
 
-      <Button size="lg" onClick={submit} disabled={expired || pending}>
+      <Button size="lg" onClick={submit} disabled={expired || pending || Boolean(nameErrorDisplay)}>
         <ShieldCheck size={18} strokeWidth={1.7} />
-        {pending ? '결제 처리 중' : buttonText}
+        {pending ? '처리 중' : buttonText}
       </Button>
     </div>
   );

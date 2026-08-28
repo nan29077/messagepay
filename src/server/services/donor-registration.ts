@@ -76,6 +76,8 @@ export async function startRegistration(input: {
   method?: PaymentMethodKind;
   /** 방송에 표시될 닉네임(선택). 빈 값이면 설정하지 않은 것으로 본다. */
   nickname?: string;
+  /** SNS 플랫폼(선택). 닉네임과 세트로 저장한다. */
+  snsPlatform?: string;
   ip?: string;
   userAgent?: string;
 }) {
@@ -100,7 +102,10 @@ export async function startRegistration(input: {
     if (!checked.ok) throw new Error(checked.message ?? '닉네임을 다시 입력해 주세요.');
     await prisma.donorProfile.update({
       where: { id: donor.id },
-      data: { displayName: checked.value },
+      data: {
+        displayName: checked.value,
+        snsPlatform: input.snsPlatform?.trim() || null,
+      },
     });
   }
 

@@ -21,10 +21,15 @@ import { executePayment, setStatus } from './donation-flow';
 export interface ConfirmContext {
   linkId: string;
   donationId: string;
+  donorId: string | null;
   creatorName: string;
   amount: bigint;
   message: string;
   expiresAt: Date;
+  /** 후원자가 기존에 저장한 닉네임 (없으면 null) */
+  donorNickname: string | null;
+  /** 후원자가 기존에 저장한 SNS 플랫폼 (없으면 null) */
+  donorSnsPlatform: string | null;
 }
 
 export async function loadConfirmContext(
@@ -49,7 +54,10 @@ export async function loadConfirmContext(
 
   const donation = await prisma.donation.findUnique({
     where: { id: link.donationId },
-    include: { creator: true },
+    include: {
+      creator: true,
+      donor: { select: { id: true, displayName: true, snsPlatform: true } },
+    },
   });
   if (!donation) return { ok: false, reason: '후원 거래를 찾을 수 없습니다.' };
   if (donation.status !== 'PENDING_CONFIRM') {
@@ -61,10 +69,13 @@ export async function loadConfirmContext(
     ctx: {
       linkId: link.id,
       donationId: donation.id,
+      donorId: donation.donorId ?? null,
       creatorName: donation.creator.displayName,
       amount: donation.amount,
       message: donation.message,
       expiresAt: link.expiresAt,
+      donorNickname: donation.donor?.displayName ?? null,
+      donorSnsPlatform: donation.donor?.snsPlatform ?? null,
     },
   };
 }

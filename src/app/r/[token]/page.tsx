@@ -325,6 +325,9 @@ async function ConfirmScreen({ token }: { token: string }) {
       buttonText={`${formatWon(ctx.amount)} 후원하기`}
       message={ctx.message}
       expiresAtIso={ctx.expiresAt.toISOString()}
+      donorId={ctx.donorId ?? undefined}
+      donorNickname={ctx.donorNickname ?? undefined}
+      donorSnsPlatform={ctx.donorSnsPlatform ?? undefined}
     />
   );
 }
