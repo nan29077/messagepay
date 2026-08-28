@@ -35,6 +35,9 @@ export interface ReconcileResult {
 /** 대사 가능한 결제 거래 상태 */
 const RECONCILABLE = ['UNKNOWN', 'TIMEOUT'] as const;
 
+/** 다른 요청이 먼저 확정한 경우의 안내 문구. */
+const ALREADY_HANDLED = '이미 다른 요청이 이 건을 확정했습니다. 목록을 새로고침해 결과를 확인해 주세요.';
+
 export async function reconcileUnknownPayment(
   transactionId: string,
   decision: ReconcileDecision,
@@ -112,8 +115,14 @@ async function confirmApproved(txn: TxnRow, donation: DonationRow, memo: string)
   const fees = await calculateFees(donation.creatorId, donation.amount);
 
   await prisma.$transaction(async (tx) => {
-    await tx.paymentTransaction.update({
-      where: { id: txn.id },
+    // 조건부 갱신으로 이 건을 **선점**한다.
+    //
+    // 위의 상태 확인은 트랜잭션 밖에서 읽은 값이라, 관리자 두 명이 같은 건을 동시에
+    // 확정하거나 요청이 중복 도달하면 둘 다 통과한 뒤 아래 장부 처리가 두 번 돌 수 있다.
+    // 그러면 후원자-크리에이터 누적 금액·건수가 실제보다 부풀고 완료 문자도 두 번 나간다.
+    // PIN 세션·환불·보안링크가 쓰는 것과 같은 방식으로 맞춘다.
+    const claimedTxn = await tx.paymentTransaction.updateMany({
+      where: { id: txn.id, status: { in: [...RECONCILABLE] } },
       data: {
         status: 'APPROVED',
         providerTid: txn.providerTid ?? txn.orderNo,
@@ -122,8 +131,10 @@ async function confirmApproved(txn: TxnRow, donation: DonationRow, memo: string)
         resultMessage: `관리자 수동 확정: ${memo}`.slice(0, 500),
       },
     });
-    await tx.donation.update({
-      where: { id: donation.id },
+    if (claimedTxn.count === 0) throw new Error(ALREADY_HANDLED);
+
+    const claimedDonation = await tx.donation.updateMany({
+      where: { id: donation.id, status: 'PENDING_PAYMENT' },
       data: {
         status: 'SETTLEMENT_PENDING',
         statusReason: '관리자 수동 확정 후 정산 대기',
@@ -137,6 +148,7 @@ async function confirmApproved(txn: TxnRow, donation: DonationRow, memo: string)
         youtubeStatus: 'SKIPPED',
       },
     });
+    if (claimedDonation.count === 0) throw new Error(ALREADY_HANDLED);
     await tx.donationStatusLog.createMany({
       data: [
         {
@@ -228,8 +240,11 @@ async function confirmCanceled(txn: TxnRow, donation: DonationRow, memo: string)
     throw new Error(`후원 상태가 결제 진행중(PENDING_PAYMENT)이 아닙니다. 현재 상태: ${donation.status}`);
   }
 
-  await prisma.paymentTransaction.update({
-    where: { id: txn.id },
+  // 승인 경로와 같은 이유로 선점한다.
+  // 취소가 두 번 돌면 rollbackCounters 가 두 번 실행되어 일·월 한도 집계가
+  // 실제보다 더 깎이고, 그만큼 후원자가 정책 한도를 넘겨 후원할 수 있게 된다.
+  const claimed = await prisma.paymentTransaction.updateMany({
+    where: { id: txn.id, status: { in: [...RECONCILABLE] } },
     data: {
       status: 'CANCELED',
       canceledAt: new Date(),
@@ -237,6 +252,8 @@ async function confirmCanceled(txn: TxnRow, donation: DonationRow, memo: string)
       resultMessage: `관리자 수동 취소: ${memo}`.slice(0, 500),
     },
   });
+  if (claimed.count === 0) throw new Error(ALREADY_HANDLED);
+
   await setStatus(donation.id, 'PAYMENT_FAILED', `관리자 수동 취소: ${memo}`, 'admin');
 
   // 출금이 없었으므로 결제 판정 때 잡아 둔 한도 예약을 되돌린다.

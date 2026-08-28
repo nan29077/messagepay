@@ -45,7 +45,7 @@ export function EffectLayer({ effect, theme = 'TORNADO' }: { effect: string; the
   if (characterSticker) {
     return (
       <div aria-hidden className={`pointer-events-none fixed inset-0 z-10 grid place-items-center overflow-hidden ${themeClass}`}>
-        <div className={`w-[clamp(190px,34vw,430px)] drop-shadow-[0_20px_28px_rgba(15,10,0,0.24)] ${characterSticker.animationClass}`}>
+        <div className={`w-[clamp(100px,18vw,260px)] drop-shadow-[0_20px_28px_rgba(15,10,0,0.24)] ${characterSticker.animationClass}`}>
           <Image
             src={characterSticker.image}
             alt=""

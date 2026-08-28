@@ -65,7 +65,81 @@ const globalForBus = globalThis as unknown as {
   overlayPub?: Redis;
   overlaySub?: Redis;
   overlayRecentLocalEventIds?: Set<string>;
+  overlayTtsGrants?: Map<string, OverlayTtsGrant>;
 };
+
+/**
+ * 서버 TTS 합성 허가.
+ *
+ * 오버레이가 서버 합성 mp3 를 받아 갈 때, 예전에는 읽을 문장을 쿼리로 직접 보냈다.
+ * 그러면 오버레이 토큰(OBS 브라우저 소스 URL 에 늘 노출되는 값)을 아는 사람이
+ * 아무 문장이나 무제한으로 유료 합성시킬 수 있고, 후원 메시지에 적용한 금칙어도
+ * 이 경로에서는 아무 의미가 없었다.
+ *
+ * 그래서 "무엇을 읽어도 되는지" 를 서버가 정한다.
+ * 실제로 발행된 이벤트의 문장만 기억해 두고, 합성 요청은 eventId 로만 받는다.
+ */
+export interface OverlayTtsGrant {
+  creatorId: string;
+  text: string;
+  voice: string;
+  speed: number;
+  pitch: number;
+  volume: number;
+  expiresAt: number;
+}
+
+/** 이벤트가 화면에 뜨고 재생될 때까지 필요한 시간. 넉넉히 잡아도 5분이면 충분하다. */
+const TTS_GRANT_TTL_MS = 5 * 60 * 1000;
+const TTS_GRANT_MAX = 500;
+
+const ttsGrants = globalForBus.overlayTtsGrants ?? new Map<string, OverlayTtsGrant>();
+globalForBus.overlayTtsGrants = ttsGrants;
+
+/**
+ * 발행된 이벤트의 TTS 문장을 기억한다.
+ * 발행한 인스턴스와 Redis 로 이벤트를 넘겨받은 인스턴스 양쪽에서 부른다.
+ * 어느 인스턴스로 합성 요청이 들어와도 답할 수 있어야 하기 때문이다.
+ */
+function rememberTtsGrant(payload: OverlayEventPayload) {
+  const tts = payload.tts;
+  if (!tts?.enabled || !tts.text) return;
+
+  const now = Date.now();
+  for (const [id, grant] of ttsGrants) {
+    if (grant.expiresAt <= now) ttsGrants.delete(id);
+  }
+  while (ttsGrants.size >= TTS_GRANT_MAX) {
+    const oldest = ttsGrants.keys().next().value;
+    if (!oldest) break;
+    ttsGrants.delete(oldest);
+  }
+
+  ttsGrants.set(payload.eventId, {
+    creatorId: payload.creatorId,
+    text: tts.text,
+    voice: tts.voice,
+    speed: tts.speed,
+    pitch: tts.pitch,
+    volume: tts.volume,
+    expiresAt: now + TTS_GRANT_TTL_MS,
+  });
+}
+
+/**
+ * 합성해도 되는 문장을 돌려준다. 모르는 이벤트거나 만료됐으면 null.
+ * 재생 재시도를 위해 한 번 쓰고 지우지는 않는다 (TTL 과 호출 빈도 제한으로 충분하다).
+ */
+export function findOverlayTtsGrant(eventId: string, creatorId: string): OverlayTtsGrant | null {
+  const grant = ttsGrants.get(eventId);
+  if (!grant) return null;
+  if (grant.creatorId !== creatorId) return null;
+  if (grant.expiresAt <= Date.now()) {
+    ttsGrants.delete(eventId);
+    return null;
+  }
+  return grant;
+}
 
 const emitter =
   globalForBus.overlayEmitter ??
@@ -104,6 +178,8 @@ function ensureRedis() {
         const payload = JSON.parse(raw) as OverlayEventPayload;
         // 이 프로세스에서 이미 로컬로 전달한 이벤트가 Redis 를 거쳐 되돌아온 경우 중복 재생을 막는다.
         if (recentLocalEventIds.has(payload.eventId)) return;
+        // 이 인스턴스로 합성 요청이 들어올 수 있으므로 재생 여부와 무관하게 문장은 기억해 둔다.
+        rememberTtsGrant(payload);
         emitter.emit(payload.creatorId, payload);
       } catch {
         /* ignore */
@@ -129,9 +205,21 @@ export function publishOverlayEvent(payload: OverlayEventPayload) {
     const oldest = recentLocalEventIds.values().next().value;
     if (oldest) recentLocalEventIds.delete(oldest);
   }
+  rememberTtsGrant(payload);
   emitter.emit(payload.creatorId, payload);
 
-  globalForBus.overlayPub?.publish(CHANNEL, JSON.stringify(payload)).catch(() => undefined);
+  // 다른 인스턴스로의 전파 실패는 조용히 넘기면 안 된다.
+  // OBS 쪽 SSE 연결은 끊기지 않고 살아 있으므로 재연결도, 누락분 재전송도 일어나지 않는다.
+  // 그러면 그 후원 알림은 그 화면에 영영 뜨지 않는데 결제·정산은 정상이라 아무도 눈치채지 못한다.
+  // 최소한 흔적은 남겨서 사후에 추적할 수 있게 한다.
+  globalForBus.overlayPub?.publish(CHANNEL, JSON.stringify(payload)).catch((e: Error) => {
+    logger.error('오버레이 이벤트 Redis 전파 실패. 다른 인스턴스의 오버레이는 이 알림을 받지 못한다.', {
+      eventId: payload.eventId,
+      creatorId: payload.creatorId,
+      donationId: payload.donationId,
+      message: e.message,
+    });
+  });
 }
 
 export function subscribeOverlay(creatorId: string, handler: (p: OverlayEventPayload) => void): () => void {

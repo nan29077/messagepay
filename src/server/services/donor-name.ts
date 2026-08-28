@@ -1,5 +1,5 @@
 import { prisma } from '@/server/db';
-import { buildWordRegex } from '@/server/services/content-filter';
+import { containsBannedWord } from '@/server/services/content-filter';
 import { checkDonorName, type DonorNameCheck } from '@/lib/donor-name';
 
 /**
@@ -34,7 +34,7 @@ export async function validateDonorName(raw: string): Promise<DonorNameCheck> {
   const words = await loadGlobalBannedWords();
   for (const word of words) {
     if (!word.trim()) continue;
-    if (buildWordRegex(word).test(basic.value)) {
+    if (containsBannedWord(basic.value, word)) {
       return { ok: false, value: basic.value, message: '닉네임에 사용할 수 없는 단어가 포함되어 있습니다.' };
     }
   }

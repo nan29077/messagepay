@@ -27,8 +27,19 @@ export function decideMessageType(text: string, force?: 'SMS' | 'LMS'): 'SMS' | 
   return Buffer.byteLength(text, 'utf8') > 90 ? 'LMS' : 'SMS';
 }
 
-/** Mock 발송기. 실제 문자는 나가지 않으며 outbox 에 적재된다. */
-const outbox: Array<{ to: string; text: string; at: Date; id: string }> = [];
+/**
+ * Mock 발송기. 실제 문자는 나가지 않으며 outbox 에 적재된다.
+ *
+ * globalThis 에 보관하는 이유:
+ * 개발 서버(Turbopack)는 서버 액션과 라우트 핸들러를 서로 다른 모듈 그래프로 로드할 수 있다.
+ * 모듈 스코프 배열로 두면 서버 액션이 적재한 문자를 /api/dev/outbox 가 못 보고 늘 빈 배열이 나온다.
+ * (오버레이 버스도 같은 이유로 globalThis 를 쓴다)
+ */
+const globalForMt = globalThis as unknown as {
+  mtMockOutbox?: Array<{ to: string; text: string; at: Date; id: string }>;
+};
+const outbox = globalForMt.mtMockOutbox ?? [];
+globalForMt.mtMockOutbox = outbox;
 
 export function readMockOutbox(limit = 50) {
   return outbox.slice(-limit).reverse();

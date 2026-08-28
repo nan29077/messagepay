@@ -4,6 +4,7 @@ import { prisma } from '@/server/db';
 import { kv } from '@/server/redis';
 import { headers } from 'next/headers';
 import { normalizeCreatorCode } from '@/lib/id';
+import { clientIpFrom } from '@/server/rate-limit';
 
 /**
  * 크리에이터 검색 / 코드 조회.
@@ -60,7 +61,7 @@ export interface LookupResult {
 
 export async function lookupCreatorCode(input: string): Promise<LookupResult> {
   const h = await headers();
-  const ip = h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ip = clientIpFrom((name) => h.get(name)) ?? 'unknown';
 
   const tries = await kv.incr(`lookup:${ip}`, WINDOW_SEC);
   if (tries > MAX_TRIES) {

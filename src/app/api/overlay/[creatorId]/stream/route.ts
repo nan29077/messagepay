@@ -101,8 +101,23 @@ export async function GET(req: Request, ctx: { params: Promise<{ creatorId: stri
         }
       };
 
+      /**
+       * 이 연결로 이미 보낸 후원 이벤트 ID.
+       * 아래 보충 조회(sweep)가 같은 알림을 두 번 띄우지 않게 하기 위한 것이다.
+       */
+      const sentIds = new Set<string>();
+      const SENT_MAX = 500;
+
       const send = (event: string, data: unknown, id?: string) => {
         if (closed) return;
+        if (event === 'donation' && id) {
+          if (sentIds.has(id)) return;
+          sentIds.add(id);
+          if (sentIds.size > SENT_MAX) {
+            const oldest = sentIds.values().next().value;
+            if (oldest) sentIds.delete(oldest);
+          }
+        }
         try {
           const head = id ? `id: ${id}\n` : '';
           controller.enqueue(encoder.encode(`${head}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
@@ -152,7 +167,43 @@ export async function GET(req: Request, ctx: { params: Promise<{ creatorId: stri
         })();
       }
 
-      // 프록시 타임아웃 방지용 하트비트
+      /**
+       * 보충 조회 기준 시각. 이 시각 이후에 저장된 이벤트를 하트비트마다 확인한다.
+       *
+       * 실시간 전달은 Redis Pub/Sub 을 타는데, 인스턴스가 여러 대일 때 그 전파가 실패하면
+       * 다른 인스턴스에 붙어 있는 OBS 는 그 알림을 영영 못 받는다. 연결 자체는 끊기지 않으므로
+       * 재연결도, 재연결 시의 재전송도 일어나지 않기 때문이다. 결제·정산은 정상이라
+       * 아무도 눈치채지 못한 채 방송에서 후원 알림만 사라진다.
+       *
+       * 이벤트는 어느 인스턴스에서 처리되든 overlay_event 표에 남으므로,
+       * 하트비트마다 그 표를 확인해 빠진 것을 채운다. Redis 가 흔들려도 20초 안에 복구된다.
+       */
+      let sweepFrom = new Date();
+      let sweeping = false;
+
+      const sweepMissed = async () => {
+        if (closed || replaying || sweeping) return;
+        sweeping = true;
+        try {
+          const rows = await prisma.overlayEvent.findMany({
+            where: { creatorId, createdAt: { gt: sweepFrom } },
+            orderBy: { createdAt: 'asc' },
+            take: 20,
+            select: { id: true, payload: true, createdAt: true },
+          });
+          for (const row of rows) {
+            send('donation', row.payload, row.id);
+            if (row.createdAt > sweepFrom) sweepFrom = row.createdAt;
+          }
+        } catch (e) {
+          // 보충 조회 실패가 실시간 구독을 막지는 않는다.
+          logger.warn('오버레이 보충 조회 실패', { creatorId, message: (e as Error).message });
+        } finally {
+          sweeping = false;
+        }
+      };
+
+      // 프록시 타임아웃 방지용 하트비트 + 놓친 이벤트 보충
       heartbeat = setInterval(() => {
         if (closed) return;
         try {
@@ -160,6 +211,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ creatorId: stri
         } catch {
           /* 연결 종료 */
         }
+        void sweepMissed();
       }, 20000);
 
       req.signal.addEventListener('abort', teardown);

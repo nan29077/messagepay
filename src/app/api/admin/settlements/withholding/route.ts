@@ -60,13 +60,18 @@ export async function GET(req: Request) {
   }
 
   const start = new Date(`${from}T00:00:00+09:00`);
-  const end = new Date(`${to}T23:59:59+09:00`);
-  if (start > end) {
+  // 종료일은 "다음날 0시 미만" 으로 잡는다.
+  //
+  // 예전에는 23:59:59.000 이하로 조회했는데 paidAt 은 밀리초까지 기록되므로
+  // 23:59:59.001 ~ .999 사이에 지급 확정된 건은 그 달에도, 다음 달에도 잡히지 않았다.
+  // 스튜디오 화면에는 보이는데 국세청 신고 자료에서만 영원히 빠지는 사각지대였다.
+  const endExclusive = new Date(new Date(`${to}T00:00:00+09:00`).getTime() + 24 * 60 * 60 * 1000);
+  if (start >= endExclusive) {
     return new Response('시작일이 종료일보다 늦습니다.', { status: 400 });
   }
 
   const reqs = await prisma.settlementRequest.findMany({
-    where: { status: 'PAID', paidAt: { gte: start, lte: end } },
+    where: { status: 'PAID', paidAt: { gte: start, lt: endExclusive } },
     orderBy: { paidAt: 'asc' },
     select: {
       id: true, amount: true, withholding: true, incomeTax: true, localTax: true, payoutAmount: true,

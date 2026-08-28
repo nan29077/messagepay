@@ -6,6 +6,7 @@ import { newId } from '@/lib/id';
 import { generateToken, tokenHash } from '@/lib/crypto';
 import { addDays } from '@/lib/datetime';
 import type { UserRole, CreatorStatus } from '@/generated/prisma/enums';
+import { clientIpFrom } from '@/server/rate-limit';
 
 /**
  * 세션 기반 인증.
@@ -48,7 +49,7 @@ export async function createSession(userId: string) {
       id: newId(),
       userId,
       tokenHash: tokenHash(token),
-      ip: h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+      ip: clientIpFrom((name) => h.get(name)),
       userAgent: h.get('user-agent') ?? null,
       expiresAt: addDays(new Date(), SESSION_DAYS),
     },
@@ -174,7 +175,7 @@ export async function writeAudit(input: {
       targetId: input.targetId ?? null,
       beforeValue: (input.before ?? null) as object,
       afterValue: (input.after ?? null) as object,
-      ip: h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+      ip: clientIpFrom((name) => h.get(name)),
       userAgent: h.get('user-agent') ?? null,
     },
   });

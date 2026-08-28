@@ -3,6 +3,7 @@
 import { headers } from 'next/headers';
 import { prisma } from '@/server/db';
 import { loadConfirmContext, confirmDonation } from '@/server/services/donation-confirm';
+import { clientIpFrom } from '@/server/rate-limit';
 
 /**
  * 문자후원 결제 확인 서버 액션.
@@ -19,7 +20,7 @@ export interface ConfirmActionResult {
 
 export async function confirmDonationAction(token: string): Promise<ConfirmActionResult> {
   const h = await headers();
-  const ip = h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? undefined;
+  const ip = clientIpFrom((name) => h.get(name)) ?? undefined;
   const userAgent = h.get('user-agent') ?? undefined;
 
   const loaded = await loadConfirmContext(String(token ?? ''));

@@ -178,7 +178,9 @@ describe('후원샵 웹 후원 — PIN 인증 흐름', () => {
 
     expect(state.ok).toBe(true);
     expect(state.step).toBe('register');
-    expect(state.registerUrl).toContain('/r/');
+    // 본인확인(인증번호)을 거치지 않는 경로이므로 가입 링크를 응답에 담으면 안 된다.
+    // 담으면 남의 번호를 적어 넣은 사람이 그 번호의 가입 링크를 그대로 가져간다.
+    expect(JSON.stringify(state)).not.toContain('/r/');
 
     // 후원도 인증 세션도 만들지 않는다.
     expect(await prisma.donation.count()).toBe(0);

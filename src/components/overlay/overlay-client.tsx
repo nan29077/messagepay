@@ -223,15 +223,14 @@ export function OverlayClient({
      * 키 미등록·합성 실패·자동재생 차단 등 어떤 이유로든 실패하면 false 를 돌려주고,
      * 호출부가 브라우저 음성으로 되돌아간다.
      */
-    const speakServer = (tts: OverlayTts): Promise<boolean> =>
+    const speakServer = (eventId: string, tts: OverlayTts): Promise<boolean> =>
       new Promise((resolve) => {
         try {
-          const params = new URLSearchParams({ creatorId, text: tts.text });
+          // 읽을 문장은 보내지 않는다. 서버가 발행한 이벤트의 문장만 합성하도록
+          // eventId 만 넘긴다. (임의 문장 합성·금칙어 우회 차단)
+          const params = new URLSearchParams({ creatorId, eventId });
           if (preview) params.set('preview', '1');
           else params.set('token', token);
-          if (tts.voice) params.set('voice', tts.voice);
-          params.set('speed', String(Math.min(2, Math.max(0.5, Number(tts.speed) || 1))));
-          params.set('pitch', String(Math.min(2, Math.max(0, Number(tts.pitch ?? 1)))));
 
           const audio = new Audio(`/api/tts/synthesize?${params.toString()}`);
           audio.volume = Math.min(1, Math.max(0, Number(tts.volume ?? 1)));
@@ -297,7 +296,13 @@ export function OverlayClient({
     const speak = async (payload: OverlayPayload): Promise<void> => {
       const tts = payload.tts;
       if (!tts || !tts.enabled || !tts.text) return;
-      if ((payload.ttsMode ?? 'browser') === 'server' && (await speakServer(tts))) return;
+      if (
+        (payload.ttsMode ?? 'browser') === 'server' &&
+        payload.eventId &&
+        (await speakServer(payload.eventId, tts))
+      ) {
+        return;
+      }
       await speakBrowser(tts);
     };
 

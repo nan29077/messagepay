@@ -315,6 +315,14 @@ export async function createFeePolicy(_prev: AdminActionState, fd: FormData): Pr
     const vatIncluded = text(fd, 'vatIncluded') === 'on';
     const effectiveFrom = optDate(fd, 'effectiveFrom', '적용 시작일') ?? new Date();
 
+    // 각 요율만 0~1 로 보면 0.95 + 0.1 같은 조합이 통과한다.
+    // 그러면 수수료 합이 후원금을 넘어 크리에이터 정산금이 음수가 되고,
+    // 화면에는 0원으로 보이는데 원장에는 마이너스가 쌓여 다른 후원의 정산 가능액까지 깎인다.
+    // (자릿수를 하나 잘못 찍는 실수를 여기서 잡는다)
+    if (Number(pgFeeRate) + Number(platformFeeRate) >= 1) {
+      throw new Error('결제 수수료와 플랫폼 수수료의 합이 100% 이상입니다. 요율을 다시 확인해 주세요.');
+    }
+
     if (creatorId) {
       const creator = await prisma.creatorProfile.findUnique({ where: { id: creatorId }, select: { id: true } });
       if (!creator) throw new Error('크리에이터를 찾을 수 없습니다.');

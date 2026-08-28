@@ -182,18 +182,26 @@ try {
     await rp.locator('button:has-text("PIN 입력 링크 문자로 받기")').click();
     await rp.waitForTimeout(3000);
     r.ok('미등록 번호는 결제수단 등록 안내로 넘어간다', (await bodyText(rp)).includes('결제수단 등록이 필요합니다'));
-    r.ok('등록 창 열기 버튼', (await rp.locator('button:has-text("결제수단 등록 창 열기")').count()) > 0);
 
-    // 등록 링크는 화면이 팝업으로 연다. 보안링크 토큰은 어디에도 노출되지 않으므로
-    // 팝업을 그대로 받아 등록 화면을 검증한다.
-    const [reg] = await Promise.all([
-      rp.waitForEvent('popup', { timeout: 20_000 }).catch(() => null),
-      rp.locator('button:has-text("결제수단 등록 창 열기")').click(),
-    ]);
-    r.ok('등록 창이 팝업으로 열린다', Boolean(reg), '팝업을 받지 못함');
+    // 이 경로는 본인확인(인증번호)을 거치지 않는다.
+    // 그래서 가입 링크를 화면으로 돌려주면 남의 번호를 적어 넣은 사람이 그 링크를 그대로 가져간다.
+    // 링크는 번호 주인만 받을 수 있는 문자로만 나가야 한다.
+    r.ok('등록 창 열기 버튼이 없다', (await rp.locator('button:has-text("결제수단 등록 창 열기")').count()) === 0);
+    r.ok('문자로만 보낸다고 안내한다', (await bodyText(rp)).includes('문자로만 보냅니다'));
+    r.ok('화면 어디에도 가입 링크가 없다', !(await rp.content()).includes('/r/'));
 
+    // 등록 화면 검증은 문자로 나간 링크를 받아서 이어 간다(로컬 전용 모의 발송함).
+    const outbox = await rp.evaluate(async (base) => {
+      const res = await fetch(`${base}/api/dev/outbox`);
+      return res.json();
+    }, BASE);
+    const guide = (outbox?.outbox ?? []).find((m) => String(m.text).includes('/r/'));
+    r.ok('등록 안내 문자에 가입 링크가 담겨 나간다', Boolean(guide), '모의 발송함에서 링크를 찾지 못함');
+
+    const link = guide ? String(guide.text).match(/https?:\/\/\S*\/r\/[A-Za-z0-9_-]+/)?.[0] : null;
+    const reg = link ? await rctx.newPage() : null;
     if (reg) {
-      await reg.waitForLoadState('networkidle').catch(() => {});
+      await gotoReady(reg, link);
       await reg.waitForTimeout(500);
       const regText = await bodyText(reg);
       r.ok('등록 화면이 열린다', regText.includes('계좌 등록과 이용 동의'), regText.slice(0, 160));

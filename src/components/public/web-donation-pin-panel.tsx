@@ -357,21 +357,17 @@ export function WebDonationPinPanel({
           {phase === 'register' ? (
             <div className="space-y-3">
               <Notice tone="warning" title="결제수단 등록이 필요합니다">
-                처음 한 번만 본인 명의 계좌를 등록하면 이후에는 바로 후원할 수 있습니다. 아래 버튼을 누르면 등록 창이
-                팝업으로 열립니다.
+                처음 한 번만 본인 명의 계좌를 등록하면 이후에는 바로 후원할 수 있습니다. 등록 링크는 입력하신 번호로
+                문자를 보내 드립니다.
               </Notice>
               {view.message ? <Notice tone="neutral">{view.message}</Notice> : null}
+              <div className="flex items-start gap-2 rounded-xl bg-ink-50 px-3.5 py-3">
+                <ShieldCheck size={15} strokeWidth={1.8} className="mt-0.5 shrink-0 text-brand-700" />
+                <p className="text-[12.5px] leading-relaxed text-ink-500">
+                  본인 번호로만 등록할 수 있도록 링크를 문자로만 보냅니다. 문자가 오지 않으면 번호를 다시 확인해 주세요.
+                </p>
+              </div>
               <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (view.registerUrl) window.open(view.registerUrl, 'donaido-register', 'width=480,height=760');
-                  }}
-                  className="inline-flex h-11 items-center gap-1.5 rounded-xl bg-brand-400 px-4 text-[13px] font-extrabold text-ink-900"
-                >
-                  <ShieldCheck size={15} strokeWidth={1.8} />
-                  결제수단 등록 창 열기
-                </button>
                 <button
                   type="button"
                   onClick={restart}

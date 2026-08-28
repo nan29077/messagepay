@@ -16,7 +16,7 @@ import { notifySuperAdmins } from '@/server/services/notifications';
 import { formatWon } from '@/lib/money';
 import { loadBannedWords } from '@/server/services/donation-flow';
 import { THANKS_MT_MAX_LENGTH, THANKS_MT_VARIABLES } from '@/server/services/mt-templates';
-import { filterContent } from '@/server/services/content-filter';
+import { bannedNeedle, filterContent } from '@/server/services/content-filter';
 import { getYouTubeAdapter } from '@/server/adapters/youtube';
 import { bankName } from '@/components/studio/banks';
 
@@ -509,6 +509,32 @@ export async function updateOverlaySettingAction(
   });
 }
 
+/**
+ * 테스트 후원·구간 미리보기에 쓸 표시 문구를 만든다.
+ *
+ * 실제 후원은 결제 전에 반드시 filterContent 를 거쳐 저장된 결과만 송출한다.
+ * 그런데 이 두 경로는 입력을 그대로 발행하고 있었고, 그 이벤트는 미리보기 전용 채널이 아니라
+ * **실제 방송용 SSE 연결로도** 나간다. 방송 중에 테스트를 누르면 크리에이터가 직접 등록한
+ * 금칙어나 전화번호가 OBS 화면과 음성에 그대로 나오게 된다.
+ *
+ * 저장은 하지 않고 필터만 통과시켜, 실제 후원과 같은 기준으로 보이게 한다.
+ */
+async function previewSafeText(creatorId: string, donorName: string, message: string) {
+  const rules = await loadBannedWords(creatorId);
+  const name = filterContent(donorName, { bannedWords: rules, maxLength: 20 });
+  const body = filterContent(message, { bannedWords: rules, maxLength: 200 });
+
+  if (name.action === 'BLOCK' || body.action === 'BLOCK') {
+    return { blocked: true as const };
+  }
+  return {
+    blocked: false as const,
+    donorName: name.clean,
+    // filterContent 는 빈 문자열을 "(내용 없음)" 으로 바꾼다. 미리보기에서는 그냥 비워 둔다.
+    message: body.clean === '(내용 없음)' ? '' : body.clean,
+  };
+}
+
 export async function testOverlayAction(
   _prev: StudioActionState,
   formData: FormData,
@@ -522,7 +548,12 @@ export async function testOverlayAction(
     if (amount === null) return { ok: false, message: '금액은 숫자만 입력해 주세요.' };
     if (amount < 100n || amount > 1_000_000n) return { ok: false, message: '테스트 금액은 100원 ~ 1,000,000원 사이로 입력해 주세요.' };
 
-    await sendTestOverlay(creatorId, { donorName, amount, message });
+    const safe = await previewSafeText(creatorId, donorName, message);
+    if (safe.blocked) {
+      return { ok: false, message: '등록한 금칙어가 들어 있어 보내지 않았습니다. 실제 후원도 같은 기준으로 차단됩니다.' };
+    }
+
+    await sendTestOverlay(creatorId, { donorName: safe.donorName, amount, message: safe.message });
     return { ok: true, message: '테스트 후원을 전송했습니다. 실제 결제와 정산에는 반영되지 않습니다.' };
   });
 }
@@ -628,7 +659,12 @@ export async function previewOverlayTierAction(
     const donorName = text(formData, 'donorName').slice(0, 20) || '테스트 후원자';
     const message = text(formData, 'message').slice(0, 200) || '오늘 방송 재미있어요';
 
-    await sendTestOverlay(creatorId, { donorName, amount, message });
+    const safe = await previewSafeText(creatorId, donorName, message);
+    if (safe.blocked) {
+      return { ok: false, message: '등록한 금칙어가 들어 있어 보내지 않았습니다. 실제 후원도 같은 기준으로 차단됩니다.' };
+    }
+
+    await sendTestOverlay(creatorId, { donorName: safe.donorName, amount, message: safe.message });
     return { ok: true, message: `${formatWon(amount)} 미리보기를 오버레이로 보냈습니다.` };
   });
 }
@@ -757,6 +793,12 @@ export async function createBannedWordAction(
     if (!parsed.success) return { ok: false, message: '금칙어는 1~40자로 입력하고 처리 방식을 선택해 주세요.' };
 
     const word = parsed.data.word;
+    // 공백·구두점처럼 비교에서 무시하는 문자만으로 된 단어는 금칙어 구실을 못 한다.
+    // (예전 정규식 구현에서는 이런 단어가 서버를 멈추게 만드는 입력이기도 했다)
+    if (!bannedNeedle(word)) {
+      return { ok: false, message: '공백이나 기호(. _ - * ~ = + /)만으로는 금칙어를 만들 수 없습니다.' };
+    }
+
     const exists = await prisma.bannedWord.findFirst({ where: { creatorId, word, scope: 'CREATOR' } });
     if (exists) return { ok: false, message: '이미 등록된 금칙어입니다.' };
 

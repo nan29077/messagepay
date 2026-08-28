@@ -913,6 +913,12 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
     // 이 건이 빠진 집계를 읽고 함께 통과해 한도를 넘긴다. 실패하면 아래에서 되돌린다.
     await commitCounters(donor.id, donation.creatorId, donation.amount, reservedAt, tx);
     return { limit, txn: row, alreadyApproved: false };
+  }, {
+    // 기본값(5초)에 기대지 않고 명시한다.
+    // 이 트랜잭션은 후원자 행을 FOR UPDATE 로 잠그므로, 같은 후원자가 연속으로 누르면
+    // 뒤 요청은 앞 트랜잭션이 끝날 때까지 줄을 선다. 잠금 대기와 실행 시간을 나눠서 잡아 둔다.
+    maxWait: 5_000,
+    timeout: 10_000,
   });
 
   const limitNow = decision.limit;

@@ -63,7 +63,7 @@ export interface WebPinState {
   message?: string;
   phoneMasked?: string;
   /** 미가입자의 결제수단 등록 링크 (팝업으로 연다) */
-  registerUrl?: string;
+
   /** PIN 링크 만료 시각 (ISO). 대기 화면 카운트다운에 쓴다. */
   expiresAt?: string;
   /** 결제사 실연동이 아닌 mock 링크인지 */
@@ -142,7 +142,17 @@ export async function startWebPinDonation(_prev: WebPinState, formData: FormData
   };
 }
 
-/** 미가입 번호: 결제수단 등록 링크를 팝업 + 문자로 함께 안내한다. */
+/**
+ * 미가입 번호: 결제수단 등록 링크를 **문자로만** 보낸다.
+ *
+ * 이 액션은 비로그인 상태에서 전화번호만 받고, 본인확인(SMS 인증번호)을 거치지 않는다.
+ * 그래서 발급한 가입 링크를 응답으로 돌려주면 남의 번호를 적어 넣은 사람이
+ * 그 번호에 묶인 링크를 그대로 받아 가게 된다. 그 링크로는 피해자의 마스킹 번호를 보고,
+ * 자기 카드로 등록을 마치고, 로그인 상태라면 그 후원자 프로필을 자기 계정에 붙일 수도 있다.
+ *
+ * 그래서 링크는 번호의 실제 소유자만 받을 수 있는 문자로만 내보낸다.
+ * (인증번호를 확인하는 web-donation.ts 경로는 본인확인을 마친 뒤라 팝업으로 열어 준다)
+ */
 async function registerGuide(input: {
   phone: string;
   ph: string;
@@ -193,12 +203,12 @@ async function registerGuide(input: {
     ok: true,
     step: 'register',
     phoneMasked: input.masked,
-    registerUrl: link.url,
+    // registerUrl 은 일부러 담지 않는다. 위 주석 참고.
     message:
       (input.reason ? `${input.reason} ` : '') +
       (mtSent
-        ? '결제수단 등록이 필요합니다. 등록 링크를 문자로도 보냈습니다. 등록을 마친 뒤 이 창에서 다시 후원해 주세요.'
-        : '결제수단 등록이 필요합니다. 등록을 마친 뒤 이 창에서 다시 후원해 주세요.'),
+        ? '결제수단 등록이 필요합니다. 등록 링크를 문자로 보냈습니다. 등록을 마친 뒤 이 창에서 다시 후원해 주세요.'
+        : '결제수단 등록이 필요합니다. 잠시 뒤 도착하는 등록 안내 문자의 링크로 등록을 마친 뒤 이 창에서 다시 후원해 주세요.'),
   };
 }
 

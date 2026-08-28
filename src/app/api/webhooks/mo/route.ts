@@ -4,6 +4,7 @@ import { newId } from '@/lib/id';
 import { logger, scrub } from '@/lib/logger';
 import { getMoAdapter } from '@/server/adapters/mo';
 import { handleMoInbound } from '@/server/services/donation-flow';
+import { clientIpFromRequest } from '@/server/rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,7 +36,10 @@ export async function POST(req: Request) {
   req.headers.forEach((v, k) => {
     headerMap[k.toLowerCase()] = v;
   });
-  const ip = (headerMap['x-forwarded-for'] ?? '').split(',')[0]?.trim() || undefined;
+  // 발신 IP 는 신뢰 프록시가 붙인 **마지막** 홉만 쓴다.
+  // 첫 홉은 클라이언트가 직접 써 넣는 값이라, 허용 IP 를 헤더에 적기만 하면
+  // 허용목록 검사를 그대로 통과한다(2중 방어가 시크릿 하나로 줄어든다).
+  const ip = clientIpFromRequest(req) ?? undefined;
 
   const adapter = getMoAdapter();
   const verified = adapter.verify(raw, headerMap, ip);

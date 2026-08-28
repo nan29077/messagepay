@@ -248,26 +248,39 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
     return deny('NEW_DONOR_FIRST_DAY', '신규 후원자 첫날 한도를 초과했습니다.');
   }
 
-  // 연속 발송 대기(cooldown) 확인
-  const cooldownKey = `cooldown:${input.donor.id}`;
-  if (await kv.get(cooldownKey)) {
-    return deny('COOLDOWN', '연속 발송으로 대기 중입니다. 잠시 후 다시 시도해 주세요.');
-  }
-
-  if (input.consumeVelocity !== false) {
-    // 속도 제한: window 내 최대 건수
-    const velocityKey = `velocity:${input.donor.id}:${Math.floor(now.getTime() / (policy.velocityWindowSec * 1000))}`;
-    const vCount = await kv.incr(velocityKey, policy.velocityWindowSec);
-    if (vCount > policy.velocityMaxCount) {
-      return deny('VELOCITY', `${policy.velocityWindowSec}초 내 최대 ${policy.velocityMaxCount}건까지 후원할 수 있습니다.`);
+  // ------------------------------------------------------------------
+  // 여기부터는 Redis 를 쓰는 판정(연속 발송 대기·속도 제한)이다.
+  //
+  // 트랜잭션 안에서는 하지 않는다.
+  // 결제 판정(executePayment)은 후원자 행을 FOR UPDATE 로 잠근 채 이 함수를 부르는데,
+  // 그 상태로 Redis 응답을 기다리면 DB 잠금과 커넥션을 쥔 채 외부 네트워크에 매달리게 된다.
+  // Redis 가 죽지 않고 느려지기만 해도(페일오버, 순단) 인터랙티브 트랜잭션 제한 시간을 넘겨
+  // 결제 승인이 통째로 실패하고, 같은 후원자의 다른 요청까지 줄줄이 막힌다. DB 는 멀쩡한데도.
+  //
+  // 이 두 판정은 접수 시점(트랜잭션 밖)에서 이미 한 번 거친다.
+  // 결제 직전 재검사가 반드시 확인해야 하는 것은 DB 집계 기반 한도이고, 그건 위에서 끝냈다.
+  // ------------------------------------------------------------------
+  if (!input.tx) {
+    const cooldownKey = `cooldown:${input.donor.id}`;
+    if (await kv.get(cooldownKey)) {
+      return deny('COOLDOWN', '연속 발송으로 대기 중입니다. 잠시 후 다시 시도해 주세요.');
     }
 
-    // 연속 N건 이후 쿨다운 부여
-    const streakKey = `streak:${input.donor.id}`;
-    const streak = await kv.incr(streakKey, policy.cooldownSec);
-    if (streak >= policy.cooldownAfterCount) {
-      await kv.set(cooldownKey, '1', policy.cooldownSec);
-      await kv.del(streakKey);
+    if (input.consumeVelocity !== false) {
+      // 속도 제한: window 내 최대 건수
+      const velocityKey = `velocity:${input.donor.id}:${Math.floor(now.getTime() / (policy.velocityWindowSec * 1000))}`;
+      const vCount = await kv.incr(velocityKey, policy.velocityWindowSec);
+      if (vCount > policy.velocityMaxCount) {
+        return deny('VELOCITY', `${policy.velocityWindowSec}초 내 최대 ${policy.velocityMaxCount}건까지 후원할 수 있습니다.`);
+      }
+
+      // 연속 N건 이후 쿨다운 부여
+      const streakKey = `streak:${input.donor.id}`;
+      const streak = await kv.incr(streakKey, policy.cooldownSec);
+      if (streak >= policy.cooldownAfterCount) {
+        await kv.set(cooldownKey, '1', policy.cooldownSec);
+        await kv.del(streakKey);
+      }
     }
   }
 

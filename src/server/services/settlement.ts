@@ -152,19 +152,30 @@ export function computeFees(amount: bigint, rates: FeeRates): FeeBreakdown {
   const platformFeeVat = rates.vatIncluded ? 0n : applyRate(platformFeeSupply, VAT_RATE);
 
   const pgFee = pgFeeSupply + pgFeeVat;
-  const platformFee = platformFeeSupply + platformFeeVat;
-  const net = amount - pgFee - platformFee;
+  const platformFeeRaw = platformFeeSupply + platformFeeVat;
+
+  // 수수료 합은 절대 후원금을 넘지 않는다.
+  //
+  // 예전에는 net 만 0 으로 보정하고 pgFee·platformFee 는 보정 전 값을 그대로 원장에 넣었다.
+  // 그래서 요율을 잘못 넣으면 화면에는 "정산예정금 0원" 으로 보이는데 원장 합계는 음수가 되어
+  // 그 크리에이터의 정산 가능액을 깎았다. 화면과 장부가 어긋나면 원인을 찾기 매우 어렵다.
+  //
+  // 결제 수수료는 실제로 PG 에 나가는 돈이므로 먼저 채우고, 남는 만큼만 플랫폼 수수료로 잡는다.
+  const pgFeeCapped = pgFee > amount ? amount : pgFee;
+  const room = amount - pgFeeCapped;
+  const platformFee = platformFeeRaw > room ? room : platformFeeRaw;
+  const net = amount - pgFeeCapped - platformFee;
 
   return {
     gross: amount,
-    pgFee,
+    pgFee: pgFeeCapped,
     pgFeeSupply,
     pgFeeVat,
     platformFee,
     platformFeeSupply,
     platformFeeVat,
     vat: pgFeeVat + platformFeeVat,
-    net: net < 0n ? 0n : net,
+    net,
     pgFeeRate: pgRate,
     platformFeeRate: platformRate,
     vatIncluded: rates.vatIncluded,

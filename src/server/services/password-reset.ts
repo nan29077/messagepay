@@ -79,8 +79,23 @@ export async function requestPasswordReset(
   ]);
 
   const link = resetLink(token);
-  // 이메일 연동 전 단계: 운영자가 서버 로그에서 링크를 확인해 전달한다.
-  logger.info(`[MOCK 메일] 비밀번호 재설정 링크: ${link}`);
+
+  // 링크는 로컬에서만 밖으로 내보낸다.
+  //
+  // 예전에는 환경과 무관하게 logger.info 로 링크를 남겼다. 그 한 줄이면
+  // 로그를 볼 수 있는 사람(운영자, 로그 수집 서비스, 컨테이너 stdout 을 읽는 사이드카)이
+  // 관리자 계정을 포함한 아무 계정의 비밀번호를 1시간 안에 바꿀 수 있었다.
+  // DB 에 해시만 저장한다는 위 원칙 1) 이 로그에서 무너지고 있었다.
+  //
+  // 로컬 확인용 출력은 logger 대신 console 을 쓴다.
+  // logger 는 이제 메시지에 담긴 URL 도 가리므로 링크가 보이지 않기 때문이다.
+  if (isLocal) {
+    console.log(`[MOCK 메일] 비밀번호 재설정 링크: ${link}`);
+  } else {
+    logger.warn('비밀번호 재설정 링크를 발급했지만 메일 발송이 연동되지 않아 전달되지 않았습니다.', {
+      userId: user.id,
+    });
+  }
 
   return { accepted: true, devLink: isLocal ? link : undefined };
 }

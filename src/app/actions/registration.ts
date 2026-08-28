@@ -6,6 +6,7 @@ import { startRegistration, completeRegistration } from '@/server/services/donor
 import { getSessionUser } from '@/server/auth';
 import { prisma } from '@/server/db';
 import type { ConsentType, PaymentMethodKind } from '@/generated/prisma/enums';
+import { clientIpFrom } from '@/server/rate-limit';
 
 /**
  * 후원자 계좌 등록 서버 액션.
@@ -16,7 +17,7 @@ import type { ConsentType, PaymentMethodKind } from '@/generated/prisma/enums';
 async function requestMeta() {
   const h = await headers();
   return {
-    ip: h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? undefined,
+    ip: clientIpFrom((name) => h.get(name)) ?? undefined,
     userAgent: h.get('user-agent') ?? undefined,
   };
 }

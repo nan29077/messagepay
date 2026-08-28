@@ -8,6 +8,7 @@ import { newId } from '@/lib/id';
 import { encrypt, maskPhone } from '@/lib/crypto';
 import { claimGuestInquiry } from '@/server/services/inquiry';
 import { notifySuperAdmins } from '@/server/services/notifications';
+import { clientIpFrom } from '@/server/rate-limit';
 
 /**
  * 1:1 채팅 문의 (플로팅 위젯) 서버 액션.
@@ -62,7 +63,7 @@ export async function sendInquiryMessage(
     // 게스트 토큰은 클라이언트가 쿠키를 지우면 얼마든지 새로 발급받을 수 있으므로
     // 제한 키에는 항상 IP 를 포함한다 (로그인 사용자는 계정 단위로도 함께 제한).
     const h = await headers();
-    const ip = h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+    const ip = clientIpFrom((name) => h.get(name)) ?? 'unknown';
     const rateKeys = [`inquiry:rate:ip:${ip}`];
     if (user) rateKeys.push(`inquiry:rate:user:${user.id}`);
 

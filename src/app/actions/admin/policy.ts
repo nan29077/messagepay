@@ -6,6 +6,7 @@ import { writeAudit } from '@/server/auth';
 import { newId } from '@/lib/id';
 import type { AdminActionState } from '@/components/admin/state';
 import { run, text, optText, money, int, bool, enumValue, requiredId, optDate } from './shared';
+import { bannedNeedle } from '@/server/services/content-filter';
 
 /**
  * 한도 정책 / 약관 버전 / 신고·금칙어 운영 액션.
@@ -225,6 +226,8 @@ export async function createBannedWord(_prev: AdminActionState, fd: FormData): P
     const word = text(fd, 'word');
     const action = enumValue(fd, 'action', ['BLOCK', 'MASK', 'FLAG'] as const, '처리 방식');
     if (word.length < 1 || word.length > 40) throw new Error('금칙어는 1 ~ 40자로 입력해 주세요.');
+    // 비교에서 무시하는 문자(공백·구두점)만으로 된 단어는 금칙어 구실을 못 한다.
+    if (!bannedNeedle(word)) throw new Error('공백이나 기호(. _ - * ~ = + /)만으로는 금칙어를 만들 수 없습니다.');
 
     const dup = await prisma.bannedWord.findFirst({ where: { scope: 'GLOBAL', word } });
     if (dup) throw new Error('이미 등록된 전역 금칙어입니다.');

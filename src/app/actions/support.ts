@@ -10,6 +10,7 @@ import { SUPPORT_CATEGORY_VALUES } from '@/components/public/support-options';
 import { INQUIRY_GUEST_COOKIE, claimGuestInquiry } from '@/server/services/inquiry';
 import { notifySuperAdmins } from '@/server/services/notifications';
 import { cookies } from 'next/headers';
+import { clientIpFrom } from '@/server/rate-limit';
 
 /**
  * 고객센터 문의 접수 (/support 폼).
@@ -63,7 +64,7 @@ export async function submitSupportRequest(
   // 남용 방지: IP 단위 10분당 10건 (로그인 사용자는 계정 단위로도 함께 제한)
   const user = await getSessionUser().catch(() => null);
   const h = await headers();
-  const ip = h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ip = clientIpFrom((name) => h.get(name)) ?? 'unknown';
   const rateKeys = [`support:rate:ip:${ip}`];
   if (user) rateKeys.push(`support:rate:user:${user.id}`);
   for (const key of rateKeys) {

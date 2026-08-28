@@ -34,6 +34,60 @@ const nextConfig: NextConfig = {
    *   로컬 미리보기 : npm run build && npm run start (지금까지와 동일)
    */
   ...(process.env.NEXT_OUTPUT === 'standalone' ? { output: 'standalone' as const } : {}),
+
+  /**
+   * 보안 응답 헤더.
+   *
+   * Next.js 는 이 헤더들을 기본으로 붙이지 않는다. 그래서 예전에는 관리자·스튜디오 화면을
+   * 남의 페이지에 투명한 iframe 으로 겹쳐 두고 로그인 상태의 관리자에게 승인·정지·정산 확정·
+   * 권한 변경 버튼을 누르게 만드는 클릭재킹이 가능했다.
+   * 서버 액션의 동일 출처 검사는 교차 출처 *요청* 을 막지만, 정상 출처 안에서 일어나는
+   * *클릭* 은 막지 못한다. 프레임 자체를 거부해야 닫힌다.
+   */
+  async headers() {
+    const base = [
+      { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+      { key: 'X-Frame-Options', value: 'DENY' },
+      { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+      // 이 서비스는 위치·카메라·마이크를 쓰지 않는다. 확장 프로그램이 끼어드는 것도 막는다.
+      { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=()' },
+    ];
+
+    // HTTPS 로 서비스할 때만 HSTS 를 붙인다. 로컬(http) 에 붙이면 브라우저가
+    // localhost 를 https 로 강제 기억해 개발이 막힌다.
+    if (process.env.NODE_ENV === 'production' && (process.env.APP_BASE_URL ?? '').startsWith('https://')) {
+      base.push({ key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' });
+    }
+
+    return [
+      {
+        // 오버레이를 제외한 모든 경로.
+        // 한 경로에 규칙 두 개가 겹치면 같은 헤더가 두 줄로 나가므로,
+        // 예외 경로는 매칭 단계에서 빼 둔다.
+        source: '/((?!overlay/).*)',
+        headers: base,
+      },
+      {
+        /**
+         * 오버레이만 예외.
+         * OBS·PRISM 브라우저 소스와 스튜디오 미리보기 iframe 이 이 화면을 감싸므로
+         * 프레임을 막으면 방송 화면이 나오지 않는다.
+         * 대신 이 경로에는 상태를 바꾸는 조작 버튼이 없어 클릭재킹의 표적이 되지 않고,
+         * 접근은 오버레이 토큰으로 따로 통제한다.
+         *
+         * 토큰이 URL 쿼리에 실리므로 리퍼러는 아예 보내지 않는다.
+         */
+        source: '/overlay/:path*',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'no-referrer' },
+          { key: 'Content-Security-Policy', value: 'frame-ancestors *' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=()' },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
