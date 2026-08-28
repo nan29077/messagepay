@@ -8,7 +8,8 @@ import { getYouTubeAdapter, formatChatMessage } from '@/server/adapters/youtube'
 import { buildTtsText } from '@/server/adapters/tts';
 import { publishOverlayEvent, type OverlayEventPayload } from './overlay-bus';
 import { resolveOverlayTier, type ResolvedTier } from './overlay-tiers';
-import { decrypt, encrypt, phoneTail4 } from '@/lib/crypto';
+import { decrypt, encrypt } from '@/lib/crypto';
+import { broadcastDonorName } from '@/lib/donor-name';
 import { normalizeTtsProvider } from './tts/naver';
 
 /**
@@ -99,32 +100,14 @@ export async function dispatchBroadcast(donationId: string): Promise<DispatchRes
   return { overlay: overlayOk, youtube: yt.ok, youtubeSkippedReason: yt.reason };
 }
 
-/** 마스킹된 전화번호 표시명. 예: 010-****-1234 */
-const MASKED_PHONE = /^\d{2,3}-\*+-\d{4}$/;
-
-/** 닉네임 미설정 시 자동 생성되는 기본 표시명. 예: 후원자1234 */
-const DEFAULT_DONOR_NAME = /^후원자\d{4}$/;
-
 /**
  * 오버레이·TTS 에 쓸 후원자 표시명.
  *
- * 닉네임을 설정하지 않은 후원자는 displayName 이 "후원자1234" 형식으로 저장된다.
- * 마스킹 번호("010-****-1234") 형식이 남아있는 이전 데이터도 함께 처리한다.
- * 방송 화면과 음성에서는 끝 4자리만 부르는 편이 자연스러우므로 여기서만 줄인다.
- * (후원 원장에 저장된 displayName 은 그대로 둔다)
+ * 규칙 자체는 lib/donor-name.ts 에 둔다. 닉네임 설정 화면의 "이렇게 표시됩니다"
+ * 미리보기가 같은 함수를 봐야, 후원자가 화면에서 약속받은 이름과 실제 방송에
+ * 뜨는 이름이 어긋나지 않는다. (후원 원장의 displayName 은 그대로 둔다)
  */
-function overlayDonorName(displayName: string): string {
-  const value = (displayName || '').trim();
-  // 마스킹 번호 형식 또는 원문 번호 → 끝 4자리만
-  if (MASKED_PHONE.test(value) || /^\+?\d{9,13}$/.test(value)) {
-    return phoneTail4(value) || value;
-  }
-  // 기본 닉네임 "후원자XXXX" 형식 → 끝 4자리만 ("1234")
-  if (DEFAULT_DONOR_NAME.test(value)) {
-    return value.slice(-4);
-  }
-  return value;
-}
+const overlayDonorName = broadcastDonorName;
 
 /** 효과음 재생값. 설정이 없으면 기본(켜짐 / 80)으로 본다. */
 function soundOf(overlay: { soundEnabled: boolean; soundVolume: number } | null) {

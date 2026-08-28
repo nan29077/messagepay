@@ -1,4 +1,4 @@
-import { normalizePhone } from '@/lib/crypto';
+import { normalizePhone, phoneTail4 } from '@/lib/crypto';
 
 /**
  * 후원자 표시 이름(닉네임) 규칙.
@@ -39,6 +39,40 @@ export function donorDisplayName(nickname: string | null | undefined, phone: str
 export function isDefaultDonorName(name: string | null | undefined): boolean {
   const t = (name ?? '').trim();
   return t === DEFAULT_PREFIX || new RegExp(`^${DEFAULT_PREFIX}\\d{4}$`).test(t);
+}
+
+/** 마스킹된 전화번호 표시명. 예: 010-****-1234 (닉네임 기능 이전 데이터) */
+const MASKED_PHONE = /^\d{2,3}-\*+-\d{4}$/;
+const RAW_PHONE = /^\+?\d{9,13}$/;
+
+/**
+ * 방송 화면·TTS·유튜브 채팅에 실제로 나가는 이름.
+ *
+ * 저장된 표시 이름(Donation.displayName)은 "후원자5678" 이지만,
+ * 방송에서 "후원자5678님이 3,000원을 후원하셨습니다" 는 어색하게 읽힌다.
+ * 그래서 직접 정한 닉네임이 아닌 경우에만 끝 4자리로 줄여 부른다.
+ *
+ * **이 함수는 브라우저와 서버가 함께 쓴다.**
+ * 닉네임 설정 화면의 "이렇게 표시됩니다" 미리보기와 실제 송출이 같은 규칙을 봐야
+ * 후원자가 화면에서 약속받은 이름과 방송에 뜨는 이름이 어긋나지 않는다.
+ * (예전에는 규칙이 broadcast-dispatch 안에만 있어서 실제로 어긋나 있었다)
+ */
+export function broadcastDonorName(displayName: string): string {
+  const value = (displayName || '').trim();
+
+  // 번호가 그대로 남아 있는 예전 데이터 → 끝 4자리만
+  if (MASKED_PHONE.test(value) || RAW_PHONE.test(value)) {
+    return phoneTail4(value) || value;
+  }
+
+  // 자동 생성된 기본 이름 → 끝 4자리만
+  if (isDefaultDonorName(value)) {
+    const tail = value.slice(-4);
+    return /^\d{4}$/.test(tail) ? tail : value;
+  }
+
+  // 직접 정한 닉네임은 그대로 부른다.
+  return value;
 }
 
 /**

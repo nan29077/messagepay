@@ -210,9 +210,11 @@ try {
       r.ok('방송 닉네임 입력칸이 있다', regText.includes('방송에 표시될 닉네임 (선택)'));
       const nickInput = reg.locator('input[aria-label="방송에 표시될 닉네임"]');
       r.ok('닉네임 입력 필드', (await nickInput.count()) > 0);
-      r.ok('미입력 시 기본 이름 안내(후원자4321)', regText.includes('후원자4321'), regText.slice(0, 240));
+      r.ok('미입력 시 끝 4자리 안내', regText.includes('번호 끝 4자리(4321)'), regText.slice(0, 240));
       r.ok('방송 표시 미리보기', regText.includes('방송·유튜브 채팅에 이렇게 표시됩니다'));
-      r.ok('기본 이름으로 미리보기가 나온다', regText.includes('후원자4321님이 3,000원을 후원하셨습니다'));
+      // 방송에서 실제로 불리는 이름과 같아야 한다(자동 생성 이름은 끝 4자리로 불린다).
+      r.ok('기본 이름 미리보기가 방송 표기와 같다', regText.includes('4321님이 3,000원을 후원하셨습니다'));
+      r.ok('미리보기에 후원자 접두사가 붙지 않는다', !regText.includes('후원자4321님이'));
       r.ok('나중에 바꿀 수 있다는 안내', regText.includes('마이페이지에서 언제든지 바꿀 수 있습니다'));
 
       // 입력하면 미리보기가 즉시 바뀐다
@@ -226,7 +228,7 @@ try {
       r.ok('10자를 넘기면 경고가 뜬다', (await bodyText(reg)).includes('10자 이내'));
       await nickInput.fill('');
       await reg.waitForTimeout(300);
-      r.ok('비우면 다시 기본 이름 미리보기로 돌아간다', (await bodyText(reg)).includes('후원자4321님이'));
+      r.ok('비우면 다시 기본 이름 미리보기로 돌아간다', (await bodyText(reg)).includes('4321님이 3,000원을'));
 
       await reg.close();
     }

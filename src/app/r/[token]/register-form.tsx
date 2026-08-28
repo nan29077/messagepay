@@ -4,7 +4,7 @@ import * as React from 'react';
 import { ChevronRight, ShieldCheck } from 'lucide-react';
 import { Button, Card, Checkbox, Input, Notice, cx } from '@/components/ui';
 import { startRegistrationAction } from '@/app/actions/registration';
-import { checkDonorName, DONOR_NAME_MAX } from '@/lib/donor-name';
+import { broadcastDonorName, checkDonorName, DONOR_NAME_MAX } from '@/lib/donor-name';
 import { SNS_PLATFORMS, type SnsPlatform, SnsPlatformSelector } from '@/components/shared/sns-platform-selector';
 
 /**
@@ -79,7 +79,11 @@ export function RegisterForm({
     });
   }
 
-  const preview = nameCheck.ok && nameCheck.value.length > 0 ? nameCheck.value : defaultName;
+  // 방송에서는 자동 생성된 기본 이름을 끝 4자리로 줄여 부른다.
+  // 미리보기도 같은 함수를 거쳐야 화면에서 약속한 이름과 실제 방송이 어긋나지 않는다.
+  const preview = broadcastDonorName(
+    nameCheck.ok && nameCheck.value.length > 0 ? nameCheck.value : defaultName,
+  );
 
   return (
     <div className="space-y-3">
@@ -110,7 +114,8 @@ export function RegisterForm({
           <p className="mt-1.5 text-[12px] font-semibold text-danger-500">{nameError}</p>
         ) : (
           <p className="mt-1.5 text-[12px] text-ink-400">
-            {DONOR_NAME_MAX}자 이내. 비워두면 <b className="font-bold text-ink-700">{defaultName}</b> 로 표시됩니다.
+            {DONOR_NAME_MAX}자 이내. 비워두면 번호 끝 4자리(
+            <b className="font-bold text-ink-700">{broadcastDonorName(defaultName)}</b>)로 표시됩니다.
           </p>
         )}
         <div className="mt-2.5 rounded-xl bg-brand-50 px-3.5 py-2.5">

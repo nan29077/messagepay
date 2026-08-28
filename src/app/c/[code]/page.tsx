@@ -18,7 +18,7 @@ import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import { prisma } from '@/server/db';
 import { getSessionUser } from '@/server/auth';
-import { defaultDonorName } from '@/lib/donor-name';
+import { broadcastDonorName, defaultDonorName } from '@/lib/donor-name';
 import { resolvePolicy } from '@/server/services/limits';
 import { getPaymentAdapter } from '@/server/adapters/payment';
 import { resolveWebDonationChannel } from '@/server/services/web-donation';
@@ -338,7 +338,7 @@ export default async function CreatorDonationPage({ params }: Params) {
               <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-700">
                 {viewerDonor.displayName
                   ? '후원하면 이 이름으로 방송 오버레이와 유튜브 채팅에 표시됩니다.'
-                  : `닉네임을 정하지 않아 ${defaultDonorName(viewerDonor.phoneMasked)} 로 표시됩니다. 닉네임을 정하면 크리에이터가 누가 보냈는지 알아볼 수 있습니다.`}
+                  : `닉네임을 정하지 않아 번호 끝 4자리(${broadcastDonorName(defaultDonorName(viewerDonor.phoneMasked))})로 표시됩니다. 닉네임을 정하면 크리에이터가 누가 보냈는지 알아볼 수 있습니다.`}
               </p>
               <Link
                 href="/my/account#nickname"

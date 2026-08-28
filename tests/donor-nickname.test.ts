@@ -8,6 +8,7 @@ import {
   defaultDonorName,
   donorDisplayName,
   isDefaultDonorName,
+  broadcastDonorName,
   checkDonorName,
   normalizeDonorName,
   DONOR_NAME_MAX,
@@ -22,6 +23,36 @@ import { validateDonorName } from '@/server/services/donor-name';
 
 let fx: Fixture;
 const inbound = (p: Record<string, unknown>) => handleMoInbound(mockMoAdapter.parse(p));
+
+describe('방송에 실제로 불리는 이름', () => {
+  it('자동 생성된 기본 이름은 끝 4자리로만 불린다', () => {
+    // "후원자5678님이 3,000원을 후원하셨습니다" 는 읽을 때 어색하다.
+    expect(broadcastDonorName('후원자5678')).toBe('5678');
+  });
+
+  it('직접 정한 닉네임은 그대로 부른다', () => {
+    expect(broadcastDonorName('밤톨이')).toBe('밤톨이');
+    // 숫자로만 된 닉네임이라도 사용자가 정한 것이면 손대지 않는다.
+    expect(broadcastDonorName('9호실')).toBe('9호실');
+  });
+
+  it('번호가 남아 있는 예전 데이터도 끝 4자리로 줄인다', () => {
+    expect(broadcastDonorName('010-****-5678')).toBe('5678');
+    expect(broadcastDonorName('01012345678')).toBe('5678');
+  });
+
+  it('끝 4자리를 못 얻으면 원래 값을 그대로 둔다', () => {
+    expect(broadcastDonorName('후원자')).toBe('후원자');
+    expect(broadcastDonorName('')).toBe('');
+  });
+
+  it('닉네임 설정 화면 미리보기와 실제 송출이 같은 규칙을 쓴다', () => {
+    // 규칙이 서버에만 있으면 화면에서 약속한 이름과 방송에 뜨는 이름이 어긋난다.
+    // (실제로 그랬다 — 화면은 "후원자5678", 방송은 "5678")
+    const saved = defaultDonorName('010-1234-5678');
+    expect(broadcastDonorName(saved)).toBe('5678');
+  });
+});
 
 describe('기본 닉네임 (번호 끝 4자리)', () => {
   it('번호에서 끝 4자리를 뽑아 후원자5678 형태로 만든다', () => {

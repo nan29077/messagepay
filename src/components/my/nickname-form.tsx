@@ -4,7 +4,7 @@ import * as React from 'react';
 import { Sparkles } from 'lucide-react';
 import { Button, Card, Field, Input, Notice } from '@/components/ui';
 import { updateDonorNickname, type DonorActionState } from '@/app/actions/donor';
-import { checkDonorName, DONOR_NAME_MAX } from '@/lib/donor-name';
+import { broadcastDonorName, checkDonorName, DONOR_NAME_MAX } from '@/lib/donor-name';
 
 const initial: DonorActionState = { ok: false };
 
@@ -28,7 +28,8 @@ export function NicknameForm({
 
   const check = checkDonorName(value);
   const error = value.trim().length > 1 && !check.ok ? check.message : null;
-  const preview = check.ok && check.value.length > 0 ? check.value : defaultName;
+  // 실제 송출과 같은 규칙을 거친다(자동 생성된 기본 이름은 끝 4자리로 불린다).
+  const preview = broadcastDonorName(check.ok && check.value.length > 0 ? check.value : defaultName);
   const usingDefault = !current;
 
   return (
@@ -36,7 +37,7 @@ export function NicknameForm({
       <form action={action} className="space-y-3">
         <Field
           label="닉네임"
-          hint={`${DONOR_NAME_MAX}자 이내. 비워두면 ${defaultName} 로 표시됩니다.`}
+          hint={`${DONOR_NAME_MAX}자 이내. 비워두면 번호 끝 4자리(${broadcastDonorName(defaultName)})로 표시됩니다.`}
         >
           <Input
             name="nickname"
