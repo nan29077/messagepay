@@ -27,6 +27,7 @@ export interface CreatorApplyState {
 const base = {
   displayName: z.string().trim().min(1, '표시명을 입력해 주세요.').max(30, '표시명은 30자 이내로 입력해 주세요.'),
   channelName: z.string().trim().max(60, '채널명은 60자 이내로 입력해 주세요.').optional(),
+  channelPlatform: z.string().trim().max(30).optional(),
   channelUrl: z
     .string()
     .trim()
@@ -71,6 +72,7 @@ export async function applyCreator(_prev: CreatorApplyState, formData: FormData)
   const raw = {
     displayName: String(formData.get('displayName') ?? ''),
     channelName: String(formData.get('channelName') ?? ''),
+    channelPlatform: String(formData.get('channelPlatform') ?? ''),
     channelUrl: String(formData.get('channelUrl') ?? ''),
     contactEmail: String(formData.get('contactEmail') ?? ''),
     description: String(formData.get('description') ?? ''),
@@ -83,6 +85,7 @@ export async function applyCreator(_prev: CreatorApplyState, formData: FormData)
   const values: Record<string, string> = {
     displayName: raw.displayName.trim(),
     channelName: raw.channelName.trim(),
+    channelPlatform: raw.channelPlatform.trim(),
     channelUrl: raw.channelUrl.trim(),
     contactEmail: raw.contactEmail.trim(),
     description: raw.description.trim(),
@@ -180,6 +183,7 @@ export async function applyCreator(_prev: CreatorApplyState, formData: FormData)
           code,
           displayName: data.displayName,
           channelName: data.channelName?.trim() || null,
+          channelPlatform: data.channelPlatform?.trim() || null,
           description,
           channelUrl,
           status: 'PENDING',

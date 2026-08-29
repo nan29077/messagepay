@@ -481,6 +481,8 @@ model CreatorProfile {
   code                String        @unique
   displayName         String        @map("display_name")
   channelName         String?       @map("channel_name")
+  /// 채널 플랫폼 (YOUTUBE|INSTAGRAM|FACEBOOK|TIKTOK|CHZZK|SOOP|TWITCH|OTHER)
+  channelPlatform     String?       @map("channel_platform")
   avatarUrl           String?       @map("avatar_url")
   /// 후원 페이지 상단 배너 이미지 URL (크리에이터 꾸미기)
   bannerUrl           String?       @map("banner_url")
