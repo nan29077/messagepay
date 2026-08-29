@@ -186,7 +186,14 @@ export default async function StudioOverlayPage() {
                 submitLabel={setting ? 'URL 재발급' : 'URL 발급'}
                 variant={setting ? 'danger' : 'primary'}
                 size="md"
-                confirmMessage={setting ? '새 URL을 발급하면 기존 브라우저 소스 URL이 즉시 무효화됩니다. 계속할까요?' : undefined}
+                confirmTitle={setting ? '브라우저 소스 URL을 다시 발급할까요?' : 'URL을 발급할까요?'}
+                confirmMessage={
+                  setting
+                    ? '기존 URL이 즉시 무효화되어 OBS·PRISM에 등록된 브라우저 소스가 동작하지 않습니다. 새 URL을 다시 등록해야 합니다.'
+                    : 'OBS·PRISM에 붙여넣을 전체 URL이 발급됩니다. 발급 직후 한 번만 표시되니 바로 복사해 주세요.'
+                }
+                confirmActionLabel={setting ? '재발급' : '발급'}
+                doneTitle={setting ? 'URL을 다시 발급했습니다' : 'URL을 발급했습니다'}
               />
             </Card>
           </div>
@@ -306,7 +313,16 @@ export default async function StudioOverlayPage() {
               )}
             </div>
 
-            <ActionForm action={testOverlayAction} submitLabel="테스트 후원 보내기" variant="secondary">
+            <ActionForm
+              action={testOverlayAction}
+              submitLabel="테스트 후원 보내기"
+              pendingLabel="보내는 중"
+              variant="secondary"
+              confirmTitle="테스트 후원을 보낼까요?"
+              confirmMessage="입력한 표시명 · 금액 · 메시지로 오버레이 알림이 재생됩니다. 실제 결제와 정산에는 반영되지 않습니다."
+              confirmActionLabel="보내기"
+              doneTitle="테스트 후원을 보냈습니다"
+            >
               <div className="grid gap-3 md:grid-cols-2">
                 <Field label="표시명" hint="20자 이내">
                   <Input name="donorName" defaultValue="테스트 후원자" maxLength={20} />

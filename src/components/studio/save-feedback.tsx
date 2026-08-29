@@ -54,14 +54,16 @@ function nowLabel(): string {
 export function useSaveFeedback(state: SaveFeedbackState, pending: boolean): SaveFeedback {
   const [toast, setToast] = React.useState<SaveFeedback['toast']>(null);
   const [justSaved, setJustSaved] = React.useState(false);
-  const seq = React.useRef(0);
+  /** 저장할 때마다 1씩 오른다. 같은 문구여도 애니메이션이 다시 시작되도록 key 로 쓴다. */
+  const [seq, setSeq] = React.useState(0);
 
   const [prev, setPrev] = React.useState(state);
   if (prev !== state) {
     setPrev(state);
     if (state.message) {
-      seq.current += 1;
-      setToast({ ok: state.ok, message: state.message, at: nowLabel(), seq: seq.current });
+      const next = seq + 1;
+      setSeq(next);
+      setToast({ ok: state.ok, message: state.message, at: nowLabel(), seq: next });
       setJustSaved(state.ok);
     }
   }

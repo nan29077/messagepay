@@ -3,11 +3,15 @@
 import * as React from 'react';
 import { Button, Notice, cx } from '@/components/ui';
 import { SecretBox } from '@/components/studio/copy';
+import { ConfirmDialog, useConfirmSubmit } from '@/components/studio/confirm-dialog';
 import type { StudioActionState } from '@/app/actions/studio';
 
 /**
  * 크리에이터 관리자 공용 액션 폼.
  * 서버 컴포넌트에서 필드를 children 으로 넘기고, 서버 액션을 그대로 전달한다.
+ *
+ * confirmMessage 를 주면 브라우저 기본 confirm 이 아니라 도네이도 알림창을 띄우고,
+ * 그 [확인] 을 눌러야 실제로 제출된다. 처리 결과도 같은 알림창에서 보여 준다.
  */
 
 type StudioAction = (prev: StudioActionState, formData: FormData) => Promise<StudioActionState>;
@@ -22,6 +26,10 @@ export function ActionForm({
   variant = 'primary',
   size = 'md',
   confirmMessage,
+  confirmTitle,
+  confirmActionLabel,
+  confirmVariant,
+  doneTitle,
   className,
 }: {
   action: StudioAction;
@@ -30,20 +38,48 @@ export function ActionForm({
   pendingLabel?: string;
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent';
   size?: 'sm' | 'md' | 'lg';
+  /** 있으면 도네이도 알림창으로 한 번 물어본 뒤 제출한다. */
   confirmMessage?: string;
+  /** 알림창 제목. 없으면 버튼 문구로 물어본다. */
+  confirmTitle?: string;
+  /** 알림창의 실행 버튼 문구. 없으면 [확인] */
+  confirmActionLabel?: string;
+  /** 되돌릴 수 없는 동작이면 danger 를 준다. */
+  confirmVariant?: 'primary' | 'danger' | 'accent';
+  /** 성공했을 때 알림창 제목. 없으면 [완료되었습니다] */
+  doneTitle?: string;
   className?: string;
 }) {
   const [state, formAction, pending] = React.useActionState(action, initial);
+  const formRef = React.useRef<HTMLFormElement>(null);
+  const confirm = useConfirmSubmit(formRef, state, pending);
 
   return (
     <form
+      ref={formRef}
       action={formAction}
       onSubmit={(e) => {
-        if (confirmMessage && !window.confirm(confirmMessage)) e.preventDefault();
+        if (confirmMessage) confirm.onSubmit(e);
       }}
       className={cx('space-y-3.5', className)}
     >
       {children}
+
+      {confirmMessage ? (
+        <ConfirmDialog
+          phase={confirm.phase}
+          title={confirmTitle ?? `${submitLabel}할까요?`}
+          description={confirmMessage}
+          confirmLabel={confirmActionLabel ?? '확인'}
+          busyLabel={pendingLabel}
+          variant={confirmVariant ?? (variant === 'danger' ? 'danger' : 'primary')}
+          doneOk={state.ok}
+          doneTitle={state.ok ? doneTitle ?? '완료되었습니다' : '처리하지 못했습니다'}
+          doneDescription={state.message}
+          onConfirm={confirm.confirm}
+          onClose={confirm.close}
+        />
+      ) : null}
 
       {state.secret ? (
         <SecretBox label={state.secretLabel ?? '발급된 값'} value={state.secret} hint={state.secretHint} />

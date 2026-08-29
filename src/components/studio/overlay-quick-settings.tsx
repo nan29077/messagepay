@@ -5,7 +5,8 @@ import Image from 'next/image';
 import { AudioLines, Ban, ChevronDown, Coins, Globe, Heart, KeyRound, PartyPopper, Server, Shapes, Sparkles, Star, Volume2 } from 'lucide-react';
 import { Button, Checkbox, Field, Input, Notice, SectionTitle, Select, cx } from '@/components/ui';
 import { playEffectSound } from '@/components/overlay/overlay-sound';
-import { SaveButtonLabel, SaveToast, useSaveFeedback } from '@/components/studio/save-feedback';
+import { ConfirmDialog, useConfirmSubmit } from '@/components/studio/confirm-dialog';
+import { SaveButtonLabel, useSaveFeedback } from '@/components/studio/save-feedback';
 import { updateOverlaySettingAction } from '@/app/actions/studio';
 import type { StudioActionState } from '@/app/actions/studio';
 import { DONAIDO_CHARACTER_STICKERS } from '@/lib/overlay-effect-catalog';
@@ -155,8 +156,12 @@ export function OverlayQuickSettings({
     { ok: false },
   );
 
-  // 저장이 눌렸는지 확실히 보이게 한다. 토스트(화면 상단 고정) + 버튼 3단계 문구.
+  // 저장이 눌렸는지 확실히 보이게 한다. 버튼은 [저장 중] → [저장됨] → [설정 저장] 3단계.
   const feedback = useSaveFeedback(state, pending);
+
+  // [설정 저장]은 확인 알림창을 거친다. 실제 저장은 알림창의 [확인] 에서 일어난다.
+  const formRef = React.useRef<HTMLFormElement>(null);
+  const confirm = useConfirmSubmit(formRef, state, pending);
 
   // 브라우저에 설치된 한국어 음성만 수집한다.
   React.useEffect(() => {
@@ -191,7 +196,7 @@ export function OverlayQuickSettings({
   };
 
   return (
-    <form action={formAction} className="space-y-5">
+    <form ref={formRef} action={formAction} onSubmit={confirm.onSubmit} className="space-y-5">
       {/* 서버 액션이 TTS 값을 함께 저장하도록 표시한다 */}
       <input type="hidden" name="withTts" value="1" />
       <input type="hidden" name="stickerSet" value={effect} />
@@ -602,8 +607,19 @@ export function OverlayQuickSettings({
         </div>
       </details>
 
-      {/* 스크롤 위치와 상관없이 보이는 저장 결과 알림 */}
-      <SaveToast feedback={feedback} />
+      {/* 확인 알림창. [확인] 을 눌러야 실제로 저장된다. */}
+      <ConfirmDialog
+        phase={confirm.phase}
+        title="오버레이 설정을 저장할까요?"
+        description="효과 · 테마 · TTS · 세부 표시 설정이 함께 저장되고, 다음 후원부터 방송 화면에 곧바로 적용됩니다."
+        confirmLabel="저장"
+        busyLabel="저장 중"
+        doneOk={state.ok}
+        doneTitle={state.ok ? '저장되었습니다' : '저장하지 못했습니다'}
+        doneDescription={state.message}
+        onConfirm={confirm.confirm}
+        onClose={confirm.close}
+      />
 
       {/* 폼 안쪽 기록. 시각을 함께 적어 같은 문구를 다시 저장해도 바뀐 것이 보이게 한다. */}
       {feedback.toast ? (
