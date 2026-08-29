@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { AudioLines, Ban, ChevronDown, Coins, Globe, Heart, KeyRound, PartyPopper, Server, Shapes, Sparkles, Star, Volume2 } from 'lucide-react';
 import { Button, Checkbox, Field, Input, Notice, SectionTitle, Select, cx } from '@/components/ui';
 import { playEffectSound } from '@/components/overlay/overlay-sound';
+import { SaveButtonLabel, SaveToast, useSaveFeedback } from '@/components/studio/save-feedback';
 import { updateOverlaySettingAction } from '@/app/actions/studio';
 import type { StudioActionState } from '@/app/actions/studio';
 import { DONAIDO_CHARACTER_STICKERS } from '@/lib/overlay-effect-catalog';
@@ -153,6 +154,9 @@ export function OverlayQuickSettings({
     updateOverlaySettingAction,
     { ok: false },
   );
+
+  // 저장이 눌렸는지 확실히 보이게 한다. 토스트(화면 상단 고정) + 버튼 3단계 문구.
+  const feedback = useSaveFeedback(state, pending);
 
   // 브라우저에 설치된 한국어 음성만 수집한다.
   React.useEffect(() => {
@@ -598,10 +602,28 @@ export function OverlayQuickSettings({
         </div>
       </details>
 
-      {state.message ? <Notice tone={state.ok ? 'success' : 'danger'}>{state.message}</Notice> : null}
+      {/* 스크롤 위치와 상관없이 보이는 저장 결과 알림 */}
+      <SaveToast feedback={feedback} />
 
-      <Button type="submit" variant="primary" size="md" disabled={pending}>
-        {pending ? '저장 중' : '설정 저장'}
+      {/* 폼 안쪽 기록. 시각을 함께 적어 같은 문구를 다시 저장해도 바뀐 것이 보이게 한다. */}
+      {feedback.toast ? (
+        <Notice tone={feedback.toast.ok ? 'success' : 'danger'}>
+          {feedback.toast.message} <span className="text-ink-400">({feedback.toast.at})</span>
+        </Notice>
+      ) : null}
+
+      <Button
+        type="submit"
+        variant="primary"
+        size="md"
+        disabled={pending}
+        aria-busy={pending}
+        className={cx(
+          'min-w-[132px] justify-center transition-colors',
+          feedback.justSaved && 'bg-success-500 hover:bg-success-500',
+        )}
+      >
+        <SaveButtonLabel pending={pending} justSaved={feedback.justSaved} label="설정 저장" />
       </Button>
     </form>
   );

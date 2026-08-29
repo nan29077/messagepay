@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Loader, MonitorPlay, Play, PlugZap, Plus, Trash2, Volume2, Wifi, X } from 'lucide-react';
 import { Badge, Button, Checkbox, Field, Input, Notice, Select, cx } from '@/components/ui';
+import { SaveButtonLabel, SaveToast, useSaveFeedback } from '@/components/studio/save-feedback';
 import { previewOverlayTierAction, saveOverlayTiersAction } from '@/app/actions/studio';
 import type { StudioActionState } from '@/app/actions/studio';
 import { DONAIDO_CHARACTER_STICKERS } from '@/lib/overlay-effect-catalog';
@@ -124,6 +125,9 @@ export function OverlayTiersEditor({
     saveOverlayTiersAction,
     { ok: false },
   );
+
+  // [설정 저장]과 같은 방식으로 저장 결과를 확실히 보여 준다.
+  const saveFeedback = useSaveFeedback(saveState, saving);
 
   // 브라우저에 설치된 음성 목록. 한국어 음성을 앞으로 정렬한다.
   React.useEffect(() => {
@@ -266,13 +270,27 @@ export function OverlayTiersEditor({
       <form action={saveAction} onSubmit={() => setSubmittedPayload(payload)} className="space-y-3">
         <input type="hidden" name="tiers" value={payload} />
 
-        {saveState.message ? (
-          <Notice tone={saveState.ok ? 'success' : 'danger'}>{saveState.message}</Notice>
+        <SaveToast feedback={saveFeedback} />
+
+        {saveFeedback.toast ? (
+          <Notice tone={saveFeedback.toast.ok ? 'success' : 'danger'}>
+            {saveFeedback.toast.message} <span className="text-ink-400">({saveFeedback.toast.at})</span>
+          </Notice>
         ) : null}
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" variant="primary" size="md" disabled={saving}>
-            {saving ? '저장 중' : '구간 저장'}
+          <Button
+            type="submit"
+            variant="primary"
+            size="md"
+            disabled={saving}
+            aria-busy={saving}
+            className={cx(
+              'min-w-[132px] justify-center transition-colors',
+              saveFeedback.justSaved && 'bg-success-500 hover:bg-success-500',
+            )}
+          >
+            <SaveButtonLabel pending={saving} justSaved={saveFeedback.justSaved} label="구간 저장" />
           </Button>
           <Button type="button" variant="accent" size="md" onClick={() => openPreview()}>
             <MonitorPlay size={17} strokeWidth={1.7} />

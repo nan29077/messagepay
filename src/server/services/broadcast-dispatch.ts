@@ -416,6 +416,14 @@ export async function sendTestOverlay(
     isTest: true,
   };
 
+  // 발행이 먼저다.
+  //
+  // 예전에는 overlay_event 기록을 먼저 await 했다. 그러면 DB 가 느린 환경(로컬 PGlite,
+  // 디스크가 바쁜 윈도우 등)에서 그 쓰기 시간이 그대로 미리보기 지연으로 나타난다.
+  // [테스트 후원 보내기]를 눌러도 한참 뒤에야 효과가 뜨는 원인이 이것이다.
+  // SSE 발행은 메모리 연산이라 즉시 끝나므로 먼저 내보내고, 기록은 뒤에서 이어서 한다.
+  publishOverlayEvent(payload);
+
   try {
     await prisma.overlayEvent.create({
       data: {
@@ -424,10 +432,9 @@ export async function sendTestOverlay(
       },
     });
   } catch (e) {
-    // DB 기록 실패해도 SSE 이벤트는 반드시 발행한다.
-    // 개발 DB 스키마 불일치 등으로 create 가 throw 해도 미리보기가 동작해야 한다.
-    console.error('[overlay] overlayEvent 기록 실패 (SSE 발행은 계속 진행)', e);
+    // DB 기록 실패해도 이미 발행된 SSE 이벤트는 유효하다.
+    // 개발 DB 스키마 불일치 등으로 create 가 throw 해도 미리보기는 동작해야 한다.
+    console.error('[overlay] overlayEvent 기록 실패 (SSE 발행은 완료됨)', e);
   }
-  publishOverlayEvent(payload);
   return payload;
 }
