@@ -565,16 +565,20 @@ a {
   0%   { transform: translate(0, 0) scale(0.35) rotate(0deg); opacity: 0; }
   10%  { opacity: 1; }
   80%  { opacity: 1; }
-  100% { transform: translate(var(--drift, 0px), calc(-1 * var(--rise, 60vh))) scale(1) rotate(var(--spin, 30deg)); opacity: 0; }
+  100% { transform: translate(var(--drift, 0px), calc(-1 * var(--rise, calc(var(--ovh, 100vh) * 0.6)))) scale(1) rotate(var(--spin, 30deg)); opacity: 0; }
 }
 .animate-particle-rise { animation: donaido-particle-rise 2.6s ease-out infinite; }
 
-/* 꽃가루: 화면 위에서 아래로 떨어진다 */
+/* 꽃가루: 화면 위에서 아래로 떨어진다
+   --ovh 는 오버레이 기준 높이다. 방송용은 화면 높이(100vh),
+   스튜디오 미리보기는 축소 전 캔버스 높이(1080px)를 내려준다.
+   vh 를 그대로 쓰면 축소된 미리보기에서 이동 거리가 실제 화면 높이(180px 등) 기준으로
+   계산돼 꽃가루가 화면 안에서 멈춘다. */
 @keyframes donaido-confetti-fall {
-  0%   { transform: translate(0, -12vh) rotate(0deg); opacity: 0; }
+  0%   { transform: translate(0, calc(var(--ovh, 100vh) * -0.12)) rotate(0deg); opacity: 0; }
   8%   { opacity: 1; }
   88%  { opacity: 1; }
-  100% { transform: translate(var(--drift, 0px), 108vh) rotate(var(--spin, 720deg)); opacity: 0; }
+  100% { transform: translate(var(--drift, 0px), calc(var(--ovh, 100vh) * 1.08)) rotate(var(--spin, 720deg)); opacity: 0; }
 }
 .animate-confetti-fall { animation: donaido-confetti-fall 3.2s linear infinite; }
 

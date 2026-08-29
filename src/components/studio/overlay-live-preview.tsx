@@ -1,8 +1,9 @@
 'use client';
 
 import * as React from 'react';
-import { Monitor, MonitorPlay, PlugZap, RotateCw, Smartphone, Wifi } from 'lucide-react';
+import { Maximize2, Monitor, MonitorPlay, PlugZap, RotateCcw, RotateCw, Smartphone, Wifi, X } from 'lucide-react';
 import { Badge, Button, cx } from '@/components/ui';
+import { Portal } from '@/components/ui/portal';
 
 /**
  * 테스트 후원 실행 화면에 붙는 미리보기.
@@ -55,28 +56,27 @@ interface LinkState {
   recovered?: number;
 }
 
+/**
+ * 연결 상태 배지.
+ *
+ * 문구 길이를 고정폭 칸 안에 가둔다.
+ * 예전에는 `재연결 중 (12초 후 재시도)` 처럼 1초마다 글자 수가 달라졌고, 이 배지가
+ * 탭·버튼과 같은 줄에서 자리를 다투다 보니 줄바꿈이 켜졌다 꺼졌다 하면서
+ * 아래 내용 전체가 위아래로 흔들렸다. 남은 초는 크리에이터에게 의미가 없어 없앤다.
+ */
 function ConnectionBadge({ link }: { link: LinkState | null }) {
-  if (!link || link.phase === 'connecting') {
-    return (
-      <Badge tone="neutral">
-        <PlugZap size={13} strokeWidth={1.7} className="mr-1 inline-block align-[-2px]" />
-        연결 중
-      </Badge>
-    );
-  }
-  if (link.phase === 'retrying') {
-    return (
-      <Badge tone="warning">
-        <PlugZap size={13} strokeWidth={1.7} className="mr-1 inline-block align-[-2px]" />
-        재연결 중{link.retrySec ? ` (${link.retrySec}초 후 재시도)` : ''}
-      </Badge>
-    );
-  }
+  const phase = !link ? 'connecting' : link.phase;
+  const tone = phase === 'connected' ? 'success' : phase === 'retrying' ? 'warning' : 'neutral';
+  const label = phase === 'connected' ? '연결됨' : phase === 'retrying' ? '재연결 중' : '연결 중';
+  const Icon = phase === 'connected' ? Wifi : PlugZap;
+
   return (
-    <Badge tone="success">
-      <Wifi size={13} strokeWidth={1.7} className="mr-1 inline-block align-[-2px]" />
-      연결됨{link.recovered ? ` · 놓친 알림 ${link.recovered}건 복구` : ''}
-    </Badge>
+    <span className="inline-flex h-7 w-[86px] shrink-0 items-center justify-center">
+      <Badge tone={tone}>
+        <Icon size={13} strokeWidth={1.7} className="mr-1 inline-block align-[-2px]" />
+        {label}
+      </Badge>
+    </span>
   );
 }
 
@@ -89,6 +89,31 @@ export function OverlayLivePreview({ creatorId }: { creatorId: string }) {
   const [mobileKey, setMobileKey] = React.useState(0);
   const overlayFrame = React.useRef<HTMLIFrameElement | null>(null);
   const mobileFrame = React.useRef<HTMLIFrameElement | null>(null);
+
+  /** 확대 보기(전체화면) 상태. 세로 화면에서는 가로로 눕혀 더 크게 보여 준다. */
+  const [zoomOpen, setZoomOpen] = React.useState(false);
+  const [zoomRotated, setZoomRotated] = React.useState(false);
+
+  const openZoom = React.useCallback(() => {
+    // 세로가 더 긴 화면(휴대폰)에서는 눕혀야 2배 이상 커진다.
+    setZoomRotated(typeof window !== 'undefined' && window.innerHeight > window.innerWidth);
+    setZoomOpen(true);
+  }, []);
+
+  // 확대 보기가 열려 있는 동안 배경 스크롤을 막고 ESC 로 닫는다.
+  React.useEffect(() => {
+    if (!zoomOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setZoomOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [zoomOpen]);
 
   /** iframe 에서 보내는 postMessage 를 수신해 연결 배지를 업데이트한다. */
   React.useEffect(() => {
@@ -135,12 +160,15 @@ export function OverlayLivePreview({ creatorId }: { creatorId: string }) {
 
   return (
     <div className="space-y-2.5">
-      {/* ── 탭 ─────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      {/* ── 탭 · 상태 ───────────────────────────────────────
+          좁은 화면에서는 탭과 상태 줄을 처음부터 세로로 나눈다.
+          한 줄에 억지로 넣고 넘칠 때만 줄바꿈하게 두면, 상태 문구가 바뀔 때마다
+          줄 수가 1↔2 로 오가면서 아래 내용이 위아래로 흔들린다. */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div
           role="tablist"
           aria-label="미리보기 화면 선택"
-          className="inline-flex rounded-xl border border-ink-100 bg-white p-1"
+          className="inline-flex self-start rounded-xl border border-ink-100 bg-white p-1"
         >
           {TABS.map((t) => {
             const active = tab === t.value;
@@ -163,36 +191,26 @@ export function OverlayLivePreview({ creatorId }: { creatorId: string }) {
           })}
         </div>
 
-        {/* 탭별 툴바 */}
-        <div className="flex shrink-0 items-center gap-2">
+        {/* 탭별 툴바. 높이를 고정해 상태가 바뀌어도 아래가 밀리지 않는다. */}
+        <div className="flex h-9 shrink-0 items-center gap-1.5">
           <ConnectionBadge link={link} />
-          {isPc ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setLink(null);
-                setReloadKey((k) => k + 1);
-              }}
-            >
-              <RotateCw size={14} strokeWidth={1.7} />
-              다시 연결
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setLink(null);
-                setMobileKey((k) => k + 1);
-              }}
-            >
-              <RotateCw size={14} strokeWidth={1.7} />
-              다시 연결
-            </Button>
-          )}
+          <Button type="button" variant="ghost" size="sm" onClick={openZoom}>
+            <Maximize2 size={14} strokeWidth={1.7} />
+            확대
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setLink(null);
+              if (isPc) setReloadKey((k) => k + 1);
+              else setMobileKey((k) => k + 1);
+            }}
+          >
+            <RotateCw size={14} strokeWidth={1.7} />
+            다시 연결
+          </Button>
         </div>
       </div>
 
@@ -205,7 +223,8 @@ export function OverlayLivePreview({ creatorId }: { creatorId: string }) {
             실제 방송 오버레이 미리보기 (OBS/PRISM에 적용되는 화면과 동일)
           </p>
           <p className="mt-0.5 text-[12px] leading-relaxed text-ink-400">
-            OBS/PRISM 브라우저 소스 기준 · 아래 [테스트 후원 보내기]를 누르면 이 화면에서 바로 재생됩니다.
+            OBS/PRISM 브라우저 소스(1920x1080)를 그대로 그린 뒤 이 틀에 맞춰 축소한 화면입니다. 크기 비율이 실제
+            방송과 같습니다. 아래 [테스트 후원 보내기]를 누르면 이 화면에서 바로 재생됩니다.
           </p>
         </div>
 
@@ -271,10 +290,63 @@ export function OverlayLivePreview({ creatorId }: { creatorId: string }) {
         </div>
 
         <p className="text-[12px] leading-relaxed text-ink-400">
-          스마트폰 세로 화면에서 오버레이 효과가 어떻게 표시되는지 확인합니다. 투명 배경이므로 OBS·PRISM 에서는
-          방송 화면이 그대로 비칩니다. PC 탭과 SSE 가 각각 연결되어 두 탭 모두 테스트 후원을 받아 재생합니다.
+          시청자가 휴대폰 세로 화면으로 방송을 볼 때 오버레이가 어떻게 보이는지 확인합니다. 방송은 가로(16:9)이므로
+          화면 가운데에 표시되고 위아래는 비어 있습니다. 투명 배경이라 OBS·PRISM 에서는 방송 화면이 그대로 비칩니다.
+          PC 탭과 SSE 가 각각 연결되어 두 탭 모두 테스트 후원을 받아 재생합니다.
         </p>
       </div>
+
+      {/* ── 확대 보기 ──────────────────────────────────────
+          휴대폰에서는 미리보기 틀이 320px 남짓이라 글자가 작다.
+          전체화면으로 띄우고, 세로 화면이면 눕혀서 두 배 이상 크게 보여 준다. */}
+      {zoomOpen ? (
+        <Portal>
+        <div className="fixed inset-0 z-[95] bg-black">
+          <div
+            className="absolute overflow-hidden"
+            style={
+              zoomRotated
+                ? {
+                    left: '50%',
+                    top: '50%',
+                    width: '100dvh',
+                    height: '100dvw',
+                    transform: 'translate(-50%, -50%) rotate(90deg)',
+                    ...CHECKERBOARD_STYLE,
+                  }
+                : { inset: 0, ...CHECKERBOARD_STYLE }
+            }
+          >
+            <iframe
+              title="오버레이 확대 보기"
+              src={overlayUrl}
+              className="absolute inset-0 h-full w-full border-0"
+              style={{ background: 'transparent' }}
+            />
+          </div>
+
+          <div className="absolute right-3 top-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setZoomRotated((v) => !v)}
+              aria-label={zoomRotated ? '세로로 보기' : '가로로 보기'}
+              className="inline-flex h-10 items-center gap-1.5 rounded-full bg-white/90 px-3.5 text-[13px] font-bold text-ink-900 shadow-lg"
+            >
+              <RotateCcw size={16} strokeWidth={1.8} />
+              {zoomRotated ? '세로로' : '가로로'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setZoomOpen(false)}
+              aria-label="확대 보기 닫기"
+              className="grid h-10 w-10 place-items-center rounded-full bg-white/90 text-ink-900 shadow-lg"
+            >
+              <X size={18} strokeWidth={1.9} />
+            </button>
+          </div>
+        </div>
+        </Portal>
+      ) : null}
     </div>
   );
 }

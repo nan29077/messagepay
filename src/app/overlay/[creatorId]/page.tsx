@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { OverlayClient } from '@/components/overlay/overlay-client';
+import { OverlayCanvas } from '@/components/overlay/overlay-canvas';
 import { authorizeOverlay } from '@/server/services/overlay-access';
 
 /**
@@ -55,7 +56,7 @@ export default async function OverlayPage({
   //    OBS 브라우저 소스를 새로 고치기 전까지 영영 아무것도 나오지 않았다(SSE 를 아예 열지 않으므로).
   //  - 꺼진 동안 도착한 이벤트는 클라이언트가 페이로드의 enabled 값을 보고 무시한다.
   //    (미리보기는 설정 확인이 목적이므로 꺼져 있어도 재생한다)
-  return (
+  const overlay = (
     <OverlayClient
       creatorId={creatorId}
       token={token}
@@ -67,4 +68,8 @@ export default async function OverlayPage({
       debug={debug}
     />
   );
+
+  // 미리보기는 방송 화면(1920x1080)을 그대로 그린 뒤 틀 크기에 맞춰 축소한다.
+  // 방송용(토큰) 경로는 OBS 가 정한 크기를 그대로 채우므로 감싸지 않는다.
+  return preview ? <OverlayCanvas>{overlay}</OverlayCanvas> : overlay;
 }

@@ -87,7 +87,9 @@ function RisingParticles({ kind }: { kind: EffectName }) {
             animationDelay: `${p.delay}s`,
             animationDuration: `${p.duration}s`,
             ['--drift' as string]: `${p.drift}px`,
-            ['--rise' as string]: `${p.rise}vh`,
+            // vh 를 쓰면 미리보기 캔버스(축소 렌더링) 안에서 실제 화면 높이를 기준으로 계산돼
+            // 파티클이 거의 움직이지 않는다. 오버레이 기준 높이(--ovh)를 쓴다.
+            ['--rise' as string]: `calc(var(--ovh, 100vh) * ${(p.rise / 100).toFixed(3)})`,
             ['--spin' as string]: `${p.spin}deg`,
           }}
         >
@@ -249,7 +251,10 @@ export function CharacterStickerInline({ effect, theme = 'TORNADO' }: { effect: 
   return (
     <div
       aria-hidden
-      className={`w-[clamp(100px,18vw,260px)] drop-shadow-[0_20px_28px_rgba(15,10,0,0.24)] ${characterSticker.animationClass} ${themeClass}`}
+      // 1920 기준 고정 크기. 예전에는 clamp(100px,18vw,260px) 이었는데, 화면이 좁아질수록
+      // 상대적으로 커져(322px 틀에서 화면의 31%) 위쪽이 잘렸다. 1920 에서는 clamp 결과가
+      // 260px 이므로 방송 화면의 크기는 그대로다.
+      className={`w-[260px] drop-shadow-[0_20px_28px_rgba(15,10,0,0.24)] ${characterSticker.animationClass} ${themeClass}`}
     >
       <Image
         src={characterSticker.image}

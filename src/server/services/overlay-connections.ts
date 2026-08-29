@@ -22,11 +22,30 @@ import { logger } from '@/lib/logger';
  * 프로세스 단위 카운터다. 다중 인스턴스에서는 인스턴스별로 적용된다.
  */
 
-/** 크리에이터 1명이 같은 종류로 동시에 열어 둘 수 있는 오버레이 스트림 수 */
+/** 크리에이터 1명이 방송용으로 동시에 열어 둘 수 있는 오버레이 스트림 수 */
 export const MAX_OVERLAY_CONNECTIONS = 3;
+
+/**
+ * 미리보기 상한은 따로, 더 넉넉하게 잡는다.
+ *
+ * 스튜디오 화면 하나가 이미 iframe 2개(PC · 모바일)를 연다. 여기에 [확대 보기]나
+ * [새 탭에서 미리보기], 페이지 새로고침 직후 아직 정리되지 않은 이전 연결이 겹치면
+ * 방송용과 같은 상한 3개를 금세 넘긴다. 그러면 가장 오래된 미리보기가 강제로 끊기고,
+ * 끊긴 쪽이 다시 붙으면서 또 다른 쪽을 밀어내는 재연결 핑퐁이 생긴다.
+ * (화면에는 [재연결 중] 이 반복해서 뜬다)
+ *
+ * 미리보기는 크리에이터 본인 세션으로만 열리고 오래 떠 있지 않으므로 8개까지 허용한다.
+ * 방송용 상한 3개는 그대로 둔다. 그쪽은 실제로 보호가 필요하다.
+ */
+export const MAX_OVERLAY_PREVIEW_CONNECTIONS = 8;
 
 /** 연결 종류. 상한과 방출 대상은 같은 종류 안에서만 적용된다. */
 export type OverlayConnectionKind = 'broadcast' | 'preview';
+
+/** 종류별 동시 연결 상한 */
+export function overlayConnectionLimit(kind: OverlayConnectionKind): number {
+  return kind === 'preview' ? MAX_OVERLAY_PREVIEW_CONNECTIONS : MAX_OVERLAY_CONNECTIONS;
+}
 
 interface Connection {
   /** 방출(강제 종료) 콜백 */
@@ -63,16 +82,18 @@ export function registerOverlayConnection(
   const conn: Connection = { close, openedAt: Date.now(), kind };
   set.add(conn);
 
+  const limit = overlayConnectionLimit(kind);
+
   for (;;) {
     const peers = sameKind(set, kind);
-    if (peers.length <= MAX_OVERLAY_CONNECTIONS) break;
+    if (peers.length <= limit) break;
     const oldest = peers[0];
     if (!oldest || oldest === conn) break;
     set.delete(oldest);
     logger.info('오버레이 동시 연결 상한 초과 — 가장 오래된 연결을 종료합니다.', {
       creatorId,
       kind,
-      limit: MAX_OVERLAY_CONNECTIONS,
+      limit,
       openedAt: new Date(oldest.openedAt).toISOString(),
     });
     try {

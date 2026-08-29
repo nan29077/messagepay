@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Check, CircleAlert, HelpCircle, Loader2, X } from 'lucide-react';
 import { Button, cx } from '@/components/ui';
+import { Portal } from '@/components/ui/portal';
 
 /**
  * 스튜디오 공용 확인 알림창.
@@ -85,6 +86,7 @@ export function ConfirmDialog({
   const HeadIcon = done ? (doneOk ? Check : CircleAlert) : HelpCircle;
 
   return (
+    <Portal>
     <div
       className="fixed inset-0 z-[90] flex items-center justify-center p-4"
       role="dialog"
@@ -179,6 +181,7 @@ export function ConfirmDialog({
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 

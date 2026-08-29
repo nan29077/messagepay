@@ -118,7 +118,17 @@ export default async function StudioDonationDetailPage({ params }: { params: Pro
                 동일한 표시명·금액·메시지로 오버레이에 테스트 이벤트를 한 번 더 재생합니다. 실제 재송출이 아니며 후원
                 상태, 유튜브 전송, 정산에는 아무 영향이 없습니다.
               </p>
-              <ActionForm action={replayOverlayTestAction} submitLabel="테스트 재생" variant="secondary" size="sm">
+              <ActionForm
+                action={replayOverlayTestAction}
+                submitLabel="테스트 재생"
+                pendingLabel="재생 중"
+                variant="secondary"
+                size="sm"
+                confirmTitle="오버레이에 다시 재생할까요?"
+                confirmMessage="같은 표시명 · 금액 · 메시지로 오버레이에 한 번 더 표시됩니다. 방송 중이라면 시청자 화면에도 보입니다. 후원 상태 · 유튜브 전송 · 정산에는 영향이 없습니다."
+                confirmActionLabel="재생"
+                doneTitle="테스트 재생을 보냈습니다"
+              >
                 <input type="hidden" name="donationId" value={donation.id} />
               </ActionForm>
             </Card>

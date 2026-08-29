@@ -464,7 +464,9 @@ export function OverlayClient({
         if (disposed) return;
         resuming = false;
         // 지수 백오프 (최대 30초). 재연결 상태는 방송 화면에 표시하지 않는다.
-        const wait = Math.min(MAX_BACKOFF_MS, 1000 * 2 ** retry);
+        // 첫 재시도는 300ms 로 짧게 잡는다. 순간적인 끊김(모바일 전환·프록시 재시작)은
+        // 대부분 바로 복구되는데, 1초를 기다리면 그 사이 [재연결 중] 이 눈에 띄게 뜬다.
+        const wait = retry === 0 ? 300 : Math.min(MAX_BACKOFF_MS, 1000 * 2 ** retry);
         retry += 1;
 
         let remain = Math.round(wait / 1000);
@@ -499,7 +501,10 @@ export function OverlayClient({
   const themeName = themeOf(current?.theme || theme);
 
   return (
-    <div className="pointer-events-none fixed inset-0 h-screen w-screen bg-transparent">
+    // h-screen/w-screen 을 쓰지 않는다. 미리보기 고정 캔버스(OverlayCanvas) 안에서는
+    // 뷰포트 크기가 아니라 캔버스(1920x1080)를 채워야 하기 때문이다.
+    // `fixed inset-0` 만으로 방송용(화면 전체)과 캔버스 모드 양쪽 모두 올바르게 채워진다.
+    <div className="pointer-events-none fixed inset-0 bg-transparent">
       {/* 파티클은 배너를 끈 구간에서도 재생된다. 캐릭터 스티커는 배너 위 인라인으로 처리. */}
       {current && !leaving ? <EffectLayer effect={effectOf(current)} theme={themeName} /> : null}
 
@@ -522,6 +527,10 @@ export function OverlayClient({
 
       {debug ? (
         <span
+          // 미리보기에서는 캔버스가 통째로 축소되므로 배지까지 같이 줄어들면 읽을 수 없다.
+          // --ovs(적용된 배율)로 역보정해 항상 원래 크기로 보이게 한다.
+          // 방송용 경로에는 --ovs 가 없어 scale(1) 이 되므로 아무 영향이 없다.
+          style={{ transform: 'scale(calc(1 / var(--ovs, 1)))', transformOrigin: 'top left' }}
           className={`fixed left-3 top-3 rounded-md px-2 py-1 text-[11px] font-semibold text-white ${
             link.phase === 'connected' ? 'bg-ink-900/80' : 'bg-danger-500/85'
           }`}

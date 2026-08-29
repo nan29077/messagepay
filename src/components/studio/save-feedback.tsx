@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Check, CircleAlert, Loader2 } from 'lucide-react';
 import { cx } from '@/components/ui';
+import { Portal } from '@/components/ui/portal';
 
 /**
  * 저장 버튼 피드백 (스튜디오 공용).
@@ -104,6 +105,7 @@ export function SaveToast({ feedback }: { feedback: SaveFeedback }) {
   if (!toast) return null;
 
   return (
+    <Portal>
     <div
       className="pointer-events-none fixed inset-x-0 top-[76px] z-[80] flex justify-center px-4"
       role="status"
@@ -130,6 +132,7 @@ export function SaveToast({ feedback }: { feedback: SaveFeedback }) {
         <span className="shrink-0 text-[11px] font-semibold tabular-nums text-white/55">{toast.at}</span>
       </button>
     </div>
+    </Portal>
   );
 }
 
