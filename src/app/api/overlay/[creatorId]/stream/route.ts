@@ -204,15 +204,27 @@ export async function GET(req: Request, ctx: { params: Promise<{ creatorId: stri
       };
 
       // 프록시 타임아웃 방지용 하트비트 + 놓친 이벤트 보충
+      //
+      // sweep 주기:
+      //   미리보기(preview) → 2초: dev 서버에서 서버 액션과 라우트 핸들러의 모듈 그래프가
+      //   분리되면 EventEmitter 가 달라 이벤트가 DB 에만 기록된다. 테스트 후원이 2초 이내에
+      //   보이도록 주기를 짧게 잡는다.
+      //   방송용(OBS/PRISM) → 20초: Redis 전파 실패를 보완하는 용도이므로 20초면 충분.
+      let sweepTick = 0;
+      const SWEEP_EVERY = preview ? 1 : 10; // heartbeat 기준 몇 번에 한 번 sweep 할지 (2초 * 1 = 2s, 2s * 10 = 20s)
       heartbeat = setInterval(() => {
         if (closed) return;
-        try {
-          controller.enqueue(encoder.encode(': ping\n\n'));
-        } catch {
-          /* 연결 종료 */
+        sweepTick += 1;
+        // ping 은 20초마다 보낸다(프록시 타임아웃 방지).
+        if (sweepTick % 10 === 0) {
+          try {
+            controller.enqueue(encoder.encode(': ping\n\n'));
+          } catch {
+            /* 연결 종료 */
+          }
         }
-        void sweepMissed();
-      }, 20000);
+        if (sweepTick % SWEEP_EVERY === 0) void sweepMissed();
+      }, 2000);
 
       req.signal.addEventListener('abort', teardown);
     },
