@@ -78,9 +78,6 @@ export async function createWebDonation(input: WebDonationInput): Promise<WebDon
     bannedWords,
     maxLength: MAX_MESSAGE_LEN,
   });
-  if (filtered.action === 'BLOCK') {
-    return { ok: false, message: '메시지에 사용할 수 없는 단어가 포함되어 있습니다. 내용을 수정해 주세요.' };
-  }
 
   // 한도 확인 (결제 생성 전에 먼저 확인해 불필요한 레코드를 만들지 않는다)
   const blocked = await prisma.blockedDonor.findUnique({

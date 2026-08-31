@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
-import { resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
+import { setChargeAmount, inboundAndPay, resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
 import { handleMoInbound } from '@/server/services/donation-flow';
 import { mockMoAdapter } from '@/server/adapters/mo';
 import { resolvePolicy, checkLimits, FALLBACK_POLICY } from '@/server/services/limits';
@@ -18,7 +18,7 @@ import { env } from '@/lib/env';
 let fx: Fixture;
 
 async function inbound(payload: Record<string, unknown>) {
-  return handleMoInbound(mockMoAdapter.parse(payload));
+  return inboundAndPay(payload, fx.creatorId);
 }
 
 beforeEach(async () => {
@@ -114,7 +114,7 @@ describe('한도 집계 예약', () => {
   it('결제에 실패한 건은 집계에 남지 않는다', async () => {
     await seedRegisteredDonor(fx.donorPhone);
     // mock 어댑터: 금액 끝 999 = 승인 거절
-    await prisma.creatorProfile.update({ where: { id: fx.creatorId }, data: { donationAmount: 2999n } });
+    setChargeAmount(2999n);
 
     const res = await inbound(moPayload({ to: fx.moNumber }));
     expect(res.status).toBe('PAYMENT_FAILED');

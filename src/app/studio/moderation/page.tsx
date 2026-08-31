@@ -16,7 +16,7 @@ import { formatKst } from '@/lib/datetime';
 export const dynamic = 'force-dynamic';
 
 const ACTION_LABEL: Record<string, { text: string; tone: 'neutral' | 'warning' | 'danger' }> = {
-  BLOCK: { text: '차단 (결제 접수 거부)', tone: 'danger' },
+  BLOCK: { text: '차단 (지난 정책)', tone: 'danger' },
   MASK: { text: '마스킹 (별표 처리)', tone: 'warning' },
   FLAG: { text: '표시 (기록만)', tone: 'neutral' },
 };
@@ -39,7 +39,7 @@ export default async function StudioModerationPage() {
       orderBy: { createdAt: 'desc' },
       include: { donor: { select: { id: true, phoneMasked: true, displayName: true } } },
     }),
-    // 금칙어 차단으로 접수 거부된 최근 문자 (차단 사유 조정 근거)
+    // 정책 변경 전에 금칙어로 접수 거부됐던 문자 (이력 확인용. 지금은 새로 생기지 않는다)
     prisma.donation.findMany({
       where: { creatorId, status: 'CONTENT_BLOCKED' },
       orderBy: { receivedAt: 'desc' },
@@ -76,7 +76,6 @@ export default async function StudioModerationPage() {
                 <Field label="처리 방식">
                   <Select name="action" defaultValue="MASK">
                     <option value="MASK">마스킹 (별표 처리)</option>
-                    <option value="BLOCK">차단 (결제 접수 거부)</option>
                     <option value="FLAG">표시 (기록만)</option>
                   </Select>
                 </Field>
@@ -162,7 +161,7 @@ export default async function StudioModerationPage() {
                 ))}
               </div>
               <p className="mt-2.5 text-[12px] leading-relaxed text-ink-400">
-                빨간색은 차단, 노란색은 마스킹, 회색은 기록만 하는 단어입니다.
+                노란색은 마스킹, 회색은 기록만 하는 단어입니다.
               </p>
             </Card>
           )}
@@ -207,11 +206,11 @@ export default async function StudioModerationPage() {
 
         <section>
           <SectionTitle
-            title="금칙어 차단 이력"
-            description="금칙어로 접수가 거부된 최근 문자입니다. 어떤 단어가 걸렸는지 확인해 금칙어를 조정하세요."
+            title="지난 금칙어 차단 이력"
+            description="정책 변경 전, 금칙어로 접수가 거부됐던 문자입니다. 지금은 금칙어가 결제를 막지 않고 기록만 마스킹합니다."
           />
           {blockHistory.length === 0 ? (
-            <EmptyState title="차단된 문자가 없습니다" description="금칙어(차단)에 걸린 문자가 생기면 여기에 표시됩니다." />
+            <EmptyState title="차단된 문자가 없습니다" description="지금 정책에서는 새로 쌓이지 않습니다." />
           ) : (
             <Table>
               <thead>

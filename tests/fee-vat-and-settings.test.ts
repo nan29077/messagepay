@@ -6,13 +6,13 @@ import { handleMoInbound } from '@/server/services/donation-flow';
 import { startRegistration, completeRegistration } from '@/server/services/donor-registration';
 import { computeFees, getSettlementSummary } from '@/server/services/settlement';
 import { tplDonationSuccess, tplRegisterGuide } from '@/server/services/mt-templates';
-import { resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
+import { inboundAndPay, resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
 import { generateToken, tokenHash } from '@/lib/crypto';
 
 let fx: Fixture;
 
 async function inbound(payload: Record<string, unknown>) {
-  return handleMoInbound(mockMoAdapter.parse(payload));
+  return inboundAndPay(payload, fx.creatorId);
 }
 
 /** 전역 수수료 정책을 이 테스트에서 쓰는 값으로 바꾼다. */
@@ -133,7 +133,7 @@ describe('가맹점 감사 문자 커스터마이즈', () => {
     await inbound(moPayload({ to: fx.moNumber, text: '화이팅' }));
 
     const success = readMockOutbox(10).find((m) => m.text.includes('충전되었습니다'));
-    expect(success?.text).toContain('누적 결제');
+    expect(success?.text).toContain('누적 충전');
   });
 
   it('설정한 본문의 치환자가 실제 값으로 바뀌어 발송된다', async () => {
@@ -152,7 +152,7 @@ describe('가맹점 감사 문자 커스터마이즈', () => {
     // 발신 주체 표기는 설정과 무관하게 항상 붙는다.
     expect(success!.text.startsWith('[문자페이] ')).toBe(true);
     // 기본 문구는 더 이상 쓰이지 않는다.
-    expect(success!.text).not.toContain('누적 결제');
+    expect(success!.text).not.toContain('누적 충전');
   });
 
   it('치환값에 정규식 특수문자가 있어도 본문이 깨지지 않는다', () => {
@@ -177,7 +177,7 @@ describe('가맹점 감사 문자 커스터마이즈', () => {
       cumulative: 3_000n,
       custom: '   ',
     });
-    expect(out.text).toContain('누적 결제');
+    expect(out.text).toContain('누적 충전');
   });
 });
 

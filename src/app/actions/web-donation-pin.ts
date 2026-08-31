@@ -85,7 +85,6 @@ export async function startWebPinDonation(_prev: WebPinState, formData: FormData
     return { ok: false, step: 'phone', message: '휴대전화 번호 형식을 확인해 주세요. (예: 010-1234-5678)' };
   }
   if (!creatorId || !requestId) return { ok: false, step: 'phone', message: '요청 정보가 올바르지 않습니다.' };
-  if (!message) return { ok: false, step: 'phone', message: '결제 메시지를 입력해 주세요.' };
   if (message.length > 200) return { ok: false, step: 'phone', message: '결제 메시지는 200자 이내로 입력해 주세요.' };
   if (!/^\d{3,7}$/.test(amountRaw)) return { ok: false, step: 'phone', message: '결제 금액을 확인해 주세요.' };
 

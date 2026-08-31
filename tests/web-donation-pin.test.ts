@@ -271,12 +271,11 @@ describe('결제 페이지 웹 결제 — PIN 인증 흐름', () => {
     }
   });
 
-  it('[9] 금액·메시지가 올바르지 않으면 아무것도 만들지 않는다', async () => {
+  it('[9] 금액·번호가 올바르지 않으면 아무것도 만들지 않는다', async () => {
     const phone = nextPhone();
     await seedRegisteredDonor(phone);
 
-    const noMessage = await startWebPinDonation(initial, donateForm(phone, { message: '   ' }));
-    expect(noMessage.ok).toBe(false);
+    // 메모는 선택 항목이다. 비어 있어도 금액·번호만 맞으면 진행된다.
     const badPhone = await startWebPinDonation(initial, donateForm('02-123-4567'));
     expect(badPhone.ok).toBe(false);
     const badAmount = await startWebPinDonation(initial, donateForm(phone, { amount: '0' }));

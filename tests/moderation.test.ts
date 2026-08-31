@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
-import { resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
+import { inboundAndPay, resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
 import { handleMoInbound, loadBannedWords } from '@/server/services/donation-flow';
 import { mockMoAdapter } from '@/server/adapters/mo';
 import { filterContent } from '@/server/services/content-filter';
@@ -9,7 +9,7 @@ import { filterContent } from '@/server/services/content-filter';
 /** 가맹점 금칙어·차단 기능 검수 */
 
 let fx: Fixture;
-const inbound = (p: Record<string, unknown>) => handleMoInbound(mockMoAdapter.parse(p));
+const inbound = (p: Record<string, unknown>) => inboundAndPay(p, fx.creatorId);
 
 beforeEach(async () => {
   await resetDb();
@@ -31,13 +31,15 @@ async function addWord(word: string, action: 'BLOCK' | 'MASK' | 'FLAG', creatorI
 }
 
 describe('가맹점 금칙어', () => {
-  it('BLOCK 단어가 든 문자는 결제으로 접수되지 않고 결제도 일어나지 않는다', async () => {
+  it('BLOCK 단어가 남아 있어도 결제를 막지 않고 마스킹만 한다', async () => {
     await addWord('검수차단어', 'BLOCK', fx.creatorId);
 
-    const res = await inbound(moPayload({ to: fx.moNumber, text: '검수차단어 포함된 응원' }));
-    expect(res.result).toBe('BLOCKED');
-    expect(res.status).toBe('CONTENT_BLOCKED');
-    expect(await prisma.paymentTransaction.count()).toBe(0);
+    const res = await inbound(moPayload({ to: fx.moNumber, text: '검수차단어 포함된 문자' }));
+    expect(res.status).not.toBe('CONTENT_BLOCKED');
+
+    const d = await prisma.donation.findUniqueOrThrow({ where: { id: res.donationId! } });
+    expect(d.message).not.toContain('검수차단어');
+    expect(d.message).toContain('*****');
   });
 
   it('MASK 단어는 별표로 가려서 노출하고 원문은 암호화 보관한다', async () => {
@@ -70,7 +72,7 @@ describe('가맹점 금칙어', () => {
     expect(res.status).not.toBe('CONTENT_BLOCKED');
   });
 
-  it('내 금칙어는 다른 가맹점에게 적용되지 않는다 (스코프 격리)', async () => {
+  it('내 금칙어는 다른 가맹점에 적용되지 않는다 (스코프 격리)', async () => {
     await addWord('내단어만', 'BLOCK', fx.creatorId);
 
     const otherUser = await prisma.user.create({

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
-import { resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
+import { inboundAndPay, resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
 import { handleMoInbound } from '@/server/services/donation-flow';
 import { mockMoAdapter } from '@/server/adapters/mo';
 import {
@@ -20,7 +20,7 @@ import { filterContent } from '@/server/services/content-filter';
 const expectedWithholding = (amount: bigint) => calculateWithholding(amount).total;
 
 let fx: Fixture;
-const inbound = (p: Record<string, unknown>) => handleMoInbound(mockMoAdapter.parse(p));
+const inbound = (p: Record<string, unknown>) => inboundAndPay(p, fx.creatorId);
 
 // 정산 요청이 가능하도록 계좌를 인증 상태로 등록한다.
 async function verifiedAccount(creatorId: string) {

@@ -83,7 +83,7 @@ export default async function StudioMessagesPage({
       orderBy: [{ status: 'asc' }, { assignedAt: 'desc' }],
       select: { id: true, phoneNumber: true, keyword: true, mode: true, status: true, assignedAt: true },
     }),
-    prisma.creatorProfile.findUnique({ where: { id: creatorId }, select: { displayName: true, donationAmount: true } }),
+    prisma.creatorProfile.findUnique({ where: { id: creatorId }, select: { displayName: true } }),
   ]);
 
   const blockedSet = new Set(blockedRows.map((b) => b.donorId));
@@ -105,7 +105,7 @@ export default async function StudioMessagesPage({
         `${creator?.displayName ?? '가맹점'} 문자결제`,
         `${primary.phoneNumber} 으로 문자를 보내주세요.`,
         primary.keyword ? `문자 맨 앞에 ${primary.keyword} 를 붙여주세요.` : null,
-        `문자 1건당 ${formatWon(creator?.donationAmount ?? 3000n)}이 결제됩니다.`,
+        '문자를 보내면 충전 금액을 고를 수 있는 링크가 발송됩니다.',
         '최초 1회 계좌 등록이 필요하며, 만 19세 이상만 이용할 수 있습니다.',
       ]
         .filter(Boolean)

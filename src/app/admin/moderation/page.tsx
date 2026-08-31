@@ -87,8 +87,9 @@ export default async function AdminModerationPage({
       </div>
 
       <Notice tone="neutral" title="금칙어 처리 방식">
-        차단(BLOCK)은 해당 문자 처리를 중단하고, 마스킹(MASK)은 단어만 가려 표시하며, 표시(FLAG)는 처리는
-        하되 검토 대상으로 기록합니다. 가맹점이 직접 등록한 개별 금칙어는 각 스튜디오에서 관리합니다.
+        마스킹(MASK)은 단어만 가려 표시하고, 표시(FLAG)는 그대로 두되 검토 대상으로 기록합니다.
+        금칙어는 결제를 막지 않습니다. 문자 본문은 가맹점·최고관리자만 문자 관리에서 보므로 기록만 가립니다.
+        가맹점이 직접 등록한 개별 금칙어는 각 콘솔에서 관리합니다.
       </Notice>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-3">
@@ -102,7 +103,6 @@ export default async function AdminModerationPage({
               <AdminField label="처리 방식">
                 <AdminSelect name="action" defaultValue="MASK">
                   <option value="MASK">마스킹 (MASK)</option>
-                  <option value="BLOCK">차단 (BLOCK)</option>
                   <option value="FLAG">표시 (FLAG)</option>
                 </AdminSelect>
               </AdminField>

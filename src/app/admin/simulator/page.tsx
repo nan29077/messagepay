@@ -35,7 +35,7 @@ export default async function AdminSimulatorPage() {
       orderBy: { phoneNumber: 'asc' },
       select: {
         id: true, phoneNumber: true, keyword: true, mode: true,
-        creator: { select: { id: true, displayName: true, code: true, donationAmount: true } },
+        creator: { select: { id: true, displayName: true, code: true, _count: { select: { chargeProducts: true } } } },
       },
     }),
     prisma.moInboundMessage.findMany({
@@ -139,7 +139,7 @@ export default async function AdminSimulatorPage() {
                     <Th>키워드</Th>
                     <Th>모드</Th>
                     <Th>가맹점</Th>
-                    <Th className="text-right">1건 결제 금액</Th>
+                    <Th className="text-right">충전 상품</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -158,7 +158,7 @@ export default async function AdminSimulatorPage() {
                         )}
                       </Td>
                       <Td className="text-right tabular-nums">
-                        {n.creator ? formatWon(n.creator.donationAmount) : '-'}
+                        {n.creator ? `${n.creator._count.chargeProducts}개` : '-'}
                       </Td>
                     </tr>
                   ))}

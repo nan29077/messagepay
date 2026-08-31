@@ -4,7 +4,7 @@ import { mockMoAdapter } from '@/server/adapters/mo';
 import { readMockOutbox } from '@/server/adapters/mt';
 import { handleMoInbound, resolveConfirmChannel, startPinAuthorization } from '@/server/services/donation-flow';
 import { completePinAuthorization, expireStalePinSessions } from '@/server/services/pin-authorization';
-import { resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
+import { setChargeAmount, inboundAndSelect, resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
 
 /**
  * PIN 인증 결제 흐름.
@@ -21,7 +21,7 @@ import { resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } fro
 let fx: Fixture;
 
 async function inbound(payload: Record<string, unknown>) {
-  return handleMoInbound(mockMoAdapter.parse(payload));
+  return inboundAndSelect(payload, fx.creatorId);
 }
 
 describe('PIN 인증 결제 흐름 (CONFIRM_LINK 기본 경로)', () => {
@@ -71,16 +71,16 @@ describe('PIN 인증 결제 흐름 (CONFIRM_LINK 기본 경로)', () => {
     // 링크 원문은 저장하지 않는다
     expect(session.pinUrlMasked).not.toContain(session.sessionId);
 
-    const mt = readMockOutbox(3).find((m) => m.text.includes('PIN'));
-    expect(mt).toBeDefined();
-    expect(mt!.text).toContain('[MOCK]');
-    expect(mt!.text).toContain('아직 결제되지 않았습니다');
-    expect(mt!.text).toContain(session.sessionId);
+    // 문자는 충전 금액 선택 링크 한 통만 나간다.
+    // PIN 은 그 화면에서 그대로 이어지므로 PIN 링크 문자를 따로 보내지 않는다.
+    const select = readMockOutbox(3).find((m) => m.text.includes('충전 금액을 고르고'));
+    expect(select).toBeDefined();
+    expect(select!.text).toContain('아직 결제되지 않았습니다');
+    expect(await prisma.mtOutboundMessage.count({ where: { templateCode: 'PIN_REQUEST' } })).toBe(0);
 
     // 문자 이력에는 링크가 마스킹되어 남는다
-    const row = await prisma.mtOutboundMessage.findFirstOrThrow({ where: { templateCode: 'PIN_REQUEST' } });
+    const row = await prisma.mtOutboundMessage.findFirstOrThrow({ where: { templateCode: 'SELECT_AMOUNT' } });
     expect(row.bodyMasked).toContain('[보안링크]');
-    expect(row.bodyMasked).not.toContain(session.sessionId);
   });
 
   it('[3] PIN 완료 콜백을 받아야 결제가 완료되고 정산 원장이 생긴다', async () => {
@@ -199,7 +199,7 @@ describe('PIN 인증 결제 흐름 (CONFIRM_LINK 기본 경로)', () => {
 
   it('[9] PIN 링크 발급에 실패하면 결제 실패로 확정하고 안내한다', async () => {
     // mock 규칙: 금액 끝자리 555 = 인증창 생성 실패
-    await prisma.creatorProfile.update({ where: { id: fx.creatorId }, data: { donationAmount: 3555n } });
+    setChargeAmount(3555n);
     await seedRegisteredDonor(fx.donorPhone);
 
     const res = await inbound(moPayload({ to: fx.moNumber }));
@@ -219,7 +219,8 @@ describe('PIN 인증 결제 흐름 (CONFIRM_LINK 기본 경로)', () => {
     const again = await startPinAuthorization(res.donationId!);
     expect(again.ok).toBe(true);
     expect(await prisma.paymentPinSession.count()).toBe(1);
-    expect(await prisma.mtOutboundMessage.count({ where: { templateCode: 'PIN_REQUEST' } })).toBe(1);
+    // 선택 화면에서 이어지는 경로라 PIN 링크 문자는 나가지 않는다.
+    expect(await prisma.mtOutboundMessage.count({ where: { templateCode: 'PIN_REQUEST' } })).toBe(0);
   });
 
   it('[11] 한도를 넘긴 결제은 PIN 링크 자체가 발급되지 않는다', async () => {

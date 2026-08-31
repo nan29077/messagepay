@@ -164,7 +164,9 @@ export async function loadBannedWords(creatorId: string): Promise<BannedWordRule
     where: { active: true, OR: [{ scope: 'GLOBAL' }, { creatorId }] },
     select: { word: true, action: true },
   });
-  return rows.map((r) => ({ word: r.word, action: r.action }));
+  // 금칙어는 더 이상 결제를 막지 않는다. 지난 정책으로 남아 있는 BLOCK 규칙도
+  // 마스킹으로 취급해, 기록에서는 가리되 결제는 그대로 진행시킨다.
+  return rows.map((r) => ({ word: r.word, action: r.action === 'BLOCK' ? 'MASK' : r.action }));
 }
 
 /** 수신번호(+키워드)로 가맹점을 찾는다. */
@@ -511,21 +513,23 @@ async function processMoRow(
   }
 
   // (4) 콘텐츠 필터
-  // 모바일 MO 결제는 "문자 한 통 = 가맹점이 설정한 고정 금액" 이다.
-  // 본문의 "5000원" 같은 표기를 금액으로 해석하지 않는다(parseExplicitAmount 호출 비활성화).
-  // 금액을 직접 지정하는 결제는 화면에서 금액을 입력·확인하는 PC 웹 경로(web-donation)만 사용한다.
+  // 문자 본문은 외부에 노출되지 않고 가맹점·최고관리자만 문자 관리에서 본다.
+  // 그래서 금칙어는 결제를 막지 않고 기록만 마스킹한다(filtered.clean 이 마스킹된 값이다).
   const bannedWords = await loadBannedWords(creator.id);
   const filtered = filterContent(routed.body, {
     bannedWords,
     maxLength: MAX_MESSAGE_LEN,
   });
 
-  const amount = creator.donationAmount;
-  // 닉네임을 설정하지 않았으면 번호 끝 4자리로 만든 기본 이름을 쓴다 (예: 이용자5678).
-  // 이 값은 결제 시점에 박제되므로, 나중에 닉네임을 바꿔도 과거 내역은 그대로 남는다.
+  // 이름을 설정하지 않았으면 번호 끝 4자리로 만든 기본 이름을 쓴다 (예: 이용자5678).
+  // 이 값은 결제 시점에 박제되므로, 나중에 이름을 바꿔도 과거 내역은 그대로 남는다.
   const displayName = donorDisplayName(donor.displayName, inbound.fromNumber);
 
   // (5) 결제 거래 생성 (멱등)
+  //
+  // MO 문자에는 금액이 없다. 이용자가 링크에서 충전 금액을 고른 뒤에야 금액이 정해지므로
+  // 여기서는 금액 0 · PENDING_AMOUNT 로 만들어 두고, 금액 확정 시점에 채운다.
+  // 한도 확인도 금액이 정해지는 그때 한다(금액 없이 한도를 볼 수 없다).
   const idem = await acquireIdempotency('donation', `${creator.id}:${inbound.providerMessageId}`);
   if (idem.status === 'DUPLICATE') {
     return {
@@ -545,12 +549,13 @@ async function processMoRow(
         creatorId: creator.id,
         donorId: donor.id,
         moMessageId: moRow.id,
-        amount,
+        amount: 0n,
         displayName,
         message: filtered.clean,
         messageRawEnc: encrypt(routed.body),
-        status: 'RECEIVED',
-        paymentMode: resolvePaymentMode(creator.paymentMode),
+        status: 'PENDING_AMOUNT',
+        statusReason: '충전 금액 선택 대기',
+        paymentMode: 'CONFIRM_LINK',
       },
     });
   } catch (error) {
@@ -566,103 +571,73 @@ async function processMoRow(
     data: { result: 'ROUTED', contentFiltered: filtered.clean, processedAt: new Date() },
   });
 
-  // (6) 콘텐츠 차단
-  if (filtered.action === 'BLOCK') {
-    await setStatus(donation.id, 'CONTENT_BLOCKED', filtered.reasons.join(', '));
-    await sendMt({
-      phone: inbound.fromNumber,
-      template: tpl.tplContentBlocked(creator.displayName),
-      donationId: donation.id,
-      creatorId: creator.id,
-    });
-    return { result: 'BLOCKED', moMessageId: moRow.id, donationId: donation.id, status: 'CONTENT_BLOCKED', message: '금칙어로 차단되었습니다.' };
-  }
-
-  // (7) 한도 확인
+  // (6) 이용자가 차단됐는지 먼저 본다.
+  // 금액과 무관하게 결정되므로 링크를 보내기 전에 확인해 헛걸음을 막는다.
   const blocked = await prisma.blockedDonor.findUnique({
     where: { creatorId_donorId: { creatorId: creator.id, donorId: donor.id } },
   });
-  const limit = await checkLimits({
-    donor,
-    creatorId: creator.id,
-    amount,
-    blockedByCreator: Boolean(blocked),
-  });
-
-  if (!limit.ok) {
-    await setStatus(donation.id, 'LIMIT_BLOCKED', `${limit.code}: ${limit.message}`);
-    await prisma.riskDetection.create({
-      data: {
-        id: newId(),
-        donorId: donor.id,
-        creatorId: creator.id,
-        donationId: donation.id,
-        type: limit.code === 'VELOCITY' || limit.code === 'COOLDOWN' ? 'VELOCITY' : 'DAILY_LIMIT',
-        level: 'MEDIUM',
-        detail: { code: limit.code, message: limit.message } as object,
-      },
-    });
+  if (blocked) {
+    await setStatus(donation.id, 'LIMIT_BLOCKED', 'BLOCKED_DONOR: 가맹점이 차단한 이용자');
     await sendMt({
       phone: inbound.fromNumber,
-      template: tpl.tplLimitBlocked(creator.displayName, limit.message ?? '이용 한도'),
-      donationId: donation.id,
-      creatorId: creator.id,
-    });
-    return { result: 'BLOCKED', moMessageId: moRow.id, donationId: donation.id, status: 'LIMIT_BLOCKED', message: limit.message ?? '한도 초과' };
-  }
-
-  // (8) 결제 모드에 따른 분기
-  if (donation.paymentMode === 'CONFIRM_LINK') {
-    // 기본 경로: 결제사 PIN 인증 링크. 이 문자만으로는 출금이 일어나지 않는다.
-    if (resolveConfirmChannel() === 'PIN') {
-      const pin = await startPinAuthorization(donation.id);
-      return {
-        result: 'ROUTED',
-        moMessageId: moRow.id,
-        donationId: donation.id,
-        status: pin.status,
-        message: pin.message,
-      };
-    }
-
-    // ── deprecated: 문자페이 자체 확인 링크 ────────────────────────────────
-    // ALLOW_LEGACY_CONFIRM_LINK=true 일 때만 이 경로를 탄다.
-    // 확인 버튼 클릭이 곧 출금이므로, PIN 인증 흐름이 안정화되면 제거한다.
-    await setStatus(donation.id, 'PENDING_CONFIRM', '이용자 확인 대기');
-    const link = await issueSecureLink({
-      purpose: 'CONFIRM_PAYMENT',
-      phoneHash: ph,
-      creatorId: creator.id,
-      donationId: donation.id,
-    });
-    await sendMt({
-      phone: inbound.fromNumber,
-      template: tpl.tplConfirmPayment(
-        creator.displayName,
-        amount,
-        link.url,
-        Math.floor(env.payment.confirmTtlSec / 60),
-      ),
+      template: tpl.tplLimitBlocked(creator.displayName, '가맹점이 차단한 번호입니다.'),
       donationId: donation.id,
       creatorId: creator.id,
     });
     return {
-      result: 'ROUTED',
+      result: 'BLOCKED',
       moMessageId: moRow.id,
       donationId: donation.id,
-      status: 'PENDING_CONFIRM',
-      message: '결제 확인 링크를 발송했습니다.',
+      status: 'LIMIT_BLOCKED',
+      message: '가맹점이 차단한 번호입니다.',
     };
   }
 
-  // DIRECT_TRIGGER
-  const paid = await executePayment(donation.id);
+  // (7) 고를 수 있는 금액이 하나도 없으면 링크를 보내도 막다른 길이다.
+  const usableProducts = await prisma.chargeProduct.count({
+    where: { creatorId: creator.id, active: true, archivedAt: null },
+  });
+  if (usableProducts === 0 && !creator.allowCustomAmount) {
+    await setStatus(donation.id, 'PAYMENT_FAILED', '충전 상품 미설정');
+    await sendMt({
+      phone: inbound.fromNumber,
+      template: tpl.tplDonationFailed(creator.displayName, '충전 상품이 준비되지 않았습니다.'),
+      donationId: donation.id,
+      creatorId: creator.id,
+    });
+    return {
+      result: 'BLOCKED',
+      moMessageId: moRow.id,
+      donationId: donation.id,
+      status: 'PAYMENT_FAILED',
+      message: '가맹점의 충전 상품이 준비되지 않았습니다.',
+    };
+  }
+
+  // (8) 충전 금액 선택 링크 발송. 이 문자만으로는 출금이 일어나지 않는다.
+  const link = await issueSecureLink({
+    purpose: 'SELECT_AMOUNT',
+    phoneHash: ph,
+    creatorId: creator.id,
+    donationId: donation.id,
+  });
+  await sendMt({
+    phone: inbound.fromNumber,
+    template: tpl.tplSelectAmount(
+      creator.displayName,
+      link.url,
+      Math.floor(env.payment.selectTtlSec / 60),
+    ),
+    donationId: donation.id,
+    creatorId: creator.id,
+  });
+
   return {
     result: 'ROUTED',
     moMessageId: moRow.id,
     donationId: donation.id,
-    status: paid.status,
-    message: paid.message,
+    status: 'PENDING_AMOUNT',
+    message: '충전 금액 선택 링크를 발송했습니다.',
   };
 }
 
@@ -679,6 +654,12 @@ export interface PinStartOutcome {
   expiresAt?: Date;
   /** 결제사 실연동이 아닌 mock 링크인지 */
   mock?: boolean;
+  /**
+   * 결제사 PIN 입력 화면 주소.
+   * notify: false 로 호출했을 때만 채워진다(문자를 보내지 않고 화면을 그대로 이어 갈 때 쓴다).
+   * 문자로 보내는 경로에서는 URL 원문을 밖으로 내보내지 않는다.
+   */
+  pinUrl?: string;
 }
 
 /** 링크 원문을 DB 에 남기지 않는다. 세션 토큰이 들어 있는 쿼리스트링을 지운다. */
@@ -702,7 +683,13 @@ function toAbsolutePinUrl(url: string): string {
  * 멱등: 결제 1건당 인증 세션은 1건(payment_pin_session.donation_id UNIQUE)이다.
  * 같은 결제로 두 번 들어와도 링크를 두 장 발급하지 않는다.
  */
-export async function startPinAuthorization(donationId: string): Promise<PinStartOutcome> {
+export async function startPinAuthorization(
+  donationId: string,
+  options: { notify?: boolean } = {},
+): Promise<PinStartOutcome> {
+  // notify: false 면 PIN 링크를 문자로 보내지 않고 호출한 화면이 그대로 이어 간다.
+  // (충전 금액 선택 화면 → PIN 입력. 문자를 두 번 보내지 않기 위한 경로다)
+  const notify = options.notify !== false;
   const donation = await prisma.donation.findUnique({
     where: { id: donationId },
     include: { creator: true, donor: true },
@@ -791,18 +778,20 @@ export async function startPinAuthorization(donationId: string): Promise<PinStar
     };
   }
 
-  const sent = await sendMt({
-    phone,
-    template: tpl.tplPinRequest({
-      creatorName: donation.creator.displayName,
-      amount: donation.amount,
-      pinUrl,
-      ttlMin,
-      mock: issued.data.mock,
-    }),
-    donationId,
-    creatorId: donation.creatorId,
-  });
+  const sent = notify
+    ? await sendMt({
+        phone,
+        template: tpl.tplPinRequest({
+          creatorName: donation.creator.displayName,
+          amount: donation.amount,
+          pinUrl,
+          ttlMin,
+          mock: issued.data.mock,
+        }),
+        donationId,
+        creatorId: donation.creatorId,
+      })
+    : true;
 
   if (!sent) {
     // 링크를 받지 못한 이용자가 결제될 수는 없다. 세션을 닫고 실패로 확정한다.
@@ -832,6 +821,7 @@ export async function startPinAuthorization(donationId: string): Promise<PinStar
     sessionId: issued.data.sessionId,
     expiresAt: issued.data.expiresAt,
     mock: issued.data.mock,
+    pinUrl: notify ? undefined : pinUrl,
   };
 }
 

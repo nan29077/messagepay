@@ -21,7 +21,6 @@ export interface RegistrationContext {
   donorId: string;
   creatorId: string | null;
   creatorName: string | null;
-  donationAmount: bigint;
   phoneMasked: string;
 }
 
@@ -53,7 +52,6 @@ export async function loadRegistrationContext(token: string): Promise<
       donorId: donor.id,
       creatorId: creator?.id ?? null,
       creatorName: creator?.displayName ?? null,
-      donationAmount: creator?.donationAmount ?? 3000n,
       phoneMasked: donor.phoneMasked,
     },
   };

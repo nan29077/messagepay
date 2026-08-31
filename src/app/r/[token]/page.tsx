@@ -21,11 +21,15 @@ import { LinkShell } from './link-shell';
 import { RegisterForm, type TermsItem } from './register-form';
 import { defaultDonorName } from '@/lib/donor-name';
 import { ConfirmPanel } from './confirm-panel';
+import { SelectAmountPanel } from './select-amount-panel';
+import { loadSelectAmountContext } from '@/server/services/charge-select';
+import { getPaymentAdapter } from '@/server/adapters/payment';
 
 /**
  * MT 문자로 발송된 1회용 보안링크 진입점.
  *  - REGISTER_ACCOUNT : 최초 계좌 등록 + 이용 동의
- *  - CONFIRM_PAYMENT  : 문자결제 결제 확인
+ *  - SELECT_AMOUNT    : 충전 금액 선택 → 결제사 PIN 인증
+ *  - CONFIRM_PAYMENT  : (구) 문자결제 결제 확인
  * 검색엔진 색인을 막고, 항상 서버에서 새로 검증한다.
  */
 
@@ -54,6 +58,14 @@ export default async function SecureLinkPage({ params }: { params: Promise<{ tok
     return (
       <LinkShell>
         <RegisterScreen token={token} />
+      </LinkShell>
+    );
+  }
+
+  if (purpose === 'SELECT_AMOUNT') {
+    return (
+      <LinkShell>
+        <SelectAmountScreen token={token} />
       </LinkShell>
     );
   }
@@ -174,7 +186,16 @@ async function RegisterScreen({ token }: { token: string }) {
     }),
   ]);
 
-  const amount = ctx.donationAmount;
+  // 등록 시점에는 충전 금액이 정해지지 않았다(문자를 보낸 뒤 링크에서 고른다).
+  // 수수료 구조를 보여 주기 위해 가장 낮은 충전 상품 금액을 예시로 쓴다.
+  const sampleProduct = ctx.creatorId
+    ? await prisma.chargeProduct.findFirst({
+        where: { creatorId: ctx.creatorId, active: true, archivedAt: null },
+        orderBy: { amount: 'asc' },
+        select: { amount: true },
+      })
+    : null;
+  const amount = sampleProduct?.amount ?? policy.minAmount;
   // 실제 정산과 같은 계산식을 쓴다. 화면에서 따로 계산하면 부가세 처리가 어긋난다.
   const fees = computeFees(amount, {
     pgFeeRate: feePolicy ? feePolicy.pgFeeRate.toString() : '0.018',
@@ -234,8 +255,8 @@ async function RegisterScreen({ token }: { token: string }) {
       </Card>
 
       <Notice tone="danger" title="문자를 보내면 계좌에서 출금이 요청됩니다">
-        등록을 마친 뒤 위 결제 수신번호로 문자를 보내면, 문자 1건마다 등록한 계좌에서 {formatWon(amount)}의 출금이
-        요청됩니다. 실수로 반복 발송하면 발송한 건수만큼 출금이 요청되니 주의해 주세요.
+        등록을 마친 뒤 위 결제 수신번호로 문자를 보내면 충전 금액을 고르는 링크가 옵니다. 금액을 고르고 PIN 을
+        입력해야 등록한 계좌에서 출금이 요청됩니다. 문자를 보내는 것만으로는 출금되지 않습니다.
       </Notice>
 
       <Card>
@@ -243,10 +264,10 @@ async function RegisterScreen({ token }: { token: string }) {
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-50 text-brand-700">
             <Wallet size={17} strokeWidth={1.7} />
           </span>
-          <CardTitle>결제 금액과 수수료</CardTitle>
+          <CardTitle>충전 금액과 수수료</CardTitle>
         </div>
-        <DataRow label="문자 1건당 결제 금액" value={formatWon(amount)} />
-        <DataRow label="이용자 출금 금액" value={`${formatWon(amount)} (수수료 별도 부담 없음)`} />
+        <DataRow label="예시 충전 금액" value={`${formatWon(amount)} (실제 금액은 문자를 보낸 뒤 고릅니다)`} />
+        <DataRow label="이용자 출금 금액" value="고른 충전 금액 그대로 (수수료 별도 부담 없음)" />
         <DataRow
           label="결제 수수료"
           value={`${pct(fees.pgFeeRate)}${pgFixed > 0n ? ` + ${formatWon(pgFixed)}` : ''} (${formatWon(fees.pgFeeSupply)})`}
@@ -254,8 +275,8 @@ async function RegisterScreen({ token }: { token: string }) {
         <DataRow label="플랫폼 수수료" value={`${pct(fees.platformFeeRate)} (${formatWon(fees.platformFeeSupply)})`} />
         {fees.vat > 0n ? <DataRow label="수수료 부가세 (10%)" value={formatWon(fees.vat)} /> : null}
         <p className="mt-2 text-[12px] leading-relaxed text-ink-400">
-          수수료{fees.vat > 0n ? '와 그 부가세는' : '는'} 가맹점 정산금에서 차감되며, 이용자는 문자 1건당
-          결제 금액만 출금됩니다. 문자 발송 요금은 통신사 정책에 따라 별도로 부과될 수 있습니다.
+          수수료{fees.vat > 0n ? '와 그 부가세는' : '는'} 가맹점 정산금에서 차감되며, 이용자는 고른 충전
+          금액만 출금됩니다. 문자 발송 요금은 통신사 정책에 따라 별도로 부과될 수 있습니다.
         </p>
       </Card>
 
@@ -304,6 +325,49 @@ async function RegisterScreen({ token }: { token: string }) {
 }
 
 // ------------------------------------------------------------- 결제 확인 화면
+
+async function SelectAmountScreen({ token }: { token: string }) {
+  const loaded = await loadSelectAmountContext(token);
+  if (!loaded.ok) {
+    return (
+      <Card>
+        <CardTitle>진행할 수 없습니다</CardTitle>
+        <p className="mt-2 text-[13.5px] leading-relaxed text-ink-500">{loaded.reason}</p>
+      </Card>
+    );
+  }
+  const ctx = loaded.ctx;
+
+  // 결제 연동이 mock 이면 화면에 반드시 표시한다 (가짜 성공 처리 금지 원칙)
+  let paymentMock = true;
+  try {
+    paymentMock = getPaymentAdapter().info().mode === 'mock';
+  } catch {
+    paymentMock = true;
+  }
+
+  return (
+    <Card>
+      <div className="mb-3 flex items-center gap-2">
+        <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-50 text-brand-700">
+          <Wallet size={17} strokeWidth={1.7} />
+        </span>
+        <CardTitle>{ctx.creatorName} 충전</CardTitle>
+      </div>
+      <SelectAmountPanel
+        token={token}
+        creatorName={ctx.creatorName}
+        products={ctx.products.map((p) => ({ id: p.id, name: p.name, amount: p.amount.toString() }))}
+        allowCustom={ctx.allowCustomAmount}
+        minAmount={ctx.minAmount.toString()}
+        maxAmount={ctx.maxAmount.toString()}
+        message={ctx.message}
+        paymentMock={paymentMock}
+      />
+    </Card>
+  );
+}
+
 
 async function ConfirmScreen({ token }: { token: string }) {
   const loaded = await loadConfirmContext(token);

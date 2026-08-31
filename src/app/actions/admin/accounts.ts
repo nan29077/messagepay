@@ -280,16 +280,10 @@ export async function updateCreatorPaymentMode(_prev: AdminActionState, fd: Form
 
 // =========================================================== 가맹점 1건 결제 금액 허용 범위
 
-/** 가맹점의 donationAmount 를 [min, max] 범위 안으로 보정한다. */
-function clampAmount(amount: bigint, min: bigint, max: bigint): bigint {
-  if (amount < min) return min;
-  if (amount > max) return max;
-  return amount;
-}
-
 /**
- * 가맹점 1명의 1건 결제 금액 허용 범위(최소/최대)를 변경한다.
- * 현재 설정된 1건 결제 금액이 새 범위를 벗어나면 범위 안으로 자동 보정한다.
+ * 가맹점 1명의 충전 금액 허용 범위(최소/최대)를 변경한다.
+ * 범위를 벗어난 충전 상품은 결제 시 AMOUNT_RANGE 로 전부 실패하므로 자동으로 비활성화한다.
+ * 상품을 지우거나 금액을 임의로 바꾸지는 않는다(가맹점이 정한 가격이므로 판단을 대신하지 않는다).
  */
 export async function updateCreatorAmountBounds(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
@@ -300,36 +294,42 @@ export async function updateCreatorAmountBounds(_prev: AdminActionState, fd: For
 
     const before = await prisma.creatorProfile.findUnique({
       where: { id: creatorId },
-      select: { id: true, displayName: true, minAmount: true, maxAmount: true, donationAmount: true },
+      select: { id: true, displayName: true, minAmount: true, maxAmount: true },
     });
     if (!before) throw new Error('가맹점을 찾을 수 없습니다.');
 
-    const donationAmount = clampAmount(before.donationAmount, minAmount, maxAmount);
-    const clamped = donationAmount !== before.donationAmount;
-
     await prisma.creatorProfile.update({
       where: { id: creatorId },
-      data: { minAmount, maxAmount, donationAmount },
+      data: { minAmount, maxAmount },
+    });
+    const deactivated = await prisma.chargeProduct.updateMany({
+      where: {
+        creatorId,
+        active: true,
+        archivedAt: null,
+        OR: [{ amount: { lt: minAmount } }, { amount: { gt: maxAmount } }],
+      },
+      data: { active: false },
     });
     await writeAudit({
       adminUserId: admin.id,
       action: 'CREATOR_AMOUNT_BOUNDS_UPDATE',
       targetType: 'CreatorProfile',
       targetId: creatorId,
-      before: { minAmount: before.minAmount, maxAmount: before.maxAmount, donationAmount: before.donationAmount },
-      after: { minAmount, maxAmount, donationAmount },
+      before: { minAmount: before.minAmount, maxAmount: before.maxAmount },
+      after: { minAmount, maxAmount, deactivatedProducts: deactivated.count },
     });
     revalidatePath(`/admin/creators/${creatorId}`);
     revalidatePath('/admin/creators');
-    return clamped
-      ? `${before.displayName} 님의 허용 범위를 변경했고, 1건 결제 금액을 범위에 맞게 ${donationAmount.toString()}원으로 보정했습니다.`
-      : `${before.displayName} 님의 1건 결제 금액 허용 범위를 변경했습니다.`;
+    return deactivated.count > 0
+      ? `${before.displayName} 님의 충전 금액 허용 범위를 변경했고, 범위를 벗어난 충전 상품 ${deactivated.count}개를 비활성화했습니다.`
+      : `${before.displayName} 님의 충전 금액 허용 범위를 변경했습니다.`;
   });
 }
 
 /**
- * 모든 가맹점의 1건 결제 금액 허용 범위를 공통으로 일괄 적용한다.
- * 범위를 벗어난 가맹점의 1건 결제 금액은 범위 안으로 자동 보정한다.
+ * 모든 가맹점의 충전 금액 허용 범위를 공통으로 일괄 적용한다.
+ * 범위를 벗어난 충전 상품은 비활성화한다(금액은 바꾸지 않는다).
  */
 export async function applyGlobalAmountBounds(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
@@ -340,15 +340,15 @@ export async function applyGlobalAmountBounds(_prev: AdminActionState, fd: FormD
     const result = await prisma.$transaction(async (tx) => {
       const total = await tx.creatorProfile.count();
       await tx.creatorProfile.updateMany({ data: { minAmount, maxAmount } });
-      const below = await tx.creatorProfile.updateMany({
-        where: { donationAmount: { lt: minAmount } },
-        data: { donationAmount: minAmount },
+      const off = await tx.chargeProduct.updateMany({
+        where: {
+          active: true,
+          archivedAt: null,
+          OR: [{ amount: { lt: minAmount } }, { amount: { gt: maxAmount } }],
+        },
+        data: { active: false },
       });
-      const above = await tx.creatorProfile.updateMany({
-        where: { donationAmount: { gt: maxAmount } },
-        data: { donationAmount: maxAmount },
-      });
-      return { total, clamped: below.count + above.count };
+      return { total, clamped: off.count };
     });
 
     await writeAudit({
@@ -356,12 +356,12 @@ export async function applyGlobalAmountBounds(_prev: AdminActionState, fd: FormD
       action: 'CREATOR_AMOUNT_BOUNDS_APPLY_ALL',
       targetType: 'CreatorProfile',
       targetId: 'ALL',
-      after: { minAmount, maxAmount, appliedTo: result.total, clamped: result.clamped },
+      after: { minAmount, maxAmount, appliedTo: result.total, deactivatedProducts: result.clamped },
     });
     revalidatePath('/admin/creators');
     revalidatePath('/studio/settings');
-    return `가맹점 ${result.total}명 전체에 1건 결제 금액 허용 범위 ${minAmount.toString()}원 ~ ${maxAmount.toString()}원을 적용했습니다.` +
-      (result.clamped > 0 ? ` 범위를 벗어난 ${result.clamped}명의 1건 결제 금액을 자동 보정했습니다.` : '');
+    return `가맹점 ${result.total}명 전체에 충전 금액 허용 범위 ${minAmount.toString()}원 ~ ${maxAmount.toString()}원을 적용했습니다.` +
+      (result.clamped > 0 ? ` 범위를 벗어난 충전 상품 ${result.clamped}개를 비활성화했습니다.` : '');
   });
 }
 

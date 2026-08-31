@@ -12,6 +12,7 @@ import { formatNumber } from '@/lib/money';
 export const MT_TEMPLATE = {
   REGISTER_GUIDE: 'REGISTER_GUIDE',
   CONFIRM_PAYMENT: 'CONFIRM_PAYMENT',
+  SELECT_AMOUNT: 'SELECT_AMOUNT',
   PIN_REQUEST: 'PIN_REQUEST',
   DONATION_SUCCESS: 'DONATION_SUCCESS',
   DONATION_FAILED: 'DONATION_FAILED',
@@ -74,6 +75,14 @@ export function tplRegisterGuide(
   return { code: MT_TEMPLATE.REGISTER_GUIDE, text, masked: maskLink(text) };
 }
 
+export function tplSelectAmount(creatorName: string, link: string, ttlMin: number): TemplateOutput {
+  const text = withLink(
+    `[문자페이] ${creatorName} 충전을 진행합니다. 아직 결제되지 않았습니다. 아래 링크에서 충전 금액을 고르고 PIN 을 입력해 주세요. (유효시간 ${ttlMin}분) `,
+    link,
+  );
+  return { code: MT_TEMPLATE.SELECT_AMOUNT, text, masked: maskLink(text) };
+}
+
 export function tplConfirmPayment(creatorName: string, amount: bigint, link: string, ttlMin: number): TemplateOutput {
   const text = withLink(
     `[문자페이] ${creatorName} 가맹점에 ${formatNumber(amount)}원을 충전하시려면 아래 링크에서 확인해 주세요. ${ttlMin}분 내 미확인 시 자동 취소됩니다. 확인:`,
@@ -130,7 +139,7 @@ export const THANKS_MT_VARIABLES = [
   { token: '{가맹점}', label: '가맹점 이름' },
   { token: '{금액}', label: '결제 금액' },
   { token: '{메시지}', label: '이용자가 보낸 메시지' },
-  { token: '{누적}', label: '누적 결제 금액' },
+  { token: '{누적}', label: '누적 충전 금액' },
 ] as const;
 
 const THANKS_VALUES: Record<string, (i: DonationSuccessInput) => string> = {
@@ -162,7 +171,7 @@ export function renderThanksMessage(template: string, input: DonationSuccessInpu
 export function defaultThanksMessage(input: DonationSuccessInput): string {
   return (
     `${input.donorName}님, ${input.creatorName} 가맹점에 ${formatNumber(input.amount)}원이 충전되었습니다. 이용해 주셔서 감사합니다. ` +
-    `메시지: "${input.message}" 누적 결제: ${formatNumber(input.cumulative)}원`
+    `메시지: "${input.message}" 누적 충전: ${formatNumber(input.cumulative)}원`
   );
 }
 
@@ -305,7 +314,7 @@ const V = {
   creator: { token: '{가맹점}', label: '가맹점 이름' },
   amount: { token: '{금액}', label: '결제 금액 (예: 10,000원)' },
   message: { token: '{메시지}', label: '이용자가 보낸 메시지' },
-  cumulative: { token: '{누적}', label: '누적 결제 금액' },
+  cumulative: { token: '{누적}', label: '누적 충전 금액' },
   reason: { token: '{사유}', label: '실패·제한 사유' },
   verifyCode: { token: '{인증번호}', label: '6자리 인증번호' },
   ttl: { token: '{유효시간}', label: '인증번호 유효시간(분)' },
@@ -318,6 +327,14 @@ export const MT_TEMPLATE_META: Record<MtTemplateCode, MtTemplateMeta> = {
     editable: false,
     defaultBody:
       '{가맹점} 가맹점 문자결제를 이용하려면 계좌 등록과 이용 동의가 필요합니다. 최초 문자는 결제 처리되지 않았습니다. 등록: [보안링크]',
+    variables: [V.creator],
+  },
+  [MT_TEMPLATE.SELECT_AMOUNT]: {
+    label: '충전 금액 선택 링크',
+    description: '문자를 받으면 충전 금액을 고르고 PIN 을 입력하는 링크를 보냅니다. 이 시점에는 금액이 정해지지 않았습니다.',
+    editable: false,
+    defaultBody:
+      '{가맹점} 충전을 진행합니다. 아직 결제되지 않았습니다. 아래 링크에서 충전 금액을 고르고 PIN 을 입력해 주세요. [보안링크]',
     variables: [V.creator],
   },
   [MT_TEMPLATE.CONFIRM_PAYMENT]: {

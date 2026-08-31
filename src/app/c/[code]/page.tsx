@@ -88,6 +88,11 @@ async function findCreator(rawCode: string) {
     include: {
       user: { select: { avatarIndex: true } },
       moRoutes: { where: { status: 'ASSIGNED' }, orderBy: { assignedAt: 'desc' } },
+      chargeProducts: {
+        where: { active: true, archivedAt: null },
+        orderBy: [{ sortOrder: 'asc' }, { amount: 'asc' }],
+        select: { id: true, name: true, amount: true },
+      },
     },
   });
 }
@@ -100,7 +105,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   }
   return {
     title: `${creator.displayName} 문자결제`,
-    description: `${creator.displayName} 님에게 문자 한 통으로 충전하세요. 문자 1건당 ${formatWon(creator.donationAmount)}.`,
+    description: `${creator.displayName} 님에게 문자 한 통으로 충전하세요. 충전 금액은 문자를 보낸 뒤 고릅니다.`,
     robots: { index: false, follow: false },
   };
 }
@@ -134,6 +139,8 @@ export default async function CreatorDonationPage({ params }: Params) {
   const viewerDonor = await currentViewerDonor();
 
   const route = creator.moRoutes[0] ?? null;
+  // 이용자가 고를 수 있는 충전 상품. 문자·PC 모두 같은 목록을 쓴다.
+  const products = creator.chargeProducts.map((p) => ({ id: p.id, name: p.name, amount: p.amount.toString() }));
   const bannerUrl = creator.bannerUrl ?? defaultBannerFor(creator.id);
 
   // 결제 연동이 mock 이면 결제 화면에 반드시 표시한다 (가짜 성공 처리 금지 원칙)
@@ -205,7 +212,8 @@ export default async function CreatorDonationPage({ params }: Params) {
                 <WebDonationPinPanel
                   creatorId={creator.id}
                   creatorName={creator.displayName}
-                  defaultAmount={creator.donationAmount.toString()}
+                  products={products}
+                  allowCustom={creator.allowCustomAmount}
                   minAmount={effMin.toString()}
                   maxAmount={effMax.toString()}
                   paymentMock={paymentMock}
@@ -214,7 +222,8 @@ export default async function CreatorDonationPage({ params }: Params) {
                 <WebDonationPanel
                   creatorId={creator.id}
                   creatorName={creator.displayName}
-                  defaultAmount={creator.donationAmount.toString()}
+                  products={products}
+                  allowCustom={creator.allowCustomAmount}
                   minAmount={effMin.toString()}
                   maxAmount={effMax.toString()}
                   paymentMock={paymentMock}
@@ -258,11 +267,34 @@ export default async function CreatorDonationPage({ params }: Params) {
               </div>
 
 
-              <div className="mt-5 flex items-center justify-between rounded-xl bg-ink-50 px-4 py-3">
-                <span className="text-[13px] font-semibold text-ink-500">문자 1건당 결제 금액</span>
-                <span className="text-[20px] font-extrabold tracking-tight text-brand-700">
-                  {formatWon(creator.donationAmount)}
-                </span>
+              <div className="mt-5 rounded-xl bg-ink-50 px-4 py-3">
+                <p className="text-[13px] font-semibold text-ink-500">충전 금액</p>
+                {products.length === 0 ? (
+                  <p className="mt-1 text-[13px] font-bold text-ink-900">
+                    {creator.allowCustomAmount ? '문자를 보낸 뒤 링크에서 직접 입력합니다.' : '준비 중입니다.'}
+                  </p>
+                ) : (
+                  <>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {products.map((p) => (
+                        <span
+                          key={p.id}
+                          className="rounded-full bg-white px-2.5 py-1 text-[12px] font-bold text-ink-800 shadow-sm"
+                        >
+                          {p.name}
+                        </span>
+                      ))}
+                      {creator.allowCustomAmount ? (
+                        <span className="rounded-full bg-white px-2.5 py-1 text-[12px] font-bold text-ink-500 shadow-sm">
+                          직접 입력
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-2 text-[11.5px] leading-relaxed text-ink-400">
+                      문자를 보내면 받은 링크에서 위 금액 중 하나를 고릅니다.
+                    </p>
+                  </>
+                )}
               </div>
 
               <a
@@ -273,8 +305,8 @@ export default async function CreatorDonationPage({ params }: Params) {
                 문자결제하기
               </a>
               <p className="mt-2.5 text-center text-[11.5px] leading-relaxed text-ink-400">
-                문자 앱이 열리며 결제 수신번호가 자동 입력됩니다. 문자를 보내면 결제 PIN 입력 문자가 오고, PIN 을 입력하면{' '}
-                {formatWon(creator.donationAmount)}이 등록된 내통장결제 계좌에서 결제됩니다.
+                문자 앱이 열리며 결제 수신번호가 자동 입력됩니다. 문자를 보내면 충전 금액을 고르는 링크가 오고,{' '}
+                금액을 고른 뒤 PIN 을 입력하면 등록된 내통장결제 계좌에서 결제됩니다.
               </p>
               </div>
             ) : (
@@ -381,7 +413,7 @@ export default async function CreatorDonationPage({ params }: Params) {
               no="2"
               icon={<MessageSquare size={17} strokeWidth={1.7} />}
               title="충전 문자를 보냅니다"
-              body={`위 번호로 메시지를 보내면 문자 1통당 ${formatWon(creator.donationAmount)}의 결제 PIN 입력 문자가 도착합니다.`}
+              body="위 번호로 문자를 보내면 충전 금액을 고를 수 있는 링크가 도착합니다."
             />
             <Step
               no="3"
@@ -493,9 +525,9 @@ export default async function CreatorDonationPage({ params }: Params) {
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-ink-100 bg-white/95 px-4 pb-[max(env(safe-area-inset-bottom),12px)] pt-3 backdrop-blur-xl sm:hidden">
           <div className="mx-auto flex max-w-[560px] items-center gap-3">
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold text-ink-400">문자 1통당</p>
+              <p className="text-[11px] font-semibold text-ink-400">충전 금액</p>
               <p className="text-[16px] font-extrabold tracking-tight text-ink-900">
-                {formatWon(creator.donationAmount)}
+                {products.length > 0 ? `${products.length}종` : '직접 입력'}
               </p>
             </div>
             <a

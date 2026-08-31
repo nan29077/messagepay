@@ -17,6 +17,8 @@ export const LINK_TTL_SEC: Record<SecureLinkPurpose, number> = {
   // 헥토 공식 제약(결제인증 후 10분)보다 짧게 운용
   CONFIRM_PAYMENT: env.payment.confirmTtlSec,
   MANAGE_DONOR: 10 * 60,
+  // 금액을 고르고 PIN 까지 한 화면에서 끝내야 하므로 결제 확인 링크보다 넉넉하게 잡는다.
+  SELECT_AMOUNT: env.payment.selectTtlSec,
 };
 
 export interface IssuedLink {

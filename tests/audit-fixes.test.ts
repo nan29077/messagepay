@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
-import { resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
+import { setChargeAmount, inboundAndPay, resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
 import { handleMoInbound, routeCreator } from '@/server/services/donation-flow';
 import { mockMoAdapter } from '@/server/adapters/mo';
 import {
@@ -21,7 +21,7 @@ import { kstMonthEndKey } from '@/lib/datetime';
  */
 
 let fx: Fixture;
-const inbound = (p: Record<string, unknown>) => handleMoInbound(mockMoAdapter.parse(p));
+const inbound = (p: Record<string, unknown>) => inboundAndPay(p, fx.creatorId);
 
 // ───────────────────────── M-1 원천징수 2단계 계산 ─────────────────────────
 
@@ -160,7 +160,7 @@ describe('결제 결과 미확인(UNKNOWN)', () => {
     await seedRegisteredDonor(fx.donorPhone);
     // mock 어댑터: 금액 끝 777 = 타임아웃 후 조회도 실패(FAILED), 888 = 타임아웃 후 승인.
     // 조회 자체가 결과를 못 주는 상황을 만들기 위해 승인 기록이 없는 주문을 쓴다.
-    await prisma.creatorProfile.update({ where: { id: fx.creatorId }, data: { donationAmount: 3888n } });
+    setChargeAmount(3888n);
     await inbound(moPayload({ to: fx.moNumber, text: '미확인 테스트' }));
 
     // 888 은 조회에서 APPROVED 로 확정되므로 정상 승인되어야 한다(오탐 방지 확인).

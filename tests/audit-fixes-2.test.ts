@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/server/db';
-import { resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
+import { inboundAndPay, resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
 import { handleMoInbound } from '@/server/services/donation-flow';
 import { mockMoAdapter } from '@/server/adapters/mo';
 import { bannedNeedle, containsBannedWord, filterContent } from '@/server/services/content-filter';
@@ -15,7 +15,7 @@ import { kstDateKey } from '@/lib/datetime';
  */
 
 let fx: Fixture;
-const inbound = (p: Record<string, unknown>) => handleMoInbound(mockMoAdapter.parse(p));
+const inbound = (p: Record<string, unknown>) => inboundAndPay(p, fx.creatorId);
 
 // ───────────────────── 1. 금칙어 정규식 폭주(ReDoS) ─────────────────────
 

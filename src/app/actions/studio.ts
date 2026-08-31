@@ -78,6 +78,9 @@ function checked(formData: FormData, key: string): boolean {
   return formData.get(key) != null;
 }
 
+/** 가맹점 1곳이 등록할 수 있는 충전 상품 수 상한 (선택 화면이 감당하는 개수) */
+const MAX_CHARGE_PRODUCTS = 12;
+
 function parseAmount(input: string): bigint | null {
   const v = input.replace(/[,\s원]/g, '');
   if (!/^\d{1,12}$/.test(v)) return null;
@@ -175,44 +178,185 @@ async function previewSafeText(creatorId: string, donorName: string, message: st
 // ===========================================================================
 
 // ===========================================================================
-// 결제 설정
+// 충전 상품 · 결제 설정
 // ===========================================================================
 
-export async function updateDonationSettingsAction(
+/**
+ * 가맹점이 고를 수 있는 유효 금액 범위.
+ * 관리자 지정 가맹점 범위 ∩ 한도 정책 범위 — 여기를 벗어난 금액은 결제 접수 시 AMOUNT_RANGE 로
+ * 전부 실패하므로, 상품을 만드는 단계에서 미리 막는다.
+ */
+async function effectiveAmountRange(creatorId: string) {
+  const [creator, policy] = await Promise.all([
+    prisma.creatorProfile.findUnique({
+      where: { id: creatorId },
+      select: { minAmount: true, maxAmount: true },
+    }),
+    resolvePolicy(creatorId, null),
+  ]);
+  if (!creator) return null;
+  const min = creator.minAmount > policy.minAmount ? creator.minAmount : policy.minAmount;
+  const max = creator.maxAmount < policy.maxAmount ? creator.maxAmount : policy.maxAmount;
+  return { min, max };
+}
+
+/** 직접 입력 허용 여부. 끄면 등록된 충전 상품만 고를 수 있다. */
+export async function updateChargeSettingsAction(
   _prev: StudioActionState,
   formData: FormData,
 ): Promise<StudioActionState> {
   return withCreator(async (creatorId) => {
-    const amount = parseAmount(text(formData, 'donationAmount'));
-    if (amount === null) return { ok: false, message: '결제 금액은 숫자만 입력해 주세요.' };
+    const allowCustomAmount = checked(formData, 'allowCustomAmount');
 
-    const [creator, policy] = await Promise.all([
-      prisma.creatorProfile.findUnique({
-        where: { id: creatorId },
-        select: { minAmount: true, maxAmount: true },
-      }),
-      resolvePolicy(creatorId, null),
-    ]);
-    if (!creator) return { ok: false, message: '가맹점 정보를 찾을 수 없습니다.' };
-
-    // 유효 범위 = 관리자 지정 가맹점 범위 ∩ 한도 정책 범위.
-    // 정책 범위 밖 금액을 허용하면 결제 접수 시점에 AMOUNT_RANGE 로 전부 차단되므로 설정 단계에서 막는다.
-    const effMin = creator.minAmount > policy.minAmount ? creator.minAmount : policy.minAmount;
-    const effMax = creator.maxAmount < policy.maxAmount ? creator.maxAmount : policy.maxAmount;
-    if (effMin > effMax) {
-      return { ok: false, message: '관리자 설정과 한도 정책이 충돌해 설정할 수 있는 금액이 없습니다. 고객센터로 문의해 주세요.' };
+    if (!allowCustomAmount) {
+      // 직접 입력을 끄는데 고를 상품이 하나도 없으면 결제가 아예 불가능해진다.
+      const usable = await prisma.chargeProduct.count({
+        where: { creatorId, active: true, archivedAt: null },
+      });
+      if (usable === 0) {
+        return {
+          ok: false,
+          message: '직접 입력을 끄려면 사용 중인 충전 상품이 최소 1개 있어야 합니다.',
+        };
+      }
     }
-    if (amount < effMin || amount > effMax) {
+
+    await prisma.creatorProfile.update({ where: { id: creatorId }, data: { allowCustomAmount } });
+    revalidatePath('/studio/settings');
+    revalidatePath('/studio');
+    return {
+      ok: true,
+      message: allowCustomAmount ? '직접 입력을 허용했습니다.' : '직접 입력을 끄고 등록된 상품만 노출합니다.',
+    };
+  });
+}
+
+/** 충전 상품 추가. */
+export async function createChargeProductAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withCreator(async (creatorId) => {
+    const name = text(formData, 'name').slice(0, 40);
+    const amount = parseAmount(text(formData, 'amount'));
+    if (!name) return { ok: false, message: '상품 이름을 입력해 주세요.' };
+    if (amount === null) return { ok: false, message: '금액은 숫자만 입력해 주세요.' };
+
+    const range = await effectiveAmountRange(creatorId);
+    if (!range) return { ok: false, message: '가맹점 정보를 찾을 수 없습니다.' };
+    if (range.min > range.max) {
+      return { ok: false, message: '관리자 설정과 한도 정책이 충돌해 만들 수 있는 금액이 없습니다. 고객센터로 문의해 주세요.' };
+    }
+    if (amount < range.min || amount > range.max) {
       return {
         ok: false,
-        message: `문자 1건당 결제 금액은 ${effMin.toString()}원 ~ ${effMax.toString()}원 사이에서만 설정할 수 있습니다.`,
+        message: `충전 금액은 ${formatWon(range.min)} ~ ${formatWon(range.max)} 사이에서만 등록할 수 있습니다.`,
       };
     }
 
-    await prisma.creatorProfile.update({ where: { id: creatorId }, data: { donationAmount: amount } });
+    const count = await prisma.chargeProduct.count({ where: { creatorId, archivedAt: null } });
+    if (count >= MAX_CHARGE_PRODUCTS) {
+      return { ok: false, message: `충전 상품은 최대 ${MAX_CHARGE_PRODUCTS}개까지 등록할 수 있습니다.` };
+    }
+
+    const dup = await prisma.chargeProduct.findFirst({
+      where: { creatorId, amount, archivedAt: null },
+      select: { id: true },
+    });
+    if (dup) return { ok: false, message: '같은 금액의 상품이 이미 있습니다.' };
+
+    await prisma.chargeProduct.create({
+      data: { id: newId(), creatorId, name, amount, sortOrder: count },
+    });
     revalidatePath('/studio/settings');
-    revalidatePath('/studio');
-    return { ok: true, message: '문자 1건당 결제 금액을 저장했습니다.' };
+    return { ok: true, message: `${name} 상품을 추가했습니다.` };
+  });
+}
+
+/** 충전 상품 수정(이름·금액·노출 순서·사용 여부). */
+export async function updateChargeProductAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withCreator(async (creatorId) => {
+    const id = text(formData, 'productId');
+    const name = text(formData, 'name').slice(0, 40);
+    const amount = parseAmount(text(formData, 'amount'));
+    const sortOrder = Number.parseInt(text(formData, 'sortOrder') || '0', 10);
+    const active = checked(formData, 'active');
+    if (!id) return { ok: false, message: '상품을 찾을 수 없습니다.' };
+    if (!name) return { ok: false, message: '상품 이름을 입력해 주세요.' };
+    if (amount === null) return { ok: false, message: '금액은 숫자만 입력해 주세요.' };
+
+    // 남의 상품을 수정할 수 없도록 creatorId 를 조건에 함께 건다.
+    const current = await prisma.chargeProduct.findFirst({
+      where: { id, creatorId, archivedAt: null },
+      select: { id: true },
+    });
+    if (!current) return { ok: false, message: '상품을 찾을 수 없습니다.' };
+
+    const range = await effectiveAmountRange(creatorId);
+    if (!range) return { ok: false, message: '가맹점 정보를 찾을 수 없습니다.' };
+    if (amount < range.min || amount > range.max) {
+      return {
+        ok: false,
+        message: `충전 금액은 ${formatWon(range.min)} ~ ${formatWon(range.max)} 사이에서만 등록할 수 있습니다.`,
+      };
+    }
+
+    const dup = await prisma.chargeProduct.findFirst({
+      where: { creatorId, amount, archivedAt: null, id: { not: id } },
+      select: { id: true },
+    });
+    if (dup) return { ok: false, message: '같은 금액의 상품이 이미 있습니다.' };
+
+    await prisma.chargeProduct.update({
+      where: { id },
+      data: { name, amount, sortOrder: Number.isFinite(sortOrder) ? sortOrder : 0, active },
+    });
+    revalidatePath('/studio/settings');
+    return { ok: true, message: '상품을 저장했습니다.' };
+  });
+}
+
+/**
+ * 충전 상품 보관.
+ * 지난 결제가 금액을 참조하므로 행을 지우지 않고 archivedAt 만 채운다.
+ */
+export async function archiveChargeProductAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withCreator(async (creatorId) => {
+    const id = text(formData, 'productId');
+    if (!id) return { ok: false, message: '상품을 찾을 수 없습니다.' };
+
+    const current = await prisma.chargeProduct.findFirst({
+      where: { id, creatorId, archivedAt: null },
+      select: { id: true, name: true },
+    });
+    if (!current) return { ok: false, message: '상품을 찾을 수 없습니다.' };
+
+    const creator = await prisma.creatorProfile.findUniqueOrThrow({
+      where: { id: creatorId },
+      select: { allowCustomAmount: true },
+    });
+    const remain = await prisma.chargeProduct.count({
+      where: { creatorId, active: true, archivedAt: null, id: { not: id } },
+    });
+    if (remain === 0 && !creator.allowCustomAmount) {
+      return {
+        ok: false,
+        message: '마지막 상품입니다. 먼저 직접 입력을 허용하거나 다른 상품을 추가해 주세요.',
+      };
+    }
+
+    await prisma.chargeProduct.update({
+      where: { id },
+      data: { archivedAt: new Date(), active: false },
+    });
+    revalidatePath('/studio/settings');
+    return { ok: true, message: `${current.name} 상품을 보관했습니다.` };
   });
 }
 

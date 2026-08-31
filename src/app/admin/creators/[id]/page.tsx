@@ -24,7 +24,7 @@ export default async function AdminCreatorDetailPage({ params }: { params: Promi
     where: { id },
     select: {
       id: true, displayName: true, channelName: true, description: true, code: true, status: true,
-      donationAmount: true, minAmount: true, maxAmount: true, paymentMode: true, businessNo: true,
+      allowCustomAmount: true, minAmount: true, maxAmount: true, paymentMode: true, businessNo: true,
       approvedAt: true, suspendedAt: true, createdAt: true,
       user: { select: { email: true, name: true, phoneMasked: true, status: true } },
       codes: { orderBy: { issuedAt: 'desc' }, take: 10, select: { id: true, code: true, active: true, issuedAt: true, revokedAt: true } },
@@ -33,6 +33,11 @@ export default async function AdminCreatorDetailPage({ params }: { params: Promi
         select: { id: true, phoneNumber: true, keyword: true, mode: true, status: true, monthlyCost: true, assignedAt: true },
       },
       settlementAccount: { select: { bankName: true, accountTail4: true, holderMasked: true, verified: true, verifiedAt: true } },
+      chargeProducts: {
+        where: { archivedAt: null },
+        orderBy: [{ sortOrder: 'asc' }, { amount: 'asc' }],
+        select: { id: true, name: true, amount: true, active: true },
+      },
     },
   });
   if (!creator) notFound();
@@ -89,7 +94,17 @@ export default async function AdminCreatorDetailPage({ params }: { params: Promi
               <DataRow label="담당자" value={`${creator.user.name ?? '-'} / ${creator.user.email ?? '-'}`} />
               <DataRow label="연락처" value={creator.user.phoneMasked ?? '-'} />
               <DataRow label="사업자번호" value={creator.businessNo ?? '미등록'} />
-              <DataRow label="1건 결제 금액" value={formatWon(creator.donationAmount)} />
+              <DataRow
+                label="충전 상품"
+                value={
+                  creator.chargeProducts.length === 0
+                    ? '등록 없음'
+                    : creator.chargeProducts
+                        .map((p) => `${p.name} ${formatWon(p.amount)}${p.active ? '' : ' (사용 안 함)'}`)
+                        .join(' · ')
+                }
+              />
+              <DataRow label="직접 입력" value={creator.allowCustomAmount ? '허용' : '허용 안 함'} />
               <DataRow label="허용 범위" value={`${formatWon(creator.minAmount)} ~ ${formatWon(creator.maxAmount)}`} />
               <DataRow label="신청일" value={formatKst(creator.createdAt)} />
               <DataRow label="승인일" value={formatKst(creator.approvedAt)} />

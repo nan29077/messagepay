@@ -111,7 +111,7 @@ async function main() {
       where: { userId: user.id },
       create: {
         id: newId(), userId: user.id, code: c.code, displayName: c.name,
-        channelName: `${c.name} 서비스`, status: 'APPROVED', donationAmount: 3000,
+        channelName: `${c.name} 서비스`, status: 'APPROVED',
         approvedAt: new Date(),
         description: '문자 한 통으로 캐시를 충전할 수 있습니다.',
         avatarUrl: null,
@@ -120,6 +120,23 @@ async function main() {
       // 테스트 계정은 URL을 비우고 userId 기반 자동 캐릭터를 사용한다.
       update: { status: 'APPROVED', avatarUrl: null },
     });
+
+    // 충전 상품. 금액과 지급 포인트는 1:1 이다.
+    const productCount = await prisma.chargeProduct.count({ where: { creatorId: creator.id } });
+    if (productCount === 0) {
+      const presets = [3000, 5000, 10000, 30000];
+      for (const [i, amount] of presets.entries()) {
+        await prisma.chargeProduct.create({
+          data: {
+            id: newId(),
+            creatorId: creator.id,
+            name: `${amount.toLocaleString('ko-KR')} 포인트`,
+            amount,
+            sortOrder: i,
+          },
+        });
+      }
+    }
 
     const codeExists = await prisma.creatorCode.findUnique({ where: { code: c.code } });
     if (!codeExists) {

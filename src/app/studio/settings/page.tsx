@@ -4,10 +4,17 @@ import { MessageSquareText, Video } from 'lucide-react';
 import { Badge, Card, CardTitle, DataRow, Field, Input, Notice, SectionTitle, Textarea, cx } from '@/components/ui';
 import { DEFAULT_BANNERS, defaultBannerFor } from '@/lib/banners';
 import { PageHeader } from '@/components/layout/console-shell';
-import { ActionForm } from '@/components/studio/action-form';
+import { ActionForm, InlineActionForm } from '@/components/studio/action-form';
 import { ImageUploadField } from '@/components/studio/image-upload-field';
 import { DonationPageShare } from '@/components/studio/donation-page-share';
-import { updateDonationSettingsAction, updateDonationPageAction, updateThanksMessageAction } from '@/app/actions/studio';
+import {
+  updateChargeSettingsAction,
+  createChargeProductAction,
+  updateChargeProductAction,
+  archiveChargeProductAction,
+  updateDonationPageAction,
+  updateThanksMessageAction,
+} from '@/app/actions/studio';
 import { THANKS_MT_MAX_LENGTH, THANKS_MT_VARIABLES, tplDonationSuccess } from '@/server/services/mt-templates';
 import { requireCreator } from '@/server/auth';
 import { prisma } from '@/server/db';
@@ -20,7 +27,7 @@ import { getPublicBaseUrl } from '@/server/public-base-url';
 export const dynamic = 'force-dynamic';
 
 const SETTINGS_TABS = [
-  { key: 'amount', label: '결제 금액' },
+  { key: 'amount', label: '충전 상품' },
   { key: 'thanks', label: '감사문자' },
   { key: 'payment', label: '결제 모드' },
   { key: 'number', label: '문자번호' },
@@ -49,7 +56,7 @@ export default async function StudioSettingsPage({
     ? requestedTab as SettingsTab
     : 'amount';
 
-  const [creator, moNumbers, policy] = await Promise.all([
+  const [creator, products, moNumbers, policy] = await Promise.all([
     prisma.creatorProfile.findUnique({
       where: { id: creatorId },
       select: {
@@ -57,13 +64,17 @@ export default async function StudioSettingsPage({
         code: true,
         displayName: true,
         description: true,
-        donationAmount: true,
+        allowCustomAmount: true,
         minAmount: true,
         maxAmount: true,
         paymentMode: true,
         thanksMtMessage: true,
         bannerUrl: true,
       },
+    }),
+    prisma.chargeProduct.findMany({
+      where: { creatorId, archivedAt: null },
+      orderBy: [{ sortOrder: 'asc' }, { amount: 'asc' }],
     }),
     prisma.creatorMoNumber.findMany({
       where: { creatorId },
@@ -117,28 +128,96 @@ export default async function StudioSettingsPage({
 
       <div className="space-y-5">
         {activeTab === 'amount' ? <section>
-          <SectionTitle title="문자 1건당 결제 금액" description="이용자가 문자 1건을 보낼 때 결제되는 금액입니다." />
+          <SectionTitle
+            title="충전 상품"
+            description="이용자가 문자를 보내면 여기에 등록한 상품 중에서 금액을 고릅니다. 결제 금액과 지급 포인트는 1:1 입니다."
+          />
+
           <Card>
-            <ActionForm action={updateDonationSettingsAction} submitLabel="결제 금액 저장">
-              <Field
-                label="문자 1건당 결제 금액 (원)"
-                hint={`설정 가능 범위: ${formatWon(effMin)} ~ ${formatWon(effMax)} (관리자 정책 반영)`}
-              >
-                <Input
-                  name="donationAmount"
-                  inputMode="numeric"
-                  defaultValue={creator.donationAmount.toString()}
-                  className="tabular-nums"
+            <CardTitle>등록한 상품</CardTitle>
+            <p className="mb-3 mt-1 text-[12.5px] leading-relaxed text-ink-500">
+              등록 가능 범위: {formatWon(effMin)} ~ {formatWon(effMax)} (관리자 정책 반영). 사용을 끄면 선택 화면에서 감춰집니다.
+            </p>
+
+            {products.length === 0 ? (
+              <Notice tone="warning">
+                등록된 상품이 없습니다. 상품이 없고 직접 입력도 꺼져 있으면 이용자가 결제를 진행할 수 없습니다.
+              </Notice>
+            ) : (
+              <div className="space-y-2.5">
+                {products.map((p) => (
+                  <div key={p.id} className="rounded-2xl border border-ink-100 p-3">
+                    <ActionForm action={updateChargeProductAction} submitLabel="저장" variant="secondary" size="sm">
+                      <input type="hidden" name="productId" value={p.id} />
+                      <div className="grid gap-2.5 sm:grid-cols-[2fr_1fr_0.7fr_auto]">
+                        <Field label="이름">
+                          <Input name="name" defaultValue={p.name} maxLength={40} />
+                        </Field>
+                        <Field label="금액 (원)">
+                          <Input name="amount" inputMode="numeric" defaultValue={p.amount.toString()} className="tabular-nums" />
+                        </Field>
+                        <Field label="순서">
+                          <Input name="sortOrder" inputMode="numeric" defaultValue={String(p.sortOrder)} className="tabular-nums" />
+                        </Field>
+                        <label className="flex items-end gap-2 pb-2 text-[12.5px] font-semibold text-ink-700">
+                          <input type="checkbox" name="active" defaultChecked={p.active} className="h-4 w-4" />
+                          사용
+                        </label>
+                      </div>
+                    </ActionForm>
+                    <div className="mt-2 flex justify-end">
+                      <InlineActionForm
+                        action={archiveChargeProductAction}
+                        submitLabel="보관"
+                        variant="ghost"
+                        confirmMessage={`${p.name} 상품을 보관합니다. 선택 화면에서 사라지며, 지난 결제 내역은 그대로 남습니다.`}
+                        fields={{ productId: p.id }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card className="mt-4">
+            <CardTitle>상품 추가</CardTitle>
+            <div className="mt-3">
+              <ActionForm action={createChargeProductAction} submitLabel="상품 추가">
+                <div className="grid gap-2.5 sm:grid-cols-2">
+                  <Field label="상품 이름" hint="예: 10,000 포인트">
+                    <Input name="name" maxLength={40} placeholder="10,000 포인트" />
+                  </Field>
+                  <Field label="금액 (원)" hint={`${formatWon(effMin)} ~ ${formatWon(effMax)}`}>
+                    <Input name="amount" inputMode="numeric" placeholder="10000" className="tabular-nums" />
+                  </Field>
+                </div>
+              </ActionForm>
+            </div>
+          </Card>
+
+          <Card className="mt-4">
+            <CardTitle>직접 입력</CardTitle>
+            <p className="mb-3 mt-1 text-[12.5px] leading-relaxed text-ink-500">
+              허용하면 이용자가 목록에 없는 금액을 직접 넣을 수 있습니다. 입력 가능 범위는 위와 같습니다.
+            </p>
+            <ActionForm action={updateChargeSettingsAction} submitLabel="저장">
+              <label className="flex items-center gap-2 text-[13px] font-semibold text-ink-800">
+                <input
+                  type="checkbox"
+                  name="allowCustomAmount"
+                  defaultChecked={creator.allowCustomAmount}
+                  className="h-4 w-4"
                 />
-              </Field>
+                직접 입력 허용
+              </label>
             </ActionForm>
 
             <div className="mt-4">
-              <DataRow label="현재 설정 금액" value={formatWon(creator.donationAmount)} />
-              <DataRow label="설정 가능 범위" value={`${formatWon(effMin)} ~ ${formatWon(effMax)}`} />
+              <DataRow label="등록 가능 범위" value={`${formatWon(effMin)} ~ ${formatWon(effMax)}`} />
               <DataRow label="한도 정책 1건 허용 범위" value={`${formatWon(policy.minAmount)} ~ ${formatWon(policy.maxAmount)}`} />
               <DataRow label="이용자 1인 1일 한도" value={formatWon(policy.donorDailyLimit)} />
-              <DataRow label="내 채널 기준 이용자 1일 한도" value={formatWon(policy.perCreatorDailyLimit)} />
+              <DataRow label="내 서비스 기준 이용자 1일 한도" value={formatWon(policy.perCreatorDailyLimit)} />
             </div>
           </Card>
         </section> : null}

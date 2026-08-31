@@ -20,27 +20,27 @@ import {
  * 결제가 성공한 건만 가맹 서비스에 충전으로 반영된다.
  */
 
-const PRESET_AMOUNTS = [1000n, 3000n, 5000n, 10000n];
 
 const initial: WebDonateState = { ok: false, step: 'phone' };
 
 export function WebDonationPanel({
   creatorId,
   creatorName,
-  defaultAmount,
+  products,
+  allowCustom,
   minAmount,
   maxAmount,
   paymentMock = false,
 }: {
   creatorId: string;
   creatorName: string;
-  defaultAmount: string;
+  products: { name: string; amount: string }[];
+  allowCustom: boolean;
   minAmount: string;
   maxAmount: string;
   /** 결제 연동이 아직 mock 이면 화면에 반드시 알린다 (가짜 성공 금지 원칙) */
   paymentMock?: boolean;
 }) {
-  const defAmount = BigInt(defaultAmount);
   const min = BigInt(minAmount);
   const max = BigInt(maxAmount);
 
@@ -66,7 +66,7 @@ export function WebDonationPanel({
 
   // 금액·메시지 입력
   const [amountMode, setAmountMode] = React.useState<'preset' | 'custom'>('preset');
-  const [amount, setAmount] = React.useState<bigint>(defAmount);
+  const [amount, setAmount] = React.useState<bigint | null>(null);
   const [customAmount, setCustomAmount] = React.useState('');
   const [message, setMessage] = React.useState('');
   /**
@@ -79,15 +79,14 @@ export function WebDonationPanel({
   const newRequestId = () =>
     globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${performance.now().toString(36)}`;
 
-  const amountChips = React.useMemo(() => {
-    const chips: bigint[] = [];
-    const push = (v: bigint) => {
-      if (v >= min && v <= max && !chips.includes(v)) chips.push(v);
-    };
-    push(defAmount);
-    for (const p of PRESET_AMOUNTS) push(p);
-    return chips;
-  }, [defAmount, min, max]);
+  /** 가맹점이 등록한 충전 상품. 한도 범위를 벗어난 상품은 고를 수 없으므로 감춘다. */
+  const chargeOptions = React.useMemo(
+    () =>
+      products
+        .map((p) => ({ name: p.name, amount: BigInt(p.amount) }))
+        .filter((p) => p.amount >= min && p.amount <= max),
+    [products, min, max],
+  );
 
   const effectiveAmount = React.useMemo(() => {
     if (amountMode === 'custom') {
@@ -102,7 +101,8 @@ export function WebDonationPanel({
     return amount;
   }, [amountMode, amount, customAmount]);
   const amountValid = effectiveAmount !== null && effectiveAmount >= min && effectiveAmount <= max;
-  const composeValid = amountValid && message.trim().length > 0;
+  // 메모는 선택이다. 충전은 금액만 정해지면 진행할 수 있다.
+  const composeValid = amountValid;
 
   const serverStep = view.step;
   // 화면 단계 계산
@@ -169,29 +169,33 @@ export function WebDonationPanel({
             })}
           </div>
 
-          {/* 1. 금액 + 메시지 */}
+          {/* 1. 금액 + 메모 */}
           {phase === 'compose' ? (
             <div className="space-y-4">
               <div>
-                <p className="text-[13px] font-bold text-ink-900">결제 금액</p>
+                <p className="text-[13px] font-bold text-ink-900">충전 금액</p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {amountChips.map((v) => {
-                    const active = amountMode === 'preset' && amount === v;
+                  {chargeOptions.map((opt) => {
+                    const active = amountMode === 'preset' && amount === opt.amount;
                     return (
                       <button
-                        key={v.toString()}
+                        key={opt.amount.toString()}
                         type="button"
-                        onClick={() => { setAmountMode('preset'); setAmount(v); }}
+                        onClick={() => {
+                          setAmountMode('preset');
+                          setAmount(opt.amount);
+                        }}
                         className={cx(
-                          'h-10 rounded-full px-4 text-[13px] font-bold transition-colors',
+                          'h-11 rounded-2xl px-4 text-left text-[13px] font-bold transition-colors',
                           active ? 'bg-ink-900 text-brand-400' : 'bg-ink-50 text-ink-700 hover:bg-ink-100',
                         )}
                       >
-                        {formatWon(v)}
+                        <span className="block leading-tight">{opt.name}</span>
+                        <span className="block text-[11.5px] font-semibold opacity-80">{formatWon(opt.amount)}</span>
                       </button>
                     );
                   })}
-                  <button
+                  {allowCustom ? <button
                     type="button"
                     onClick={() => setAmountMode('custom')}
                     className={cx(
@@ -201,7 +205,7 @@ export function WebDonationPanel({
                   >
                     <Pencil size={13} strokeWidth={1.9} />
                     직접입력
-                  </button>
+                  </button> : null}
                 </div>
                 {amountMode === 'custom' ? (
                   <div className="mt-2.5 flex items-center gap-2">
@@ -223,7 +227,7 @@ export function WebDonationPanel({
               </div>
 
               <div>
-                <p className="text-[13px] font-bold text-ink-900">결제 메시지</p>
+                <p className="text-[13px] font-bold text-ink-900">메모 <span className="font-semibold text-ink-400">(선택)</span></p>
                 <textarea
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}

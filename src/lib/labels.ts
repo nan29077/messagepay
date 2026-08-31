@@ -33,6 +33,7 @@ export const donorOnboardingStatusLabel: Record<DonorOnboardingStatus, { text: s
 
 export const donationStatusLabel: Record<DonationStatus, { text: string; tone: Tone }> = {
   RECEIVED: { text: '수신', tone: 'neutral' },
+  PENDING_AMOUNT: { text: '금액선택대기', tone: 'brand' },
   UNREGISTERED: { text: '미등록', tone: 'warning' },
   LIMIT_BLOCKED: { text: '한도차단', tone: 'warning' },
   CONTENT_BLOCKED: { text: '내용차단', tone: 'danger' },

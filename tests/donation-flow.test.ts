@@ -13,14 +13,14 @@ import {
   assertPayable,
 } from '@/server/services/settlement';
 import { issueSecureLink } from '@/server/services/secure-link';
-import { resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
+import { setChargeAmount, inboundAndPay, resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
 import { newId } from '@/lib/id';
 import { generateToken, tokenHash, phoneHash } from '@/lib/crypto';
 
 let fx: Fixture;
 
 async function inbound(payload: Record<string, unknown>) {
-  return handleMoInbound(mockMoAdapter.parse(payload));
+  return inboundAndPay(payload, fx.creatorId);
 }
 
 describe('MO 수신 → 결제 → 충전 반영 흐름', () => {
@@ -96,7 +96,8 @@ describe('MO 수신 → 결제 → 충전 반영 흐름', () => {
     expect(res.result).toBe('ROUTED');
     const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
     expect(donation.amount).toBe(3000n);
-    expect(['BROADCASTED', 'PARTIAL_DELIVERY_FAILED']).toContain(donation.status);
+    // 방송 단계가 사라져 결제 성공 건은 곧바로 정산 대기로 넘어간다.
+    expect(['SETTLEMENT_PENDING', 'PAYMENT_SUCCESS']).toContain(donation.status);
     expect(donation.paidAt).not.toBeNull();
 
     // 수수료와 정산 원장
@@ -137,7 +138,7 @@ describe('MO 수신 → 결제 → 충전 반영 흐름', () => {
 
   it('[4-3] 가맹점가 고정 금액을 바꾸면 바뀐 금액으로 결제된다', async () => {
     await seedRegisteredDonor(fx.donorPhone);
-    await prisma.creatorProfile.update({ where: { id: fx.creatorId }, data: { donationAmount: 5000n } });
+    setChargeAmount(5000n);
 
     const res = await inbound(moPayload({ to: fx.moNumber, text: '1,000원 응원' }));
     const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
@@ -174,7 +175,7 @@ describe('MO 수신 → 결제 → 충전 반영 흐름', () => {
     expect(approved).toBeLessThanOrEqual(3);
   });
 
-  it('[7] 일일 한도를 초과하면 결제하지 않고 안내 문자를 보낸다', async () => {
+  it('[7] 일일 한도를 초과하면 결제하지 않고 선택 화면에서 알려 준다', async () => {
     const donor = await seedRegisteredDonor(fx.donorPhone);
     await prisma.donorProfile.update({ where: { id: donor.id }, data: { dailyLimit: 2000n } });
 
@@ -182,14 +183,14 @@ describe('MO 수신 → 결제 → 충전 반영 흐름', () => {
     expect(res.status).toBe('LIMIT_BLOCKED');
     expect(await prisma.paymentTransaction.count()).toBe(0);
 
-    const mt = readMockOutbox(5).find((m) => m.text.includes('결제가 제한'));
-    expect(mt).toBeDefined();
+    // 한도는 금액을 고르는 화면에서 즉시 알려 주므로 안내 문자를 따로 보내지 않는다.
+    expect(res.message).toContain('한도');
   });
 
   it('[8] 결제 API 타임아웃 시 거래결과조회로 최종 상태를 확정한다', async () => {
     await seedRegisteredDonor(fx.donorPhone);
     // 금액 끝 888 → 타임아웃 후 조회 시 승인 확정
-    await prisma.creatorProfile.update({ where: { id: fx.creatorId }, data: { donationAmount: 3888n } });
+    setChargeAmount(3888n);
 
     const res = await inbound(moPayload({ to: fx.moNumber }));
     const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
@@ -199,7 +200,7 @@ describe('MO 수신 → 결제 → 충전 반영 흐름', () => {
     expect(attempts.map((a) => a.operation)).toContain('INQUIRE');
 
     // 끝 777 → 타임아웃 후 조회 시 실패 확정
-    await prisma.creatorProfile.update({ where: { id: fx.creatorId }, data: { donationAmount: 3777n } });
+    setChargeAmount(3777n);
     const res2 = await inbound(moPayload({ to: fx.moNumber, messageId: 'MO-TIMEOUT-777' }));
     const d2 = await prisma.donation.findFirstOrThrow({ where: { id: res2.donationId } });
     expect(d2.status).toBe('PAYMENT_FAILED');
@@ -207,7 +208,7 @@ describe('MO 수신 → 결제 → 충전 반영 흐름', () => {
 
   it('[9] 결제 실패 시 충전이 반영되지 않고 실패 안내가 발송된다', async () => {
     await seedRegisteredDonor(fx.donorPhone);
-    await prisma.creatorProfile.update({ where: { id: fx.creatorId }, data: { donationAmount: 2999n } });
+    setChargeAmount(2999n);
 
     const res = await inbound(moPayload({ to: fx.moNumber }));
     const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
@@ -218,13 +219,17 @@ describe('MO 수신 → 결제 → 충전 반영 흐름', () => {
     expect(mt).toBeDefined();
   });
 
-  it('[12] 금칙어가 포함된 문자는 차단되고 결제되지 않는다', async () => {
+  it('[12] 금칙어가 포함돼도 결제는 진행되고 기록만 마스킹된다', async () => {
     await seedRegisteredDonor(fx.donorPhone);
+    // 지난 정책의 BLOCK 규칙이 남아 있어도 결제를 막지 않는다.
     await prisma.bannedWord.create({ data: { id: newId(), word: '도박', action: 'BLOCK', scope: 'GLOBAL' } });
 
     const res = await inbound(moPayload({ to: fx.moNumber, text: '도박 사이트 추천' }));
-    expect(res.status).toBe('CONTENT_BLOCKED');
-    expect(await prisma.paymentTransaction.count()).toBe(0);
+    expect(res.status).not.toBe('CONTENT_BLOCKED');
+
+    const d = await prisma.donation.findUniqueOrThrow({ where: { id: res.donationId! } });
+    expect(d.message).not.toContain('도박');
+    expect(d.message).toContain('**');
   });
 
   it('[13] 개인정보가 포함된 문자는 마스킹되어 기록된다', async () => {
@@ -327,7 +332,7 @@ describe('MO 수신 → 결제 → 충전 반영 흐름', () => {
 
   it('[19] 결제 실패가 반복되면 이용자가 잠긴다', async () => {
     await seedRegisteredDonor(fx.donorPhone);
-    await prisma.creatorProfile.update({ where: { id: fx.creatorId }, data: { donationAmount: 2999n } });
+    setChargeAmount(2999n);
     await prisma.donationLimitPolicy.updateMany({ data: { velocityMaxCount: 100, cooldownAfterCount: 100 } });
 
     for (let i = 0; i < 3; i += 1) {
@@ -343,78 +348,6 @@ describe('MO 수신 → 결제 → 충전 반영 흐름', () => {
 
 });
 
-describe('CONFIRM_LINK + 구(舊) 확인 링크 (ALLOW_LEGACY_CONFIRM_LINK=true)', () => {
-  beforeEach(async () => {
-    await resetDb();
-    // 되돌림용으로 남겨 둔 경로다. 이 블록에서만 켠다.
-    process.env.ALLOW_LEGACY_CONFIRM_LINK = 'true';
-    fx = await seedBasics({ paymentMode: 'CONFIRM_LINK' });
-  });
-
-  afterEach(() => {
-    delete process.env.ALLOW_LEGACY_CONFIRM_LINK;
-  });
-
-  it('MO 수신만으로는 결제되지 않고 확인 링크가 발송된다', async () => {
-    await seedRegisteredDonor(fx.donorPhone);
-    const res = await inbound(moPayload({ to: fx.moNumber }));
-
-    expect(res.status).toBe('PENDING_CONFIRM');
-    expect(await prisma.paymentTransaction.count()).toBe(0);
-
-    const mt = readMockOutbox(3).find((m) => m.text.includes('확인'));
-    expect(mt).toBeDefined();
-  });
-
-  it('확인 링크를 눌러야 결제가 실행되고, 두 번 눌러도 1회만 결제된다', async () => {
-    await seedRegisteredDonor(fx.donorPhone);
-    const res = await inbound(moPayload({ to: fx.moNumber }));
-
-    const raw = generateToken(16);
-    const link = await prisma.secureLink.findFirstOrThrow({ where: { purpose: 'CONFIRM_PAYMENT' } });
-    await prisma.secureLink.update({ where: { id: link.id }, data: { tokenHash: tokenHash(raw) } });
-
-    const ctx = await loadConfirmContext(raw);
-    expect(ctx.ok).toBe(true);
-
-    const paid = await confirmDonation(raw);
-    expect(paid.ok).toBe(true);
-    await expect(confirmDonation(raw)).rejects.toThrow(/이미 처리/);
-
-    expect(await prisma.paymentTransaction.count({ where: { status: 'APPROVED' } })).toBe(1);
-    const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
-    expect(donation.paidAt).not.toBeNull();
-  });
-
-  it('확인 시간이 지나면 자동 취소된다', async () => {
-    await seedRegisteredDonor(fx.donorPhone);
-    const res = await inbound(moPayload({ to: fx.moNumber }));
-
-    await prisma.secureLink.updateMany({
-      where: { purpose: 'CONFIRM_PAYMENT' },
-      data: { expiresAt: new Date(Date.now() - 1000) },
-    });
-    const expired = await expireStaleConfirmations();
-    expect(expired).toBe(1);
-
-    const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
-    expect(donation.status).toBe('PAYMENT_FAILED');
-    expect(await prisma.paymentTransaction.count()).toBe(0);
-  });
-
-  it('플래그를 켜야만 구 확인 링크 경로를 탄다', () => {
-    expect(resolveConfirmChannel(true)).toBe('LEGACY_LINK');
-    expect(resolveConfirmChannel(false)).toBe('PIN');
-  });
-
-  it('ALLOW_DIRECT_TRIGGER=false 이면 DIRECT_TRIGGER 설정도 CONFIRM_LINK 로 강등된다', () => {
-    // 금융사 서면승인이 등록되지 않은 상태에서는 어떤 가맹점 설정으로도 즉시 결제가 열리지 않는다
-    expect(resolvePaymentMode('DIRECT_TRIGGER', false)).toBe('CONFIRM_LINK');
-    expect(resolvePaymentMode('CONFIRM_LINK', false)).toBe('CONFIRM_LINK');
-    expect(resolvePaymentMode(null, true)).toBe('CONFIRM_LINK');
-    expect(resolvePaymentMode('DIRECT_TRIGGER', true)).toBe('DIRECT_TRIGGER');
-  });
-});
 
 describe('대표번호 + 키워드 라우팅', () => {
   beforeEach(async () => {

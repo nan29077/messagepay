@@ -5,12 +5,12 @@ import { readMockOutbox } from '@/server/adapters/mt';
 import { handleMoInbound } from '@/server/services/donation-flow';
 import { completeRegistration, revokePaymentMethod, startRegistration } from '@/server/services/donor-registration';
 import { generateToken, tokenHash } from '@/lib/crypto';
-import { moPayload, resetDb, seedBasics, seedRegisteredDonor, type Fixture } from './helpers';
+import { inboundAndPay, moPayload, resetDb, seedBasics, seedRegisteredDonor, type Fixture } from './helpers';
 
 let fx: Fixture;
 
 async function inbound(payload: Record<string, unknown>) {
-  return handleMoInbound(mockMoAdapter.parse(payload));
+  return inboundAndPay(payload, fx.creatorId);
 }
 
 describe('전화번호별 내통장결제 가입 상태', () => {
@@ -77,7 +77,7 @@ describe('전화번호별 내통장결제 가입 상태', () => {
     });
     // 닉네임을 정하지 않은 이용자는 번호 끝 4자리로 만든 기본 이름으로 표시된다.
     // (예전에는 마스킹 번호 010-****-5678 을 그대로 썼다)
-    expect(success.bodyMasked).toContain('이용자5678님, 테스트가맹점 가맹점에 3,000원이 충전되었습니다. 감사합니다.');
+    expect(success.bodyMasked).toContain('이용자5678님, 테스트가맹점 가맹점에 3,000원이 충전되었습니다.');
     expect(success.bodyMasked).not.toContain('010-');
   });
 

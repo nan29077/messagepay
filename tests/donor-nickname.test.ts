@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
-import { resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
+import { inboundAndPay, resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
 import { handleMoInbound } from '@/server/services/donation-flow';
 import { mockMoAdapter } from '@/server/adapters/mo';
 import {
@@ -22,7 +22,7 @@ import { validateDonorName } from '@/server/services/donor-name';
  */
 
 let fx: Fixture;
-const inbound = (p: Record<string, unknown>) => handleMoInbound(mockMoAdapter.parse(p));
+const inbound = (p: Record<string, unknown>) => inboundAndPay(p, fx.creatorId);
 
 describe('결제 내역에 실제로 남는 이름', () => {
   it('자동 생성된 기본 이름은 끝 4자리로만 불린다', () => {

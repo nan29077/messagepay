@@ -92,6 +92,8 @@ enum MoProcessResult {
 /// 후원 거래 상태머신
 enum DonationStatus {
   RECEIVED
+  /// 충전 금액 선택 대기. MO 를 받았지만 이용자가 아직 금액을 고르지 않았다.
+  PENDING_AMOUNT
   UNREGISTERED
   LIMIT_BLOCKED
   CONTENT_BLOCKED
@@ -180,6 +182,8 @@ enum RefundStatus {
 
 enum SecureLinkPurpose {
   REGISTER_ACCOUNT
+  /// 충전 금액 선택 + PIN 인증으로 이어지는 링크
+  SELECT_AMOUNT
   CONFIRM_PAYMENT
   MANAGE_DONOR
 
@@ -481,7 +485,8 @@ model CreatorProfile {
   channelUrl          String?       @map("channel_url")
   status              CreatorStatus @default(PENDING)
   /// 문자 1건당 후원금 (원)
-  donationAmount      BigInt        @default(3000) @map("donation_amount")
+  /// 직접 입력 충전 허용 여부. 끄면 등록된 충전 상품만 고를 수 있다.
+  allowCustomAmount   Boolean       @default(true) @map("allow_custom_amount")
   minAmount           BigInt        @default(1000) @map("min_amount")
   maxAmount           BigInt        @default(50000) @map("max_amount")
   /// 크리에이터별 결제 모드 오버라이드 (null 이면 전역 설정)
@@ -510,9 +515,32 @@ model CreatorProfile {
   limitPolicies      DonationLimitPolicy[]
   bannedWords        BannedWord[]
   moMessages         MoInboundMessage[]
+  chargeProducts     ChargeProduct[]
 
   @@index([status])
   @@map("creator_profile")
+}
+
+/// 가맹점이 등록해 두는 충전 상품.
+/// 결제 금액과 지급 포인트는 1:1 이므로 금액 하나만 둔다(10,000원 = 10,000P).
+/// 지난 결제가 참조하므로 삭제하지 않고 archivedAt 으로 보관 처리한다.
+model ChargeProduct {
+  id         String    @id
+  creatorId  String    @map("creator_id")
+  /// 화면에 보이는 이름 (예: 10,000 포인트)
+  name       String
+  /// 결제 금액(원). 지급 포인트와 같은 값이다.
+  amount     BigInt
+  sortOrder  Int       @default(0) @map("sort_order")
+  active     Boolean   @default(true)
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  creator CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@index([creatorId, active, sortOrder])
+  @@map("charge_product")
 }
 
 model CreatorCode {

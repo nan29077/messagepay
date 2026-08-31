@@ -27,13 +27,13 @@ const creatorSelect = {
   channelName: true,
   code: true,
   status: true,
-  donationAmount: true,
+  allowCustomAmount: true,
   businessNo: true,
   approvedAt: true,
   createdAt: true,
   user: { select: { email: true, name: true, phoneMasked: true } },
   moRoutes: { where: { status: 'ASSIGNED' as const }, select: { phoneNumber: true, keyword: true } },
-  _count: { select: { donations: true } },
+  _count: { select: { donations: true, chargeProducts: true } },
 } satisfies Prisma.CreatorProfileSelect;
 
 function CreatorRows({
@@ -45,13 +45,13 @@ function CreatorRows({
     channelName: string | null;
     code: string;
     status: CreatorStatus;
-    donationAmount: bigint;
+    allowCustomAmount: boolean;
     businessNo: string | null;
     approvedAt: Date | null;
     createdAt: Date;
     user: { email: string | null; name: string | null; phoneMasked: string | null };
     moRoutes: Array<{ phoneNumber: string; keyword: string | null }>;
-    _count: { donations: number };
+    _count: { donations: number; chargeProducts: number };
   }>;
 }) {
   return (
@@ -69,7 +69,7 @@ function CreatorRows({
             {c.user.email ?? '-'}
             <span className="mt-0.5 block text-[11px] text-ink-400">{c.user.phoneMasked ?? '연락처 미등록'}</span>
           </Td>
-          <Td className="text-right tabular-nums">{formatWon(c.donationAmount)}</Td>
+          <Td className="text-right tabular-nums">{c._count.chargeProducts}개{c.allowCustomAmount ? " + 직접" : ""}</Td>
           <Td>
             {c.moRoutes.length === 0 ? (
               <Badge tone="warning">미배정</Badge>
@@ -113,7 +113,7 @@ const HEAD = (
       <Th>가맹점</Th>
       <Th>코드</Th>
       <Th>담당자</Th>
-      <Th className="text-right">1건 결제 금액</Th>
+      <Th className="text-right">충전 상품</Th>
       <Th>MO 번호</Th>
       <Th className="text-right">결제 건수</Th>
       <Th>상태</Th>
@@ -185,12 +185,12 @@ export default async function AdminCreatorsPage({
       <section className="mb-5">
         <Card>
           <div className="flex flex-wrap items-center gap-2">
-            <CardTitle>1건 결제 금액 허용 범위 공통 적용</CardTitle>
+            <CardTitle>충전 금액 허용 범위 공통 적용</CardTitle>
             <Badge tone="warning">전체 가맹점 일괄 변경</Badge>
           </div>
           <p className="mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-500">
-            모든 가맹점의 문자 1건당 결제 금액 최소·최대 허용 범위를 한 번에 변경합니다. 가맹점은 이 범위 안에서만
-            1건 결제 금액을 정할 수 있으며, 현재 설정 금액이 새 범위를 벗어난 가맹점은 범위 안으로 자동 보정됩니다.
+            모든 가맹점의 충전 금액 최소·최대 허용 범위를 한 번에 변경합니다. 가맹점은 이 범위 안에서만
+            충전 상품을 만들 수 있으며, 범위를 벗어난 상품은 자동으로 비활성화됩니다(금액은 바꾸지 않습니다).
             개별 가맹점의 범위는 상세 화면에서 따로 조정할 수 있습니다.
           </p>
           <ActionForm

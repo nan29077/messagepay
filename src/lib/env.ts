@@ -112,6 +112,8 @@ export const env = {
     hectoCallbackUrl: str('HECTO_CALLBACK_URL'),
     /** 헥토 공식 제한은 결제인증 후 10분. 그보다 짧게 운용한다. */
     confirmTtlSec: num('PAYMENT_CONFIRM_TTL_SEC', 300),
+    /** 충전 금액 선택 링크 유효시간. 금액 선택 + PIN 입력을 한 화면에서 끝내는 시간이다. */
+    selectTtlSec: num('PAYMENT_SELECT_TTL_SEC', 600),
     /** PIN 입력 링크 유효시간. 결제사 인증창 유효시간(10분)을 넘지 않게 잡는다. */
     pinTtlSec: num('PAYMENT_PIN_TTL_SEC', 300),
     /** PIN 완료 콜백 검증용 공유 비밀 (X-Pin-Secret). 실연동 시 결제사 서명 검증으로 대체한다. */
