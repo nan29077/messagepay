@@ -1,11 +1,11 @@
 import type { DonationStatus } from '@/generated/prisma/enums';
 
 /**
- * 크리에이터 관리자 공용 상수/헬퍼.
+ * 가맹점 관리자 공용 상수/헬퍼.
  * (공용 lib 을 수정하지 않기 위해 studio 전용으로 분리한다)
  */
 
-/** 결제가 승인되어 정산 대상이 되는 후원 상태 */
+/** 결제가 승인되어 정산 대상이 되는 결제 상태 */
 export const PAID_STATUSES: DonationStatus[] = [
   'PAYMENT_SUCCESS',
   'BROADCAST_PENDING',

@@ -6,10 +6,10 @@ import { usePathname } from 'next/navigation';
 import {
   Activity, BadgeCheck, BookOpenText, CalendarDays, ClipboardList, CreditCard, FlaskConical,
   FilePen, Flag, Gauge, HeartHandshake, Home, Images, KeyRound, LayoutDashboard, LogOut,
-  Menu, MessageCircleQuestion, MessageSquareText, PanelsTopLeft, Percent, PhoneCall,
+  Menu, MessageCircleQuestion, MessageSquareText, Percent, PhoneCall,
   ScrollText, Send, ServerCog, ShieldAlert, ShieldBan,
   SlidersHorizontal, Undo2, UserCog, CircleUserRound, UserRoundCog,
-  UsersRound, Video, Volume2, WalletCards, X,
+  UsersRound, WalletCards, X,
 } from 'lucide-react';
 import { Logo } from '@/components/brand/logo';
 import { ConsoleCornerMascot, MascotAccent } from '@/components/brand/mascot-decorations';
@@ -18,7 +18,7 @@ import { ProfileAvatar } from '@/components/profile/generated-avatar';
 import { cx } from '@/components/ui';
 
 /**
- * 크리에이터 관리자 / 통합 관리자 공통 콘솔 레이아웃.
+ * 가맹점 관리자 / 통합 관리자 공통 콘솔 레이아웃.
  * 좌측 LNB(그룹형) + 상단 바. 모바일에서는 드로어로 전환한다.
  *
  * 좌측 메뉴 맨 아래에는 프로필·메인으로·로그아웃을 고정한다.
@@ -33,9 +33,9 @@ export interface NavGroup {
 export type ConsoleIconName =
   | 'activity' | 'admins' | 'audit' | 'banners' | 'codes' | 'contents' | 'creators'
   | 'dashboard' | 'donations' | 'donors' | 'fees' | 'holidays' | 'inquiries' | 'messages'
-  | 'moderation' | 'numbers' | 'overlay' | 'payments' | 'policies' | 'profile'
+  | 'moderation' | 'numbers' | 'payments' | 'policies' | 'profile'
   | 'refunds' | 'reports' | 'risk' | 'settlement' | 'simulator'
-  | 'system' | 'templates' | 'terms' | 'tts' | 'users' | 'youtube' | 'settings' | 'send';
+  | 'system' | 'templates' | 'terms' | 'users' | 'settings' | 'send';
 
 const CONSOLE_ICONS = {
   activity: Activity,
@@ -54,7 +54,6 @@ const CONSOLE_ICONS = {
   messages: MessageSquareText,
   moderation: ShieldBan,
   numbers: PhoneCall,
-  overlay: PanelsTopLeft,
   payments: CreditCard,
   policies: Gauge,
   profile: UserRoundCog,
@@ -66,9 +65,7 @@ const CONSOLE_ICONS = {
   system: ServerCog,
   templates: FilePen,
   terms: ScrollText,
-  tts: Volume2,
   users: UsersRound,
-  youtube: Video,
   settings: SlidersHorizontal,
   send: Send,
 } satisfies Record<ConsoleIconName, typeof Home>;

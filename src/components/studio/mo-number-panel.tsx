@@ -15,10 +15,10 @@ export interface MoNumberView {
 }
 
 /**
- * 크리에이터에게 배정된 MO 수신번호 패널.
+ * 가맹점에게 배정된 MO 수신번호 패널.
  *
- * 번호의 배정·변경·회수는 통합 관리자 권한이다(잘못 바꾸면 다른 크리에이터의 후원이 섞인다).
- * 크리에이터는 여기서 번호를 확인하고 시청자 안내 문구를 복사할 수 있다.
+ * 번호의 배정·변경·회수는 통합 관리자 권한이다(잘못 바꾸면 다른 가맹점의 결제가 섞인다).
+ * 가맹점은 여기서 번호를 확인하고 시청자 안내 문구를 복사할 수 있다.
  */
 export function MoNumberPanel({ numbers, guideText }: { numbers: MoNumberView[]; guideText: string | null }) {
   if (numbers.length === 0) {
@@ -31,7 +31,7 @@ export function MoNumberPanel({ numbers, guideText }: { numbers: MoNumberView[];
           <div>
             <p className="text-[14px] font-bold text-ink-900">배정된 수신번호가 없습니다</p>
             <p className="mt-1 text-[12.5px] leading-relaxed text-ink-500">
-              번호가 배정되기 전에는 문자후원을 받을 수 없습니다. 통합 관리자에게 번호 배정을 요청해 주세요.
+              번호가 배정되기 전에는 문자결제를 받을 수 없습니다. 통합 관리자에게 번호 배정을 요청해 주세요.
             </p>
           </div>
         </div>
@@ -43,7 +43,7 @@ export function MoNumberPanel({ numbers, guideText }: { numbers: MoNumberView[];
     <Card padded={false}>
       <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3">
         <p className="text-[13px] font-bold text-ink-900">
-          내 후원 문자번호
+          내 결제 문자번호
           <span className="ml-2 text-[11.5px] font-medium text-ink-400">시청자가 문자를 보내는 번호입니다</span>
         </p>
       </div>
@@ -93,7 +93,7 @@ export function MoNumberPanel({ numbers, guideText }: { numbers: MoNumberView[];
       ) : null}
 
       <p className="border-t border-ink-100 px-4 py-2.5 text-[11.5px] leading-relaxed text-ink-400">
-        번호 변경·추가·회수는 통합 관리자가 처리합니다. 번호가 바뀌면 이전 번호로 온 문자는 후원으로 접수되지 않으니,
+        번호 변경·추가·회수는 통합 관리자가 처리합니다. 번호가 바뀌면 이전 번호로 온 문자는 결제로 접수되지 않으니,
         변경이 필요하면 고객센터로 요청해 주세요.
       </p>
     </Card>

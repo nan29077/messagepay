@@ -13,10 +13,10 @@ import { formatKst } from '@/lib/datetime';
 import { donationStatusLabel } from '@/lib/labels';
 
 /**
- * 로그인 없이 휴대폰 번호로 후원 내역 조회 (후원확인 바텀시트).
+ * 로그인 없이 휴대폰 번호로 결제 내역 조회 (결제내역 바텀시트).
  *
  * 보안 설계
- *  - 후원 내역은 결제 정보가 포함된 개인정보다. 번호만 입력하면 누구나 타인의 내역을 볼 수 있으므로
+ *  - 결제 내역은 개인정보다. 번호만 입력하면 누구나 타인의 내역을 볼 수 있으므로
  *    반드시 그 번호로 문자 인증번호를 받아 본인 확인을 마친 뒤에만 결과를 돌려준다.
  *    (회원가입/로그인은 필요 없지만, 번호 소유 확인은 필요하다)
  *  - 인증 상태는 서버 KV 에만 두고, 검증값은 서버 시크릿 HMAC 으로 보관한다.
@@ -102,7 +102,7 @@ export async function requestLookupCode(_prev: LookupState, formData: FormData):
     JSON.stringify({ ph, pm: masked, ch: digest(code), at: MAX_ATTEMPTS }),
     TTL_SEC,
   );
-  logger.info('후원내역 조회 인증번호 발송', { phone: masked });
+  logger.info('결제내역 조회 인증번호 발송', { phone: masked });
 
   return {
     ok: true,

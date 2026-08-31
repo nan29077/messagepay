@@ -46,8 +46,6 @@ export async function GET() {
         payment: env.payment.provider,
         mo: env.mo.provider,
         mt: env.mt.provider,
-        youtube: env.youtube.provider,
-        tts: env.tts.provider,
       },
       checks,
       productionWarnings: assertProductionSafety(),

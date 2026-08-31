@@ -68,7 +68,7 @@ export default async function AdminRiskPage({
     <>
       <PageHeader
         title="한도·이상거래"
-        description="한도 정책에 걸린 후원과 이상거래 탐지 이력을 확인하고 해결 처리합니다."
+        description="한도 정책에 걸린 결제와 이상거래 탐지 이력을 확인하고 해결 처리합니다."
       />
 
       <div className="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
@@ -83,7 +83,7 @@ export default async function AdminRiskPage({
       </div>
 
       <Notice tone="neutral" title="한도 차단과 이상거래 탐지">
-        한도 차단(LIMIT_BLOCKED)은 정책 위반으로 결제 이전에 차단된 후원입니다. 이상거래 탐지는 속도·금액·실패 패턴을
+        한도 차단(LIMIT_BLOCKED)은 정책 위반으로 결제 이전에 차단된 결제입니다. 이상거래 탐지는 속도·금액·실패 패턴을
         기록한 것으로, 결제 차단 여부와 별개로 운영자가 검토해야 합니다.
       </Notice>
 
@@ -140,7 +140,7 @@ export default async function AdminRiskPage({
                   <Th>탐지 시각</Th>
                   <Th>유형</Th>
                   <Th>레벨</Th>
-                  <Th>후원자</Th>
+                  <Th>이용자</Th>
                   <Th>연결 거래</Th>
                   <Th>상세</Th>
                   <Th>해결</Th>

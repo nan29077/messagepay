@@ -19,7 +19,7 @@ export function SafetyBanner() {
     mo: env.mo.provider,
     mt: env.mt.provider,
   };
-  const warnings = assertProductionSafety().filter((warning) => !/youtube|유튜브|tts/i.test(warning));
+  const warnings = assertProductionSafety();
   const mockCount = providerRows.filter((r) => providers[r.key] === 'mock').length;
 
   return (
@@ -77,7 +77,7 @@ export function SafetyBanner() {
 
       {!env.safety.allowDirectTrigger ? (
         <Notice tone="neutral" title="즉시형(DIRECT_TRIGGER) 결제 비활성">
-          금융사 서면승인이 등록되지 않아 즉시형 결제를 활성화할 수 없습니다. 모든 후원은 확인형(MT 링크 확인 후 결제)
+          금융사 서면승인이 등록되지 않아 즉시형 결제를 활성화할 수 없습니다. 모든 결제는 확인형(MT 링크 확인 후 결제)
           으로만 처리됩니다.
         </Notice>
       ) : null}

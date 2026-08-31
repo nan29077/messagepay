@@ -61,7 +61,7 @@ function TxRows({ rows, reconcilable = false }: { rows: TxRow[]; reconcilable?: 
               {donationStatusLabel[t.donation.status].text}
             </span>
             <span className="mt-0.5 block text-[11px] font-semibold text-ink-300">
-              {t.donation.channel === 'WEB' ? '웹(PC) 후원' : '문자(MO) 후원'}
+              {t.donation.channel === 'WEB' ? '웹(PC) 결제' : '문자(MO) 결제'}
             </span>
           </Td>
           <Td className="max-w-[200px] break-words">
@@ -140,7 +140,7 @@ PG 관리자에서 실제 출금을 확인하셨나요? 정산 원장에 분개�
         variant="danger"
         compact
         confirm={`${orderNo} 건을 결제 취소로 확정합니다.
-출금이 없었음을 확인하셨나요? 후원은 실패로 확정되며 되돌릴 수 없습니다.`}
+출금이 없었음을 확인하셨나요? 결제는 실패로 확정되며 되돌릴 수 없습니다.`}
       >
         <input type="hidden" name="transactionId" value={transactionId} />
         <input type="hidden" name="decision" value="CANCEL" />
@@ -159,7 +159,7 @@ const HEAD = (
     <tr>
       <Th>주문번호</Th>
       <Th>거래번호</Th>
-      <Th>크리에이터 / 후원자</Th>
+      <Th>가맹점 / 이용자</Th>
       <Th className="text-right">금액</Th>
       <Th>상태</Th>
       <Th>결과</Th>
@@ -218,7 +218,7 @@ export default async function AdminPaymentsPage({
     <>
       <PageHeader
         title="결제 관리"
-        description="PG 결제 거래와 후원 거래를 함께 조회합니다. 결과를 확인할 수 없는 건은 상단에 별도로 모아 표시합니다."
+        description="PG 결제 거래와 결제 거래를 함께 조회합니다. 결과를 확인할 수 없는 건은 상단에 별도로 모아 표시합니다."
       />
 
       <div className="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
@@ -238,7 +238,7 @@ export default async function AdminPaymentsPage({
           <Notice tone="danger" title={`결과 확인이 필요한 결제 ${needsCheck.length}건`}>
             PG 응답이 타임아웃되었거나 결과를 알 수 없는 거래입니다. 실제 승인 여부를 PG 관리자에서 대사한 뒤 오른쪽
             [수동 확정]으로 결론을 반영해 주세요. 확인 전까지는 중복 결제를 유발할 수 있는 재시도를 하지 마세요.
-            [결제 확정]은 정산 원장에 분개를 추가하고, [결제 취소]는 후원을 실패로 확정하며 한도 집계를 되돌립니다.
+            [결제 확정]은 정산 원장에 분개를 추가하고, [결제 취소]는 결제를 실패로 확정하며 한도 집계를 되돌립니다.
             어느 쪽도 되돌릴 수 없으므로 대사 근거를 반드시 남겨 주세요. 확정된 거래는 자동으로 다시 시도되지 않습니다.
           </Notice>
           <div className="mt-3">
@@ -247,7 +247,7 @@ export default async function AdminPaymentsPage({
                 <tr>
                   <Th>주문번호</Th>
                   <Th>거래번호</Th>
-                  <Th>크리에이터 / 후원자</Th>
+                  <Th>가맹점 / 이용자</Th>
                   <Th className="text-right">금액</Th>
                   <Th>상태</Th>
                   <Th>결과</Th>

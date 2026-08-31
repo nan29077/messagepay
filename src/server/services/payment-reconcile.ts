@@ -143,9 +143,6 @@ async function confirmApproved(txn: TxnRow, donation: DonationRow, memo: string)
         platformFee: fees.platformFee,
         feeVat: fees.vat,
         netAmount: fees.net,
-        // 대사 시점에는 방송이 끝났을 수 있어 송출은 하지 않는다.
-        overlayStatus: 'SKIPPED',
-        youtubeStatus: 'SKIPPED',
       },
     });
     if (claimedDonation.count === 0) throw new Error(ALREADY_HANDLED);

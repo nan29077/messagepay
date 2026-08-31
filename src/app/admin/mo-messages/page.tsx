@@ -78,7 +78,7 @@ export default async function AdminMoMessagesPage({
       <div className="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         <StatTile label="정상 라우팅" value={formatNumber(countOf('ROUTED'))} tone="success" />
         <StatTile label="대상 없음" value={formatNumber(countOf('UNKNOWN_ROUTE'))} tone={countOf('UNKNOWN_ROUTE') > 0 ? 'warning' : 'neutral'} />
-        <StatTile label="미등록 후원자" value={formatNumber(countOf('UNREGISTERED_DONOR'))} tone={countOf('UNREGISTERED_DONOR') > 0 ? 'warning' : 'neutral'} />
+        <StatTile label="미등록 이용자" value={formatNumber(countOf('UNREGISTERED_DONOR'))} tone={countOf('UNREGISTERED_DONOR') > 0 ? 'warning' : 'neutral'} />
         <StatTile label="처리 오류" value={formatNumber(countOf('ERROR'))} tone={countOf('ERROR') > 0 ? 'danger' : 'neutral'} />
       </div>
 
@@ -93,7 +93,7 @@ export default async function AdminMoMessagesPage({
             ))}
           </AdminSelect>
         </AdminField>
-        <AdminField label="크리에이터" className="w-52">
+        <AdminField label="가맹점" className="w-52">
           <AdminSelect name="creatorId" defaultValue={creatorId ?? ''}>
             <CreatorOptions creators={creators} />
           </AdminSelect>
@@ -129,7 +129,7 @@ export default async function AdminMoMessagesPage({
                   <Th>유형</Th>
                   <Th>결과</Th>
                   <Th>매칭 키워드</Th>
-                  <Th>크리에이터</Th>
+                  <Th>가맹점</Th>
                   <Th>필터링된 내용</Th>
                   <Th>연결 거래</Th>
                 </tr>

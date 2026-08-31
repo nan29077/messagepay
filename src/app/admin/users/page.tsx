@@ -15,7 +15,7 @@ import { ProfileAvatar } from '@/components/profile/generated-avatar';
 
 export const dynamic = 'force-dynamic';
 
-const roleLabel: Record<UserRole, string> = { DONOR: '후원자', CREATOR: '크리에이터', ADMIN: '관리자' };
+const roleLabel: Record<UserRole, string> = { DONOR: '이용자', CREATOR: '가맹점', ADMIN: '관리자' };
 const statusLabel: Record<UserStatus, { text: string; tone: 'success' | 'warning' | 'neutral' }> = {
   ACTIVE: { text: '활성', tone: 'success' },
   SUSPENDED: { text: '정지', tone: 'warning' },
@@ -172,7 +172,7 @@ export default async function AdminUsersPage({
                           href={`/admin/donors/${u.donorProfile.id}`}
                           className="mt-0.5 block text-[11px] font-semibold text-brand-700"
                         >
-                          후원자 상세
+                          이용자 상세
                         </Link>
                       ) : null}
                         </div>

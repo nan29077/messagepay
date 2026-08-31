@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { Badge, Card, CardTitle, DataRow, EmptyState, LinkButton, Notice, SectionTitle, Table, Td, Th } from '@/components/ui';
 import { PageHeader } from '@/components/layout/console-shell';
 import { ActionForm } from '@/components/studio/action-form';
-import { blockDonorAction, replayOverlayTestAction } from '@/app/actions/studio';
+import { blockDonorAction } from '@/app/actions/studio';
 import { requireCreator } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { formatWon } from '@/lib/money';
@@ -30,7 +30,6 @@ export default async function StudioDonationDetailPage({ params }: { params: Pro
         orderBy: { requestedAt: 'desc' },
         include: { attempts: { orderBy: { attemptNo: 'asc' } } },
       },
-      chatDeliveries: { orderBy: { createdAt: 'desc' } },
       mtMessages: { orderBy: { createdAt: 'desc' } },
       refunds: { orderBy: { requestedAt: 'desc' } },
     },
@@ -49,7 +48,7 @@ export default async function StudioDonationDetailPage({ params }: { params: Pro
   return (
     <>
       <PageHeader
-        title="후원 상세"
+        title="결제 상세"
         description={donation.transactionNo}
         action={
           <LinkButton href="/studio/donations" variant="secondary" size="sm">
@@ -64,36 +63,35 @@ export default async function StudioDonationDetailPage({ params }: { params: Pro
             <CardTitle>거래 정보</CardTitle>
             <div className="mt-2">
               <DataRow label="거래번호" value={<span className="font-mono text-[12px]">{donation.transactionNo}</span>} />
-              <DataRow label="후원 상태" value={<Badge tone={st.tone}>{st.text}</Badge>} />
-              <DataRow label="후원금" value={formatWon(donation.amount)} />
+              <DataRow label="결제 상태" value={<Badge tone={st.tone}>{st.text}</Badge>} />
+              <DataRow label="결제 금액" value={formatWon(donation.amount)} />
               <DataRow label="결제 모드" value={paymentModeLabel[donation.paymentMode]} />
               <DataRow label="수신시각" value={formatKst(donation.receivedAt)} />
               <DataRow label="결제시각" value={formatKst(donation.paidAt)} />
-              <DataRow label="송출시각" value={formatKst(donation.broadcastedAt)} />
               {donation.statusReason ? <DataRow label="상태 사유" value={donation.statusReason} /> : null}
               {donation.isTest ? <DataRow label="테스트 여부" value={<Badge tone="warning">테스트 거래</Badge>} /> : null}
             </div>
           </Card>
 
           <Card>
-            <CardTitle>후원자 · 메시지</CardTitle>
+            <CardTitle>이용자 · 메시지</CardTitle>
             <div className="mt-2">
-              <DataRow label="후원자 번호" value={donation.donor?.phoneMasked ?? '-'} />
-              <DataRow label="표시명" value={donation.anonymous ? '익명의 후원자' : donation.displayName} />
+              <DataRow label="이용자 번호" value={donation.donor?.phoneMasked ?? '-'} />
+              <DataRow label="표시명" value={donation.anonymous ? '익명의 이용자' : donation.displayName} />
               <DataRow label="익명 처리" value={donation.anonymous ? '사용' : '미사용'} />
             </div>
             <p className="mt-3 rounded-xl bg-ink-50 px-3 py-2.5 text-[13px] leading-relaxed text-ink-700">
               {donation.message || '(내용 없음)'}
             </p>
             <p className="mt-2 text-[11.5px] leading-relaxed text-ink-400">
-              방송 노출용 필터링 결과만 표시됩니다. 문자 원문과 후원자 전화번호 전체는 크리에이터에게 제공되지 않습니다.
+              필터링 결과만 표시됩니다. 문자 원문과 이용자 전화번호 전체는 가맹점에게 제공되지 않습니다.
             </p>
           </Card>
 
           <Card>
             <CardTitle>정산 금액</CardTitle>
             <div className="mt-2">
-              <DataRow label="후원 총액" value={formatWon(donation.amount)} />
+              <DataRow label="결제 총액" value={formatWon(donation.amount)} />
               <DataRow label="결제수수료" value={formatWon(donation.pgFee)} />
               <DataRow label="플랫폼수수료" value={formatWon(donation.platformFee)} />
               {donation.feeVat > 0n ? (
@@ -102,64 +100,41 @@ export default async function StudioDonationDetailPage({ params }: { params: Pro
               <DataRow label="정산 예정금" value={formatWon(donation.netAmount)} />
             </div>
             <div className="mt-2">
-              <DataRow label="유튜브 전송" value={<Badge tone={deliveryStatusLabel[donation.youtubeStatus].tone}>{deliveryStatusLabel[donation.youtubeStatus].text}</Badge>} />
-              <DataRow label="오버레이" value={<Badge tone={deliveryStatusLabel[donation.overlayStatus].tone}>{deliveryStatusLabel[donation.overlayStatus].text}</Badge>} />
               <DataRow label="MT 안내" value={<Badge tone={deliveryStatusLabel[donation.mtStatus].tone}>{deliveryStatusLabel[donation.mtStatus].text}</Badge>} />
             </div>
           </Card>
         </div>
 
         <section>
-          <SectionTitle title="조치" description="아래 동작은 후원 상태를 변경하지 않습니다." />
+          <SectionTitle title="조치" description="아래 동작은 결제 상태를 변경하지 않습니다." />
           <div className="grid gap-2.5 lg:grid-cols-2">
             <Card>
-              <CardTitle>오버레이 테스트 재생</CardTitle>
-              <p className="mb-3 mt-1 text-[12.5px] leading-relaxed text-ink-500">
-                동일한 표시명·금액·메시지로 오버레이에 테스트 이벤트를 한 번 더 재생합니다. 실제 재송출이 아니며 후원
-                상태, 유튜브 전송, 정산에는 아무 영향이 없습니다.
-              </p>
-              <ActionForm
-                action={replayOverlayTestAction}
-                submitLabel="테스트 재생"
-                pendingLabel="재생 중"
-                variant="secondary"
-                size="sm"
-                confirmTitle="오버레이에 다시 재생할까요?"
-                confirmMessage="같은 표시명 · 금액 · 메시지로 오버레이에 한 번 더 표시됩니다. 방송 중이라면 시청자 화면에도 보입니다. 후원 상태 · 유튜브 전송 · 정산에는 영향이 없습니다."
-                confirmActionLabel="재생"
-                doneTitle="테스트 재생을 보냈습니다"
-              >
-                <input type="hidden" name="donationId" value={donation.id} />
-              </ActionForm>
-            </Card>
-
-            <Card>
-              <CardTitle>후원자 차단</CardTitle>
+              <CardTitle>이용자 차단</CardTitle>
               {donation.donor ? (
                 blocked ? (
                   <Notice tone="warning">
-                    이미 차단된 후원자입니다. ({formatKst(blocked.createdAt, false)} 차단) 해제는 금칙어·차단 메뉴에서
+                    이미 차단된 이용자입니다. ({formatKst(blocked.createdAt, false)} 차단) 해제는 금칙어·차단 메뉴에서
                     할 수 있습니다.
                   </Notice>
                 ) : (
                   <>
                     <p className="mb-3 mt-1 text-[12.5px] leading-relaxed text-ink-500">
-                      차단하면 이 후원자({donation.donor.phoneMasked})의 이후 문자는 후원으로 접수되지 않습니다.
+                      차단하면 이 이용자({donation.donor.phoneMasked})의 이후 문자는 결제로 접수되지 않습니다.
                     </p>
                     <ActionForm
                       action={blockDonorAction}
-                      submitLabel="후원자 차단"
+                      submitLabel="이용자 차단"
                       variant="danger"
                       size="sm"
-                      confirmMessage="이 후원자를 차단하시겠습니까? 이후 문자는 후원으로 접수되지 않습니다."
+                      confirmMessage="이 이용자를 차단하시겠습니까? 이후 문자는 결제로 접수되지 않습니다."
                     >
                       <input type="hidden" name="donorId" value={donation.donor.id} />
-                      <input type="hidden" name="reason" value={`후원 상세(${donation.transactionNo})에서 차단`} />
+                      <input type="hidden" name="reason" value={`결제 상세(${donation.transactionNo})에서 차단`} />
                     </ActionForm>
                   </>
                 )
               ) : (
-                <Notice tone="neutral">연결된 후원자 프로필이 없어 차단할 수 없습니다.</Notice>
+                <Notice tone="neutral">연결된 이용자 프로필이 없어 차단할 수 없습니다.</Notice>
               )}
             </Card>
           </div>
@@ -244,43 +219,6 @@ export default async function StudioDonationDetailPage({ params }: { params: Pro
                 );
               })}
             </div>
-          )}
-        </section>
-
-        <section>
-          <SectionTitle title="유튜브 전송 로그" />
-          {donation.chatDeliveries.length === 0 ? (
-            <EmptyState title="유튜브 전송 시도가 없습니다" />
-          ) : (
-            <Table>
-              <thead>
-                <tr>
-                  <Th>시각</Th>
-                  <Th>상태</Th>
-                  <Th>시도</Th>
-                  <Th>라이브 채팅 ID</Th>
-                  <Th>할당량</Th>
-                  <Th>오류</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {donation.chatDeliveries.map((d) => {
-                  const tone = deliveryStatusLabel[d.status];
-                  return (
-                    <tr key={d.id}>
-                      <Td className="whitespace-nowrap tabular-nums">{formatKst(d.sentAt ?? d.createdAt)}</Td>
-                      <Td>
-                        <Badge tone={tone.tone}>{tone.text}</Badge>
-                      </Td>
-                      <Td className="tabular-nums">{d.attempts}</Td>
-                      <Td className="font-mono text-[12px]">{d.liveChatId ?? '-'}</Td>
-                      <Td className="tabular-nums">{d.quotaUnits}</Td>
-                      <Td>{d.errorCode ? `${d.errorCode} ${d.errorMessage ?? ''}`.trim() : '-'}</Td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </Table>
           )}
         </section>
 

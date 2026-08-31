@@ -57,7 +57,7 @@ export default async function AdminMtMessagesPage({
     <>
       <PageHeader
         title="MT 발송 관리"
-        description="후원자에게 나가는 안내 문자 이력입니다. 본문은 보안링크 토큰을 제거한 마스킹 버전만 저장·표시합니다."
+        description="이용자에게 나가는 안내 문자 이력입니다. 본문은 보안링크 토큰을 제거한 마스킹 버전만 저장·표시합니다."
       />
 
       <div className="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">

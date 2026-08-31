@@ -7,7 +7,7 @@ import { ConfirmDialog, useConfirmSubmit } from '@/components/studio/confirm-dia
 import type { StudioActionState } from '@/app/actions/studio';
 
 /**
- * 크리에이터 관리자 공용 액션 폼.
+ * 가맹점 관리자 공용 액션 폼.
  * 서버 컴포넌트에서 필드를 children 으로 넘기고, 서버 액션을 그대로 전달한다.
  *
  * confirmMessage 를 주면 브라우저 기본 confirm 이 아니라 문자페이 알림창을 띄우고,

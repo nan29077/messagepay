@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { headers } from 'next/headers';
 import './globals.css';
 
-const shareTitle = '문자페이 | 문자 한 통으로, 충전이 끝납니다';
+const shareTitle = '문자페이 | 문자 한 통으로, 결제와 충전이 끝납니다';
 const shareDescription = '앱 설치 없이 문자로 간편하게 결제하고 포인트를 충전하는 쉽고 빠른 문자결제 서비스입니다.';
 
 function isLocalUrl(value: string | undefined) {

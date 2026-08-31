@@ -134,7 +134,6 @@ export default async function CreatorDonationPage({ params }: Params) {
   const viewerDonor = await currentViewerDonor();
 
   const route = creator.moRoutes[0] ?? null;
-  const onAir = creator.liveOn && Boolean(creator.liveUrl);
   const bannerUrl = creator.bannerUrl ?? defaultBannerFor(creator.id);
 
   // 결제 연동이 mock 이면 후원 화면에 반드시 표시한다 (가짜 성공 처리 금지 원칙)
@@ -160,41 +159,14 @@ export default async function CreatorDonationPage({ params }: Params) {
         <div className="relative mx-auto w-full max-w-[560px] px-5 text-center">
           {/* 아바타 */}
           <div className="mx-auto w-fit">
-            {onAir ? (
-              <a href={creator.liveUrl!} target="_blank" rel="noopener noreferrer" aria-label="라이브 방송 보기">
-                <ProfileAvatar
-                  seed={creator.code}
-                  avatarIndex={creator.user.avatarIndex}
-                  name={creator.displayName}
-                  imageUrl={creator.avatarUrl}
-                  className="h-24 w-24 animate-heartbeat border-2 border-danger-500"
-                />
-              </a>
-            ) : (
-              <ProfileAvatar
-                seed={creator.code}
-                avatarIndex={creator.user.avatarIndex}
-                name={creator.displayName}
-                imageUrl={creator.avatarUrl}
-                className="h-24 w-24 border-2 border-brand-400/70"
-              />
-            )}
+            <ProfileAvatar
+              seed={creator.code}
+              avatarIndex={creator.user.avatarIndex}
+              name={creator.displayName}
+              imageUrl={creator.avatarUrl}
+              className="h-24 w-24 border-2 border-brand-400/70"
+            />
           </div>
-
-          {onAir ? (
-            <a
-              href={creator.liveUrl!}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#e5342f] px-3.5 py-1.5 text-[11.5px] font-black tracking-[0.06em] text-white shadow-[0_6px_18px_rgba(229,52,47,0.4)] transition-transform hover:-translate-y-0.5"
-            >
-              <span aria-hidden className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-70" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
-              </span>
-              ON AIR · 라이브 보러가기
-            </a>
-          ) : null}
 
           <h1 className="mt-4 text-[26px] font-black leading-tight tracking-[-0.04em] text-white">
             {creator.displayName}

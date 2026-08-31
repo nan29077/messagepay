@@ -18,12 +18,11 @@ const TAKE = 50;
 
 const TABS = [
   { value: 'all', label: '전체 수신' },
-  { value: 'success', label: '후원 성공' },
+  { value: 'success', label: '결제 성공' },
   { value: 'failed', label: '결제 실패' },
   { value: 'unregistered', label: '미등록 사용자' },
   { value: 'blocked', label: '차단됨' },
   { value: 'filtered', label: '금칙어 포함' },
-  { value: 'youtube_failed', label: '유튜브 전송 실패' },
 ] as const;
 
 type TabValue = (typeof TABS)[number]['value'];
@@ -40,8 +39,6 @@ function tabWhere(tab: TabValue): Prisma.MoInboundMessageWhereInput {
       return { OR: [{ result: 'BLOCKED' }, { donation: { status: { in: ['LIMIT_BLOCKED', 'CONTENT_BLOCKED'] } } }] };
     case 'filtered':
       return { OR: [{ donation: { status: 'CONTENT_BLOCKED' } }, { contentFiltered: { contains: '*' } }] };
-    case 'youtube_failed':
-      return { donation: { youtubeStatus: 'FAILED' } };
     default:
       return {};
   }
@@ -76,7 +73,7 @@ export default async function StudioMessagesPage({
         result: true,
         resultDetail: true,
         donation: {
-          select: { id: true, transactionNo: true, status: true, amount: true, donorId: true, youtubeStatus: true },
+          select: { id: true, transactionNo: true, status: true, amount: true, donorId: true },
         },
       },
     }),
@@ -101,14 +98,14 @@ export default async function StudioMessagesPage({
     assignedAt: m.assignedAt ? formatKst(m.assignedAt, false) : null,
   }));
 
-  // 방송 화면에 띄울 안내 문구 (배정된 번호가 있을 때만)
+  // 이용자에게 안내할 문구 (배정된 번호가 있을 때만)
   const primary = moNumbers.find((m) => m.status === 'ASSIGNED') ?? moNumbers[0] ?? null;
   const guideText = primary
     ? [
-        `${creator?.displayName ?? '크리에이터'} 문자후원`,
+        `${creator?.displayName ?? '가맹점'} 문자결제`,
         `${primary.phoneNumber} 으로 문자를 보내주세요.`,
         primary.keyword ? `문자 맨 앞에 ${primary.keyword} 를 붙여주세요.` : null,
-        `문자 1건당 ${formatWon(creator?.donationAmount ?? 3000n)}이 후원됩니다.`,
+        `문자 1건당 ${formatWon(creator?.donationAmount ?? 3000n)}이 결제됩니다.`,
         '최초 1회 계좌 등록이 필요하며, 만 19세 이상만 이용할 수 있습니다.',
       ]
         .filter(Boolean)
@@ -126,8 +123,8 @@ export default async function StudioMessagesPage({
         <MoNumberPanel numbers={numbers} guideText={guideText} />
 
         <Notice tone="neutral" title="문자 원문은 표시되지 않습니다">
-          방송 노출용으로 필터링된 내용만 확인할 수 있습니다. 개인정보가 포함될 수 있는 원문과 후원자 전화번호 전체는
-          크리에이터에게 제공되지 않습니다.
+          필터링을 마친 내용만 확인할 수 있습니다. 개인정보가 포함될 수 있는 원문과 이용자 전화번호 전체는
+          가맹점에게 제공되지 않습니다.
         </Notice>
 
         <Card padded={false}>
@@ -155,12 +152,12 @@ export default async function StudioMessagesPage({
             <thead>
               <tr>
                 <Th>수신시각</Th>
-                <Th>후원자</Th>
+                <Th>이용자</Th>
                 <Th>키워드</Th>
                 <Th>내용(필터링됨)</Th>
                 <Th>처리 결과</Th>
-                <Th>후원 상태</Th>
-                <Th className="text-right">후원금</Th>
+                <Th>결제 상태</Th>
+                <Th className="text-right">결제 금액</Th>
                 <Th>조치</Th>
               </tr>
             </thead>
@@ -204,14 +201,14 @@ export default async function StudioMessagesPage({
                         ) : (
                           <InlineActionForm
                             action={blockDonorAction}
-                            submitLabel="후원자 차단"
+                            submitLabel="이용자 차단"
                             variant="danger"
-                            confirmMessage="이 후원자를 차단하시겠습니까? 이후 문자는 후원으로 접수되지 않습니다."
+                            confirmMessage="이 이용자를 차단하시겠습니까? 이후 문자는 결제로 접수되지 않습니다."
                             fields={{ donorId, reason: '문자 관리 화면에서 차단' }}
                           />
                         )
                       ) : (
-                        <span className="text-[12px] text-ink-300">후원자 미확인</span>
+                        <span className="text-[12px] text-ink-300">이용자 미확인</span>
                       )}
                     </Td>
                   </tr>

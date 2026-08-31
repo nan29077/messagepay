@@ -15,35 +15,34 @@ import { bannedNeedle } from '@/server/services/content-filter';
 // =========================================================== 한도 정책
 
 function readLimitFields(fd: FormData) {
-  const defaultAmount = money(fd, 'defaultAmount', '기본 후원금', { min: 1n });
+  const defaultAmount = money(fd, 'defaultAmount', '기본 결제 금액', { min: 1n });
   const minAmount = money(fd, 'minAmount', '1회 최소', { min: 1n });
   const maxAmount = money(fd, 'maxAmount', '1회 최대', { min: 1n });
-  const donorDailyLimit = money(fd, 'donorDailyLimit', '후원자 일 한도', { min: 1n });
-  const donorMonthlyLimit = money(fd, 'donorMonthlyLimit', '후원자 월 한도', { min: 1n });
-  const perCreatorDailyLimit = money(fd, 'perCreatorDailyLimit', '크리에이터별 일 한도', { min: 1n });
-  const newDonorFirstDayLimit = money(fd, 'newDonorFirstDayLimit', '신규 후원자 첫날 한도', { min: 1n });
+  const donorDailyLimit = money(fd, 'donorDailyLimit', '이용자 일 한도', { min: 1n });
+  const donorMonthlyLimit = money(fd, 'donorMonthlyLimit', '이용자 월 한도', { min: 1n });
+  const perCreatorDailyLimit = money(fd, 'perCreatorDailyLimit', '가맹점별 일 한도', { min: 1n });
+  const newDonorFirstDayLimit = money(fd, 'newDonorFirstDayLimit', '신규 이용자 첫날 한도', { min: 1n });
   const manualReviewAmount = money(fd, 'manualReviewAmount', '수동 검수 기준', { min: 1n });
-  const ttsMinAmount = money(fd, 'ttsMinAmount', 'TTS 최소 후원금');
 
   const donorDailyMaxCount = int(fd, 'donorDailyMaxCount', { min: 1, max: 10000, label: '1인 1일 최대 건수' });
   const velocityWindowSec = int(fd, 'velocityWindowSec', { min: 1, max: 86400, label: '속도 제한 구간(초)' });
   const velocityMaxCount = int(fd, 'velocityMaxCount', { min: 1, max: 1000, label: '속도 제한 건수' });
-  const cooldownAfterCount = int(fd, 'cooldownAfterCount', { min: 1, max: 1000, label: '연속 후원 기준 건수' });
-  const cooldownSec = int(fd, 'cooldownSec', { min: 1, max: 86400, label: '연속 후원 대기(초)' });
+  const cooldownAfterCount = int(fd, 'cooldownAfterCount', { min: 1, max: 1000, label: '연속 결제 기준 건수' });
+  const cooldownSec = int(fd, 'cooldownSec', { min: 1, max: 86400, label: '연속 결제 대기(초)' });
   const failureLockThreshold = int(fd, 'failureLockThreshold', { min: 1, max: 50, label: '결제 실패 허용' });
 
   if (minAmount > maxAmount) throw new Error('1회 최소 금액이 최대 금액보다 클 수 없습니다.');
   if (defaultAmount < minAmount || defaultAmount > maxAmount) {
-    throw new Error('기본 후원금은 1회 최소~최대 범위 안에 있어야 합니다.');
+    throw new Error('기본 결제 금액은 1회 최소~최대 범위 안에 있어야 합니다.');
   }
-  if (donorDailyLimit > donorMonthlyLimit) throw new Error('후원자 일 한도가 월 한도보다 클 수 없습니다.');
-  if (newDonorFirstDayLimit > donorDailyLimit) throw new Error('신규 후원자 첫날 한도가 일 한도보다 클 수 없습니다.');
+  if (donorDailyLimit > donorMonthlyLimit) throw new Error('이용자 일 한도가 월 한도보다 클 수 없습니다.');
+  if (newDonorFirstDayLimit > donorDailyLimit) throw new Error('신규 이용자 첫날 한도가 일 한도보다 클 수 없습니다.');
 
   return {
     defaultAmount, minAmount, maxAmount,
     donorDailyLimit, donorMonthlyLimit, perCreatorDailyLimit, donorDailyMaxCount,
     velocityWindowSec, velocityMaxCount, cooldownAfterCount, cooldownSec,
-    failureLockThreshold, newDonorFirstDayLimit, manualReviewAmount, ttsMinAmount,
+    failureLockThreshold, newDonorFirstDayLimit, manualReviewAmount,
   };
 }
 
@@ -74,7 +73,7 @@ export async function saveLimitPolicy(_prev: AdminActionState, fd: FormData): Pr
           cooldownAfterCount: before.cooldownAfterCount, cooldownSec: before.cooldownSec,
           failureLockThreshold: before.failureLockThreshold,
           newDonorFirstDayLimit: before.newDonorFirstDayLimit,
-          manualReviewAmount: before.manualReviewAmount, ttsMinAmount: before.ttsMinAmount,
+          manualReviewAmount: before.manualReviewAmount,
           active: before.active,
         },
         after: { ...values, active, effectiveFrom },
@@ -84,8 +83,8 @@ export async function saveLimitPolicy(_prev: AdminActionState, fd: FormData): Pr
     }
 
     const scope = enumValue(fd, 'scope', ['GLOBAL', 'CREATOR', 'DONOR'] as const, '적용 범위');
-    const creatorId = scope === 'CREATOR' ? requiredId(fd, 'creatorId', '크리에이터') : null;
-    const donorId = scope === 'DONOR' ? requiredId(fd, 'donorId', '후원자') : null;
+    const creatorId = scope === 'CREATOR' ? requiredId(fd, 'creatorId', '가맹점') : null;
+    const donorId = scope === 'DONOR' ? requiredId(fd, 'donorId', '이용자') : null;
 
     if (scope === 'GLOBAL') {
       const existingGlobal = await prisma.donationLimitPolicy.count({ where: { scope: 'GLOBAL', active: true } });
@@ -95,11 +94,11 @@ export async function saveLimitPolicy(_prev: AdminActionState, fd: FormData): Pr
     }
     if (creatorId) {
       const creator = await prisma.creatorProfile.findUnique({ where: { id: creatorId }, select: { id: true } });
-      if (!creator) throw new Error('크리에이터를 찾을 수 없습니다.');
+      if (!creator) throw new Error('가맹점을 찾을 수 없습니다.');
     }
     if (donorId) {
       const donor = await prisma.donorProfile.findUnique({ where: { id: donorId }, select: { id: true } });
-      if (!donor) throw new Error('후원자를 찾을 수 없습니다.');
+      if (!donor) throw new Error('이용자를 찾을 수 없습니다.');
     }
 
     const created = await prisma.donationLimitPolicy.create({
@@ -252,7 +251,7 @@ export async function deleteBannedWord(_prev: AdminActionState, fd: FormData): P
     const id = requiredId(fd, 'id', '금칙어');
     const before = await prisma.bannedWord.findUnique({ where: { id } });
     if (!before) throw new Error('금칙어를 찾을 수 없습니다.');
-    if (before.scope !== 'GLOBAL') throw new Error('크리에이터 개별 금칙어는 통합 관리자에서 삭제할 수 없습니다.');
+    if (before.scope !== 'GLOBAL') throw new Error('가맹점 개별 금칙어는 통합 관리자에서 삭제할 수 없습니다.');
 
     await prisma.bannedWord.delete({ where: { id } });
     await writeAudit({

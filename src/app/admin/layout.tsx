@@ -19,12 +19,12 @@ const groups: NavGroup[] = [
     ],
   },
   {
-    title: '회원·크리에이터',
+    title: '회원·가맹점',
     items: [
       { href: '/admin/users', label: '회원', icon: 'users' },
-      { href: '/admin/donors', label: '후원자', icon: 'donors' },
-      { href: '/admin/creators', label: '크리에이터 심사', icon: 'creators' },
-      { href: '/admin/codes', label: '크리에이터 코드', icon: 'codes' },
+      { href: '/admin/donors', label: '이용자', icon: 'donors' },
+      { href: '/admin/creators', label: '가맹점 심사', icon: 'creators' },
+      { href: '/admin/codes', label: '가맹점 코드', icon: 'codes' },
       { href: '/admin/mo-numbers', label: 'MO 번호', icon: 'numbers' },
     ],
   },

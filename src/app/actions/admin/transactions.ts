@@ -16,7 +16,7 @@ import { run, text, optText, money, enumValue, requiredId } from './shared';
 // =========================================================== MO 번호
 
 // MO 수신번호는 050(0505/0507 등) 안심번호 체계를 사용한다.
-// 크리에이터마다 고유 번호를 부여하므로 형식을 강제해 오등록을 막는다.
+// 가맹점마다 고유 번호를 부여하므로 형식을 강제해 오등록을 막는다.
 const PHONE_RE = /^050[0-9]{7,10}$/;
 
 export async function createMoNumber(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
@@ -36,7 +36,7 @@ export async function createMoNumber(_prev: AdminActionState, fd: FormData): Pro
     const memo = optText(fd, 'memo');
 
     // 같은 번호에 전용/대표번호공유가 섞이면 라우팅이 전용으로 쏠려
-    // 대표번호를 쓰던 크리에이터들의 후원이 통째로 엉뚱한 사람에게 들어간다.
+    // 대표번호를 쓰던 가맹점들의 결제가 통째로 엉뚱한 사람에게 들어간다.
     // 번호 단위로 먼저 검사해 모드 혼재 자체를 막는다.
     const siblings = await prisma.creatorMoNumber.findMany({
       where: { phoneNumber },
@@ -72,8 +72,8 @@ export async function createMoNumber(_prev: AdminActionState, fd: FormData): Pro
 export async function assignMoNumber(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
     const id = requiredId(fd, 'id', 'MO 번호');
-    if (!optText(fd, 'creatorId')) throw new Error('배정할 크리에이터를 선택해 주세요.');
-    const creatorId = requiredId(fd, 'creatorId', '크리에이터');
+    if (!optText(fd, 'creatorId')) throw new Error('배정할 가맹점을 선택해 주세요.');
+    const creatorId = requiredId(fd, 'creatorId', '가맹점');
 
     const before = await prisma.creatorMoNumber.findUnique({ where: { id } });
     if (!before) throw new Error('MO 번호를 찾을 수 없습니다.');
@@ -84,8 +84,8 @@ export async function assignMoNumber(_prev: AdminActionState, fd: FormData): Pro
       where: { id: creatorId },
       select: { id: true, displayName: true, status: true },
     });
-    if (!creator) throw new Error('크리에이터를 찾을 수 없습니다.');
-    if (creator.status !== 'APPROVED') throw new Error('승인된 크리에이터에게만 번호를 배정할 수 있습니다.');
+    if (!creator) throw new Error('가맹점을 찾을 수 없습니다.');
+    if (creator.status !== 'APPROVED') throw new Error('승인된 가맹점에게만 번호를 배정할 수 있습니다.');
 
     await prisma.creatorMoNumber.update({
       where: { id },
@@ -141,7 +141,7 @@ export async function changeMoNumberStatus(_prev: AdminActionState, fd: FormData
  *
  * PG 관리자 화면에서 **실제 승인 여부를 대사한 뒤에만** 사용한다.
  *  - [결제 확정] : 출금이 확인된 건. 정산 원장에 분개가 추가된다.
- *  - [결제 취소] : 출금이 없었던 건. 후원은 실패로 확정되고 한도 집계가 되돌아간다.
+ *  - [결제 취소] : 출금이 없었던 건. 결제는 실패로 확정되고 한도 집계가 되돌아간다.
  *
  * 되돌릴 수 없는 작업이므로 재무/운영 권한에서만 허용하고, 근거를 메모로 남기게 한다.
  */
@@ -244,7 +244,7 @@ export async function createAdminRefund(_prev: AdminActionState, fd: FormData): 
       where: { OR: [{ transactionNo: keyword }, { id: keyword }] },
       select: { id: true, transactionNo: true, amount: true, status: true },
     });
-    if (!donation) throw new Error('해당 거래번호의 후원 건을 찾을 수 없습니다.');
+    if (!donation) throw new Error('해당 거래번호의 결제 건을 찾을 수 없습니다.');
 
     const refund = await requestRefund({ donationId: donation.id, reason, requestedBy: admin.id });
     await approveRefund(refund.id, admin.id);

@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/server/db';
 import { mockMoAdapter } from '@/server/adapters/mo';
 import { readMockOutbox } from '@/server/adapters/mt';
-import { setMockLive } from '@/server/adapters/youtube';
 import { handleMoInbound, resolveConfirmChannel, resolvePaymentMode } from '@/server/services/donation-flow';
 import { loadConfirmContext, confirmDonation, expireStaleConfirmations } from '@/server/services/donation-confirm';
 import { startRegistration, completeRegistration } from '@/server/services/donor-registration';
@@ -99,8 +98,6 @@ describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
     expect(donation.amount).toBe(3000n);
     expect(['BROADCASTED', 'PARTIAL_DELIVERY_FAILED']).toContain(donation.status);
     expect(donation.paidAt).not.toBeNull();
-    expect(donation.youtubeStatus).toBe('SENT');
-    expect(donation.overlayStatus).toBe('SENT');
 
     // 수수료와 정산 원장
     expect(donation.pgFee).toBe(54n); // 3000 * 1.8%
@@ -216,38 +213,9 @@ describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
     const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
 
     expect(donation.status).toBe('PAYMENT_FAILED');
-    expect(await prisma.overlayEvent.count()).toBe(0);
-    expect(await prisma.youTubeChatDelivery.count()).toBe(0);
 
     const mt = readMockOutbox(5).find((m) => m.text.includes('완료되지 않았습니다'));
     expect(mt).toBeDefined();
-  });
-
-  it('[10] 유튜브 전송이 실패해도 결제 결과는 유지된다 (연결 없음)', async () => {
-    await seedRegisteredDonor(fx.donorPhone);
-    await prisma.youTubeConnection.deleteMany({ where: { creatorId: fx.creatorId } });
-
-    const res = await inbound(moPayload({ to: fx.moNumber }));
-    const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
-
-    expect(donation.paidAt).not.toBeNull();
-    expect(donation.youtubeStatus).toBe('SKIPPED');
-    expect(donation.overlayStatus).toBe('SENT');
-    const delivery = await prisma.youTubeChatDelivery.findFirstOrThrow();
-    expect(delivery.errorCode).toBe('NO_CONNECTION');
-  });
-
-  it('[11] 방송이 종료된 상태에서도 결제는 성공하고 유튜브 전송만 건너뛴다', async () => {
-    await seedRegisteredDonor(fx.donorPhone);
-    setMockLive(false);
-
-    const res = await inbound(moPayload({ to: fx.moNumber }));
-    const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
-    expect(donation.paidAt).not.toBeNull();
-    expect(donation.youtubeStatus).toBe('SKIPPED');
-
-    const delivery = await prisma.youTubeChatDelivery.findFirstOrThrow();
-    expect(delivery.errorCode).toBe('NO_ACTIVE_BROADCAST');
   });
 
   it('[12] 금칙어가 포함된 문자는 차단되고 결제되지 않는다', async () => {
@@ -257,7 +225,6 @@ describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
     const res = await inbound(moPayload({ to: fx.moNumber, text: '도박 사이트 추천' }));
     expect(res.status).toBe('CONTENT_BLOCKED');
     expect(await prisma.paymentTransaction.count()).toBe(0);
-    expect(await prisma.overlayEvent.count()).toBe(0);
   });
 
   it('[13] 개인정보가 포함된 문자는 마스킹되어 방송에 노출된다', async () => {
@@ -374,22 +341,6 @@ describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
     expect(res.status).toBe('LIMIT_BLOCKED');
   });
 
-  it('[20] 유튜브 할당량이 소진되면 전송을 보류하되 결제는 유지된다', async () => {
-    await seedRegisteredDonor(fx.donorPhone);
-    const { kv } = await import('@/server/redis');
-    const { kstDateKey } = await import('@/lib/datetime');
-    await kv.set(`yt:quota:${kstDateKey()}`, '10000', 3600);
-
-    const res = await inbound(moPayload({ to: fx.moNumber }));
-    const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
-    expect(donation.paidAt).not.toBeNull();
-    expect(donation.youtubeStatus).toBe('FAILED');
-    expect(donation.status).toBe('PARTIAL_DELIVERY_FAILED');
-
-    const delivery = await prisma.youTubeChatDelivery.findFirstOrThrow();
-    expect(delivery.errorCode).toBe('QUOTA_EXCEEDED');
-    await kv.del(`yt:quota:${kstDateKey()}`);
-  });
 });
 
 describe('CONFIRM_LINK + 구(舊) 확인 링크 (ALLOW_LEGACY_CONFIRM_LINK=true)', () => {

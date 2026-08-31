@@ -14,9 +14,11 @@ import { issueSecureLink, LINK_TTL_SEC } from './secure-link';
 import * as tpl from './mt-templates';
 import { calculateFees, postDonationSettlement } from './settlement';
 import { notifySuperAdmins } from './notifications';
-import { dispatchBroadcast } from './broadcast-dispatch';
 import type { DonationStatus, MoProcessResult, PaymentMode } from '@/generated/prisma/enums';
 import type { TemplateOutput } from './mt-templates';
+
+/** 결제 안내 문자에 담기는 메시지 최대 길이 */
+const MAX_MESSAGE_LEN = 80;
 
 /**
  * MO 수신 → 후원 거래 → 결제 → 방송 노출로 이어지는 핵심 흐름.
@@ -513,10 +515,9 @@ async function processMoRow(
   // 본문의 "5000원" 같은 표기를 금액으로 해석하지 않는다(parseExplicitAmount 호출 비활성화).
   // 금액을 직접 지정하는 후원은 화면에서 금액을 입력·확인하는 PC 웹 경로(web-donation)만 사용한다.
   const bannedWords = await loadBannedWords(creator.id);
-  const overlay = await prisma.overlaySetting.findUnique({ where: { creatorId: creator.id } });
   const filtered = filterContent(routed.body, {
     bannedWords,
-    maxLength: overlay?.maxMessageLen ?? 80,
+    maxLength: MAX_MESSAGE_LEN,
   });
 
   const amount = creator.donationAmount;
@@ -1138,14 +1139,8 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
     donation.creatorId,
   );
 
-  // 결제 성공 이후에만 방송 전송을 시도한다.
-  // 송출(유튜브 댓글·오버레이·TTS) 실패가 결제 결과를 뒤집으면 안 된다.
-  // 여기서 예외가 새면 결제는 승인·정산까지 끝났는데 후원자 화면에는 오류가 뜬다.
-  try {
-    await dispatchBroadcast(donationId);
-  } catch (e) {
-    logger.error('방송 송출 실패 (결제는 정상 완료)', { donationId, message: (e as Error).message });
-  }
+  // TODO(4단계): 결제 성공 이후 가맹 서비스에 충전을 반영하는 연동이 들어갈 자리다.
+  // 반영 실패가 결제 결과를 뒤집으면 안 된다(절대 규칙 3). 어댑터 실패는 삼키고 별도 재시도로 처리한다.
 
   return { ok: true, status: 'PAYMENT_SUCCESS', message: '후원이 완료되었습니다.' };
 }

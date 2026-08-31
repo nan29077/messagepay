@@ -9,9 +9,9 @@ import { isLocal } from '@/lib/env';
 import { consumeIpRateLimit } from '@/server/rate-limit';
 
 /**
- * 후원자 회원가입.
- * - 회원가입은 선택 기능이다. 문자후원 자체는 계좌 등록만으로 이용할 수 있다.
- * - 여기서는 전화번호를 수집하지 않는다. 후원자 프로필(DonorProfile)은 MO 수신 시 생성된다.
+ * 이용자 회원가입.
+ * - 회원가입은 선택 기능이다. 문자결제 자체는 계좌 등록만으로 이용할 수 있다.
+ * - 여기서는 전화번호를 수집하지 않는다. 이용자 프로필(DonorProfile)은 MO 수신 시 생성된다.
  */
 
 export interface SignupFormState {
@@ -90,7 +90,7 @@ export async function signupDonor(_prev: SignupFormState, formData: FormData): P
     return { ok: false, message: '가입 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.', values };
   }
 
-  // 기존에 문자만으로 생성된 후원자 프로필이 있다면 이후 연결은 계좌 등록 흐름에서 처리한다.
+  // 기존에 문자만으로 생성된 이용자 프로필이 있다면 이후 연결은 계좌 등록 흐름에서 처리한다.
   await createSession(userId);
 
   redirect('/my');
@@ -115,8 +115,8 @@ export async function isTestLoginAllowed(): Promise<boolean> {
 
 const TEST_ACCOUNTS = {
   admin: { email: 'admin@munjapay.kr', label: '최고관리자', redirect: '/admin' },
-  creator: { email: 'creator1@munjapay.kr', label: '크리에이터', redirect: '/studio' },
-  donor: { email: 'donor@munjapay.kr', label: '후원자', redirect: '/my' },
+  creator: { email: 'creator1@munjapay.kr', label: '가맹점', redirect: '/studio' },
+  donor: { email: 'donor@munjapay.kr', label: '이용자', redirect: '/my' },
 } as const;
 
 export type TestAccountKey = keyof typeof TEST_ACCOUNTS;

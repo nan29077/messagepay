@@ -26,7 +26,7 @@ export default async function StudioSettingsProfilePage() {
 
   return (
     <>
-      <PageHeader title="설정" description="채널 프로필과 계정 정보를 관리합니다. 후원샵 꾸미기는 후원 설정 > 후원페이지 탭에 있습니다." />
+      <PageHeader title="설정" description="채널 프로필과 계정 정보를 관리합니다. 결제 페이지 꾸미기는 결제 설정 > 결제페이지 탭에 있습니다." />
 
       <div className="space-y-5">
         <section>
@@ -37,7 +37,7 @@ export default async function StudioSettingsProfilePage() {
               <Badge tone={status.tone}>{status.text}</Badge>
             </div>
             <DataRow label="로그인 계정" value={email ?? '-'} />
-            <DataRow label="크리에이터 코드" value={<span className="font-mono">{creator.code}</span>} />
+            <DataRow label="가맹점 코드" value={<span className="font-mono">{creator.code}</span>} />
             <DataRow label="승인 시각" value={formatKst(creator.approvedAt)} />
             <DataRow label="가입 시각" value={formatKst(creator.createdAt)} />
             {creator.suspendedAt ? <DataRow label="정지 시각" value={formatKst(creator.suspendedAt)} /> : null}
@@ -45,7 +45,7 @@ export default async function StudioSettingsProfilePage() {
         </section>
 
         <section>
-          <SectionTitle title="프로필 수정" description="후원샵과 후원 알림에 표시되는 정보입니다. 크리에이터 소개는 후원 설정 > 후원페이지 탭에서 수정합니다." />
+          <SectionTitle title="프로필 수정" description="결제 페이지과 결제 알림에 표시되는 정보입니다. 가맹점 소개는 결제 설정 > 결제페이지 탭에서 수정합니다." />
           <Card>
             <div className="mb-5 flex items-center gap-3 rounded-2xl border border-brand-100 bg-brand-50/60 p-4">
               <ProfileAvatar
@@ -113,8 +113,8 @@ export default async function StudioSettingsProfilePage() {
         </section>
 
         <Notice tone="neutral">
-          표시명과 소개는 후원샵에 그대로 노출됩니다. 개인 연락처나 계좌번호 등 개인정보는 입력하지 마세요.
-          채널 상태 변경(승인·정지)과 크리에이터 코드 변경은 통합 관리자를 통해서만 가능합니다.
+          표시명과 소개는 결제 페이지에 그대로 노출됩니다. 개인 연락처나 계좌번호 등 개인정보는 입력하지 마세요.
+          채널 상태 변경(승인·정지)과 가맹점 코드 변경은 통합 관리자를 통해서만 가능합니다.
         </Notice>
       </div>
     </>

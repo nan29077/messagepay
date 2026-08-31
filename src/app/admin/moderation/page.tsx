@@ -88,7 +88,7 @@ export default async function AdminModerationPage({
 
       <Notice tone="neutral" title="금칙어 처리 방식">
         차단(BLOCK)은 해당 문자 처리를 중단하고, 마스킹(MASK)은 단어만 가려 표시하며, 표시(FLAG)는 처리는
-        하되 검토 대상으로 기록합니다. 크리에이터가 직접 등록한 개별 금칙어는 각 스튜디오에서 관리합니다.
+        하되 검토 대상으로 기록합니다. 가맹점이 직접 등록한 개별 금칙어는 각 스튜디오에서 관리합니다.
       </Notice>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-3">

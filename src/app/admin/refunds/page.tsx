@@ -74,7 +74,7 @@ export default async function AdminRefundsPage({
 
       <Notice tone="warning" title="환불이 정산에 미치는 영향">
         환불 승인 시 정산 원장에 환불(-) 분개와 플랫폼 수수료 환입(+) 분개가 추가됩니다. 정산 원장은 append-only 이므로
-        기존 분개를 수정하지 않습니다. 이미 지급이 끝난 건을 환불하면 해당 크리에이터의 잔액이 마이너스로 남아 다음
+        기존 분개를 수정하지 않습니다. 이미 지급이 끝난 건을 환불하면 해당 가맹점의 잔액이 마이너스로 남아 다음
         정산에서 자동 차감됩니다.
       </Notice>
 
@@ -82,7 +82,7 @@ export default async function AdminRefundsPage({
         <Card>
           <CardTitle>관리자 직접 환불</CardTitle>
           <p className="mt-1 mb-3 text-[12px] leading-relaxed text-ink-400">
-            후원자 요청 없이 운영 판단으로 환불합니다. 요청 생성과 승인이 한 번에 진행되므로 신중히 사용하세요.
+            이용자 요청 없이 운영 판단으로 환불합니다. 요청 생성과 승인이 한 번에 진행되므로 신중히 사용하세요.
           </p>
           <ActionForm
             action={createAdminRefund}
@@ -117,7 +117,7 @@ export default async function AdminRefundsPage({
           </FilterBar>
 
           <Notice tone="neutral" title="처리 순서">
-            요청 상태의 건만 승인 또는 거절할 수 있습니다. 거절하면 후원 거래는 정산 대기 상태로 되돌아갑니다.
+            요청 상태의 건만 승인 또는 거절할 수 있습니다. 거절하면 결제 거래는 정산 대기 상태로 되돌아갑니다.
           </Notice>
         </div>
       </div>
@@ -133,7 +133,7 @@ export default async function AdminRefundsPage({
                 <tr>
                   <Th>요청 시각</Th>
                   <Th>거래번호</Th>
-                  <Th>크리에이터 / 후원자</Th>
+                  <Th>가맹점 / 이용자</Th>
                   <Th className="text-right">환불 금액</Th>
                   <Th>사유</Th>
                   <Th>상태</Th>
@@ -198,7 +198,7 @@ export default async function AdminRefundsPage({
                               <ActionForm action={rejectRefundAction} submitLabel="거절 처리" variant="secondary" compact>
                                 <input type="hidden" name="refundId" value={r.id} />
                                 <AdminField label="거절 사유">
-                                  <AdminInput name="memo" placeholder="예: 정상 후원 확인" />
+                                  <AdminInput name="memo" placeholder="예: 정상 결제 확인" />
                                 </AdminField>
                               </ActionForm>
                             </div>

@@ -1,22 +1,14 @@
 import Link from 'next/link';
 import { ChevronRight, Circle, CircleCheck, ListChecks } from 'lucide-react';
 import { Card, cx } from '@/components/ui';
-import { InlineActionForm } from '@/components/studio/action-form';
-import { completeOnboardingStepAction } from '@/app/actions/studio';
 import { prisma } from '@/server/db';
 
 /**
- * 신규 크리에이터 온보딩 체크리스트.
+ * 신규 가맹 서비스 온보딩 체크리스트.
  *
- * 대시보드 맨 위에 붙어 "지금 무엇을 더 해야 후원이 방송에 뜨는지" 를 보여준다.
+ * 콘솔 맨 위에 붙어 "지금 무엇을 더 해야 결제를 받을 수 있는지" 를 보여준다.
  * 표시된 항목이 모두 끝나면 카드 자체가 사라진다.
- *
- * 판별 방식
- *   1~3) 기존 표(youtube_connection / creator_mo_number / overlay_setting+overlay_tier)로 자동 판별
- *   4~5) 서버가 알 수 없어 크리에이터가 직접 [완료했어요] 로 체크 (creator_profile 플래그)
- *
- * 4번(OBS 등록)은 3번(오버레이 효과 설정)이 끝나야 의미가 있으므로 그 전에는 줄 자체를 숨긴다.
- * 진행률의 분모는 "지금 화면에 보이는 항목 수" 로 맞춰 숨겨진 줄이 카운트에 섞이지 않게 한다.
+ * 세 항목 모두 서버가 표를 보고 자동으로 판별한다(직접 체크 항목 없음).
  */
 
 interface ChecklistItem {
@@ -27,77 +19,50 @@ interface ChecklistItem {
   done: boolean;
   href: string;
   linkLabel: string;
-  /** 크리에이터가 직접 체크하는 항목이면 서버 액션에 넘길 step 값 */
-  manualStep?: string;
 }
 
 export async function OnboardingChecklist({ creatorId }: { creatorId: string }) {
-  const [profile, youtube, moNumber, overlay, tierCount] = await Promise.all([
+  const [profile, moNumber, account] = await Promise.all([
     prisma.creatorProfile.findUnique({
       where: { id: creatorId },
-      select: { onboardingObsLinked: true, onboardingTestDone: true },
+      select: { businessNo: true },
     }),
-    prisma.youTubeConnection.findUnique({ where: { creatorId }, select: { status: true } }),
     prisma.creatorMoNumber.findFirst({
       where: { creatorId, status: 'ASSIGNED' },
       select: { id: true },
     }),
-    prisma.overlaySetting.findUnique({ where: { creatorId }, select: { id: true } }),
-    prisma.overlayTier.count({ where: { creatorId } }),
+    prisma.settlementAccount.findUnique({
+      where: { creatorId },
+      select: { verified: true },
+    }),
   ]);
-
-  const overlayReady = Boolean(overlay) && tierCount > 0;
 
   const items: ChecklistItem[] = [
     {
-      key: 'youtube',
-      label: '유튜브 채널 연결',
-      hint: '후원 메시지를 라이브 채팅으로 보내려면 채널 연결이 필요합니다.',
-      done: youtube?.status === 'CONNECTED',
-      href: '/studio/youtube',
-      linkLabel: '연결하러 가기',
-    },
-    {
       key: 'moNumber',
-      label: '후원 번호 배정',
-      hint: '아직 배정된 후원 번호가 없습니다. 관리자에게 문의하세요.',
+      label: '결제 수신번호 배정',
+      hint: '아직 배정된 결제 수신번호가 없습니다. 관리자에게 문의하세요.',
       done: Boolean(moNumber),
       href: '/support',
       linkLabel: '문의하기',
     },
     {
-      key: 'overlay',
-      label: '오버레이 효과 설정',
-      hint: '금액 구간을 최소 한 개 만들어야 후원 화면 효과가 재생됩니다.',
-      done: overlayReady,
-      href: '/studio/overlay',
-      linkLabel: '설정하러 가기',
+      key: 'settlementAccount',
+      label: '정산 계좌 등록·인증',
+      hint: '정산 대금을 받을 계좌를 등록하고 실명 확인을 마쳐 주세요.',
+      done: account?.verified ?? false,
+      href: '/studio/settlement/account',
+      linkLabel: '등록하러 가기',
+    },
+    {
+      key: 'businessNo',
+      label: '사업자 정보 등록',
+      hint: '정산 시 세금계산서 발행에 필요합니다.',
+      done: Boolean(profile?.businessNo),
+      href: '/studio/profile',
+      linkLabel: '입력하러 가기',
     },
   ];
-
-  // OBS 등록은 브라우저 소스 URL 이 발급된 뒤에만 안내한다 (등록할 URL 이 아직 없다).
-  // 금액 구간은 선택 사항이므로 URL 발급 여부만 본다.
-  if (overlay) {
-    items.push({
-      key: 'obsLinked',
-      label: 'OBS/프리즘에 오버레이 URL 등록',
-      hint: '방송 프로그램에 브라우저 소스로 오버레이 URL 을 추가해 주세요.',
-      done: profile?.onboardingObsLinked ?? false,
-      href: '/studio/overlay',
-      linkLabel: 'URL 확인하기',
-      manualStep: 'obsLinked',
-    });
-  }
-
-  items.push({
-    key: 'testDone',
-    label: '테스트 후원으로 확인',
-    hint: '테스트 후원을 보내 방송 화면에 실제로 표시되는지 확인해 주세요.',
-    done: profile?.onboardingTestDone ?? false,
-    href: '/studio/overlay',
-    linkLabel: '테스트 보내기',
-    manualStep: 'testDone',
-  });
 
   const doneCount = items.filter((i) => i.done).length;
   if (doneCount === items.length) return null;
@@ -107,7 +72,7 @@ export async function OnboardingChecklist({ creatorId }: { creatorId: string }) 
       <div className="flex items-center justify-between gap-3 border-b border-ink-100 px-4 py-3">
         <p className="flex items-center gap-2 text-[13px] font-bold text-ink-900">
           <ListChecks size={17} strokeWidth={1.7} className="text-brand-700" />
-          방송 시작 준비
+          결제 시작 준비
           <span className="text-[11.5px] font-medium text-ink-400">
             남은 항목을 마치면 이 카드는 사라집니다
           </span>
@@ -160,13 +125,6 @@ export async function OnboardingChecklist({ creatorId }: { creatorId: string }) 
                   {item.linkLabel}
                   <ChevronRight size={14} strokeWidth={1.8} />
                 </Link>
-                {item.manualStep ? (
-                  <InlineActionForm
-                    action={completeOnboardingStepAction}
-                    submitLabel="완료했어요"
-                    fields={{ step: item.manualStep }}
-                  />
-                ) : null}
               </span>
             )}
           </li>

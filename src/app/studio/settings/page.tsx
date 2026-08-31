@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { Camera, MessageSquareText, Music2, Radio, Video } from 'lucide-react';
+import { MessageSquareText, Video } from 'lucide-react';
 import { Badge, Card, CardTitle, DataRow, Field, Input, Notice, SectionTitle, Textarea, cx } from '@/components/ui';
 import { DEFAULT_BANNERS, defaultBannerFor } from '@/lib/banners';
 import { PageHeader } from '@/components/layout/console-shell';
@@ -20,11 +20,11 @@ import { getPublicBaseUrl } from '@/server/public-base-url';
 export const dynamic = 'force-dynamic';
 
 const SETTINGS_TABS = [
-  { key: 'amount', label: '후원금' },
+  { key: 'amount', label: '결제 금액' },
   { key: 'thanks', label: '감사문자' },
   { key: 'payment', label: '결제 모드' },
   { key: 'number', label: '문자번호' },
-  { key: 'page', label: '후원페이지' },
+  { key: 'page', label: '결제페이지' },
 ] as const;
 
 /** 감사 문자 미리보기 예시값. 실제 발송과 같은 템플릿 함수에 넣어 결과를 보여준다. */
@@ -32,7 +32,7 @@ const THANKS_PREVIEW = {
   donorName: '홍길동',
   creatorName: '문자페이',
   amount: 3_000n,
-  message: '오늘 방송 정말 재밌었어요',
+  message: '캐시 충전합니다',
   cumulative: 12_000n,
 } as const;
 
@@ -63,12 +63,6 @@ export default async function StudioSettingsPage({
         paymentMode: true,
         thanksMtMessage: true,
         bannerUrl: true,
-        liveOn: true,
-        liveUrl: true,
-        livePlatform: true,
-        youtubeLiveUrl: true,
-        instagramLiveUrl: true,
-        tiktokLiveUrl: true,
       },
     }),
     prisma.creatorMoNumber.findMany({
@@ -100,10 +94,10 @@ export default async function StudioSettingsPage({
 
   return (
     <>
-      <PageHeader title="후원 설정" description="문자 1건당 후원금과 수신번호, 후원 페이지 정보를 관리합니다." />
+      <PageHeader title="결제 설정" description="문자 1건당 결제 금액과 수신번호, 결제 페이지 정보를 관리합니다." />
 
       <nav
-        aria-label="후원 설정 메뉴"
+        aria-label="결제 설정 메뉴"
         className="mb-5 grid grid-cols-5 overflow-hidden rounded-2xl border border-ink-100 bg-white p-1 shadow-[0_8px_24px_rgba(23,22,26,0.05)]"
       >
         {SETTINGS_TABS.map((tab) => (
@@ -123,11 +117,11 @@ export default async function StudioSettingsPage({
 
       <div className="space-y-5">
         {activeTab === 'amount' ? <section>
-          <SectionTitle title="문자 1건당 후원금" description="후원자가 문자 1건을 보낼 때 결제되는 금액입니다." />
+          <SectionTitle title="문자 1건당 결제 금액" description="이용자가 문자 1건을 보낼 때 결제되는 금액입니다." />
           <Card>
-            <ActionForm action={updateDonationSettingsAction} submitLabel="후원금 저장">
+            <ActionForm action={updateDonationSettingsAction} submitLabel="결제 금액 저장">
               <Field
-                label="문자 1건당 후원금 (원)"
+                label="문자 1건당 결제 금액 (원)"
                 hint={`설정 가능 범위: ${formatWon(effMin)} ~ ${formatWon(effMax)} (관리자 정책 반영)`}
               >
                 <Input
@@ -143,8 +137,8 @@ export default async function StudioSettingsPage({
               <DataRow label="현재 설정 금액" value={formatWon(creator.donationAmount)} />
               <DataRow label="설정 가능 범위" value={`${formatWon(effMin)} ~ ${formatWon(effMax)}`} />
               <DataRow label="한도 정책 1건 허용 범위" value={`${formatWon(policy.minAmount)} ~ ${formatWon(policy.maxAmount)}`} />
-              <DataRow label="후원자 1인 1일 한도" value={formatWon(policy.donorDailyLimit)} />
-              <DataRow label="내 채널 기준 후원자 1일 한도" value={formatWon(policy.perCreatorDailyLimit)} />
+              <DataRow label="이용자 1인 1일 한도" value={formatWon(policy.donorDailyLimit)} />
+              <DataRow label="내 채널 기준 이용자 1일 한도" value={formatWon(policy.perCreatorDailyLimit)} />
             </div>
           </Card>
         </section> : null}
@@ -152,7 +146,7 @@ export default async function StudioSettingsPage({
         {activeTab === 'thanks' ? <section>
           <SectionTitle
             title="감사 문자 내용 설정"
-            description="후원 결제가 완료됐을 때 후원자에게 발송되는 문자 본문입니다."
+            description="결제 결제가 완료됐을 때 이용자에게 발송되는 문자 본문입니다."
           />
           <Card>
             <ActionForm action={updateThanksMessageAction} submitLabel="감사 문자 저장">
@@ -165,7 +159,7 @@ export default async function StudioSettingsPage({
                   rows={4}
                   maxLength={THANKS_MT_MAX_LENGTH}
                   defaultValue={creator.thanksMtMessage ?? ''}
-                  placeholder={'{후원자}님 감사합니다! {금액} 후원 잘 받았어요. 남겨주신 말: {메시지}'}
+                  placeholder={'{이용자}님 감사합니다! {금액} 결제 잘 받았어요. 남겨주신 말: {메시지}'}
                 />
               </Field>
 
@@ -193,7 +187,7 @@ export default async function StudioSettingsPage({
                 {thanksPreview}
               </p>
               <p className="mt-1.5 text-[11.5px] text-ink-400">
-                후원자 이름·금액·메시지는 실제 후원 값으로 바뀝니다. 저장한 뒤 화면이 갱신되면 위 미리보기도 함께
+                이용자 이름·금액·메시지는 실제 결제 값으로 바뀝니다. 저장한 뒤 화면이 갱신되면 위 미리보기도 함께
                 바뀝니다.
               </p>
             </div>
@@ -210,7 +204,7 @@ export default async function StudioSettingsPage({
             <div className="mt-4">
               <Notice tone="warning" title="링크와 개인정보는 넣을 수 없습니다">
                 감사 문자에 링크(http, www)나 전화번호·계좌번호를 넣으면 저장되지 않습니다. 통신사 스팸 차단으로 문자
-                자체가 전달되지 않거나 후원자가 피싱으로 오인할 수 있기 때문입니다. 발신 주체 표기 [문자페이] 는 항상 문장
+                자체가 전달되지 않거나 이용자가 피싱으로 오인할 수 있기 때문입니다. 발신 주체 표기 [문자페이] 는 항상 문장
                 앞에 자동으로 붙습니다.
               </Notice>
             </div>
@@ -218,7 +212,7 @@ export default async function StudioSettingsPage({
         </section> : null}
 
         {activeTab === 'payment' ? <section>
-          <SectionTitle title="결제 모드" description="결제 모드는 크리에이터가 변경할 수 없습니다." />
+          <SectionTitle title="결제 모드" description="결제 모드는 가맹점이 변경할 수 없습니다." />
           <Card>
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <CardTitle>{paymentModeLabel[effectiveMode]}</CardTitle>
@@ -238,7 +232,7 @@ export default async function StudioSettingsPage({
                 }
               />
             </div>
-            <Notice tone="warning" title="즉시형은 크리에이터가 켤 수 없습니다">
+            <Notice tone="warning" title="즉시형은 가맹점이 켤 수 없습니다">
               즉시형(DIRECT_TRIGGER)은 금융사 서면승인 등록 후 통합 관리자만 활성화할 수 있습니다. 문자 수신 즉시
               출금이 일어나는 방식이므로, 서면승인 없이 사용하면 전자금융거래 관련 규정을 위반할 수 있습니다. 변경이
               필요하면 고객센터를 통해 신청해 주세요.
@@ -247,11 +241,11 @@ export default async function StudioSettingsPage({
         </section> : null}
 
         {activeTab === 'number' ? <section>
-          <SectionTitle title="MO 수신번호" description="후원자가 문자를 보내는 번호입니다. 배정과 변경은 통합 관리자가 처리합니다." />
+          <SectionTitle title="MO 수신번호" description="이용자가 문자를 보내는 번호입니다. 배정과 변경은 통합 관리자가 처리합니다." />
           <Card>
             {moNumbers.length === 0 ? (
               <Notice tone="warning">
-                배정된 수신번호가 없습니다. 번호가 배정되기 전에는 문자후원을 받을 수 없습니다. 고객센터로 배정을
+                배정된 수신번호가 없습니다. 번호가 배정되기 전에는 문자결제를 받을 수 없습니다. 고객센터로 배정을
                 요청해 주세요.
               </Notice>
             ) : (
@@ -277,15 +271,15 @@ export default async function StudioSettingsPage({
 
         {activeTab === 'page' ? <section>
           <SectionTitle
-            title="후원페이지 꾸미기"
-            description="시청자에게 공유하는 페이지의 배너·소개·라이브 표시를 관리합니다."
+            title="결제페이지 꾸미기"
+            description="이용자에게 공유하는 페이지의 배너·소개·라이브 표시를 관리합니다."
           />
           <Card>
             <div className="mb-5">
               <DonationPageShare url={donationPageUrl} creatorName={creator.displayName} />
             </div>
 
-            <ActionForm action={updateDonationPageAction} submitLabel="후원페이지 설정 저장">
+            <ActionForm action={updateDonationPageAction} submitLabel="결제페이지 설정 저장">
               {/* 배너 선택: 기본 5종 + 직접 입력 */}
               <div>
                 <p className="text-[13px] font-bold text-ink-900">상단 배너</p>
@@ -343,76 +337,10 @@ export default async function StudioSettingsPage({
                 </div>
               </div>
 
-              <Field label="크리에이터 소개" hint="후원페이지 상단 프로필 아래에 표시됩니다. 300자 이내.">
+              <Field label="가맹점 소개" hint="결제페이지 상단 프로필 아래에 표시됩니다. 300자 이내.">
                 <Textarea name="description" rows={3} maxLength={300} defaultValue={creator.description ?? ''} />
               </Field>
 
-              <div>
-                <p className="text-[13px] font-bold text-ink-900">라이브 연결</p>
-                <p className="mt-0.5 text-[12px] leading-relaxed text-ink-400">
-                  사용할 플랫폼을 선택하고 해당 라이브 주소를 입력하세요. 프로필과 온에어 버튼이 선택한 방송으로 연결됩니다.
-                </p>
-
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  {([
-                    { value: 'YOUTUBE', label: '유튜브', icon: Video },
-                    { value: 'INSTAGRAM', label: '인스타그램', icon: Camera },
-                    { value: 'TIKTOK', label: '틱톡', icon: Music2 },
-                  ] as const).map((platform) => {
-                    const Icon = platform.icon;
-                    const selected = (creator.livePlatform ?? 'YOUTUBE') === platform.value;
-                    return (
-                      <label key={platform.value} className="cursor-pointer">
-                        <input type="radio" name="livePlatform" value={platform.value} defaultChecked={selected} className="peer sr-only" />
-                        <span className="flex min-h-12 items-center justify-center gap-1.5 rounded-xl border border-ink-200 bg-white px-2 text-[11.5px] font-bold text-ink-500 transition-all peer-checked:border-brand-400 peer-checked:bg-brand-50 peer-checked:text-ink-900 peer-checked:shadow-sm sm:text-[12.5px]">
-                          <Icon size={15} /> {platform.label}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-3 space-y-2.5">
-                  <Field label="유튜브 라이브 주소" hint="youtube.com 또는 youtu.be 주소">
-                    {/*
-                      liveUrl 은 플랫폼 구분이 없던 시절의 단일 필드이고, 지금은 "선택한 플랫폼의 주소"가 들어간다.
-                      조건 없이 폴백하면 인스타/틱톡을 고른 크리에이터의 유튜브 칸에 인스타 주소가 채워지고,
-                      이후 저장은 매번 유튜브 주소 검증에 걸려 영구 실패한다.
-                      따라서 플랫폼이 유튜브이거나 아직 지정되지 않은 예전 데이터일 때만 폴백한다.
-                    */}
-                    <Input
-                      name="youtubeLiveUrl"
-                      defaultValue={
-                        creator.youtubeLiveUrl ??
-                        (!creator.livePlatform || creator.livePlatform === 'YOUTUBE' ? creator.liveUrl ?? '' : '')
-                      }
-                      placeholder="https://www.youtube.com/watch?v=..."
-                    />
-                  </Field>
-                  <Field label="인스타그램 라이브 주소" hint="instagram.com 주소">
-                    <Input name="instagramLiveUrl" defaultValue={creator.instagramLiveUrl ?? ''} placeholder="https://www.instagram.com/..." />
-                  </Field>
-                  <Field label="틱톡 라이브 주소" hint="tiktok.com 주소">
-                    <Input name="tiktokLiveUrl" defaultValue={creator.tiktokLiveUrl ?? ''} placeholder="https://www.tiktok.com/@.../live" />
-                  </Field>
-                </div>
-
-                <label className="mt-4 flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-ink-100 bg-ink-50 px-4 py-3.5">
-                  <span>
-                    <span className="flex items-center gap-1.5 text-[13px] font-extrabold text-ink-900">
-                      <Radio size={15} strokeWidth={1.8} className="text-danger-500" /> 현재 방송중
-                    </span>
-                    <span className="mt-0.5 block text-[11.5px] text-ink-400">켜면 프로필이 뛰고 온에어 버튼이 표시됩니다.</span>
-                  </span>
-                  <input type="checkbox" name="liveOn" defaultChecked={creator.liveOn} className="peer sr-only" />
-                  <span className="relative h-7 w-12 shrink-0 rounded-full bg-ink-200 transition-colors after:absolute after:left-1 after:top-1 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:bg-brand-400 peer-checked:after:translate-x-5" />
-                </label>
-              </div>
-
-              <Notice tone="brand">
-                방송중 스위치를 켜면 후원페이지 프로필이 두근두근 움직이고, 프로필 아래에 온에어 배지가 표시되어
-                시청자가 바로 라이브로 이동할 수 있습니다. 방송이 끝나면 스위치를 꺼주세요.
-              </Notice>
             </ActionForm>
           </Card>
         </section> : null}

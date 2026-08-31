@@ -72,7 +72,7 @@ export default async function AdminCreatorDetailPage({ params }: { params: Promi
           <StatTile label="정산 요청 보류" value={formatWon(summary.pending)} tone={summary.pending > 0n ? 'warning' : 'neutral'} />
           <StatTile label="정산 가능" value={formatWon(summary.available)} tone="success" />
           <StatTile
-            label="누적 후원"
+            label="누적 결제"
             value={formatWon(donationAgg._sum.amount ?? 0n)}
             sub={`${formatNumber(donationAgg._count._all)}건 (전 상태 포함)`}
           />
@@ -89,18 +89,18 @@ export default async function AdminCreatorDetailPage({ params }: { params: Promi
               <DataRow label="담당자" value={`${creator.user.name ?? '-'} / ${creator.user.email ?? '-'}`} />
               <DataRow label="연락처" value={creator.user.phoneMasked ?? '-'} />
               <DataRow label="사업자번호" value={creator.businessNo ?? '미등록'} />
-              <DataRow label="1건 후원금" value={formatWon(creator.donationAmount)} />
+              <DataRow label="1건 결제 금액" value={formatWon(creator.donationAmount)} />
               <DataRow label="허용 범위" value={`${formatWon(creator.minAmount)} ~ ${formatWon(creator.maxAmount)}`} />
               <DataRow label="신청일" value={formatKst(creator.createdAt)} />
               <DataRow label="승인일" value={formatKst(creator.approvedAt)} />
               <DataRow label="정지일" value={formatKst(creator.suspendedAt)} />
             </div>
             <div className="mt-3 rounded-xl border border-ink-100 px-3 py-3">
-              <p className="mb-2 text-[12.5px] font-bold text-ink-900">1건 후원금 허용 범위 변경</p>
+              <p className="mb-2 text-[12.5px] font-bold text-ink-900">1건 결제 금액 허용 범위 변경</p>
               <ActionForm
                 action={updateCreatorAmountBounds}
                 submitLabel="범위 저장"
-                confirm="이 크리에이터의 1건 후원금 허용 범위를 변경합니다. 현재 설정 금액이 범위를 벗어나면 자동 보정됩니다."
+                confirm="이 가맹점의 1건 결제 금액 허용 범위를 변경합니다. 현재 설정 금액이 범위를 벗어나면 자동 보정됩니다."
               >
                 <input type="hidden" name="creatorId" value={creator.id} />
                 <div className="grid grid-cols-2 gap-2">
@@ -187,13 +187,13 @@ export default async function AdminCreatorDetailPage({ params }: { params: Promi
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <div className="flex items-center justify-between gap-2">
-              <CardTitle>크리에이터 코드</CardTitle>
+              <CardTitle>가맹점 코드</CardTitle>
               <ActionButton
                 action={reissueCreatorCode}
                 values={{ creatorId: creator.id }}
                 label="코드 재발급"
                 variant="danger"
-                confirm="코드를 재발급하면 기존 후원 링크가 즉시 무효화됩니다. 계속할까요?"
+                confirm="코드를 재발급하면 기존 결제 링크가 즉시 무효화됩니다. 계속할까요?"
               />
             </div>
             <div className="mt-3">
@@ -226,7 +226,7 @@ export default async function AdminCreatorDetailPage({ params }: { params: Promi
               {creator.moRoutes.length === 0 ? (
                 <EmptyState
                   title="배정된 MO 번호가 없습니다"
-                  description="MO 번호 관리 화면에서 수신 번호를 배정해야 문자후원이 접수됩니다."
+                  description="MO 번호 관리 화면에서 수신 번호를 배정해야 문자결제가 접수됩니다."
                 />
               ) : (
                 <Table className="min-w-0">
@@ -303,14 +303,14 @@ export default async function AdminCreatorDetailPage({ params }: { params: Promi
                     values={{ creatorId: creator.id, verified: 'false' }}
                     label="인증 해제"
                     variant="danger"
-                    confirm="정산 계좌 인증을 해제합니다. 재확인 전까지 이 크리에이터는 정산을 요청할 수 없습니다."
+                    confirm="정산 계좌 인증을 해제합니다. 재확인 전까지 이 가맹점은 정산을 요청할 수 없습니다."
                   />
                 ) : (
                   <ActionButton
                     action={setSettlementAccountVerified}
                     values={{ creatorId: creator.id, verified: 'true' }}
                     label="실명확인 완료 처리"
-                    confirm="증빙 확인이 끝났습니까? 인증 완료로 처리하면 이 크리에이터가 정산을 요청할 수 있습니다."
+                    confirm="증빙 확인이 끝났습니까? 인증 완료로 처리하면 이 가맹점이 정산을 요청할 수 있습니다."
                   />
                 )}
               </div>
@@ -322,7 +322,7 @@ export default async function AdminCreatorDetailPage({ params }: { params: Promi
         <section>
           <SectionTitle title="정산 요약" description="원장 합계 기준. 원장은 append-only 이며 수정할 수 없습니다." />
           <Card>
-            <DataRow label="후원 총액" value={formatWon(summary.totalGross)} />
+            <DataRow label="결제 총액" value={formatWon(summary.totalGross)} />
             <DataRow label="결제 수수료" value={formatWon(-summary.totalPgFee)} />
             <DataRow label="플랫폼 수수료" value={formatWon(-summary.totalPlatformFee)} />
             <DataRow label="환불(수수료 환입 포함)" value={formatWon(-summary.totalRefund)} />
@@ -333,15 +333,15 @@ export default async function AdminCreatorDetailPage({ params }: { params: Promi
         </section>
 
         <section>
-          <SectionTitle title="최근 후원 20건" />
+          <SectionTitle title="최근 결제 20건" />
           {donations.length === 0 ? (
-            <EmptyState title="후원 내역이 없습니다" />
+            <EmptyState title="결제 내역이 없습니다" />
           ) : (
             <Table>
               <thead>
                 <tr>
                   <Th>거래번호</Th>
-                  <Th>후원자</Th>
+                  <Th>이용자</Th>
                   <Th className="text-right">금액</Th>
                   <Th>상태</Th>
                   <Th>수신</Th>

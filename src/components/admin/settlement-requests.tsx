@@ -216,7 +216,7 @@ export function SettlementRequestsPanel({ rows }: { rows: SettlementRow[] }) {
               <input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="전체 선택" className="h-4 w-4 accent-brand-400" />
             </Th>
             <Th>요청 시각</Th>
-            <Th>크리에이터</Th>
+            <Th>가맹점</Th>
             <Th>정산 계좌</Th>
             <Th className="text-right">요청 금액</Th>
             <Th className="text-right">원천징수</Th>

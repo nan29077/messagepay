@@ -82,8 +82,6 @@ export default async function StudioDonationsPage({
         channel: true,
         amount: true,
         status: true,
-        youtubeStatus: true,
-        overlayStatus: true,
         mtStatus: true,
         donor: { select: { phoneMasked: true } },
         refunds: { orderBy: { requestedAt: 'desc' }, take: 1, select: { status: true } },
@@ -98,8 +96,8 @@ export default async function StudioDonationsPage({
   return (
     <>
       <PageHeader
-        title="후원 내역"
-        description={`조건에 해당하는 후원 ${formatNumber(total)}건 (${page}/${totalPages} 페이지)`}
+        title="결제 내역"
+        description={`조건에 해당하는 결제 ${formatNumber(total)}건 (${page}/${totalPages} 페이지)`}
       />
 
       <div className="space-y-4">
@@ -139,7 +137,7 @@ export default async function StudioDonationsPage({
         {/* 보기 전환 */}
         <div className="flex items-center justify-between gap-3">
           <p className="text-[12.5px] text-ink-400">
-            후원 {formatNumber(total)}건 중 {formatNumber(rows.length)}건 표시
+            결제 {formatNumber(total)}건 중 {formatNumber(rows.length)}건 표시
           </p>
           <nav
             aria-label="보기 방식"
@@ -167,7 +165,7 @@ export default async function StudioDonationsPage({
         </div>
 
         {rows.length === 0 ? (
-          <EmptyState title="조건에 맞는 후원 내역이 없습니다" description="기간이나 상태 조건을 바꿔서 다시 조회해 보세요." />
+          <EmptyState title="조건에 맞는 결제 내역이 없습니다" description="기간이나 상태 조건을 바꿔서 다시 조회해 보세요." />
         ) : view === 'card' ? (
           <DonationCardGrid
             items={rows.map((d) => ({
@@ -180,9 +178,9 @@ export default async function StudioDonationsPage({
               amount: d.amount,
               status: d.status,
               channel: d.channel,
-              // 마스킹된 값만 내려온다. 원문 전화번호는 크리에이터에게 제공하지 않는다.
+              // 마스킹된 값만 내려온다. 원문 전화번호는 가맹점에게 제공하지 않는다.
               phoneMasked: d.donor?.phoneMasked ?? null,
-              delivery: { youtube: d.youtubeStatus, overlay: d.overlayStatus, mt: d.mtStatus },
+              delivery: { mt: d.mtStatus },
               refundStatus: d.refunds[0]?.status ?? null,
             }))}
           />
@@ -192,14 +190,12 @@ export default async function StudioDonationsPage({
               <tr>
                 <Th>거래번호</Th>
                 <Th>수신시각</Th>
-                <Th>후원자</Th>
+                <Th>이용자</Th>
                 <Th>표시명</Th>
                 <Th>접수</Th>
                 <Th>내용</Th>
-                <Th className="text-right">후원금</Th>
+                <Th className="text-right">결제 금액</Th>
                 <Th>결제 상태</Th>
-                <Th>유튜브</Th>
-                <Th>오버레이</Th>
                 <Th>MT 안내</Th>
                 <Th>환불</Th>
               </tr>
@@ -207,8 +203,6 @@ export default async function StudioDonationsPage({
             <tbody>
               {rows.map((d) => {
                 const st = donationStatusLabel[d.status];
-                const yt = deliveryStatusLabel[d.youtubeStatus];
-                const ov = deliveryStatusLabel[d.overlayStatus];
                 const mt = deliveryStatusLabel[d.mtStatus];
                 const refund = d.refunds[0] ? refundStatusLabel[d.refunds[0].status] : null;
                 return (
@@ -223,7 +217,7 @@ export default async function StudioDonationsPage({
                     </Td>
                     <Td className="whitespace-nowrap tabular-nums">{formatKst(d.receivedAt, false)}</Td>
                     <Td className="whitespace-nowrap tabular-nums">{d.donor?.phoneMasked ?? '-'}</Td>
-                    <Td className="whitespace-nowrap">{d.anonymous ? '익명의 후원자' : d.displayName}</Td>
+                    <Td className="whitespace-nowrap">{d.anonymous ? '익명의 이용자' : d.displayName}</Td>
                     <Td>
                       <Badge tone={d.channel === 'WEB' ? 'brand' : 'neutral'}>
                         {d.channel === 'WEB' ? '웹(PC)' : '문자(MO)'}
@@ -237,12 +231,6 @@ export default async function StudioDonationsPage({
                     </Td>
                     <Td>
                       <Badge tone={st.tone}>{st.text}</Badge>
-                    </Td>
-                    <Td>
-                      <Badge tone={yt.tone}>{yt.text}</Badge>
-                    </Td>
-                    <Td>
-                      <Badge tone={ov.tone}>{ov.text}</Badge>
                     </Td>
                     <Td>
                       <Badge tone={mt.tone}>{mt.text}</Badge>

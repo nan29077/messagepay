@@ -9,6 +9,9 @@ import { executePayment, loadBannedWords, resolvePaymentMode, startPinAuthorizat
 import { allowLegacyWebInstantPay } from '@/lib/env';
 import type { DonationStatus } from '@/generated/prisma/enums';
 
+/** 결제 안내 문자에 담기는 메시지 최대 길이 */
+const MAX_MESSAGE_LEN = 80;
+
 /**
  * 후원샵(웹, PC) 후원 파이프라인.
  *
@@ -71,10 +74,9 @@ export async function createWebDonation(input: WebDonationInput): Promise<WebDon
 
   // 콘텐츠 필터 (금칙어 차단/마스킹)
   const bannedWords = await loadBannedWords(creator.id);
-  const overlay = await prisma.overlaySetting.findUnique({ where: { creatorId: creator.id } });
   const filtered = filterContent(input.message, {
     bannedWords,
-    maxLength: overlay?.maxMessageLen ?? 80,
+    maxLength: MAX_MESSAGE_LEN,
   });
   if (filtered.action === 'BLOCK') {
     return { ok: false, message: '메시지에 사용할 수 없는 단어가 포함되어 있습니다. 내용을 수정해 주세요.' };

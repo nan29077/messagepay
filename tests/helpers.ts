@@ -1,16 +1,13 @@
 import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
-import { encrypt, phoneHash, maskPhone, maskSecret, generateToken, tokenHash } from '@/lib/crypto';
+import { encrypt, phoneHash, maskPhone, maskSecret } from '@/lib/crypto';
 import { resetMockPaymentState } from '@/server/adapters/payment';
 import { clearMockOutbox } from '@/server/adapters/mt';
-import { setMockLive } from '@/server/adapters/youtube';
 
 /** 테스트마다 DB 를 비운다. 순서는 FK 역순. */
 export async function resetDb() {
   const tables = [
     'admin_audit_log', 'webhook_log', 'consent_record', 'notification', 'report',
-    'youtube_chat_delivery', 'youtube_broadcast', 'youtube_connection',
-    'overlay_event', 'overlay_setting', 'tts_setting',
     'settlement_ledger', 'settlement_request', 'settlement_account', 'fee_policy',
     'payment_attempt', 'payment_transaction', 'refund',
     'donation_status_log', 'secure_link', 'mt_outbound_message', 'donation',
@@ -27,7 +24,6 @@ export async function resetDb() {
 
   resetMockPaymentState();
   clearMockOutbox();
-  setMockLive(true);
 }
 
 export interface Fixture {
@@ -72,22 +68,6 @@ export async function seedBasics(options: { paymentMode?: 'CONFIRM_LINK' | 'DIRE
     },
   });
 
-  const overlayToken = generateToken(16);
-  await prisma.overlaySetting.create({
-    data: {
-      id: newId(), creatorId: creator.id,
-      tokenHash: tokenHash(overlayToken), tokenMasked: maskSecret(overlayToken),
-    },
-  });
-  await prisma.ttsSetting.create({ data: { id: newId(), creatorId: creator.id } });
-  await prisma.youTubeConnection.create({
-    data: {
-      id: newId(), creatorId: creator.id, channelId: 'UCtest', channelTitle: '테스트채널',
-      accessTokenEnc: encrypt('mock-access-token'), refreshTokenEnc: encrypt('mock-refresh-token'),
-      scope: 'https://www.googleapis.com/auth/youtube.force-ssl',
-      expiresAt: new Date(Date.now() + 3600_000), status: 'CONNECTED',
-    },
-  });
   await prisma.settlementAccount.create({
     data: {
       id: newId(), creatorId: creator.id, bankCode: '004', bankName: 'KB국민은행',

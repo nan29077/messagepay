@@ -95,7 +95,7 @@ export default async function AdminDashboardPage() {
               <StatTile
                 label="오늘 미등록 응답"
                 value={formatNumber(unregistered)}
-                sub="계좌 미등록 후원자에게 안내 발송"
+                sub="계좌 미등록 이용자에게 안내 발송"
                 tone={unregistered > 0 ? 'warning' : 'neutral'}
               />
             </Link>
@@ -103,7 +103,7 @@ export default async function AdminDashboardPage() {
               <StatTile
                 label="오늘 한도 차단"
                 value={formatNumber(limitBlocked)}
-                sub="한도·속도 제한에 걸린 후원"
+                sub="한도·속도 제한에 걸린 결제"
                 tone={limitBlocked > 0 ? 'warning' : 'neutral'}
               />
             </Link>
@@ -143,12 +143,12 @@ export default async function AdminDashboardPage() {
               <StatTile label="환불 관리" value="바로가기" sub="요청 승인·거절 처리" />
             </Link>
             <Link href="/admin/creators">
-              <StatTile label="크리에이터 심사" value="바로가기" sub="대기 건 확인" />
+              <StatTile label="가맹점 심사" value="바로가기" sub="대기 건 확인" />
             </Link>
           </div>
         </section>
         <section>
-          <SectionTitle title="후원·결제" description="금액은 결제가 승인된 건만 집계합니다. 환불 완료 건은 제외됩니다." />
+          <SectionTitle title="결제·결제" description="금액은 결제가 승인된 건만 집계합니다. 환불 완료 건은 제외됩니다." />
           <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
             <StatTile
               label="오늘 결제 완료"
@@ -178,7 +178,7 @@ export default async function AdminDashboardPage() {
         ) : (
           <>
         <section>
-          <SectionTitle title="후원·결제" description="금액은 결제가 승인된 건만 집계합니다. 환불 완료 건은 제외됩니다." />
+          <SectionTitle title="결제·결제" description="금액은 결제가 승인된 건만 집계합니다. 환불 완료 건은 제외됩니다." />
           <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
             <StatTile
               label="오늘 결제 완료"
@@ -211,7 +211,7 @@ export default async function AdminDashboardPage() {
               <StatTile
                 label="오늘 미등록 응답"
                 value={formatNumber(unregistered)}
-                sub="계좌 미등록 후원자에게 안내 발송"
+                sub="계좌 미등록 이용자에게 안내 발송"
                 tone={unregistered > 0 ? 'warning' : 'neutral'}
               />
             </Link>
@@ -219,7 +219,7 @@ export default async function AdminDashboardPage() {
               <StatTile
                 label="오늘 한도 차단"
                 value={formatNumber(limitBlocked)}
-                sub="한도·속도 제한에 걸린 후원"
+                sub="한도·속도 제한에 걸린 결제"
                 tone={limitBlocked > 0 ? 'warning' : 'neutral'}
               />
             </Link>
@@ -259,7 +259,7 @@ export default async function AdminDashboardPage() {
               <StatTile label="환불 관리" value="바로가기" sub="요청 승인·거절 처리" />
             </Link>
             <Link href="/admin/creators">
-              <StatTile label="크리에이터 심사" value="바로가기" sub="대기 건 확인" />
+              <StatTile label="가맹점 심사" value="바로가기" sub="대기 건 확인" />
             </Link>
           </div>
         </section>
@@ -267,10 +267,10 @@ export default async function AdminDashboardPage() {
         )}
 
         <section>
-          <SectionTitle title="최근 후원 10건" />
+          <SectionTitle title="최근 결제 10건" />
           {recentDonations.length === 0 ? (
             <EmptyState
-              title="아직 후원 내역이 없습니다"
+              title="아직 결제 내역이 없습니다"
               description="MO 시뮬레이터로 문자 수신부터 결제까지 전체 흐름을 검증할 수 있습니다."
               action={
                 <LinkButton href="/admin/simulator" variant="secondary" size="sm">
@@ -283,8 +283,8 @@ export default async function AdminDashboardPage() {
               <thead>
                 <tr>
                   <Th>거래번호</Th>
-                  <Th>크리에이터</Th>
-                  <Th>후원자</Th>
+                  <Th>가맹점</Th>
+                  <Th>이용자</Th>
                   <Th className="text-right">금액</Th>
                   <Th>상태</Th>
                   <Th>수신 시각</Th>

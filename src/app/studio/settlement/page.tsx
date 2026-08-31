@@ -77,7 +77,7 @@ export default async function StudioSettlementPage({
         verified: true, verifiedAt: true, updatedAt: true,
       },
     }),
-    // 정산 예정일은 후원일보다 뒤에 온다. 지난달 후원이 이번 달에 정산되므로
+    // 정산 예정일은 결제일보다 뒤에 온다. 지난달 결제가 이번 달에 정산되므로
     // 캘린더에 "정산 예정" 을 채우려면 앞쪽으로 한 달 이상 더 읽어야 한다.
     prisma.donation.findMany({
       where: {
@@ -99,7 +99,7 @@ export default async function StudioSettlementPage({
     }),
   ]);
 
-  // 적용 중인 수수료 정책을 실제 정산 계산식에 넣은 예시(후원 1건 기준).
+  // 적용 중인 수수료 정책을 실제 정산 계산식에 넣은 예시(결제 1건 기준).
   const feeSample = computeFees(3_000n, {
     pgFeeRate: feePolicy ? feePolicy.pgFeeRate.toString() : '0.018',
     pgFixedFee: feePolicy?.pgFixedFee ?? 0n,
@@ -115,8 +115,8 @@ export default async function StudioSettlementPage({
   );
 
   // ── 일별 집계 (KST) ─────────────────────────────────────────────
-  // byDay        : 그 날 "후원" 이 얼마나 들어왔는지
-  // scheduledDay : 그 날 "정산" 될 예정 금액 (후원일 + 영업일 5일)
+  // byDay        : 그 날 "결제" 이 얼마나 들어왔는지
+  // scheduledDay : 그 날 "정산" 될 예정 금액 (결제일 + 영업일 5일)
   // payoutByDay  : 그 날 실제로 "지급" 된 금액
   const byDay = new Map<string, { amount: bigint; count: number; settlementDate: string }>();
   const scheduledByDay = new Map<string, { amount: bigint; count: number; from: string[] }>();
@@ -126,7 +126,7 @@ export default async function StudioSettlementPage({
     const k = kstDateKey(d.paidAt);
     const settlementDate = settlementDateFor(k, holidays);
 
-    // 이번 달 후원만 후원 집계·월합계에 넣는다(앞쪽 45일은 정산 예정 계산용).
+    // 이번 달 결제만 결제 집계·월합계에 넣는다(앞쪽 45일은 정산 예정 계산용).
     if (d.paidAt >= range.start) {
       const cur = byDay.get(k) ?? { amount: 0n, count: 0, settlementDate };
       cur.amount += d.amount;
@@ -151,7 +151,7 @@ export default async function StudioSettlementPage({
     payoutByDay.set(k, (payoutByDay.get(k) ?? 0n) + p.payoutAmount);
   }
 
-  // 상단 안내에 쓸 예시 (오늘 후원하면 언제, 금·토·일 후원은 언제)
+  // 상단 안내에 쓸 예시 (오늘 결제하면 언제, 금·토·일 결제는 언제)
   const notice = await buildScheduleNotice();
 
   // ── 캘린더 격자 구성 ────────────────────────────────────────────
@@ -169,7 +169,7 @@ export default async function StudioSettlementPage({
 
   // 원천징수 미리보기는 실제 요청 시 계산과 **같은 함수**를 써야 한다.
   // 화면은 3.3% 단일 절사, 서버는 2단계 계산이면 요청 직후 금액이 달라져
-  // 크리에이터가 "표시된 금액과 다르다"고 느끼게 된다.
+  // 가맹점이 "표시된 금액과 다르다"고 느끼게 된다.
   const previewWithholding = calculateWithholding(summary.available);
   const isCurrentMonth = range.key === kstMonthKey();
 
@@ -177,7 +177,7 @@ export default async function StudioSettlementPage({
     <>
       <PageHeader
         title="정산 관리"
-        description="일별 후원 현황과 정산 요청·계좌·원장을 탭으로 나눠 관리합니다."
+        description="일별 결제 현황과 정산 요청·계좌·원장을 탭으로 나눠 관리합니다."
       />
 
       <nav
@@ -208,7 +208,7 @@ export default async function StudioSettlementPage({
               <div className="rounded-[22px] border border-brand-200/70 bg-[linear-gradient(135deg,#fffaf0_0%,#fff5e0_100%)] p-4 shadow-[0_8px_24px_rgba(237,166,0,0.10)] sm:p-5">
                 <p className="flex items-center gap-1.5 text-[14px] font-black tracking-[-0.01em] text-ink-900">
                   <CalendarClock size={16} strokeWidth={1.9} className="text-brand-700" />
-                  정산은 후원일로부터 <span className="text-brand-700">영업일 {SETTLEMENT_BUSINESS_DAYS}일 후</span>에 이루어집니다
+                  정산은 결제일로부터 <span className="text-brand-700">영업일 {SETTLEMENT_BUSINESS_DAYS}일 후</span>에 이루어집니다
                 </p>
                 <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-600">
                   영업일은 <strong>토요일·일요일과 공휴일(법정공휴일·대체공휴일·임시공휴일)을 뺀 날</strong>입니다.
@@ -217,7 +217,7 @@ export default async function StudioSettlementPage({
 
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   <div className="rounded-xl border border-brand-200/60 bg-white/80 px-3.5 py-3">
-                    <p className="text-[11px] font-bold text-ink-400">오늘 후원되면</p>
+                    <p className="text-[11px] font-bold text-ink-400">오늘 결제되면</p>
                     <p className="mt-1 text-[13.5px] font-extrabold text-ink-900">
                       {formatDateKeyKo(notice.today)}
                       <span className="mx-1.5 text-brand-500">→</span>
@@ -225,7 +225,7 @@ export default async function StudioSettlementPage({
                     </p>
                   </div>
                   <div className="rounded-xl border border-brand-200/60 bg-white/80 px-3.5 py-3">
-                    <p className="text-[11px] font-bold text-ink-400">금·토·일 후원분</p>
+                    <p className="text-[11px] font-bold text-ink-400">금·토·일 결제분</p>
                     <p className="mt-1 text-[13.5px] font-extrabold text-ink-900">
                       {formatDateKeyKo(notice.weekendDonationDate, false)} ~ 주말
                       <span className="mx-1.5 text-brand-500">→</span>
@@ -235,8 +235,8 @@ export default async function StudioSettlementPage({
                 </div>
 
                 <p className="mt-2.5 text-[11.5px] leading-relaxed text-ink-400">
-                  예) 8월 3일(월) 후원 → 8월 10일(월) 정산. 금·토·일 후원분은 하나로 묶여 다음 주 금요일에 정산됩니다.
-                  아래 캘린더에서 <span className="font-bold text-ink-600">후원</span>과{' '}
+                  예) 8월 3일(월) 결제 → 8월 10일(월) 정산. 금·토·일 결제분은 하나로 묶여 다음 주 금요일에 정산됩니다.
+                  아래 캘린더에서 <span className="font-bold text-ink-600">결제</span>과{' '}
                   <span className="font-bold text-brand-700">정산 예정</span>을 날짜별로 확인할 수 있습니다.
                 </p>
               </div>
@@ -245,7 +245,7 @@ export default async function StudioSettlementPage({
             <section>
               <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
                 <StatTile
-                  label={`${range.month}월 후원 합계`}
+                  label={`${range.month}월 결제 합계`}
                   value={formatWon(monthTotal)}
                   sub={`${formatNumber(byDay.size)}일 · 결제 완료`}
                 />
@@ -334,14 +334,14 @@ export default async function StudioSettlementPage({
                           {cell.day}
                         </p>
 
-                        {/* 후원: 그 날 결제 완료된 금액 + 이 후원분이 언제 정산되는지 */}
+                        {/* 결제: 그 날 결제 완료된 금액 + 이 결제분이 언제 정산되는지 */}
                         {stat ? (
                           <div className="mt-1 rounded border-l-2 border-ink-300 pl-1">
                             <p className="truncate text-[10.5px] font-extrabold tabular-nums text-ink-900 sm:text-[12px]">
                               {formatWon(stat.amount)}
                             </p>
                             <p className="text-[9.5px] tabular-nums text-ink-400 sm:text-[10.5px]">
-                              후원 {stat.count}건
+                              결제 {stat.count}건
                             </p>
                             <p className="truncate text-[9px] font-semibold tabular-nums text-brand-700 sm:text-[9.5px]">
                               → {formatDateKeyKo(stat.settlementDate, false)} 정산
@@ -349,7 +349,7 @@ export default async function StudioSettlementPage({
                           </div>
                         ) : null}
 
-                        {/* 정산 예정: 그 날 정산될 후원분 (영업일 5일 전 후원) */}
+                        {/* 정산 예정: 그 날 정산될 결제분 (영업일 5일 전 결제) */}
                         {scheduled ? (
                           <p className="mt-0.5 truncate rounded bg-brand-50 px-1 py-0.5 text-[9px] font-bold text-brand-700 ring-1 ring-inset ring-brand-200 sm:text-[10px]">
                             정산예정 {formatWon(scheduled.amount)}
@@ -370,7 +370,7 @@ export default async function StudioSettlementPage({
                 {/* 범례 */}
                 <div className="mt-3 flex flex-wrap items-center gap-x-3.5 gap-y-1.5 border-t border-ink-100 pt-2.5">
                   <span className="flex items-center gap-1.5 text-[11px] font-semibold text-ink-500">
-                    <span className="h-3 w-0.5 rounded bg-ink-300" /> 후원 (결제 완료)
+                    <span className="h-3 w-0.5 rounded bg-ink-300" /> 결제 (결제 완료)
                   </span>
                   <span className="flex items-center gap-1.5 text-[11px] font-semibold text-ink-500">
                     <span className="h-3 w-3 rounded bg-brand-50 ring-1 ring-inset ring-brand-200" /> 정산 예정
@@ -384,7 +384,7 @@ export default async function StudioSettlementPage({
                 </div>
 
                 <p className="mt-2 text-[11.5px] leading-relaxed text-ink-400">
-                  후원 금액은 해당 날짜(KST)에 결제가 완료된 합계이고, 각 날짜 아래의 &ldquo;→ 정산&rdquo;은 그 후원분이
+                  결제 금액은 해당 날짜(KST)에 결제가 완료된 합계이고, 각 날짜 아래의 &ldquo;→ 정산&rdquo;은 그 결제분이
                   지급될 예정일입니다. 정산 예정 금액은 수수료를 뺀 금액 기준이며, 원천징수는 정산 요청 시점에 계산됩니다.
                 </p>
               </Card>
@@ -393,7 +393,7 @@ export default async function StudioSettlementPage({
             <section>
               <SectionTitle title="누적 정산 요약" description="정산 원장 기준 누적 금액입니다." />
               <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-                <StatTile label="총 후원금" value={formatWon(summary.totalGross)} />
+                <StatTile label="총 결제 금액" value={formatWon(summary.totalGross)} />
                 <StatTile label="결제수수료" value={formatWon(-summary.totalPgFee)} tone="danger" />
                 <StatTile label="플랫폼수수료" value={formatWon(-summary.totalPlatformFee)} tone="danger" />
                 <StatTile label="환불·차감" value={formatWon(-summary.totalRefund)} tone="danger" />
@@ -522,7 +522,7 @@ export default async function StudioSettlementPage({
                           </Td>
                           <Td className="text-right font-semibold tabular-nums text-ink-900">{formatWon(r.payoutAmount)}</Td>
                           <Td>
-                            {/* 관리자 반려/처리 메모를 크리에이터가 볼 수 있게 노출한다. */}
+                            {/* 관리자 반려/처리 메모를 가맹점이 볼 수 있게 노출한다. */}
                             {r.adminMemo ? (
                               <span className="max-w-[200px] break-words text-ink-700">{r.adminMemo}</span>
                             ) : r.memo ? (
@@ -630,7 +630,7 @@ export default async function StudioSettlementPage({
                     />
                     <DataRow label="적용 시작" value={formatKst(feePolicy.effectiveFrom, false)} />
                     <DataRow
-                      label={`${formatWon(feeSample.gross)} 후원 시 정산금`}
+                      label={`${formatWon(feeSample.gross)} 결제 시 정산금`}
                       value={
                         <span>
                           {formatWon(feeSample.net)}
@@ -663,7 +663,7 @@ export default async function StudioSettlementPage({
                 description="최근 50건입니다. 원장은 수정·삭제되지 않으며 정정은 반대 분개로 기록됩니다."
               />
               {ledger.length === 0 ? (
-                <EmptyState title="원장 기록이 없습니다" description="결제가 완료된 후원이 발생하면 자동으로 기록됩니다." />
+                <EmptyState title="원장 기록이 없습니다" description="결제가 완료된 결제가 발생하면 자동으로 기록됩니다." />
               ) : (
                 <Table>
                   <thead>
@@ -702,7 +702,7 @@ export default async function StudioSettlementPage({
             <Card>
               <CardTitle>정산 절차 안내</CardTitle>
               <ol className="mt-2 space-y-1.5 text-[13px] leading-relaxed text-ink-500">
-                <li>1. 결제가 승인되면 후원 총액과 수수료가 정산 원장에 자동 기록됩니다.</li>
+                <li>1. 결제가 승인되면 결제 총액과 수수료가 정산 원장에 자동 기록됩니다.</li>
                 <li>2. 환불이 발생하면 반대 분개로 차감되고 플랫폼수수료는 환입됩니다.</li>
                 <li>3. 정산 가능금 범위에서 요청하면 통합 관리자 검토 후 지급대행으로 지급됩니다.</li>
                 <li>4. 지급이 완료되면 원장에 지급·원천징수 분개가 추가되고 캘린더에 지급일이 표시됩니다.</li>

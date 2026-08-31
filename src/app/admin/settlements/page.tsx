@@ -127,7 +127,7 @@ export default async function AdminSettlementsPage({
     <>
       <PageHeader
         title="정산 관리"
-        description="크리에이터별 정산 잔액과 정산 요청 처리, 정산 원장 조회를 제공합니다."
+        description="가맹점별 정산 잔액과 정산 요청 처리, 정산 원장 조회를 제공합니다."
       />
 
       <div className="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
@@ -144,17 +144,17 @@ export default async function AdminSettlementsPage({
 
       <section className="mt-5">
         <SectionTitle
-          title="크리에이터별 정산 요약"
+          title="가맹점별 정산 요약"
           description="잔액 = 원장 합계 / 보류 = 정산 요청 중 금액 / 가능 = 지금 요청 가능한 금액"
         />
         {visibleSummaries.length === 0 ? (
-          <EmptyState title="정산 원장이 있는 크리에이터가 없습니다" />
+          <EmptyState title="정산 원장이 있는 가맹점이 없습니다" />
         ) : (
           <Table className="min-w-[1000px]">
             <thead>
               <tr>
-                <Th>크리에이터</Th>
-                <Th className="text-right">후원 총액</Th>
+                <Th>가맹점</Th>
+                <Th className="text-right">결제 총액</Th>
                 <Th className="text-right">수수료</Th>
                 <Th className="text-right">환불</Th>
                 <Th className="text-right">지급 완료</Th>
@@ -202,7 +202,7 @@ export default async function AdminSettlementsPage({
               ))}
             </AdminSelect>
           </AdminField>
-          <AdminField label="크리에이터" className="w-52">
+          <AdminField label="가맹점" className="w-52">
             <AdminSelect name="creatorId" defaultValue={creatorId ?? ''}>
               <CreatorOptions creators={creators} />
             </AdminSelect>
@@ -243,7 +243,7 @@ export default async function AdminSettlementsPage({
       <section className="mt-6">
         <SectionTitle
           title="정산 원장 조회"
-          description="크리에이터와 정산 월(settlement_key)로 필터링할 수 있습니다. 조회 전용입니다."
+          description="가맹점과 정산 월(settlement_key)로 필터링할 수 있습니다. 조회 전용입니다."
         />
         {ledgers.length === 0 ? (
           <EmptyState title="조건에 맞는 원장 분개가 없습니다" />
@@ -254,7 +254,7 @@ export default async function AdminSettlementsPage({
                 <tr>
                   <Th>발생 시각</Th>
                   <Th>정산 월</Th>
-                  <Th>크리에이터</Th>
+                  <Th>가맹점</Th>
                   <Th>분개 유형</Th>
                   <Th className="text-right">금액</Th>
                   <Th>메모</Th>
@@ -277,7 +277,7 @@ export default async function AdminSettlementsPage({
                     </Td>
                     <Td className="max-w-[200px] break-words">{l.memo ?? '-'}</Td>
                     <Td className="font-mono text-[11px] text-ink-400">
-                      {l.donationId ? <span className="block">후원 {l.donationId}</span> : null}
+                      {l.donationId ? <span className="block">결제 {l.donationId}</span> : null}
                       {l.refundId ? <span className="block">환불 {l.refundId}</span> : null}
                       {l.requestId ? <span className="block">정산 {l.requestId}</span> : null}
                       {!l.donationId && !l.refundId && !l.requestId ? '-' : null}

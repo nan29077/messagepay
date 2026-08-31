@@ -14,23 +14,10 @@ const STATUS_TEXT: Record<string, string> = {
   SUSPENDED: '이용이 정지된 크리에이터 계정입니다. 고객센터로 문의해 주세요.',
 };
 
-const CHANNEL_PLATFORMS = [
-  { value: 'YOUTUBE',   label: 'YouTube',       placeholder: 'https://www.youtube.com/@channel' },
-  { value: 'INSTAGRAM', label: 'Instagram',      placeholder: 'https://www.instagram.com/username' },
-  { value: 'FACEBOOK',  label: 'Facebook',       placeholder: 'https://www.facebook.com/pagename' },
-  { value: 'TIKTOK',    label: 'TikTok',         placeholder: 'https://www.tiktok.com/@username' },
-  { value: 'CHZZK',     label: '치지직',          placeholder: 'https://chzzk.naver.com/channel-id' },
-  { value: 'SOOP',      label: '숲 (구 아프리카TV)', placeholder: 'https://www.sooplive.co.kr/username' },
-  { value: 'TWITCH',    label: 'Twitch',         placeholder: 'https://www.twitch.tv/username' },
-  { value: 'OTHER',     label: '기타',            placeholder: 'https://' },
-] as const;
-
-type ChannelPlatformValue = (typeof CHANNEL_PLATFORMS)[number]['value'];
 
 export function CreatorApplyForm({ loggedIn, sessionEmail }: { loggedIn: boolean; sessionEmail?: string | null }) {
   const [state, formAction, pending] = React.useActionState(applyCreator, initial);
   const [isBusiness, setIsBusiness] = React.useState(false);
-  const [channelPlatform, setChannelPlatform] = React.useState<ChannelPlatformValue | ''>('');
 
   // ------------------------------------------------------------ 신청 완료 화면
   if (state.ok && state.code) {
@@ -59,56 +46,28 @@ export function CreatorApplyForm({ loggedIn, sessionEmail }: { loggedIn: boolean
   return (
     <form action={formAction} className="space-y-4">
       <Card className="space-y-4">
-        <CardTitle>크리에이터 정보</CardTitle>
+        <CardTitle>서비스 정보</CardTitle>
 
-        <Field label="표시명" required hint="후원 페이지와 방송 알림에 표시되는 이름입니다.">
+        <Field label="표시명" required hint="결제 페이지에 표시되는 이름입니다.">
           <Input name="displayName" required maxLength={30} defaultValue={state.values?.displayName} placeholder="바람소리" />
         </Field>
 
-        <Field label="채널 플랫폼" hint="운영 중인 채널의 플랫폼을 선택해 주세요.">
-          <Select
-            name="channelPlatformSelect"
-            value={channelPlatform}
-            onChange={(e) => setChannelPlatform(e.target.value as ChannelPlatformValue | '')}
-          >
-            <option value="">선택 안 함</option>
-            {CHANNEL_PLATFORMS.map((p) => (
-              <option key={p.value} value={p.value}>{p.label}</option>
-            ))}
-          </Select>
-          <input type="hidden" name="channelPlatform" value={channelPlatform} />
+        <Field label="서비스명" hint="결제를 붙일 서비스(앱·사이트) 이름을 입력해 주세요.">
+          <Input name="channelName" maxLength={60} defaultValue={state.values?.channelName} placeholder="예: ○○게임" />
         </Field>
 
-        {channelPlatform ? (
-          <>
-            <Field label="채널명" hint="채널 이름을 입력해 주세요.">
-              <Input
-                name="channelName"
-                maxLength={60}
-                defaultValue={state.values?.channelName}
-                placeholder={`${CHANNEL_PLATFORMS.find((p) => p.value === channelPlatform)?.label ?? ''} 채널 이름`}
-              />
-            </Field>
+        <Field label="서비스 주소" hint="https:// 로 시작하는 전체 주소를 입력해 주세요.">
+          <Input
+            name="channelUrl"
+            type="url"
+            maxLength={300}
+            defaultValue={state.values?.channelUrl}
+            inputMode="url"
+            placeholder="https://"
+          />
+        </Field>
 
-            <Field label="채널 주소" hint="https:// 로 시작하는 전체 주소를 입력해 주세요.">
-              <Input
-                name="channelUrl"
-                type="url"
-                maxLength={300}
-                defaultValue={state.values?.channelUrl}
-                inputMode="url"
-                placeholder={CHANNEL_PLATFORMS.find((p) => p.value === channelPlatform)?.placeholder ?? 'https://'}
-              />
-            </Field>
-          </>
-        ) : (
-          <>
-            <input type="hidden" name="channelName" value="" />
-            <input type="hidden" name="channelUrl" value="" />
-          </>
-        )}
-
-        <Field label="소개" hint="후원 페이지에 표시할 짧은 소개입니다. (300자 이내)">
+        <Field label="소개" hint="결제 페이지에 표시할 짧은 소개입니다. (300자 이내)">
           <Textarea name="description" rows={4} maxLength={300} defaultValue={state.values?.description} placeholder="문자 한 통으로 응원을 보내주세요." />
         </Field>
       </Card>

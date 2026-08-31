@@ -25,7 +25,7 @@ async function creatorUserId(creatorId: string): Promise<string | null> {
   return c?.userId ?? null;
 }
 
-/** 정산 상태 변경을 크리에이터 알림함에 남긴다. */
+/** 정산 상태 변경을 가맹점 알림함에 남긴다. */
 async function notifySettlement(creatorId: string, title: string, body: string) {
   const uid = await creatorUserId(creatorId);
   if (uid) await notifyUser({ userId: uid, title, body, linkUrl: '/studio/settlement?tab=request' }).catch(() => undefined);
@@ -54,7 +54,7 @@ export async function updateSettlementRequestStatus(
       throw new Error('이체파일이 이미 발급된 요청입니다. 지급대행 결과(성공/실패)를 먼저 반영한 뒤 처리해 주세요.');
     }
 
-    // 반려·지급실패는 사유가 반드시 있어야 크리에이터가 원인을 안다.
+    // 반려·지급실패는 사유가 반드시 있어야 가맹점이 원인을 안다.
     if ((status === 'REJECTED' || status === 'PAYOUT_FAILED') && !memo) {
       throw new Error(status === 'REJECTED' ? '반려 사유를 입력해 주세요.' : '지급 실패 사유를 입력해 주세요.');
     }
@@ -307,7 +307,7 @@ export async function createFeePolicy(_prev: AdminActionState, fd: FormData): Pr
   return run(async (admin) => {
     if (admin.adminPermission === 'SUPPORT') throw new Error('수수료 정책 변경은 재무/운영 권한에서만 가능합니다.');
     const scope = enumValue(fd, 'scope', ['GLOBAL', 'CREATOR'] as const, '적용 범위');
-    const creatorId = scope === 'CREATOR' ? requiredId(fd, 'creatorId', '크리에이터') : null;
+    const creatorId = scope === 'CREATOR' ? requiredId(fd, 'creatorId', '가맹점') : null;
     const pgFeeRate = rate(fd, 'pgFeeRate', '결제');
     const platformFeeRate = rate(fd, 'platformFeeRate', '플랫폼');
     const pgFixedFee = money(fd, 'pgFixedFee', '결제 건당 고정비');
@@ -316,8 +316,8 @@ export async function createFeePolicy(_prev: AdminActionState, fd: FormData): Pr
     const effectiveFrom = optDate(fd, 'effectiveFrom', '적용 시작일') ?? new Date();
 
     // 각 요율만 0~1 로 보면 0.95 + 0.1 같은 조합이 통과한다.
-    // 그러면 수수료 합이 후원금을 넘어 크리에이터 정산금이 음수가 되고,
-    // 화면에는 0원으로 보이는데 원장에는 마이너스가 쌓여 다른 후원의 정산 가능액까지 깎인다.
+    // 그러면 수수료 합이 결제 금액을 넘어 가맹점 정산금이 음수가 되고,
+    // 화면에는 0원으로 보이는데 원장에는 마이너스가 쌓여 다른 결제의 정산 가능액까지 깎인다.
     // (자릿수를 하나 잘못 찍는 실수를 여기서 잡는다)
     if (Number(pgFeeRate) + Number(platformFeeRate) >= 1) {
       throw new Error('결제 수수료와 플랫폼 수수료의 합이 100% 이상입니다. 요율을 다시 확인해 주세요.');
@@ -325,7 +325,7 @@ export async function createFeePolicy(_prev: AdminActionState, fd: FormData): Pr
 
     if (creatorId) {
       const creator = await prisma.creatorProfile.findUnique({ where: { id: creatorId }, select: { id: true } });
-      if (!creator) throw new Error('크리에이터를 찾을 수 없습니다.');
+      if (!creator) throw new Error('가맹점을 찾을 수 없습니다.');
     }
 
     const previous = await prisma.feePolicy.findMany({

@@ -15,8 +15,6 @@ import {
 } from '@/server/services/settlement';
 import { notifySuperAdmins } from '@/server/services/notifications';
 import { buildSettlementSchedule } from '@/server/services/settlement-schedule';
-import { subscribeOverlay } from '@/server/services/overlay-bus';
-import { buildOverlayPayload } from '@/server/services/broadcast-dispatch';
 
 /**
  * 정산 프로세스 전 구간 검수 + 오버레이 파이프라인 검수.
@@ -148,74 +146,6 @@ describe('정산 프로세스 — 요청부터 지급까지', () => {
       expect(r.settlementDate > r.donationDate).toBe(true);
       expect(r.count).toBeGreaterThan(0);
       expect(r.gross).toBeGreaterThan(0n);
-    }
-  });
-});
-
-describe('오버레이 파이프라인 (OBS·PRISM 브라우저 소스)', () => {
-  beforeEach(async () => {
-    await resetDb();
-    fx = await seedBasics({ paymentMode: 'DIRECT_TRIGGER' });
-  });
-
-  it('결제 성공 후원이 오버레이 이벤트로 발행된다', async () => {
-    await seedRegisteredDonor(fx.donorPhone);
-
-    const received: unknown[] = [];
-    const unsubscribe = subscribeOverlay(fx.creatorId, (p) => received.push(p));
-    try {
-      await inbound(moPayload({ to: fx.moNumber, text: '오버레이 확인' }));
-      // 이벤트 전달은 동기 EventEmitter 라 즉시 도착한다.
-      expect(received.length).toBeGreaterThan(0);
-    } finally {
-      unsubscribe();
-    }
-  });
-
-  it('오버레이 페이로드에 금액·메시지·표시시간이 담긴다', async () => {
-    await seedRegisteredDonor(fx.donorPhone);
-    await inbound(moPayload({ to: fx.moNumber, text: '고맙습니다' }));
-
-    const donation = await prisma.donation.findFirstOrThrow();
-    const payload = await buildOverlayPayload(donation.id);
-    expect(payload).not.toBeNull();
-    expect(payload!.creatorId).toBe(fx.creatorId);
-    expect(payload!.donationId).toBe(donation.id);
-    expect(BigInt(payload!.amount)).toBe(donation.amount);
-    expect(payload!.durationMs).toBeGreaterThan(0);
-    expect(payload!.isTest).toBe(false);
-    expect(payload!.eventId).toBeTruthy();
-  });
-
-  it('익명 설정이면 후원자 이름이 노출되지 않는다', async () => {
-    await seedRegisteredDonor(fx.donorPhone);
-    await prisma.overlaySetting.updateMany({ where: { creatorId: fx.creatorId }, data: { anonymize: true } });
-    await inbound(moPayload({ to: fx.moNumber, text: '익명 확인' }));
-
-    const donation = await prisma.donation.findFirstOrThrow();
-    const payload = await buildOverlayPayload(donation.id);
-    expect(payload!.donorName).toBe('익명의 후원자');
-  });
-
-  it('메시지 숨김 설정이면 메시지가 비어서 나간다', async () => {
-    await seedRegisteredDonor(fx.donorPhone);
-    await prisma.overlaySetting.updateMany({ where: { creatorId: fx.creatorId }, data: { showMessage: false } });
-    await inbound(moPayload({ to: fx.moNumber, text: '이 문구는 가려져야 한다' }));
-
-    const donation = await prisma.donation.findFirstOrThrow();
-    const payload = await buildOverlayPayload(donation.id);
-    expect(payload!.message).toBe('');
-  });
-
-  it('결제되지 않은 후원은 오버레이로 나가지 않는다', async () => {
-    // 미등록 후원자 → 결제 자체가 일어나지 않는다
-    const received: unknown[] = [];
-    const unsubscribe = subscribeOverlay(fx.creatorId, (p) => received.push(p));
-    try {
-      await inbound(moPayload({ to: fx.moNumber, text: '미등록 후원' }));
-      expect(received.length).toBe(0);
-    } finally {
-      unsubscribe();
     }
   });
 });

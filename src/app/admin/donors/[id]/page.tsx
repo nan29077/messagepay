@@ -47,7 +47,7 @@ export default async function AdminDonorDetailPage({ params }: { params: Promise
           creator: {
             select: {
               id: true, displayName: true, code: true,
-              // 크리에이터 -> 후원자 방향 차단은 blocked_donor 에 있다.
+              // 가맹점 -> 이용자 방향 차단은 blocked_donor 에 있다.
               blockedDonors: { where: { donorId: id }, select: { createdAt: true } },
             },
           },
@@ -109,8 +109,8 @@ export default async function AdminDonorDetailPage({ params }: { params: Promise
   return (
     <>
       <PageHeader
-        title={`후원자 ${donor.phoneMasked}`}
-        description="후원·결제·동의·이상거래 내역을 한 화면에서 확인합니다."
+        title={`이용자 ${donor.phoneMasked}`}
+        description="결제·결제·동의·이상거래 내역을 한 화면에서 확인합니다."
         action={
           <Link href="/admin/donors" className="rounded-lg border border-ink-200 px-3 py-1.5 text-[12px] font-semibold text-ink-700">
             목록으로
@@ -120,7 +120,7 @@ export default async function AdminDonorDetailPage({ params }: { params: Promise
 
       <div className="space-y-5">
         <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-          <StatTile label="누적 후원" value={formatWon(agg._sum.amount ?? 0n)} sub={`${formatNumber(agg._count._all)}건`} tone="brand" />
+          <StatTile label="누적 결제" value={formatWon(agg._sum.amount ?? 0n)} sub={`${formatNumber(agg._count._all)}건`} tone="brand" />
           <StatTile label="결제 실패 누적" value={formatNumber(donor.failCount)} tone={donor.failCount > 0 ? 'warning' : 'neutral'} />
           <StatTile label="잠금 상태" value={locked ? '잠김' : '정상'} sub={locked ? formatKst(donor.lockedUntil, false) : '-'} tone={locked ? 'danger' : 'success'} />
           <StatTile label="이용 제한" value={donor.blockedAt ? '제한' : '없음'} sub={donor.blockedReason ?? '-'} tone={donor.blockedAt ? 'danger' : 'success'} />
@@ -132,7 +132,7 @@ export default async function AdminDonorDetailPage({ params }: { params: Promise
             <div className="mt-2">
               <DataRow label="연락처" value={donor.phoneMasked} />
               <DataRow label="표시 이름" value={donor.displayName ?? '-'} />
-              <DataRow label="연결 회원" value={donor.user ? `${donor.user.email ?? '-'} (${donor.user.status})` : '비회원(문자 후원)'} />
+              <DataRow label="연결 회원" value={donor.user ? `${donor.user.email ?? '-'} (${donor.user.status})` : '비회원(문자 결제)'} />
               <DataRow label="성인 확인" value={donor.ageVerified ? '완료' : '미확인'} />
               <DataRow label="최초 수신" value={formatKst(donor.firstSeenAt)} />
               <DataRow
@@ -177,7 +177,7 @@ export default async function AdminDonorDetailPage({ params }: { params: Promise
               </div>
 
               {!donor.blockedAt ? (
-                <ActionForm action={setDonorBlock} submitLabel="이용 제한 적용" variant="danger" confirm="이후 이 후원자의 문자후원이 접수되지 않습니다.">
+                <ActionForm action={setDonorBlock} submitLabel="이용 제한 적용" variant="danger" confirm="이후 이 이용자의 문자결제가 접수되지 않습니다.">
                   <input type="hidden" name="donorId" value={donor.id} />
                   <input type="hidden" name="next" value="BLOCK" />
                   <AdminField label="제한 사유">
@@ -202,17 +202,17 @@ export default async function AdminDonorDetailPage({ params }: { params: Promise
         </div>
 
         <section>
-          <SectionTitle title="크리에이터별 후원" description="상위 10명" />
+          <SectionTitle title="가맹점별 결제" description="상위 10명" />
           {donor.creatorLinks.length === 0 ? (
-            <EmptyState title="후원한 크리에이터가 없습니다" />
+            <EmptyState title="결제한 가맹점이 없습니다" />
           ) : (
             <Table className="min-w-0">
               <thead>
                 <tr>
-                  <Th>크리에이터</Th>
+                  <Th>가맹점</Th>
                   <Th className="text-right">누적 금액</Th>
                   <Th className="text-right">건수</Th>
-                  <Th>최근 후원</Th>
+                  <Th>최근 결제</Th>
                   <Th>차단</Th>
                 </tr>
               </thead>
@@ -229,8 +229,8 @@ export default async function AdminDonorDetailPage({ params }: { params: Promise
                     <Td className="text-right tabular-nums">{formatNumber(l.totalCount)}</Td>
                     <Td className="whitespace-nowrap">{formatKst(l.lastDonatedAt, false)}</Td>
                     <Td className="space-x-1 whitespace-nowrap">
-                      {l.donorBlockedAt ? <Badge tone="danger">후원자 차단</Badge> : null}
-                      {l.creator.blockedDonors.length > 0 ? <Badge tone="warning">크리에이터 차단</Badge> : null}
+                      {l.donorBlockedAt ? <Badge tone="danger">이용자 차단</Badge> : null}
+                      {l.creator.blockedDonors.length > 0 ? <Badge tone="warning">가맹점 차단</Badge> : null}
                       {!l.donorBlockedAt && l.creator.blockedDonors.length === 0 ? (
                         <Badge tone="neutral">없음</Badge>
                       ) : null}
@@ -243,15 +243,15 @@ export default async function AdminDonorDetailPage({ params }: { params: Promise
         </section>
 
         <section>
-          <SectionTitle title="후원 내역" description="최근 30건" />
+          <SectionTitle title="결제 내역" description="최근 30건" />
           {donations.length === 0 ? (
-            <EmptyState title="후원 내역이 없습니다" />
+            <EmptyState title="결제 내역이 없습니다" />
           ) : (
             <Table>
               <thead>
                 <tr>
                   <Th>거래번호</Th>
-                  <Th>크리에이터</Th>
+                  <Th>가맹점</Th>
                   <Th className="text-right">금액</Th>
                   <Th>상태</Th>
                   <Th>수신</Th>

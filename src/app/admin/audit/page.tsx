@@ -96,7 +96,7 @@ export default async function AdminAuditPage({
       </FilterBar>
 
       <Notice tone="neutral" title="기록 범위">
-        회원 상태 변경, 후원자 잠금·제한, 크리에이터 심사와 결제 모드, 코드 재발급, MO 번호 배정·회수, 환불 승인·거절,
+        회원 상태 변경, 이용자 잠금·제한, 가맹점 심사와 결제 모드, 코드 재발급, MO 번호 배정·회수, 환불 승인·거절,
         정산 처리, 정책·약관·배너·금칙어 변경, 관리자 권한 변경이 모두 기록됩니다.
       </Notice>
 

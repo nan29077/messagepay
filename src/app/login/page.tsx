@@ -11,7 +11,7 @@ import { isLocal } from '@/lib/env';
 
 export const metadata: Metadata = {
   title: '로그인 | 문자페이',
-  description: '문자페이 계정으로 로그인하고 후원 내역과 결제 설정을 확인하세요.',
+  description: '문자페이 계정으로 로그인하고 결제 내역과 결제 설정을 확인하세요.',
 };
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -48,7 +48,7 @@ export default async function LoginPage({
       <PageHeader
         eyebrow="로그인"
         title="문자페이 계정으로 로그인"
-        description="후원 내역, 결제 수단, 한도 설정은 로그인 후 확인할 수 있습니다."
+        description="결제 내역, 결제 수단, 한도 설정은 로그인 후 확인할 수 있습니다."
       />
 
       {sp.next ? (
@@ -101,14 +101,14 @@ export default async function LoginPage({
         <p className="mt-4 text-center text-[13px] text-ink-500">
           아직 계정이 없으신가요{' '}
           <Link href="/signup" className="font-semibold text-brand-700">
-            후원자 회원가입
+            이용자 회원가입
           </Link>
         </p>
       </Card>
 
       <div className="mt-4">
-        <Notice tone="neutral" title="문자후원은 회원가입 없이도 이용할 수 있습니다">
-          문자와 계좌 등록만으로 후원이 가능합니다. 회원가입은 후원 내역과 한도 설정을 웹에서 관리하기 위한 선택
+        <Notice tone="neutral" title="문자결제는 회원가입 없이도 이용할 수 있습니다">
+          문자와 결제수단 등록만으로 결제할 수 있습니다. 회원가입은 결제 내역과 한도 설정을 웹에서 관리하기 위한 선택
           기능입니다.
         </Notice>
       </div>
@@ -119,7 +119,6 @@ export default async function LoginPage({
             seedAccounts={[
               { email: 'admin@munjapay.kr', password: 'munjapay1234!' },
               { email: 'creator1@munjapay.kr', password: 'munjapay1234!' },
-              { email: 'donor@munjapay.kr', password: 'munjapay1234!' },
             ]}
           />
         </div>
@@ -142,12 +141,12 @@ function LoginAside() {
         </LinkButton>
       </Card>
       <Card>
-        <CardTitle>크리에이터이신가요</CardTitle>
+        <CardTitle>가맹점이신가요</CardTitle>
         <p className="mt-2 text-[13px] leading-relaxed text-ink-500">
-          가입 신청 후 승인되면 크리에이터 콘솔에서 후원 번호와 방송 연동을 설정할 수 있습니다.
+          가입 신청 후 승인되면 가맹점 콘솔에서 결제 수신번호와 충전 설정을 관리할 수 있습니다.
         </p>
         <LinkButton href="/creator-apply" variant="secondary" size="md" className="mt-3 w-full">
-          크리에이터 가입 신청
+          가맹점 가입 신청
         </LinkButton>
       </Card>
     </div>

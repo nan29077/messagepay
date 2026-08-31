@@ -7,7 +7,7 @@ import { Notice } from '@/components/ui';
 /**
  * 금칙어 미리보기.
  * 문장을 넣으면 내 금칙어 + 전역 금칙어를 적용한 결과(통과/마스킹/차단)를 보여준다.
- * 실제 후원은 생성되지 않는다.
+ * 실제 결제는 생성되지 않는다.
  */
 export function FilterTester() {
   const [state, action, pending] = React.useActionState(testBannedWordsAction, { ok: false });

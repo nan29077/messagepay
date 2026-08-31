@@ -110,12 +110,12 @@ function CreatorRows({
 const HEAD = (
   <thead>
     <tr>
-      <Th>크리에이터</Th>
+      <Th>가맹점</Th>
       <Th>코드</Th>
       <Th>담당자</Th>
-      <Th className="text-right">1건 후원금</Th>
+      <Th className="text-right">1건 결제 금액</Th>
       <Th>MO 번호</Th>
-      <Th className="text-right">후원 건수</Th>
+      <Th className="text-right">결제 건수</Th>
       <Th>상태</Th>
       <Th>심사 처리</Th>
     </tr>
@@ -171,8 +171,8 @@ export default async function AdminCreatorsPage({
   return (
     <>
       <PageHeader
-        title="크리에이터 심사"
-        description="심사 대기 건을 먼저 처리하고, 승인 후에는 MO 번호를 배정해야 문자후원이 접수됩니다."
+        title="가맹점 심사"
+        description="심사 대기 건을 먼저 처리하고, 승인 후에는 MO 번호를 배정해야 문자결제가 접수됩니다."
       />
 
       <div className="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
@@ -185,18 +185,18 @@ export default async function AdminCreatorsPage({
       <section className="mb-5">
         <Card>
           <div className="flex flex-wrap items-center gap-2">
-            <CardTitle>1건 후원금 허용 범위 공통 적용</CardTitle>
-            <Badge tone="warning">전체 크리에이터 일괄 변경</Badge>
+            <CardTitle>1건 결제 금액 허용 범위 공통 적용</CardTitle>
+            <Badge tone="warning">전체 가맹점 일괄 변경</Badge>
           </div>
           <p className="mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-500">
-            모든 크리에이터의 문자 1건당 후원금 최소·최대 허용 범위를 한 번에 변경합니다. 크리에이터는 이 범위 안에서만
-            1건 후원금을 정할 수 있으며, 현재 설정 금액이 새 범위를 벗어난 크리에이터는 범위 안으로 자동 보정됩니다.
-            개별 크리에이터의 범위는 상세 화면에서 따로 조정할 수 있습니다.
+            모든 가맹점의 문자 1건당 결제 금액 최소·최대 허용 범위를 한 번에 변경합니다. 가맹점은 이 범위 안에서만
+            1건 결제 금액을 정할 수 있으며, 현재 설정 금액이 새 범위를 벗어난 가맹점은 범위 안으로 자동 보정됩니다.
+            개별 가맹점의 범위는 상세 화면에서 따로 조정할 수 있습니다.
           </p>
           <ActionForm
             action={applyGlobalAmountBounds}
             submitLabel="전체 적용"
-            confirm="모든 크리에이터에게 새 허용 범위를 일괄 적용합니다. 범위를 벗어난 1건 후원금은 자동 보정되며 감사로그에 기록됩니다. 계속할까요?"
+            confirm="모든 가맹점에게 새 허용 범위를 일괄 적용합니다. 범위를 벗어난 1건 결제 금액은 자동 보정되며 감사로그에 기록됩니다. 계속할까요?"
           >
             <div className="grid max-w-xl grid-cols-2 gap-2">
               <AdminField label="1건 최소 (원)">
@@ -222,7 +222,7 @@ export default async function AdminCreatorsPage({
           />
           <Notice tone="warning" title="승인 전 확인 사항">
             채널 실명 확인, 사업자 정보, 정산 계좌 인증 여부를 함께 검토해 주세요. 승인 후 MO 번호 배정 화면에서 수신
-            번호를 지정해야 후원 문자가 라우팅됩니다.
+            번호를 지정해야 결제 문자가 라우팅됩니다.
           </Notice>
           <div className="mt-3">
             <Table className="min-w-[1100px]">
@@ -237,7 +237,7 @@ export default async function AdminCreatorsPage({
         </Notice>
       )}
 
-      <SectionTitle title="전체 크리에이터" />
+      <SectionTitle title="전체 가맹점" />
 
       <FilterBar action="/admin/creators" resetHref="/admin/creators">
         <AdminField label="검색 (이름/채널/코드/이메일)" className="w-64">
@@ -256,7 +256,7 @@ export default async function AdminCreatorsPage({
       </FilterBar>
 
       {creators.length === 0 ? (
-        <EmptyState title="조건에 맞는 크리에이터가 없습니다" />
+        <EmptyState title="조건에 맞는 가맹점이 없습니다" />
       ) : (
         <>
           <Table className="min-w-[1100px]">

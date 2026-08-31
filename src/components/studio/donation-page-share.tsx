@@ -29,7 +29,7 @@ export function DonationPageShare({ url, creatorName }: { url: string; creatorNa
   const copyUrl = async () => {
     try {
       await navigator.clipboard.writeText(url);
-      flash('후원페이지 주소를 복사했습니다.');
+      flash('결제페이지 주소를 복사했습니다.');
     } catch {
       flash('주소를 길게 눌러 복사해 주세요.');
     }
@@ -39,7 +39,7 @@ export function DonationPageShare({ url, creatorName }: { url: string; creatorNa
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `${creatorName} 후원페이지`,
+          title: `${creatorName} 결제페이지`,
           text: `${creatorName}님에게 응원을 보내보세요.`,
           url,
         });
@@ -67,11 +67,11 @@ export function DonationPageShare({ url, creatorName }: { url: string; creatorNa
       <div className="grid gap-4 p-4 sm:grid-cols-[1fr_150px] sm:items-center sm:p-5">
         <div className="min-w-0">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-100 px-2.5 py-1 text-[11px] font-extrabold text-brand-800">
-            <Share2 size={13} /> 내 후원페이지 공유
+            <Share2 size={13} /> 내 결제페이지 공유
           </span>
           <p className="mt-2 break-all text-[12.5px] font-semibold leading-relaxed text-ink-600">{url}</p>
           <p className="mt-1 text-[11.5px] leading-relaxed text-ink-400">
-            방송 설명란·프로필 링크에 주소를 넣거나 QR코드를 화면에 띄워보세요.
+            서비스 안내 페이지·프로필 링크에 주소를 넣거나 QR코드를 화면에 띄워보세요.
           </p>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:flex">
             <button type="button" onClick={() => void share()} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-ink-900 px-3 text-[12px] font-extrabold text-white hover:bg-ink-800">
@@ -94,7 +94,7 @@ export function DonationPageShare({ url, creatorName }: { url: string; creatorNa
         <div className="mx-auto grid h-[150px] w-[150px] place-items-center rounded-[20px] border border-brand-200 bg-white p-2 shadow-sm">
           {qrDataUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={qrDataUrl} alt={`${creatorName} 후원페이지 QR코드`} className="h-full w-full rounded-xl" />
+            <img src={qrDataUrl} alt={`${creatorName} 결제페이지 QR코드`} className="h-full w-full rounded-xl" />
           ) : (
             <QrCode size={42} className="animate-pulse text-ink-200" />
           )}

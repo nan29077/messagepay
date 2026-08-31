@@ -16,7 +16,7 @@ import { formatKst } from '@/lib/datetime';
 export const dynamic = 'force-dynamic';
 
 const ACTION_LABEL: Record<string, { text: string; tone: 'neutral' | 'warning' | 'danger' }> = {
-  BLOCK: { text: '차단 (후원 접수 거부)', tone: 'danger' },
+  BLOCK: { text: '차단 (결제 접수 거부)', tone: 'danger' },
   MASK: { text: '마스킹 (별표 처리)', tone: 'warning' },
   FLAG: { text: '표시 (기록만)', tone: 'neutral' },
 };
@@ -50,16 +50,16 @@ export default async function StudioModerationPage() {
 
   return (
     <>
-      <PageHeader title="금칙어 · 차단" description="방송에 노출되는 문자 내용과 후원자를 직접 관리합니다." />
+      <PageHeader title="금칙어 · 차단" description="결제 내역과 문자에 노출되는 문자 내용과 이용자를 직접 관리합니다." />
 
       <div className="space-y-5">
-        <Notice tone="neutral" title="필터는 방송 노출 전에 적용됩니다">
+        <Notice tone="neutral" title="필터는 결제 처리 전에 적용됩니다">
           전역 금칙어가 먼저 적용되고, 그 뒤에 내 금칙어가 적용됩니다. 차단(BLOCK)으로 지정한 단어가 포함된 문자는
-          후원으로 접수되지 않으며, 마스킹(MASK)은 해당 부분만 별표로 가려 표시합니다.
+          결제로 접수되지 않으며, 마스킹(MASK)은 해당 부분만 별표로 가려 표시합니다.
         </Notice>
 
         <section>
-          <SectionTitle title="금칙어 미리보기" description="문장을 넣어 실제 노출 결과를 미리 확인합니다. (후원이 생성되지 않습니다)" />
+          <SectionTitle title="금칙어 미리보기" description="문장을 넣어 실제 노출 결과를 미리 확인합니다. (결제가 생성되지 않습니다)" />
           <Card>
             <FilterTester />
           </Card>
@@ -76,7 +76,7 @@ export default async function StudioModerationPage() {
                 <Field label="처리 방식">
                   <Select name="action" defaultValue="MASK">
                     <option value="MASK">마스킹 (별표 처리)</option>
-                    <option value="BLOCK">차단 (후원 접수 거부)</option>
+                    <option value="BLOCK">차단 (결제 접수 거부)</option>
                     <option value="FLAG">표시 (기록만)</option>
                   </Select>
                 </Field>
@@ -149,7 +149,7 @@ export default async function StudioModerationPage() {
         </section>
 
         <section>
-          <SectionTitle title="전역 금칙어" description="플랫폼 공통 금칙어입니다. 크리에이터는 변경할 수 없습니다." />
+          <SectionTitle title="전역 금칙어" description="플랫폼 공통 금칙어입니다. 가맹점은 변경할 수 없습니다." />
           {globalWords.length === 0 ? (
             <EmptyState title="등록된 전역 금칙어가 없습니다" />
           ) : (
@@ -169,14 +169,14 @@ export default async function StudioModerationPage() {
         </section>
 
         <section>
-          <SectionTitle title="차단된 후원자" description={`${blocked.length}명`} />
+          <SectionTitle title="차단된 이용자" description={`${blocked.length}명`} />
           {blocked.length === 0 ? (
-            <EmptyState title="차단된 후원자가 없습니다" description="후원 내역이나 문자 관리 화면에서 차단할 수 있습니다." />
+            <EmptyState title="차단된 이용자가 없습니다" description="결제 내역이나 문자 관리 화면에서 차단할 수 있습니다." />
           ) : (
             <Table>
               <thead>
                 <tr>
-                  <Th>후원자</Th>
+                  <Th>이용자</Th>
                   <Th>표시명</Th>
                   <Th>사유</Th>
                   <Th>차단일</Th>
@@ -194,7 +194,7 @@ export default async function StudioModerationPage() {
                       <InlineActionForm
                         action={unblockDonorAction}
                         submitLabel="차단 해제"
-                        confirmMessage="이 후원자의 차단을 해제하시겠습니까?"
+                        confirmMessage="이 이용자의 차단을 해제하시겠습니까?"
                         fields={{ donorId: b.donor.id }}
                       />
                     </Td>

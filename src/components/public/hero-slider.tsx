@@ -8,36 +8,28 @@ import { cx } from '@/components/ui';
 
 const slides = [
   {
-    image: '/assets/munjapay-hero-creator-v2.png',
-    eyebrow: 'MESSAGE TO LIVE',
-    title: '문자 한 통이\n방송을 움직입니다',
-    description: '진심을 담아 보낸 메시지가 결제 완료 후 라이브 화면과 음성으로 전달됩니다.',
-    href: '/how-it-works',
-    cta: '문자후원 알아보기',
-  },
-  {
-    image: '/assets/munjapay-hero-viewer-v2.png',
-    eyebrow: 'SIMPLE SUPPORT',
-    title: '보는 순간 바로\n응원을 전하세요',
-    description: '복잡한 앱 설치 없이 안내된 번호로 문자를 보내고 안전하게 후원하세요.',
+    image: '/assets/munjapay-banner-fast-v1.png',
+    eyebrow: 'FAST SMS PAYMENT',
+    title: '문자 한 통으로,\n결제와 충전이 끝납니다',
+    description: '앱을 찾거나 복잡한 메뉴를 거치지 않고, 문자를 보내고 확인하면 필요한 포인트가 바로 충전됩니다.',
     href: '/how-it-works',
     cta: '이용방법 보기',
   },
   {
-    image: '/assets/munjapay-hero-studio-v2.png',
-    eyebrow: 'FOR CREATORS',
-    title: '후원의 순간을\n더 특별한 장면으로',
-    description: '유튜브·OBS·PRISM·TTS를 연결해 크리에이터만의 후원 경험을 만드세요.',
-    href: '/creator-apply',
-    cta: '크리에이터 시작하기',
+    image: '/assets/munjapay-banner-secure-v1.png',
+    eyebrow: 'SAFE BY DESIGN',
+    title: '확인하고 결제하니\n더 안심할 수 있습니다',
+    description: '휴대폰 본인확인과 결제 전 최종 확인, 중복 결제 방지로 문자결제를 안전하게 보호합니다.',
+    href: '/how-it-works',
+    cta: '안전한 결제 알아보기',
   },
   {
-    image: '/assets/munjapay-hero-mascot-v1.png',
-    eyebrow: 'MEET MUNJAPAY',
-    title: '문자페이와 함께\n응원이 주인공이 됩니다',
-    description: '마음을 담은 문자 한 통이 문자페이 캐릭터와 방송 효과로 살아납니다.',
-    href: '/how-it-works',
-    cta: '문자페이 경험하기',
+    image: '/assets/munjapay-banner-business-v1.png',
+    eyebrow: 'BUILT FOR YOUR SERVICE',
+    title: '충전이 필요한 서비스에\n문자페이를 연결하세요',
+    description: '게임, 멤버십, 교육, 생활 서비스까지 반복 결제와 포인트 충전을 더 짧게 만듭니다.',
+    href: '/support',
+    cta: '서비스 도입 문의',
   },
 ];
 
@@ -59,7 +51,7 @@ export function HeroSlider() {
 
   return (
     <section
-      className="hero-slider group relative isolate overflow-hidden rounded-[30px] bg-ink-900 shadow-[0_24px_70px_rgba(23,18,54,0.22)]"
+      className="hero-slider group relative isolate overflow-hidden rounded-[30px] bg-[#071426] shadow-[0_28px_80px_rgba(7,20,38,0.28)]"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       aria-label="문자페이 주요 서비스"
@@ -78,7 +70,7 @@ export function HeroSlider() {
             aria-hidden={current !== index}
           >
             <Image src={slide.image} alt="" fill priority={index === 0} sizes="(min-width: 768px) 640px, 100vw" className="object-cover" />
-            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(23,22,26,0)_58%,rgba(23,22,26,0.6)_88%,rgba(23,22,26,1)_100%)] sm:bg-[linear-gradient(90deg,rgba(23,22,26,0.9)_0%,rgba(23,22,26,0.6)_48%,rgba(23,22,26,0.1)_100%)]" />
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(7,20,38,0)_52%,rgba(7,20,38,.72)_86%,rgba(7,20,38,1)_100%)] sm:bg-[linear-gradient(90deg,rgba(7,20,38,.98)_0%,rgba(7,20,38,.8)_46%,rgba(7,20,38,.06)_100%)]" />
           </div>
         ))}
 
@@ -94,7 +86,7 @@ export function HeroSlider() {
 
       {/* 텍스트 영역. 모바일은 이미지 아래 일반 흐름, sm+ 는 이미지 위 오버레이 */}
       <div className="relative z-10 -mt-2 px-6 pb-6 pt-0 sm:absolute sm:inset-y-0 sm:left-0 sm:mt-0 sm:flex sm:w-[72%] sm:flex-col sm:justify-end sm:p-9 sm:pb-9">
-        <p className="text-[10px] font-bold tracking-[0.22em] text-white/65">{slides[current].eyebrow}</p>
+        <p className="text-[10px] font-bold tracking-[0.22em] text-[#b7f34a]">{slides[current].eyebrow}</p>
         <h1 className="mt-2.5 whitespace-pre-line text-[26px] font-black leading-[1.16] tracking-[-0.045em] text-white sm:mt-3 sm:text-[36px]">
           {slides[current].title}
         </h1>
@@ -103,7 +95,7 @@ export function HeroSlider() {
         </p>
         <Link
           href={slides[current].href}
-          className="mt-4 inline-flex h-11 w-fit items-center gap-2 rounded-full bg-white px-5 text-[13px] font-extrabold text-ink-900 shadow-lg shadow-black/10 transition-transform hover:-translate-y-0.5 sm:mt-5"
+          className="mt-4 inline-flex h-11 w-fit items-center gap-2 rounded-full bg-[#b7f34a] px-5 text-[13px] font-extrabold text-[#071426] shadow-lg shadow-black/10 transition-transform hover:-translate-y-0.5 sm:mt-5"
         >
           {slides[current].cta}
           <ArrowRight size={15} strokeWidth={1.8} />

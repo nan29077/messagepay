@@ -26,7 +26,6 @@ interface LimitValues {
   failureLockThreshold: string;
   newDonorFirstDayLimit: string;
   manualReviewAmount: string;
-  ttsMinAmount: string;
 }
 
 const fallbackValues: LimitValues = {
@@ -44,13 +43,12 @@ const fallbackValues: LimitValues = {
   failureLockThreshold: String(FALLBACK_POLICY.failureLockThreshold),
   newDonorFirstDayLimit: FALLBACK_POLICY.newDonorFirstDayLimit.toString(),
   manualReviewAmount: FALLBACK_POLICY.manualReviewAmount.toString(),
-  ttsMinAmount: FALLBACK_POLICY.ttsMinAmount.toString(),
 };
 
 function LimitFields({ v }: { v: LimitValues }) {
   return (
     <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-      <AdminField label="기본 후원금 (원)" hint="문자 1건당 기본 결제 금액">
+      <AdminField label="기본 결제 금액 (원)" hint="문자 1건당 기본 결제 금액">
         <AdminInput name="defaultAmount" inputMode="numeric" defaultValue={v.defaultAmount} required />
       </AdminField>
       <AdminField label="1회 최소 (원)">
@@ -59,16 +57,16 @@ function LimitFields({ v }: { v: LimitValues }) {
       <AdminField label="1회 최대 (원)">
         <AdminInput name="maxAmount" inputMode="numeric" defaultValue={v.maxAmount} required />
       </AdminField>
-      <AdminField label="후원자 1일 한도 (원)">
+      <AdminField label="이용자 1일 한도 (원)">
         <AdminInput name="donorDailyLimit" inputMode="numeric" defaultValue={v.donorDailyLimit} required />
       </AdminField>
-      <AdminField label="후원자 1개월 한도 (원)">
+      <AdminField label="이용자 1개월 한도 (원)">
         <AdminInput name="donorMonthlyLimit" inputMode="numeric" defaultValue={v.donorMonthlyLimit} required />
       </AdminField>
-      <AdminField label="크리에이터별 1일 한도 (원)">
+      <AdminField label="가맹점별 1일 한도 (원)">
         <AdminInput name="perCreatorDailyLimit" inputMode="numeric" defaultValue={v.perCreatorDailyLimit} required />
       </AdminField>
-      <AdminField label="1인 1일 최대 건수" hint="금액과 별개로 하루 후원 건수를 제한">
+      <AdminField label="1인 1일 최대 건수" hint="금액과 별개로 하루 결제 건수를 제한">
         <AdminInput name="donorDailyMaxCount" inputMode="numeric" defaultValue={v.donorDailyMaxCount} required />
       </AdminField>
       <AdminField label="속도 제한 구간 (초)" hint="이 시간 안의 건수를 제한">
@@ -77,22 +75,21 @@ function LimitFields({ v }: { v: LimitValues }) {
       <AdminField label="속도 제한 최대 건수">
         <AdminInput name="velocityMaxCount" inputMode="numeric" defaultValue={v.velocityMaxCount} required />
       </AdminField>
-      <AdminField label="연속 후원 기준 건수" hint="이 건수를 넘기면 대기 부여">
+      <AdminField label="연속 결제 기준 건수" hint="이 건수를 넘기면 대기 부여">
         <AdminInput name="cooldownAfterCount" inputMode="numeric" defaultValue={v.cooldownAfterCount} required />
       </AdminField>
-      <AdminField label="연속 후원 대기 (초)">
+      <AdminField label="연속 결제 대기 (초)">
         <AdminInput name="cooldownSec" inputMode="numeric" defaultValue={v.cooldownSec} required />
       </AdminField>
       <AdminField label="결제 실패 허용 (회)" hint="초과 시 자동 잠금">
         <AdminInput name="failureLockThreshold" inputMode="numeric" defaultValue={v.failureLockThreshold} required />
       </AdminField>
-      <AdminField label="신규 후원자 첫날 한도 (원)">
+      <AdminField label="신규 이용자 첫날 한도 (원)">
         <AdminInput name="newDonorFirstDayLimit" inputMode="numeric" defaultValue={v.newDonorFirstDayLimit} required />
       </AdminField>
       <AdminField label="수동 검수 기준 (원)" hint="이 금액 이상이면 검수 대상">
         <AdminInput name="manualReviewAmount" inputMode="numeric" defaultValue={v.manualReviewAmount} required />
       </AdminField>
-      <input type="hidden" name="ttsMinAmount" value={v.ttsMinAmount} />
     </div>
   );
 }
@@ -108,7 +105,7 @@ export default async function AdminPoliciesPage() {
         defaultAmount: true, minAmount: true, maxAmount: true,
         donorDailyLimit: true, donorMonthlyLimit: true, perCreatorDailyLimit: true, donorDailyMaxCount: true,
         velocityWindowSec: true, velocityMaxCount: true, cooldownAfterCount: true, cooldownSec: true,
-        failureLockThreshold: true, newDonorFirstDayLimit: true, manualReviewAmount: true, ttsMinAmount: true,
+        failureLockThreshold: true, newDonorFirstDayLimit: true, manualReviewAmount: true,
         creator: { select: { id: true, displayName: true, code: true } },
       },
     }),
@@ -127,7 +124,7 @@ export default async function AdminPoliciesPage() {
     <>
       <PageHeader
         title="한도 정책"
-        description="정책 우선순위는 후원자(DONOR) → 크리에이터(CREATOR) → 전역(GLOBAL) 순으로 적용됩니다."
+        description="정책 우선순위는 이용자(DONOR) → 가맹점(CREATOR) → 전역(GLOBAL) 순으로 적용됩니다."
       />
 
       <div className="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
@@ -141,8 +138,8 @@ export default async function AdminPoliciesPage() {
           label="전역 1회 범위"
           value={`${formatWon(globalActive?.minAmount ?? FALLBACK_POLICY.minAmount)} ~ ${formatWon(globalActive?.maxAmount ?? FALLBACK_POLICY.maxAmount)}`}
         />
-        <StatTile label="크리에이터 정책" value={formatNumber(creatorScoped)} />
-        <StatTile label="후원자 정책" value={formatNumber(donorScoped)} />
+        <StatTile label="가맹점 정책" value={formatNumber(creatorScoped)} />
+        <StatTile label="이용자 정책" value={formatNumber(donorScoped)} />
       </div>
 
       <Notice tone="warning" title="한도 값 변경은 즉시 반영됩니다">
@@ -158,16 +155,16 @@ export default async function AdminPoliciesPage() {
               <AdminField label="적용 범위">
                 <AdminSelect name="scope" defaultValue="CREATOR">
                   <option value="GLOBAL">전역 (GLOBAL)</option>
-                  <option value="CREATOR">크리에이터 (CREATOR)</option>
-                  <option value="DONOR">후원자 (DONOR)</option>
+                  <option value="CREATOR">가맹점 (CREATOR)</option>
+                  <option value="DONOR">이용자 (DONOR)</option>
                 </AdminSelect>
               </AdminField>
-              <AdminField label="크리에이터" hint="CREATOR 범위일 때만 사용">
+              <AdminField label="가맹점" hint="CREATOR 범위일 때만 사용">
                 <AdminSelect name="creatorId" defaultValue="">
                   <CreatorOptions creators={creators} allLabel="선택 안 함" />
                 </AdminSelect>
               </AdminField>
-              <AdminField label="후원자 ID" hint="DONOR 범위일 때만 사용. 후원자 상세 화면의 ID">
+              <AdminField label="이용자 ID" hint="DONOR 범위일 때만 사용. 이용자 상세 화면의 ID">
                 <AdminInput name="donorId" placeholder="01JXXXXXXXXXXXXXXXXXXXXXXX" />
               </AdminField>
               <AdminField label="적용 시작일 (KST)">
@@ -200,18 +197,18 @@ export default async function AdminPoliciesPage() {
                       {p.scope === 'GLOBAL'
                         ? '전역 정책'
                         : p.scope === 'CREATOR'
-                          ? `크리에이터 정책 · ${p.creator?.displayName ?? p.creatorId ?? '-'}`
-                          : `후원자 정책 · ${p.donorId ?? '-'}`}
+                          ? `가맹점 정책 · ${p.creator?.displayName ?? p.creatorId ?? '-'}`
+                          : `이용자 정책 · ${p.donorId ?? '-'}`}
                     </CardTitle>
                     <Badge tone={p.active ? 'success' : 'neutral'}>{p.active ? '활성' : '비활성'}</Badge>
                     {p.scope === 'CREATOR' && p.creator ? (
                       <Link href={`/admin/creators/${p.creator.id}`} className="text-[12px] font-semibold text-brand-700">
-                        크리에이터 상세
+                        가맹점 상세
                       </Link>
                     ) : null}
                     {p.scope === 'DONOR' && p.donorId ? (
                       <Link href={`/admin/donors/${p.donorId}`} className="text-[12px] font-semibold text-brand-700">
-                        후원자 상세
+                        이용자 상세
                       </Link>
                     ) : null}
                   </div>
@@ -249,7 +246,6 @@ export default async function AdminPoliciesPage() {
                       failureLockThreshold: String(p.failureLockThreshold),
                       newDonorFirstDayLimit: p.newDonorFirstDayLimit.toString(),
                       manualReviewAmount: p.manualReviewAmount.toString(),
-                      ttsMinAmount: p.ttsMinAmount.toString(),
                     }}
                   />
                 </ActionForm>

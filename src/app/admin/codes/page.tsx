@@ -57,8 +57,8 @@ export default async function AdminCodesPage({
   return (
     <>
       <PageHeader
-        title="크리에이터 코드 관리"
-        description="코드는 후원 안내 링크(/c/코드)의 식별자입니다. 재발급하면 기존 링크가 즉시 무효화됩니다."
+        title="가맹점 코드 관리"
+        description="코드는 결제 안내 링크(/c/코드)의 식별자입니다. 재발급하면 기존 링크가 즉시 무효화됩니다."
       />
 
       <div className="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
@@ -70,13 +70,13 @@ export default async function AdminCodesPage({
 
       <Notice tone="warning" title="재발급 시 주의">
         코드를 재발급하면 기존 코드가 즉시 폐기되고 새 코드가 활성화됩니다. 서비스 화면·안내문에 노출된 기존
-        후원 링크는 더 이상 동작하지 않으므로, 크리에이터에게 사전 공지 후 진행해 주세요. 모든 재발급은 감사로그에
+        결제 링크는 더 이상 동작하지 않으므로, 가맹점에게 사전 공지 후 진행해 주세요. 모든 재발급은 감사로그에
         기록됩니다.
       </Notice>
 
       <div className="mt-4">
         <FilterBar action="/admin/codes" resetHref="/admin/codes">
-          <AdminField label="검색 (코드/크리에이터)" className="w-56">
+          <AdminField label="검색 (코드/가맹점)" className="w-56">
             <AdminInput name="q" defaultValue={q} placeholder="MJP-8K2M" />
           </AdminField>
           <AdminField label="상태" className="w-36">
@@ -96,12 +96,12 @@ export default async function AdminCodesPage({
               <thead>
                 <tr>
                   <Th>코드</Th>
-                  <Th>크리에이터</Th>
+                  <Th>가맹점</Th>
                   <Th>심사 상태</Th>
                   <Th>코드 상태</Th>
                   <Th>발급</Th>
                   <Th>폐기</Th>
-                  <Th>후원 링크</Th>
+                  <Th>결제 링크</Th>
                   <Th>재발급</Th>
                 </tr>
               </thead>

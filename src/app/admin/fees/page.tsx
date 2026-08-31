@@ -67,18 +67,18 @@ export default async function AdminFeesPage() {
           value={activeGlobal ? ratePercent(activeGlobal.platformFeeRate.toString()) : '미설정'}
           sub={activeGlobal ? `문자 원가 ${formatWon(activeGlobal.smsCost)}` : '기본값 15.00% 적용'}
         />
-        <StatTile label="크리에이터 개별 정책" value={formatNumber(activeCreatorCount)} />
+        <StatTile label="가맹점 개별 정책" value={formatNumber(activeCreatorCount)} />
         <StatTile label="전체 정책 이력" value={formatNumber(policies.length)} sub="최근 100건" />
       </div>
 
       <Card className="mt-4">
-        <CardTitle>{formatWon(SAMPLE)} 후원 기준 계산 예시</CardTitle>
+        <CardTitle>{formatWon(SAMPLE)} 결제 기준 계산 예시</CardTitle>
         <p className="mt-1 text-[12px] leading-relaxed text-ink-400">
           현재 활성 전역 정책({sample.vatIncluded ? '부가세 포함 요율' : '부가세 별도 요율'})을 실제 정산 계산식에
           그대로 넣은 결과입니다.
         </p>
         <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-5">
-          <StatTile label="후원 총액" value={formatWon(sample.gross)} />
+          <StatTile label="결제 총액" value={formatWon(sample.gross)} />
           <StatTile
             label="결제 수수료"
             value={formatWon(sample.pgFee)}
@@ -90,7 +90,7 @@ export default async function AdminFeesPage() {
             sub={sample.platformFeeVat > 0n ? `공급가 ${formatWon(sample.platformFeeSupply)} + 부가세 ${formatWon(sample.platformFeeVat)}` : '부가세 포함 요율'}
           />
           <StatTile label="부가세 합계" value={formatWon(sample.vat)} />
-          <StatTile label="크리에이터 정산금" value={formatWon(sample.net)} tone="brand" />
+          <StatTile label="가맹점 정산금" value={formatWon(sample.net)} tone="brand" />
         </div>
       </Card>
 
@@ -111,10 +111,10 @@ export default async function AdminFeesPage() {
             <AdminField label="적용 범위">
               <AdminSelect name="scope" defaultValue="GLOBAL">
                 <option value="GLOBAL">전역 (GLOBAL)</option>
-                <option value="CREATOR">크리에이터 개별 (CREATOR)</option>
+                <option value="CREATOR">가맹점 개별 (CREATOR)</option>
               </AdminSelect>
             </AdminField>
-            <AdminField label="크리에이터" hint="적용 범위가 크리에이터일 때만 사용됩니다.">
+            <AdminField label="가맹점" hint="적용 범위가 가맹점일 때만 사용됩니다.">
               <AdminSelect name="creatorId" defaultValue="">
                 <CreatorOptions creators={creators} allLabel="선택 안 함" />
               </AdminSelect>

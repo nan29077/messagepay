@@ -119,14 +119,15 @@ export function SupportWidget({
     <>
       {/* 플로팅 버튼
           - lg 미만(모바일·태블릿): 하단 탭바(약 64px + safe-area)를 가리지 않게 그 위에 배치
-          - lg 이상(PC): 본문 레이아웃(744px) 오른쪽 끝 = 우측 메뉴바 바로 아래에 세로로 정렬 */}
+          - lg 이상(PC): 공개 레이아웃(824px)의 우측 메뉴바 중앙선에 정렬 */}
       <div
         className={cx(
           'pointer-events-none fixed inset-x-0 z-50',
           'bottom-[calc(76px+env(safe-area-inset-bottom))] lg:bottom-6',
         )}
       >
-        <div className="mx-auto flex w-full max-w-[744px] justify-end px-4 lg:px-0 lg:pr-[18px]">
+        <div className="mx-auto flex w-full max-w-[824px] justify-end px-4 lg:px-0">
+          <div className="flex justify-end lg:w-[96px] lg:justify-center">
           <button
             type="button"
             aria-label={open ? '문의 창 닫기' : '문의하기'}
@@ -148,6 +149,7 @@ export function SupportWidget({
               </span>
             ) : null}
           </button>
+          </div>
         </div>
       </div>
 
@@ -159,7 +161,7 @@ export function SupportWidget({
             'bottom-[calc(140px+env(safe-area-inset-bottom))] lg:bottom-[88px]',
           )}
         >
-          <div className="mx-auto flex w-full max-w-[744px] justify-end px-3 lg:px-0 lg:pr-[18px]">
+          <div className="mx-auto flex w-full max-w-[824px] justify-end px-3 lg:px-0">
         <div
           role="dialog"
           aria-label="고객 문의"

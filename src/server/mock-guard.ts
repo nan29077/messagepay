@@ -23,10 +23,6 @@ export function isMockPaymentAllowed(): boolean {
   return isLocal || env.payment.provider === 'mock';
 }
 
-export function isMockYouTubeAllowed(): boolean {
-  return isLocal || env.youtube.provider === 'mock';
-}
-
 /** 서버 액션용. 허용되지 않으면 즉시 예외를 던진다(fail-closed). */
 export function assertMockPaymentAllowed(): void {
   if (isMockPaymentAllowed()) return;

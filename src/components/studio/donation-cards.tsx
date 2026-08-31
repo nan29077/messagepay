@@ -7,36 +7,36 @@ import { deliveryStatusLabel, donationStatusLabel, refundStatusLabel } from '@/l
 import type { DeliveryStatus, DonationStatus, RefundStatus } from '@/generated/prisma/enums';
 
 /**
- * 문자 후원 내역 카드.
+ * 문자 결제 내역 카드.
  *
- * 대시보드(최근 몇 건)와 후원 내역(전체 목록) 두 곳에서 같은 카드를 쓴다.
+ * 대시보드(최근 몇 건)와 결제 내역(전체 목록) 두 곳에서 같은 카드를 쓴다.
  * 표는 컬럼이 많아 모바일에서 가로 스크롤이 필요하지만, 카드는 한 건씩 세로로
- * 읽히므로 방송 중에 휴대폰으로 확인하기 좋다.
+ * 읽히므로 이동 중에 휴대폰으로 확인하기 좋다.
  *
  * 개인정보 규칙
  *  - 전화번호는 저장 시점에 마스킹된 값(`donor.phoneMasked`, 010-****-1234)만 받는다.
  *    이 컴포넌트는 복호화나 원문 접근을 하지 않는다.
  *  - 문자 내용도 금칙어 필터를 거친 노출용 본문(`donation.message`)만 받는다.
- *    분쟁 대응용 원문(messageRawEnc)은 크리에이터에게 제공하지 않는다.
+ *    분쟁 대응용 원문(messageRawEnc)은 가맹점에게 제공하지 않는다.
  */
 
 export interface DonationCardItem {
   id: string;
   transactionNo: string;
-  /** 문자 수신(= 후원 접수) 시각 */
+  /** 문자 수신(= 결제 접수) 시각 */
   receivedAt: Date;
   displayName: string;
   anonymous: boolean;
-  /** 필터링을 마친 방송 노출용 문자 내용 */
+  /** 필터링을 마친 문자 내용 */
   message: string;
   amount: bigint;
   status: DonationStatus;
-  /** MO(문자) | WEB(PC 웹 후원) */
+  /** MO(문자) | WEB(PC 웹 결제) */
   channel: string;
-  /** 마스킹된 후원자 전화번호. 웹 후원 등으로 후원자 정보가 없으면 null */
+  /** 마스킹된 이용자 전화번호. 웹 결제 등으로 이용자 정보가 없으면 null */
   phoneMasked: string | null;
   /** 전달 상태를 함께 보여줄 때만 넘긴다 (대시보드에서는 생략) */
-  delivery?: { youtube: DeliveryStatus; overlay: DeliveryStatus; mt: DeliveryStatus } | null;
+  delivery?: { mt: DeliveryStatus } | null;
   refundStatus?: RefundStatus | null;
 }
 
@@ -55,7 +55,7 @@ export function DonationCard({ item }: { item: DonationCardItem }) {
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
       )}
     >
-      {/* 후원자 전화번호 + 결제 상태 */}
+      {/* 이용자 전화번호 + 결제 상태 */}
       <div className="flex items-start justify-between gap-2">
         <span className="flex min-w-0 items-center gap-1.5">
           {isWeb ? (
@@ -73,10 +73,10 @@ export function DonationCard({ item }: { item: DonationCardItem }) {
       {/* 표시명 + 접수 채널 */}
       <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[11.5px] text-ink-400">
         <span className="font-semibold text-ink-500">
-          {item.anonymous ? '익명의 후원자' : item.displayName}
+          {item.anonymous ? '익명의 이용자' : item.displayName}
         </span>
         <span aria-hidden>·</span>
-        <span>{isWeb ? '웹(PC) 후원' : '문자(MO) 후원'}</span>
+        <span>{isWeb ? '웹(PC) 결제' : '문자(MO) 결제'}</span>
       </p>
 
       {/* 문자 내용 */}
@@ -87,7 +87,7 @@ export function DonationCard({ item }: { item: DonationCardItem }) {
         </p>
       </div>
 
-      {/* 후원 일시 + 금액 */}
+      {/* 결제 일시 + 금액 */}
       <div className="mt-3 flex items-end justify-between gap-2">
         <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] tabular-nums text-ink-400">
           <Clock size={13} strokeWidth={1.7} className="shrink-0" />
@@ -98,11 +98,9 @@ export function DonationCard({ item }: { item: DonationCardItem }) {
         </span>
       </div>
 
-      {/* 전달 상태 (후원 내역 화면에서만) */}
+      {/* 전달 상태 (결제 내역 화면에서만) */}
       {item.delivery ? (
         <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-ink-100 pt-3">
-          <DeliveryChip label="유튜브" status={item.delivery.youtube} />
-          <DeliveryChip label="오버레이" status={item.delivery.overlay} />
           <DeliveryChip label="MT" status={item.delivery.mt} />
           {refund ? (
             <span className="inline-flex items-center gap-1 rounded-md bg-danger-50 px-2 py-0.5 text-[11px] font-semibold text-danger-500">

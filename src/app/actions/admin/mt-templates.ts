@@ -16,7 +16,7 @@ import { run, text, requiredId } from './shared';
 /**
  * MT 문자 본문(mt_message_template) 관리 액션.
  *
- * 여기서 저장한 문구가 실제로 후원자 휴대폰에 찍힌다. 발신 주체 표기·결제 미완료 고지 같은
+ * 여기서 저장한 문구가 실제로 이용자 휴대폰에 찍힌다. 발신 주체 표기·결제 미완료 고지 같은
  * 법적 고지 문구가 사라지면 안 되므로 저장 전에 validateMtTemplateBody() 로 한 번 거른다.
  * 보안링크가 들어가는 템플릿은 애초에 editable=false 이므로 이 액션으로 저장되지 않는다.
  */

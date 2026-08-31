@@ -7,7 +7,6 @@ import { bannedNeedle, containsBannedWord, filterContent } from '@/server/servic
 import { scrubText } from '@/lib/logger';
 import { computeFees } from '@/server/services/settlement';
 import { reconcileUnknownPayment } from '@/server/services/payment-reconcile';
-import { publishOverlayEvent, findOverlayTtsGrant, type OverlayEventPayload } from '@/server/services/overlay-bus';
 import { kstDateKey } from '@/lib/datetime';
 
 /**
@@ -132,50 +131,6 @@ describe('수수료 계산은 후원금을 넘지 않는다', () => {
 });
 
 // ───────────────────── 5. 서버 TTS 는 발행된 문장만 읽는다 ─────────────────────
-
-describe('서버 TTS 합성 허가', () => {
-  const payload = (over: Partial<OverlayEventPayload> = {}): OverlayEventPayload => ({
-    eventId: 'evt-tts-1',
-    creatorId: 'creator-a',
-    donationId: null,
-    donorName: '후원자1234',
-    amount: '3000',
-    message: '응원합니다',
-    sticker: '',
-    effect: 'NONE',
-    banner: true,
-    tierLabel: '',
-    tts: { enabled: true, text: '후원자1234님이 3,000원을 후원하셨습니다', voice: 'nara', speed: 1, pitch: 1, volume: 1 },
-    ttsMode: 'server',
-    soundEnabled: false,
-    soundVolume: 0,
-    durationMs: 5000,
-    theme: 'BASIC',
-    position: 'TOP_RIGHT',
-    maxMessageLen: 60,
-    enabled: true,
-    occurredAt: new Date().toISOString(),
-    isTest: false,
-    ...over,
-  });
-
-  it('발행된 이벤트의 문장만 합성할 수 있다', () => {
-    publishOverlayEvent(payload());
-    const grant = findOverlayTtsGrant('evt-tts-1', 'creator-a');
-    expect(grant?.text).toContain('후원하셨습니다');
-  });
-
-  it('발행된 적 없는 이벤트는 거절한다', () => {
-    // 예전에는 읽을 문장을 쿼리로 그대로 받아, 오버레이 토큰만 알면
-    // 아무 문장이나 무제한으로 유료 합성시킬 수 있었다.
-    expect(findOverlayTtsGrant('evt-없는-이벤트', 'creator-a')).toBeNull();
-  });
-
-  it('다른 크리에이터의 이벤트는 읽어 갈 수 없다', () => {
-    publishOverlayEvent(payload({ eventId: 'evt-tts-2' }));
-    expect(findOverlayTtsGrant('evt-tts-2', 'creator-b')).toBeNull();
-  });
-});
 
 // ───────────────────── 6. 수동 대사 이중 처리 ─────────────────────
 

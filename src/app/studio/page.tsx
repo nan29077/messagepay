@@ -21,11 +21,11 @@ import { moNumberStatusLabel } from '@/lib/labels';
 export const dynamic = 'force-dynamic';
 
 /**
- * 크리에이터 대시보드.
+ * 가맹점 대시보드.
  * 카드가 많아 어수선해지지 않도록 화면을 네 덩어리로만 나눈다.
  *   1) 핵심 수치 (오늘 + 정산)
  *   2) 연동 상태 (카드 대신 한 줄 목록)
- *   3) 최근 후원 메시지
+ *   3) 최근 결제 메시지
  * 세부 관리 진입은 각 줄의 링크와 좌측 메뉴로 처리한다.
  */
 export default async function StudioDashboardPage() {
@@ -39,7 +39,6 @@ export default async function StudioDashboardPage() {
     todayFailed,
     monthLedger,
     summary,
-    youtube,
     moNumber,
     recent,
   ] = await Promise.all([
@@ -63,10 +62,6 @@ export default async function StudioDashboardPage() {
       _sum: { amount: true },
     }),
     getSettlementSummary(creatorId),
-    prisma.youTubeConnection.findUnique({
-      where: { creatorId },
-      select: { status: true, channelTitle: true, lastError: true },
-    }),
     // 배정 중인 번호를 우선 보여 준다. 나중에 배정됐다 회수된 번호가 있어도 현재 번호가 가려지지 않게.
     prisma.creatorMoNumber
       .findFirst({
@@ -103,16 +98,9 @@ export default async function StudioDashboardPage() {
     }),
   ]);
 
-  const ytConnected = youtube?.status === 'CONNECTED';
   const moAssigned = moNumber?.status === 'ASSIGNED';
 
   const links: { label: string; ok: boolean; value: string; href: string }[] = [
-    {
-      label: '유튜브 채널',
-      ok: ytConnected,
-      value: ytConnected ? (youtube?.channelTitle ?? '연결됨') : youtube ? '연결 상태 확인 필요' : '연결되지 않음',
-      href: '/studio/youtube',
-    },
     {
       label: 'MO 수신번호',
       ok: moAssigned,
@@ -130,10 +118,10 @@ export default async function StudioDashboardPage() {
     <>
       <PageHeader
         title="대시보드"
-        description="오늘 들어온 문자후원과 연동 상태를 한눈에 확인합니다. (KST 기준)"
+        description="오늘 들어온 문자결제와 연동 상태를 한눈에 확인합니다. (KST 기준)"
         action={
           <LinkButton href="/studio/donations" variant="secondary" size="sm">
-            후원 내역 전체 보기
+            결제 내역 전체 보기
           </LinkButton>
         }
       />
@@ -141,7 +129,7 @@ export default async function StudioDashboardPage() {
       <div className="space-y-4">
         <BannerStrip position="CONSOLE_TOP" />
 
-        {/* 0) 신규 크리에이터 온보딩 체크리스트 — 모두 완료되면 스스로 사라진다 */}
+        {/* 0) 신규 가맹점 온보딩 체크리스트 — 모두 완료되면 스스로 사라진다 */}
         <OnboardingChecklist creatorId={creatorId} />
 
         {nextStep ? (
@@ -156,7 +144,7 @@ export default async function StudioDashboardPage() {
                   다음 할 일: {nextStep.label} 설정
                 </span>
                 <span className="block truncate text-[12px] text-ink-700">
-                  {nextStep.value} — 설정을 마쳐야 후원 메시지가 방송에 표시됩니다.
+                  {nextStep.value} — 설정을 마쳐야 결제를 받을 수 있습니다.
                 </span>
               </span>
             </span>
@@ -168,7 +156,7 @@ export default async function StudioDashboardPage() {
         <p className="flex items-start gap-2 rounded-xl border border-warning-500/25 bg-warning-50 px-3.5 py-2.5 text-[12px] leading-relaxed text-ink-700">
           <Info size={15} strokeWidth={1.8} className="mt-0.5 shrink-0 text-warning-500" />
           <span>
-            현재 mock 모드입니다. 결제·문자·유튜브 전송이 모두 모의 처리되며, 화면의 성공 표시는 실제 금융 거래나 실제
+            현재 mock 모드입니다. 결제·문자 전송이 모두 모의 처리되며, 화면의 성공 표시는 실제 금융 거래나 실제
             유튜브 전송이 아닙니다.
           </span>
         </p>
@@ -176,7 +164,7 @@ export default async function StudioDashboardPage() {
         {/* 1) 핵심 수치 — 카드 8개 대신 한 판에 정리 */}
         <Card padded={false} className="overflow-hidden">
           <div className="grid grid-cols-2 divide-ink-100 lg:grid-cols-4 lg:divide-x">
-            <Metric label="오늘 후원금" value={formatWon(todayAmount._sum.amount ?? 0n)} accent />
+            <Metric label="오늘 결제 금액" value={formatWon(todayAmount._sum.amount ?? 0n)} accent />
             <Metric label="오늘 문자 수신" value={`${formatNumber(todayMessages)}건`} />
             <Metric
               label="결제 성공"
@@ -207,7 +195,7 @@ export default async function StudioDashboardPage() {
           <p className="border-b border-ink-100 px-4 py-3 text-[13px] font-bold text-ink-900">
             연동 상태
             <span className="ml-2 text-[11.5px] font-medium text-ink-400">
-              연동이 끝나야 후원 메시지가 방송에 표시됩니다
+              연동이 끝나야 결제를 받을 수 있습니다
             </span>
           </p>
           <ul>
@@ -236,13 +224,13 @@ export default async function StudioDashboardPage() {
           </ul>
         </Card>
 
-        {/* 3) 최근 문자 후원 내역 — 카드로 한 건씩 읽히게 */}
+        {/* 3) 최근 문자 결제 내역 — 카드로 한 건씩 읽히게 */}
         <section>
           <div className="mb-2.5 flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <h2 className="text-[15px] font-bold tracking-tight text-ink-900">최근 문자 후원 내역</h2>
+              <h2 className="text-[15px] font-bold tracking-tight text-ink-900">최근 문자 결제 내역</h2>
               <p className="mt-0.5 text-[12px] text-ink-400">
-                최근 {recent.length}건입니다. 카드를 누르면 후원 상세로 이동합니다.
+                최근 {recent.length}건입니다. 카드를 누르면 결제 상세로 이동합니다.
               </p>
             </div>
             <span className="flex shrink-0 items-center gap-3">
@@ -258,11 +246,11 @@ export default async function StudioDashboardPage() {
           {recent.length === 0 ? (
             <Card>
               <EmptyState
-                title="아직 후원 내역이 없습니다"
-                description="방송 화면에 후원 번호를 안내하면 후원이 시작됩니다. 안내 문구는 문자 관리에서 복사할 수 있습니다."
+                title="아직 결제 내역이 없습니다"
+                description="서비스 화면에 결제 수신번호를 안내하면 결제가 시작됩니다. 안내 문구는 문자 관리에서 복사할 수 있습니다."
                 action={
                   <LinkButton href="/studio/messages" variant="secondary" size="sm">
-                    후원 번호 안내 문구 복사하러 가기
+                    결제 수신번호 안내 문구 복사하러 가기
                   </LinkButton>
                 }
               />

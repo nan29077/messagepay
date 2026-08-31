@@ -22,7 +22,7 @@ export default async function AdminSimulatorPage() {
       <>
         <PageHeader title="MO 시뮬레이터" description="운영 환경에서는 사용할 수 없습니다." />
         <Notice tone="danger" title="운영 환경에서는 비활성화된 기능입니다">
-          MO 시뮬레이터는 실제 후원 거래와 결제를 생성합니다. APP_ENV=prod 환경에서는 화면과 서버 액션이 모두
+          MO 시뮬레이터는 실제 결제 거래와 결제를 생성합니다. APP_ENV=prod 환경에서는 화면과 서버 액션이 모두
           차단됩니다. 검증이 필요하면 스테이징 환경을 사용하세요.
         </Notice>
       </>
@@ -60,7 +60,7 @@ export default async function AdminSimulatorPage() {
       />
 
       <Notice tone="danger" title="운영 환경에서는 반드시 비활성화해야 합니다">
-        이 도구는 실제 후원 거래와 결제(현재는 mock 결제)를 생성합니다. 현재 환경은 APP_ENV={env.appEnv},
+        이 도구는 실제 결제 거래와 결제(현재는 mock 결제)를 생성합니다. 현재 환경은 APP_ENV={env.appEnv},
         MO_PROVIDER={env.mo.provider}, PAYMENT_PROVIDER={env.payment.provider},
         SAFE_MODE={env.safety.safeMode ? '켜짐' : '꺼짐'} 입니다. APP_ENV=prod 로 배포되면 화면과 서버 액션이 모두
         차단됩니다.
@@ -73,7 +73,7 @@ export default async function AdminSimulatorPage() {
             <Link href="/admin/mo-numbers" className="font-semibold text-brand-700">
               MO 번호 관리
             </Link>
-            에서 승인된 크리에이터에게 수신번호를 배정해야 합니다.
+            에서 승인된 가맹점에게 수신번호를 배정해야 합니다.
           </Notice>
         </div>
       ) : null}
@@ -87,10 +87,10 @@ export default async function AdminSimulatorPage() {
           <ActionFormWithDetail
             action={runMoSimulation}
             submitLabel="시뮬레이션 실행"
-            confirm="실제 후원 거래가 생성됩니다. 계속할까요?"
+            confirm="실제 결제 거래가 생성됩니다. 계속할까요?"
             detailLabels={{
               result: '처리 결과',
-              donationStatus: '후원 상태',
+              donationStatus: '결제 상태',
               transactionNo: '거래번호',
               moMessageId: '수신 메시지 ID',
               providerMessageId: '사업자 메시지 ID',
@@ -116,7 +116,7 @@ export default async function AdminSimulatorPage() {
             </AdminField>
             <AdminField
               label="문자 내용"
-              hint="대표번호 공유 모드에서는 맨 앞에 키워드를 붙여야 크리에이터가 식별됩니다."
+              hint="대표번호 공유 모드에서는 맨 앞에 키워드를 붙여야 가맹점이 식별됩니다."
             >
               <AdminTextarea name="content" rows={4} placeholder="포인트 10,000원 충전" required />
             </AdminField>
@@ -138,8 +138,8 @@ export default async function AdminSimulatorPage() {
                     <Th>번호</Th>
                     <Th>키워드</Th>
                     <Th>모드</Th>
-                    <Th>크리에이터</Th>
-                    <Th className="text-right">1건 후원금</Th>
+                    <Th>가맹점</Th>
+                    <Th className="text-right">1건 결제 금액</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -210,7 +210,7 @@ export default async function AdminSimulatorPage() {
                 <Th>사업자 메시지 ID</Th>
                 <Th>수신번호</Th>
                 <Th>발신</Th>
-                <Th>크리에이터</Th>
+                <Th>가맹점</Th>
                 <Th>결과</Th>
                 <Th>필터링된 내용</Th>
                 <Th>거래</Th>

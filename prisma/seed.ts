@@ -26,7 +26,6 @@ async function main() {
     ['payment.mode', 'CONFIRM_LINK', '전역 기본 결제 모드. DIRECT_TRIGGER 는 금융사 서면승인 후에만 허용'],
     ['payment.confirmTtlSec', 300, '결제 확인 링크 유효시간(초). 헥토 10분 제한보다 짧게 유지'],
     ['donation.defaultAmount', 3000, '문자 1건당 기본 후원금'],
-    ['youtube.dailyQuota', 10000, 'YouTube Data API 일일 할당량(실측 후 조정)'],
     ['service.name', '문자페이', '서비스명'],
   ];
   for (const [key, value, memo] of settings) {
@@ -138,36 +137,6 @@ async function main() {
       });
     }
 
-    const overlayToken = generateToken(24);
-    await prisma.overlaySetting.upsert({
-      where: { creatorId: creator.id },
-      create: {
-        id: newId(), creatorId: creator.id,
-        tokenHash: tokenHash(overlayToken), tokenMasked: maskSecret(overlayToken),
-      },
-      update: {},
-    });
-    console.log(`  오버레이 URL(${c.name}): /overlay/${creator.id}?token=${overlayToken}`);
-
-    await prisma.ttsSetting.upsert({
-      where: { creatorId: creator.id },
-      create: { id: newId(), creatorId: creator.id },
-      update: {},
-    });
-
-    await prisma.youTubeConnection.upsert({
-      where: { creatorId: creator.id },
-      create: {
-        id: newId(), creatorId: creator.id, channelId: `UCmock-${creator.id.slice(-8)}`,
-        channelTitle: `${c.name} 채널`,
-        accessTokenEnc: encrypt('mock-access-token'),
-        refreshTokenEnc: encrypt('mock-refresh-token'),
-        scope: 'https://www.googleapis.com/auth/youtube.force-ssl',
-        expiresAt: new Date(Date.now() + 3600_000),
-        status: 'CONNECTED',
-      },
-      update: {},
-    });
 
     await prisma.settlementAccount.upsert({
       where: { creatorId: creator.id },

@@ -11,6 +11,7 @@ import { Logo, MunjaPayMark } from '@/components/brand/logo';
 import { PublicMarginMascots } from '@/components/brand/mascot-decorations';
 import { NotificationBell } from '@/components/notifications/notification-bell';
 import { ProfileAvatar } from '@/components/profile/generated-avatar';
+import { DonationLookupSheet } from '@/components/public/donation-lookup-sheet';
 import { cx } from '@/components/ui';
 
 /**
@@ -45,19 +46,21 @@ interface NavItem {
   icon: typeof House;
   /** 마이페이지 탭(역할별 이동) */
   my?: boolean;
+  /** 로그인 없이 휴대폰 인증으로 결제 내역을 여는 항목 */
+  lookup?: boolean;
 }
 
 function buildNav(myHref: string): NavItem[] {
   return [
     { href: '/', label: '홈', icon: House },
     { href: '/how-it-works', label: '이용방법', icon: Map },
-    { href: '/my/payments', label: '결제내역', icon: CreditCard },
+    { href: '#payment-history', label: '결제내역', icon: CreditCard, lookup: true },
     { href: '/faq', label: 'FAQ', icon: CircleHelp },
     { href: myHref, label: '마이페이지', icon: CircleUserRound, my: true },
   ];
 }
 
-const DRAWER_EXTRA = [
+const DRAWER_EXTRA: NavItem[] = [
   { href: '/support', label: '서비스 도입', icon: Building2 },
   { href: '/notice', label: '공지', icon: Bell },
   { href: '/support', label: '고객센터', icon: LifeBuoy },
@@ -80,6 +83,7 @@ export function PublicShellClient({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = React.useState(false);
+  const [lookupOpen, setLookupOpen] = React.useState(false);
   const myHref = viewer?.myHref ?? '/my';
   const nav = buildNav(myHref);
 
@@ -126,8 +130,13 @@ export function PublicShellClient({
                   <span>{m.label}</span>
                 </>
               );
-              return (
-                <Link key={m.href + m.label} href={m.href} onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-xl px-2 py-2 text-[14px] font-semibold text-ink-700 hover:bg-ink-50">
+              const drawerClass = 'flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-[14px] font-semibold text-ink-700 hover:bg-ink-50';
+              return m.lookup ? (
+                <button key={m.href + m.label} type="button" onClick={() => { setOpen(false); setLookupOpen(true); }} className={drawerClass}>
+                  {drawerContent}
+                </button>
+              ) : (
+                <Link key={m.href + m.label} href={m.href} onClick={() => setOpen(false)} className={drawerClass}>
                   {drawerContent}
                 </Link>
               );
@@ -196,7 +205,11 @@ export function PublicShellClient({
                   <span>{item.label}</span>
                 </>
               );
-              return <Link key={item.href + item.label} href={item.href} aria-current={active ? 'page' : undefined} className={cls}>{inner}</Link>;
+              return item.lookup ? (
+                <button key={item.href + item.label} type="button" onClick={() => setLookupOpen(true)} className={cls}>{inner}</button>
+              ) : (
+                <Link key={item.href + item.label} href={item.href} aria-current={active ? 'page' : undefined} className={cls}>{inner}</Link>
+              );
             })}
 
             <div className="mt-1.5 h-px w-8 bg-ink-100" />
@@ -276,10 +289,16 @@ export function PublicShellClient({
                 {t.label}
               </>
             );
-            return <Link key={t.href + t.label} href={t.href} className={cls}>{inner}</Link>;
+            return t.lookup ? (
+              <button key={t.href + t.label} type="button" onClick={() => setLookupOpen(true)} className={cls}>{inner}</button>
+            ) : (
+              <Link key={t.href + t.label} href={t.href} className={cls}>{inner}</Link>
+            );
           })}
         </div>
       </nav>
+
+      <DonationLookupSheet open={lookupOpen} onClose={() => setLookupOpen(false)} />
 
     </div>
   );

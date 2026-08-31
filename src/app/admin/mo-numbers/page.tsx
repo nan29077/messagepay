@@ -106,7 +106,7 @@ export default async function AdminMoNumbersPage({
 
         <div className="lg:col-span-2">
           <Notice tone="neutral" title="배정·회수 규칙">
-            승인된 크리에이터에게만 번호를 배정할 수 있습니다. 회수하면 크리에이터 연결이 끊기고 상태가 회수로
+            승인된 가맹점에게만 번호를 배정할 수 있습니다. 회수하면 가맹점 연결이 끊기고 상태가 회수로
             바뀌며, 해당 번호로 들어온 문자는 대상 없음으로 처리됩니다. 사용중지는 회선 해지 등 더 이상 사용하지 않는
             번호에 사용합니다. 모든 변경은 감사로그에 기록됩니다.
           </Notice>
@@ -142,7 +142,7 @@ export default async function AdminMoNumbersPage({
               <Th>키워드</Th>
               <Th>모드</Th>
               <Th>상태</Th>
-              <Th>배정 크리에이터</Th>
+              <Th>배정 가맹점</Th>
               <Th className="text-right">월 비용</Th>
               <Th>배정·회수</Th>
               <Th>배정</Th>
@@ -182,11 +182,11 @@ export default async function AdminMoNumbersPage({
                       values={{ id: n.id }}
                       name="creatorId"
                       options={[
-                        { value: '', label: '크리에이터 선택' },
+                        { value: '', label: '가맹점 선택' },
                         ...approvedCreators.map((c) => ({ value: c.id, label: `${c.displayName} (${c.code})` })),
                       ]}
                       submitLabel="배정"
-                      confirm="선택한 크리에이터에게 이 수신번호를 배정합니다."
+                      confirm="선택한 가맹점에게 이 수신번호를 배정합니다."
                     />
                   )}
                 </Td>

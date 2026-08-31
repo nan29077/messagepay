@@ -78,12 +78,12 @@ export default async function AdminDonorsPage({
   return (
     <>
       <PageHeader
-        title="후원자 관리"
-        description="문자만으로 생성된 후원자를 포함합니다. 전화번호는 마스킹, 계좌는 은행명과 끝 4자리만 표시합니다."
+        title="이용자 관리"
+        description="문자만으로 생성된 이용자를 포함합니다. 전화번호는 마스킹, 계좌는 은행명과 끝 4자리만 표시합니다."
       />
 
       <div className="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-        <StatTile label="전체 후원자" value={formatNumber(total)} sub="현재 조건 기준" />
+        <StatTile label="전체 이용자" value={formatNumber(total)} sub="현재 조건 기준" />
         <StatTile label="계좌 등록 완료" value={formatNumber(registeredCount)} tone="success" />
         <StatTile label="결제 실패 잠금" value={formatNumber(lockedCount)} tone={lockedCount > 0 ? 'warning' : 'neutral'} />
         <StatTile label="이용 제한" value={formatNumber(blockedCount)} tone={blockedCount > 0 ? 'danger' : 'neutral'} />
@@ -105,13 +105,13 @@ export default async function AdminDonorsPage({
       </FilterBar>
 
       <Notice tone="neutral" title="잠금과 이용 제한은 다릅니다">
-        결제 실패 잠금은 연속 실패로 자동 설정되며 관리자 해제 전까지 후원이 접수되지 않습니다. 이용 제한은 운영 판단에
+        결제 실패 잠금은 연속 실패로 자동 설정되며 관리자 해제 전까지 결제가 접수되지 않습니다. 이용 제한은 운영 판단에
         따른 수동 차단입니다.
       </Notice>
 
       <div className="mt-4">
         {donors.length === 0 ? (
-          <EmptyState title="조건에 맞는 후원자가 없습니다" />
+          <EmptyState title="조건에 맞는 이용자가 없습니다" />
         ) : (
           <>
             <Table className="min-w-[1100px]">
@@ -120,7 +120,7 @@ export default async function AdminDonorsPage({
                   <Th>연락처</Th>
                   <Th>등록일</Th>
                   <Th>계좌 등록</Th>
-                  <Th className="text-right">누적 후원</Th>
+                  <Th className="text-right">누적 결제</Th>
                   <Th className="text-right">실패</Th>
                   <Th>잠금·제한</Th>
                   <Th>개인 한도</Th>
@@ -223,7 +223,7 @@ export default async function AdminDonorsPage({
                               action={setDonorBlock}
                               values={{ donorId: d.id, next: 'UNBLOCK' }}
                               label="제한 해제"
-                              confirm="이 후원자의 이용 제한을 해제합니다."
+                              confirm="이 이용자의 이용 제한을 해제합니다."
                             />
                           ) : (
                             <details>
@@ -234,7 +234,7 @@ export default async function AdminDonorsPage({
                                   submitLabel="제한 적용"
                                   variant="danger"
                                   compact
-                                  confirm="이 후원자의 이용을 제한합니다. 이후 문자후원이 접수되지 않습니다."
+                                  confirm="이 이용자의 이용을 제한합니다. 이후 문자결제가 접수되지 않습니다."
                                 >
                                   <input type="hidden" name="donorId" value={d.id} />
                                   <input type="hidden" name="next" value="BLOCK" />

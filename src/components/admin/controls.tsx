@@ -153,7 +153,7 @@ export function JsonView({ value, maxLength = 1200 }: { value: unknown; maxLengt
   );
 }
 
-/** 크리에이터 선택용 Select 옵션 */
+/** 가맹점 선택용 Select 옵션 */
 export function CreatorOptions({
   creators,
   allLabel = '전체',

@@ -59,7 +59,7 @@ export default async function AdminInquiryDetailPage({ params }: { params: Promi
   const label = STATUS_LABEL[inquiry.status];
   const categoryLabel = SUPPORT_CATEGORIES.find((c) => c.value === inquiry.category)?.label ?? inquiry.category;
 
-  // 거래번호로 연결된 후원이 있으면 처리 근거를 바로 볼 수 있게 요약을 함께 보여준다.
+  // 거래번호로 연결된 결제가 있으면 처리 근거를 바로 볼 수 있게 요약을 함께 보여준다.
   const donation = inquiry.donationId
     ? await prisma.donation.findUnique({
         where: { id: inquiry.donationId },
@@ -148,14 +148,14 @@ export default async function AdminInquiryDetailPage({ params }: { params: Promi
                 <DataRow label="입력 거래번호" value={<span className="font-mono text-[12px]">{inquiry.transactionNo}</span>} />
                 {donation ? (
                   <>
-                    <DataRow label="후원 금액" value={`${formatNumber(donation.amount)}원`} />
+                    <DataRow label="결제 금액" value={`${formatNumber(donation.amount)}원`} />
                     <DataRow label="거래 상태" value={donation.status} />
-                    <DataRow label="크리에이터" value={`${donation.creator.displayName} (${donation.creator.code})`} />
+                    <DataRow label="가맹점" value={`${donation.creator.displayName} (${donation.creator.code})`} />
                     <DataRow label="수신 시각" value={formatKst(donation.receivedAt)} />
                   </>
                 ) : (
                   <p className="mt-1 text-[12px] leading-relaxed text-ink-400">
-                    입력한 거래번호로 후원 내역을 찾지 못했습니다. 오타 여부를 확인해 주세요.
+                    입력한 거래번호로 결제 내역을 찾지 못했습니다. 오타 여부를 확인해 주세요.
                   </p>
                 )}
               </div>

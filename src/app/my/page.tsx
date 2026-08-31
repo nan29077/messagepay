@@ -23,8 +23,8 @@ const REFUNDABLE: DonationStatus[] = [
 ];
 
 /**
- * 후원 내역.
- * 카드에는 크리에이터 / 후원 메시지 / 금액만 두고,
+ * 결제 내역.
+ * 카드에는 서비스 / 결제 메시지 / 금액만 두고,
  * 거래번호·송출 상태·환불처럼 가끔 필요한 정보는 접어둔다.
  */
 export default async function MyDonationsPage({
@@ -86,7 +86,7 @@ export default async function MyDonationsPage({
       {/* 요약 한 줄 */}
       <div className="flex items-end justify-between rounded-2xl bg-ink-900 px-5 py-4 text-white">
         <div>
-          <p className="text-[11.5px] font-semibold text-white/60">누적 후원</p>
+          <p className="text-[11.5px] font-semibold text-white/60">누적 결제</p>
           <p className="mt-1 text-[24px] font-black tracking-[-0.035em] tabular-nums">
             {formatWon(paidAgg._sum.amount ?? 0n)}
           </p>
@@ -97,7 +97,7 @@ export default async function MyDonationsPage({
       </div>
 
       {donations.length === 0 ? (
-        <EmptyState title="후원 내역이 없습니다" description="크리에이터의 후원 번호로 문자를 보내면 이곳에 표시됩니다." />
+        <EmptyState title="결제 내역이 없습니다" description="서비스에 안내된 번호로 문자를 보내 결제하면 이곳에 표시됩니다." />
       ) : (
         <ul className="space-y-2">
           {donations.map((d) => {

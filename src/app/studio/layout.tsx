@@ -7,7 +7,7 @@ import { getSessionUser, requireCreator } from '@/server/auth';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '크리에이터 관리자 | 문자페이',
+  title: '가맹점 관리자 | 문자페이',
   robots: { index: false, follow: false },
 };
 
@@ -16,21 +16,14 @@ const groups: NavGroup[] = [
     title: '현황',
     items: [
       { href: '/studio', label: '대시보드', icon: 'dashboard' },
-      { href: '/studio/donations', label: '후원 내역', icon: 'donations' },
+      { href: '/studio/donations', label: '결제 내역', icon: 'donations' },
       { href: '/studio/messages', label: '문자 관리', icon: 'messages' },
-    ],
-  },
-  {
-    title: '방송',
-    items: [
-      { href: '/studio/youtube', label: '유튜브 채널 연결', icon: 'youtube' },
-      { href: '/studio/overlay', label: '방송·오버레이', icon: 'overlay' },
     ],
   },
   {
     title: '운영',
     items: [
-      { href: '/studio/settings', label: '후원 설정', icon: 'settings' },
+      { href: '/studio/settings', label: '결제 설정', icon: 'settings' },
       { href: '/studio/moderation', label: '금칙어·차단', icon: 'moderation' },
       { href: '/studio/reports', label: '신고', icon: 'reports' },
     ],
@@ -92,12 +85,12 @@ export default async function StudioLayout({ children }: { children: React.React
 
   return (
     <ConsoleShell
-      title="크리에이터 관리자"
+      title="가맹점 관리자"
       groups={groups}
       user={{
         id: user.id,
-        name: user.name ?? '크리에이터',
-        role: '크리에이터',
+        name: user.name ?? '가맹점',
+        role: '가맹점',
         avatarUrl: user.creatorAvatarUrl,
         avatarSeed: user.creatorCode ?? user.id,
         avatarIndex: user.avatarIndex,

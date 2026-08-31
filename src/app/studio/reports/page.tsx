@@ -47,7 +47,7 @@ export default async function StudioReportsPage() {
 
       <div className="space-y-5">
         <Notice tone="neutral" title="신고는 통합 관리자가 처리합니다">
-          크리에이터는 신고 내용을 확인만 할 수 있고 상태를 직접 변경할 수 없습니다. 조치가 필요한 후원자는
+          가맹점은 신고 내용을 확인만 할 수 있고 상태를 직접 변경할 수 없습니다. 조치가 필요한 이용자는
           금칙어·차단 메뉴에서 직접 차단할 수 있습니다. 신고자 정보는 개인정보 보호를 위해 표시되지 않습니다.
         </Notice>
 

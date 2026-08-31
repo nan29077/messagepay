@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { X, Search, ShieldCheck, Info, ChevronRight, HeartHandshake } from 'lucide-react';
+import { X, Search, ShieldCheck, Info, ChevronRight, ReceiptText } from 'lucide-react';
 import { Badge, Button, Field, Input, Notice, cx } from '@/components/ui';
 import {
   requestLookupCode,
@@ -12,10 +12,10 @@ import {
 const initial: LookupState = { ok: false, step: 'phone' };
 
 /**
- * 후원확인 바텀시트.
+ * 결제내역 확인 바텀시트.
  *
- * 로그인 없이 휴대폰 번호로 후원 내역을 확인한다.
- * 후원 내역은 결제가 포함된 개인정보라, 번호 입력만으로는 열지 않고
+ * 로그인 없이 휴대폰 번호로 결제 내역을 확인한다.
+ * 결제 내역은 개인정보라, 번호 입력만으로는 열지 않고
  * 그 번호로 받은 문자 인증번호를 확인한 뒤에 보여준다.
  *
  * 높이는 화면의 약 2/3(66dvh~78dvh)로 올라오고 내부만 스크롤한다.
@@ -96,7 +96,7 @@ export function DonationLookupSheet({ open, onClose }: { open: boolean; onClose:
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="후원확인"
+        aria-label="결제내역 확인"
         className={cx(
           'absolute inset-x-0 bottom-0 mx-auto flex h-[72dvh] max-h-[720px] w-full max-w-[640px] flex-col',
           'rounded-t-[28px] bg-white shadow-[0_-18px_60px_rgba(23,22,26,0.28)] transition-transform duration-300 ease-out',
@@ -109,12 +109,12 @@ export function DonationLookupSheet({ open, onClose }: { open: boolean; onClose:
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
               <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-brand-200 bg-brand-400 text-ink-900 shadow-[0_6px_16px_rgba(237,166,0,0.22)]">
-                <HeartHandshake size={21} strokeWidth={1.85} />
+                <ReceiptText size={21} strokeWidth={1.85} />
               </span>
               <div>
-                <h2 className="text-[18px] font-black tracking-[-0.03em] text-ink-900">후원확인</h2>
+                <h2 className="text-[18px] font-black tracking-[-0.03em] text-ink-900">결제내역</h2>
                 <p className="mt-1 text-[12.5px] leading-relaxed text-ink-500">
-                  로그인 없이 휴대폰 번호로 내 후원 내역을 확인합니다.
+                  로그인 없이 휴대폰 번호로 내 결제 내역을 확인합니다.
                 </p>
               </div>
             </div>
@@ -136,7 +136,7 @@ export function DonationLookupSheet({ open, onClose }: { open: boolean; onClose:
               <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3.5">
                 <p className="flex items-center gap-1.5 text-[12.5px] font-bold text-brand-800">
                   <Info size={14} strokeWidth={2} />
-                  후원내역 확인 안내
+                  결제내역 확인 안내
                 </p>
                 <ul className="mt-2 space-y-1.5 text-[12.5px] leading-relaxed text-ink-700">
                   <li>· 문자를 보낸 휴대폰 번호를 그대로 입력해 주세요.</li>
@@ -166,7 +166,7 @@ export function DonationLookupSheet({ open, onClose }: { open: boolean; onClose:
               </Button>
 
               <p className="text-center text-[11.5px] leading-relaxed text-ink-400">
-                후원 내역에는 결제 정보가 포함되어 있어 번호 인증을 거칩니다.
+                결제 내역은 개인정보이므로 휴대폰 번호 인증을 거칩니다.
               </p>
             </form>
           ) : null}
@@ -200,7 +200,7 @@ export function DonationLookupSheet({ open, onClose }: { open: boolean; onClose:
               {!verifyState.ok && verifyState.message ? <Notice tone="danger">{verifyState.message}</Notice> : null}
 
               <Button type="submit" size="lg" disabled={verifying}>
-                {verifying ? '확인 중' : '후원내역 확인'}
+                {verifying ? '확인 중' : '결제내역 확인'}
               </Button>
 
               <button
@@ -228,15 +228,14 @@ export function DonationLookupSheet({ open, onClose }: { open: boolean; onClose:
                     누적 {result.totalAmount} · {result.totalCount}건
                   </p>
                 </div>
-                {result.registered ? <Badge tone="success">계좌 등록됨</Badge> : <Badge tone="neutral">계좌 미등록</Badge>}
+                {result.registered ? <Badge tone="success">결제수단 등록됨</Badge> : <Badge tone="neutral">결제수단 미등록</Badge>}
               </div>
 
               {result.items.length === 0 ? (
                 <div className="rounded-2xl border border-ink-100 px-4 py-8 text-center">
-                  <p className="text-[14px] font-bold text-ink-900">후원 내역이 없습니다</p>
+                  <p className="text-[14px] font-bold text-ink-900">결제 내역이 없습니다</p>
                   <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-500">
-                    이 번호로 접수된 문자후원이 없습니다. 크리에이터의 후원 번호로 문자를 보내면 이곳에서 확인할 수
-                    있습니다.
+                    이 번호로 처리된 문자결제가 없습니다. 서비스에 안내된 번호로 문자를 보내 결제하면 이곳에서 확인할 수 있습니다.
                   </p>
                 </div>
               ) : (

@@ -6,7 +6,7 @@ import { cx } from '@/components/ui';
 
 /**
  * 복사 관련 클라이언트 컴포넌트.
- * 비밀값(오버레이 URL, 스트림 키)은 서버가 발급 직후 1회만 내려주며 여기서만 화면에 표시한다.
+ * 비밀값(API 키 등)은 서버가 발급 직후 1회만 내려주며 여기서만 화면에 표시한다.
  */
 
 async function writeClipboard(value: string): Promise<boolean> {

@@ -48,7 +48,7 @@ export default async function AdminHolidaysPage({
     <>
       <PageHeader
         title="공휴일 관리"
-        description="여기 등록한 날짜는 토·일과 함께 정산일(후원일 다음날부터 영업일 5일째) 계산에서 영업일이 아닌 날로 제외됩니다. 임시공휴일이 지정되면 배포 없이 바로 추가해 주세요."
+        description="여기 등록한 날짜는 토·일과 함께 정산일(결제일 다음날부터 영업일 5일째) 계산에서 영업일이 아닌 날로 제외됩니다. 임시공휴일이 지정되면 배포 없이 바로 추가해 주세요."
       />
 
       {missingYears.length > 0 ? (
@@ -190,7 +190,7 @@ export default async function AdminHolidaysPage({
 
       <div className="mt-5">
         <Notice tone="neutral" title="정산일 계산 규칙">
-          정산일 = 후원일 다음날부터 영업일 5일째. 예) 2026-08-03(월) 후원 → 2026-08-10(월) 정산. 금·토·일 후원은
+          정산일 = 결제일 다음날부터 영업일 5일째. 예) 2026-08-03(월) 결제 → 2026-08-10(월) 정산. 금·토·일 결제는
           다음 주 금요일로 모입니다. 영업일은 토·일과 이 표에 등록된(사용 상태인) 날짜를 뺀 날입니다.
         </Notice>
       </div>

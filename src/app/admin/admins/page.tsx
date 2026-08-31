@@ -77,7 +77,7 @@ export default async function AdminAdminsPage() {
         <div className="mt-5">
           <SectionTitle
             title="관리자 추가"
-            description="기존에 가입된 계정을 관리자로 승격합니다. 크리에이터 계정은 겸직할 수 없습니다."
+            description="기존에 가입된 계정을 관리자로 승격합니다. 가맹점 계정은 겸직할 수 없습니다."
           />
           <Card>
             <ActionForm
