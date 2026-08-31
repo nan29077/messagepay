@@ -27,8 +27,8 @@ export default async function MyAccountPage() {
     return (
       <div className="space-y-5" id="phone-link">
         <Notice tone="brand" title="휴대폰 번호를 연결해 주세요">
-          문자후원 내역은 휴대전화 번호를 기준으로 기록됩니다. 아래에서 본인 번호를 인증하면 해당 번호의
-          후원·결제 내역이 이 계정에 연결됩니다.
+          문자결제 내역은 휴대전화 번호를 기준으로 기록됩니다. 아래에서 본인 번호를 인증하면 해당 번호의
+          결제·결제 내역이 이 계정에 연결됩니다.
         </Notice>
         <PhoneLinkForm linkedPhoneMasked={null} />
       </div>
@@ -68,20 +68,20 @@ export default async function MyAccountPage() {
       <section id="phone-link">
         <SectionTitle
           title="휴대폰 번호"
-          description="문자후원의 후원자 식별 기준입니다. 번호를 변경하면 새 번호의 내역이 표시됩니다."
+          description="문자결제의 이용자 식별 기준입니다. 번호를 변경하면 새 번호의 내역이 표시됩니다."
         />
         <PhoneLinkForm linkedPhoneMasked={donor?.phoneMasked ?? null} />
       </section>
 
       {/*
-        방송 닉네임.
-        설정하지 않으면 번호 끝 4자리(후원자5678)로 표시되므로,
+        표시 이름.
+        설정하지 않으면 번호 끝 4자리(이용자5678)로 표시되므로,
         번호 섹션 바로 아래에 두어 "번호 대신 이렇게 보인다"는 흐름으로 읽히게 한다.
       */}
       <section id="nickname">
         <SectionTitle
-          title="방송 닉네임"
-          description="크리에이터 화면과 방송 오버레이·유튜브 채팅에 표시되는 이름입니다."
+          title="표시 이름"
+          description="결제 내역과 가맹점 화면에 표시되는 이름입니다."
         />
         <NicknameForm
           current={donor?.displayName ?? null}
@@ -100,8 +100,8 @@ export default async function MyAccountPage() {
                 <CardTitle>{active.method === 'CARD' ? '등록된 결제 카드' : '등록된 출금 계좌'}</CardTitle>
                 <p className="mt-1 text-[13px] text-ink-500">
                   {active.method === 'CARD'
-                    ? '문자후원 시 이 카드로 후원금이 결제됩니다.'
-                    : '문자후원 시 이 계좌에서 후원금이 출금됩니다.'}
+                    ? '문자결제 시 이 카드로 결제 금액이 결제됩니다.'
+                    : '문자결제 시 이 계좌에서 결제 금액이 출금됩니다.'}
                 </p>
               </div>
             </div>
@@ -136,7 +136,7 @@ export default async function MyAccountPage() {
             <div>
               <CardTitle>등록된 계좌가 없습니다</CardTitle>
               <p className="mt-1 text-[13px] leading-relaxed text-ink-500">
-                자동출금 동의가 해지되었거나 아직 계좌를 등록하지 않았습니다. 크리에이터의 후원 번호로 문자를 보내면
+                자동출금 동의가 해지되었거나 아직 계좌를 등록하지 않았습니다. 가맹점의 결제 수신번호로 문자를 보내면
                 등록 안내 문자가 발송됩니다.
               </p>
             </div>
@@ -148,12 +148,12 @@ export default async function MyAccountPage() {
         <section>
           <SectionTitle
             title="자동출금 동의 해지"
-            description="해지하면 등록된 결제수단이 즉시 폐기되고 이후 문자후원이 접수되지 않습니다."
+            description="해지하면 등록된 결제수단이 즉시 폐기되고 이후 문자결제가 접수되지 않습니다."
           />
           <Card>
             <Notice tone="warning" title="해지 전에 확인해 주세요">
               <ul className="list-disc space-y-1 pl-4">
-                <li>이미 결제가 완료된 후원은 해지와 무관하게 유지됩니다.</li>
+                <li>이미 결제가 완료된 결제는 해지와 무관하게 유지됩니다.</li>
                 <li>결제 확인을 기다리는 요청이 있다면 해지 후 결제되지 않습니다.</li>
                 <li>다시 이용하려면 문자를 보내 계좌를 새로 등록해야 합니다.</li>
               </ul>
@@ -174,8 +174,8 @@ export default async function MyAccountPage() {
               <div>
                 <p className="text-[13.5px] font-bold text-ink-900">문자를 다시 보내주세요</p>
                 <p className="mt-1 text-[12.5px] leading-relaxed text-ink-500">
-                  크리에이터의 후원 번호로 문자를 보내면 계좌 등록용 1회용 보안 링크가 문자로 발송됩니다. 링크에서 계좌
-                  등록과 출금이체 동의를 마치면 다시 문자후원을 이용할 수 있습니다. 이때 보낸 문자는 후원으로 접수되지
+                  가맹점의 결제 수신번호로 문자를 보내면 계좌 등록용 1회용 보안 링크가 문자로 발송됩니다. 링크에서 계좌
+                  등록과 출금이체 동의를 마치면 다시 문자결제를 이용할 수 있습니다. 이때 보낸 문자는 결제로 접수되지
                   않습니다.
                 </p>
                 <LinkButton href="/how-it-works" variant="secondary" size="sm" className="mt-2.5">
@@ -214,12 +214,12 @@ export default async function MyAccountPage() {
       ) : null}
 
       <section>
-        <SectionTitle title="설정" description="후원 한도와 차단, 동의 이력을 관리합니다." />
+        <SectionTitle title="설정" description="결제 한도와 차단, 동의 이력을 관리합니다." />
         <Card padded={false}>
           <ul>
             {[
-              { href: '/my/limits', label: '후원 한도', desc: '일일·월간 한도를 더 낮게 설정', icon: SlidersHorizontal },
-              { href: '/my/blocks', label: '후원 차단', desc: '특정 크리에이터 후원 차단', icon: Ban },
+              { href: '/my/limits', label: '결제 한도', desc: '일일·월간 한도를 더 낮게 설정', icon: SlidersHorizontal },
+              { href: '/my/blocks', label: '결제 차단', desc: '특정 가맹점 결제 차단', icon: Ban },
               { href: '/my/consents', label: '동의 이력', desc: '약관 동의 기록과 마케팅 수신', icon: FileText },
             ].map((m) => {
               const Icon = m.icon;

@@ -8,8 +8,8 @@ import { SupportWidget } from '@/components/public/support-widget';
 /**
  * 공개 영역 레이아웃 (서버 래퍼).
  * 세션 사용자를 조회해 클라이언트 셸에 전달한다.
- * - 마이페이지 탭은 역할에 따라 통합 관리자(/admin), 크리에이터 스튜디오(/studio),
- *   후원자 마이페이지(/my)로 이동한다. 비로그인 시 /my 접근은 로그인으로 유도된다.
+ * - 마이페이지 탭은 역할에 따라 통합 관리자(/admin), 가맹점 스튜디오(/studio),
+ *   이용자 마이페이지(/my)로 이동한다. 비로그인 시 /my 접근은 로그인으로 유도된다.
  */
 export async function PublicShell({
   children,
@@ -20,7 +20,7 @@ export async function PublicShell({
 }) {
   const user = await getSessionUser().catch(() => null);
 
-  // 크리에이터는 프로필 캐릭터(아바타)를 우측 메뉴 프로필에도 그대로 보여준다.
+  // 가맹점은 프로필 캐릭터(아바타)를 우측 메뉴 프로필에도 그대로 보여준다.
   const creatorAvatar =
     user?.role === 'CREATOR' && user.creatorId
       ? (
@@ -37,7 +37,7 @@ export async function PublicShell({
         name: user.name,
         email: user.email,
         myHref: user.role === 'ADMIN' ? '/admin' : user.role === 'CREATOR' ? '/studio' : '/my',
-        roleLabel: user.role === 'ADMIN' ? '관리자' : user.role === 'CREATOR' ? '크리에이터' : '후원자',
+        roleLabel: user.role === 'ADMIN' ? '관리자' : user.role === 'CREATOR' ? '가맹점' : '이용자',
         avatarUrl: creatorAvatar?.avatarUrl ?? null,
         avatarSeed: creatorAvatar?.code ?? user.id,
         avatarIndex: user.avatarIndex,

@@ -11,12 +11,12 @@ import {
 } from '@/app/actions/web-donation-pin';
 
 /**
- * 후원샵 PC 웹 후원 패널 — 결제사 PIN 인증 흐름.
+ * 결제 페이지 PC 웹 결제 패널 — 결제사 PIN 인증 흐름.
  *
  *   금액·메시지 작성 → 휴대전화 번호 입력 → PIN 링크 문자 발송
  *   → 대기 화면(유효시간 카운트다운 + 상태 폴링) → 결제 완료
  *
- * 이 화면에서는 결제가 일어나지 않는다. 결제는 후원자가 문자로 받은 링크에서
+ * 이 화면에서는 결제가 일어나지 않는다. 결제는 이용자가 문자로 받은 링크에서
  * PIN 을 입력해야 완료되며, 입력하지 않으면 유효시간이 지나 자동 취소된다.
  *
  * 구(舊) 즉시결제 화면은 web-donation-panel.tsx 에 그대로 남아 있고
@@ -69,9 +69,9 @@ export function WebDonationPinPanel({
   const [message, setMessage] = React.useState('');
 
   /**
-   * 후원 멱등키.
+   * 결제 멱등키.
    * 금액·메시지를 확정한 시점에 1회 생성해 고정한다. 제출할 때마다 새로 만들면
-   * 더블클릭·새로고침 재전송이 서로 다른 키가 되어 같은 후원이 두 건 만들어진다.
+   * 더블클릭·새로고침 재전송이 서로 다른 키가 되어 같은 결제가 두 건 만들어진다.
    */
   const [requestId, setRequestId] = React.useState('');
   const newRequestId = () =>
@@ -173,7 +173,7 @@ export function WebDonationPinPanel({
       {paymentMock ? (
         <div className="mb-3">
           <Notice tone="warning" title="현재 모의(mock) 결제 상태입니다">
-            내통장결제·유튜브 전송이 아직 실제 연동 전이라 실제 출금이나 유튜브 댓글 등록은 일어나지 않습니다. 계약과
+            내통장결제가 아직 실제 연동 전이라 실제 출금은 일어나지 않습니다. 계약과
             연동이 완료되면 이 화면 그대로 실제 결제로 전환됩니다.
           </Notice>
         </div>
@@ -184,18 +184,18 @@ export function WebDonationPinPanel({
         <div>
           <button type="button" onClick={() => setStarted(true)} className={ctaClass}>
             <MessageSquare size={18} strokeWidth={1.7} />
-            문자후원하기
+            문자결제하기
           </button>
           <p className="mt-2.5 text-center text-[11.5px] leading-relaxed text-ink-400">
-            금액과 응원 메시지를 고르면 결제 PIN 입력 링크를 문자로 보내드립니다. PIN 을 입력하면 후원이 완료되고,
-            메시지가 유튜브 라이브 채팅과 방송 화면에 표시됩니다.
+            금액과 메모를 고르면 결제 PIN 입력 링크를 문자로 보내드립니다. PIN 을 입력하면 결제가 완료되고,
+            가맹 서비스에 충전이 반영됩니다.
           </p>
         </div>
       ) : (
         <>
           {/* 단계 표시 */}
           <div className="mb-4 flex items-center gap-1.5">
-            {(['금액·메시지', '번호 입력', 'PIN 입력', '후원 완료'] as const).map((label, i) => {
+            {(['금액·메시지', '번호 입력', 'PIN 입력', '결제 완료'] as const).map((label, i) => {
               const idx =
                 phase === 'compose' ? 0 : phase === 'done' ? 3 : phase === 'waiting' ? 2 : 1;
               const on = i <= idx;
@@ -219,7 +219,7 @@ export function WebDonationPinPanel({
           {phase === 'compose' ? (
             <div className="space-y-4">
               <div>
-                <p className="text-[13px] font-bold text-ink-900">후원 금액</p>
+                <p className="text-[13px] font-bold text-ink-900">결제 금액</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {amountChips.map((v) => {
                     const active = amountMode === 'preset' && amount === v;
@@ -272,13 +272,13 @@ export function WebDonationPinPanel({
               </div>
 
               <div>
-                <p className="text-[13px] font-bold text-ink-900">후원 메시지</p>
+                <p className="text-[13px] font-bold text-ink-900">결제 메시지</p>
                 <textarea
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   rows={3}
                   maxLength={200}
-                  placeholder={`${creatorName} 님에게 전할 응원 메시지 (200자 이내). 결제 완료 후 유튜브 라이브 채팅과 방송 화면에 표시됩니다.`}
+                  placeholder={`${creatorName} 님에게 남길 메모 (200자 이내). 결제 내역에 함께 저장됩니다.`}
                   className="mt-2 w-full resize-none rounded-xl border border-ink-200 px-3.5 py-3 text-[14px] leading-relaxed outline-none transition-colors focus:border-brand-400"
                 />
               </div>
@@ -293,7 +293,7 @@ export function WebDonationPinPanel({
                 className={ctaClass}
               >
                 {composeValid && effectiveAmount !== null
-                  ? `${formatWon(effectiveAmount)} 후원 진행 (번호 입력)`
+                  ? `${formatWon(effectiveAmount)} 결제 진행 (번호 입력)`
                   : '금액과 메시지를 입력해 주세요'}
               </button>
             </div>
@@ -314,7 +314,7 @@ export function WebDonationPinPanel({
 
                 <div className="rounded-xl bg-ink-50 px-4 py-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-[13px] font-semibold text-ink-500">후원 금액</span>
+                    <span className="text-[13px] font-semibold text-ink-500">결제 금액</span>
                     <span className="text-[20px] font-extrabold tracking-tight text-brand-700">
                       {amountValid && effectiveAmount !== null ? formatWon(effectiveAmount) : '-'}
                     </span>
@@ -341,7 +341,7 @@ export function WebDonationPinPanel({
                 {view.message && !view.ok ? <Notice tone="warning">{view.message}</Notice> : null}
               </form>
               <p className="text-center text-[11.5px] leading-relaxed text-ink-400">
-                이 단계에서는 출금되지 않습니다. 문자로 받은 링크에서 PIN 을 입력해야 후원이 완료됩니다.
+                이 단계에서는 출금되지 않습니다. 문자로 받은 링크에서 PIN 을 입력해야 결제가 완료됩니다.
               </p>
               <button
                 type="button"
@@ -357,7 +357,7 @@ export function WebDonationPinPanel({
           {phase === 'register' ? (
             <div className="space-y-3">
               <Notice tone="warning" title="결제수단 등록이 필요합니다">
-                처음 한 번만 본인 명의 계좌를 등록하면 이후에는 바로 후원할 수 있습니다. 등록 링크는 입력하신 번호로
+                처음 한 번만 본인 명의 계좌를 등록하면 이후에는 바로 결제할 수 있습니다. 등록 링크는 입력하신 번호로
                 문자를 보내 드립니다.
               </Notice>
               {view.message ? <Notice tone="neutral">{view.message}</Notice> : null}
@@ -391,7 +391,7 @@ export function WebDonationPinPanel({
                 </p>
                 <p className="mt-1 text-[13px] leading-relaxed text-ink-600">
                   {view.phoneMasked ? `${view.phoneMasked} 번호로 ` : ''}보낸 문자의 링크를 열어 결제 PIN 을 입력하면
-                  후원이 완료됩니다.
+                  결제가 완료됩니다.
                 </p>
                 {expiresAtMs > 0 ? (
                   <span
@@ -414,7 +414,7 @@ export function WebDonationPinPanel({
 
               {expired ? (
                 <Notice tone="warning" title="링크가 만료됐습니다">
-                  PIN 입력 시간이 지나 후원이 자동 취소됩니다. 결제는 진행되지 않았습니다. 다시 시도해 주세요.
+                  PIN 입력 시간이 지나 결제가 자동 취소됩니다. 결제는 진행되지 않았습니다. 다시 시도해 주세요.
                 </Notice>
               ) : (
                 <Notice tone="brand">
@@ -438,7 +438,7 @@ export function WebDonationPinPanel({
               <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-brand-100 text-brand-700">
                 <Check size={26} strokeWidth={2.2} />
               </span>
-              <p className="text-[16px] font-extrabold text-ink-900">후원이 완료되었습니다</p>
+              <p className="text-[16px] font-extrabold text-ink-900">결제가 완료되었습니다</p>
               <p className="text-[13px] leading-relaxed text-ink-500">
                 {view.message}
                 {view.transactionNo ? (
@@ -450,7 +450,7 @@ export function WebDonationPinPanel({
                 onClick={restart}
                 className="mx-auto h-10 rounded-xl border border-ink-200 px-4 text-[13px] font-bold text-ink-700"
               >
-                한 번 더 후원하기
+                한 번 더 충전하기
               </button>
             </div>
           ) : null}
@@ -458,7 +458,7 @@ export function WebDonationPinPanel({
           {/* 4-1. 실패·만료 */}
           {phase === 'failed' ? (
             <div className="space-y-3">
-              <Notice tone="warning" title="후원이 완료되지 않았습니다">
+              <Notice tone="warning" title="결제가 완료되지 않았습니다">
                 {view.message}
               </Notice>
               <button type="button" onClick={restart} className={ctaClass}>
@@ -471,7 +471,7 @@ export function WebDonationPinPanel({
 
       <p className="mt-4 flex items-center justify-center gap-1.5 border-t border-ink-100 pt-3 text-[11.5px] text-ink-400">
         <Smartphone size={13} strokeWidth={1.8} />
-        휴대전화에서는 문자후원하기 버튼 한 번으로 더 간단하게 후원할 수 있습니다.
+        휴대전화에서는 문자결제하기 버튼 한 번으로 더 간단하게 결제할 수 있습니다.
       </p>
     </div>
   );

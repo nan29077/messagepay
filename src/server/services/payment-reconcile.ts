@@ -12,15 +12,15 @@ import * as tpl from './mt-templates';
  * 왜 사람이 판단하는가
  *  결제사 응답이 끊긴 건은 **실제로 출금이 되었는지 시스템이 알 수 없다.**
  *  자동으로 실패 처리하면 출금된 돈이 정산되지 않고, 자동으로 성공 처리하면
- *  받지도 않은 돈을 크리에이터에게 지급한다. 그래서 관리자가 PG 관리자 화면에서
+ *  받지도 않은 돈을 가맹점에게 지급한다. 그래서 관리자가 PG 관리자 화면에서
  *  대사한 뒤 이 함수로 결론만 반영한다.
  *
  * 절대 원칙
  *  1) UNKNOWN / TIMEOUT 상태의 결제 거래에만 적용한다. 이미 확정된 건은 건드리지 않는다.
  *  2) 승인 확정은 executePayment 의 승인 경로와 **같은 장부 처리**를 한다.
- *     (수수료 계산 + 정산 원장 분개 + 후원자-크리에이터 누적)
+ *     (수수료 계산 + 정산 원장 분개 + 이용자-가맹점 누적)
  *  3) 방송 송출은 다시 하지 않는다. 대사는 보통 몇 시간 뒤에 이루어지므로
- *     그때 오버레이/유튜브로 알림이 나가면 시청자에게 잘못된 시점의 후원이 보인다.
+ *     그때 오버레이/유튜브로 알림이 나가면 이용자에게 잘못된 시점의 결제가 보인다.
  *  4) 취소 확정은 예약해 둔 한도 집계를 되돌린다(출금이 없었으므로 한도를 쓰지 않는다).
  */
 
@@ -74,7 +74,7 @@ export async function reconcileUnknownPayment(
       creator: { select: { displayName: true, thanksMtMessage: true } },
     },
   });
-  if (!donation) throw new Error('후원 거래를 찾을 수 없습니다.');
+  if (!donation) throw new Error('결제 거래를 찾을 수 없습니다.');
 
   return decision === 'APPROVE'
     ? confirmApproved(txn, donation, memo)
@@ -108,7 +108,7 @@ type DonationRow = {
  */
 async function confirmApproved(txn: TxnRow, donation: DonationRow, memo: string): Promise<ReconcileResult> {
   if (donation.status !== 'PENDING_PAYMENT') {
-    throw new Error(`후원 상태가 결제 진행중(PENDING_PAYMENT)이 아닙니다. 현재 상태: ${donation.status}`);
+    throw new Error(`결제 상태가 결제 진행중(PENDING_PAYMENT)이 아닙니다. 현재 상태: ${donation.status}`);
   }
 
   const approvedAt = new Date();
@@ -119,7 +119,7 @@ async function confirmApproved(txn: TxnRow, donation: DonationRow, memo: string)
     //
     // 위의 상태 확인은 트랜잭션 밖에서 읽은 값이라, 관리자 두 명이 같은 건을 동시에
     // 확정하거나 요청이 중복 도달하면 둘 다 통과한 뒤 아래 장부 처리가 두 번 돌 수 있다.
-    // 그러면 후원자-크리에이터 누적 금액·건수가 실제보다 부풀고 완료 문자도 두 번 나간다.
+    // 그러면 이용자-가맹점 누적 금액·건수가 실제보다 부풀고 완료 문자도 두 번 나간다.
     // PIN 세션·환불·보안링크가 쓰는 것과 같은 방식으로 맞춘다.
     const claimedTxn = await tx.paymentTransaction.updateMany({
       where: { id: txn.id, status: { in: [...RECONCILABLE] } },
@@ -234,12 +234,12 @@ async function confirmApproved(txn: TxnRow, donation: DonationRow, memo: string)
 /** 출금이 없었던 것으로 확인된 경우. */
 async function confirmCanceled(txn: TxnRow, donation: DonationRow, memo: string): Promise<ReconcileResult> {
   if (donation.status !== 'PENDING_PAYMENT') {
-    throw new Error(`후원 상태가 결제 진행중(PENDING_PAYMENT)이 아닙니다. 현재 상태: ${donation.status}`);
+    throw new Error(`결제 상태가 결제 진행중(PENDING_PAYMENT)이 아닙니다. 현재 상태: ${donation.status}`);
   }
 
   // 승인 경로와 같은 이유로 선점한다.
   // 취소가 두 번 돌면 rollbackCounters 가 두 번 실행되어 일·월 한도 집계가
-  // 실제보다 더 깎이고, 그만큼 후원자가 정책 한도를 넘겨 후원할 수 있게 된다.
+  // 실제보다 더 깎이고, 그만큼 이용자가 정책 한도를 넘겨 결제할 수 있게 된다.
   const claimed = await prisma.paymentTransaction.updateMany({
     where: { id: txn.id, status: { in: [...RECONCILABLE] } },
     data: {

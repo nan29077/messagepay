@@ -9,7 +9,7 @@ import { validateDonorName } from './donor-name';
 import type { ConsentType, PaymentMethodKind } from '@/generated/prisma/enums';
 
 /**
- * 후원자 계좌 등록 (헥토 내통장결제 0원 인증 후 빌키 발급 흐름).
+ * 이용자 계좌 등록 (헥토 내통장결제 0원 인증 후 빌키 발급 흐름).
  *
  * 저장 규칙
  *  - 계좌번호 원문과 인증정보는 문자페이 DB 에 저장하지 않는다.
@@ -31,7 +31,7 @@ export async function loadRegistrationContext(token: string): Promise<
   const res = await resolveSecureLink(token);
   if (!res.ok) {
     const reason =
-      res.reason === 'EXPIRED' ? '가입 링크가 만료되었습니다. 크리에이터 번호로 문자를 다시 보내면 새 링크가 발송됩니다.'
+      res.reason === 'EXPIRED' ? '가입 링크가 만료되었습니다. 가맹점 번호로 문자를 다시 보내면 새 링크가 발송됩니다.'
       : res.reason === 'USED' ? '이미 사용된 링크입니다.'
       : '유효하지 않은 링크입니다.';
     return { ok: false, reason };
@@ -40,7 +40,7 @@ export async function loadRegistrationContext(token: string): Promise<
   if (link.purpose !== 'REGISTER_ACCOUNT') return { ok: false, reason: '용도가 다른 링크입니다.' };
 
   const donor = await prisma.donorProfile.findUnique({ where: { phoneHash: link.phoneHash } });
-  if (!donor) return { ok: false, reason: '후원자 정보를 찾을 수 없습니다.' };
+  if (!donor) return { ok: false, reason: '이용자 정보를 찾을 수 없습니다.' };
 
   const creator = link.creatorId
     ? await prisma.creatorProfile.findUnique({ where: { id: link.creatorId } })
@@ -93,7 +93,7 @@ export async function startRegistration(input: {
   }
 
   const donor = await prisma.donorProfile.findUnique({ where: { id: ctx.donorId } });
-  if (!donor) throw new Error('후원자 정보를 찾을 수 없습니다.');
+  if (!donor) throw new Error('이용자 정보를 찾을 수 없습니다.');
 
   // 방송 닉네임(선택). 결제창으로 넘어가기 전에 저장해 둔다.
   // 결제창에서 이탈해도 닉네임은 남으므로 다시 등록할 때 또 입력하지 않아도 된다.

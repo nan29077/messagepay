@@ -3,17 +3,17 @@ import { containsBannedWord } from '@/server/services/content-filter';
 import { checkDonorName, type DonorNameCheck } from '@/lib/donor-name';
 
 /**
- * 후원자 닉네임 저장 전 검증 (서버 전용).
+ * 이용자 닉네임 저장 전 검증 (서버 전용).
  *
  * 닉네임은 방송 오버레이·TTS·유튜브 라이브 채팅에 그대로 노출되므로
- * 후원 메시지와 같은 금칙어 기준을 적용한다.
+ * 결제 메시지와 같은 금칙어 기준을 적용한다.
  *
  * 메시지 필터(filterContent)와 달리 여기서는 마스킹하지 않고 **거절**한다.
  * 닉네임은 한 번 정하면 계속 쓰이는 값이라, 별표로 가려진 이름이 남는 것보다
  * 다시 입력하게 하는 편이 낫다.
  */
 
-/** 전역 금칙어(크리에이터별 금칙어는 적용하지 않는다 — 닉네임은 특정 채널 소유가 아니다) */
+/** 전역 금칙어(가맹점별 금칙어는 적용하지 않는다 — 닉네임은 특정 채널 소유가 아니다) */
 async function loadGlobalBannedWords(): Promise<string[]> {
   const rows = await prisma.bannedWord.findMany({
     where: { active: true, scope: 'GLOBAL' },

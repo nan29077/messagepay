@@ -28,7 +28,7 @@ export function SignupForm() {
         </div>
       </div>
 
-      <Field label="이름" required hint="후원 내역 확인 시 사용할 이름입니다.">
+      <Field label="이름" required hint="결제 내역 확인 시 사용할 이름입니다.">
         <Input name="name" required maxLength={20} defaultValue={state.values?.name} autoComplete="name" placeholder="홍길동" />
       </Field>
 

@@ -202,9 +202,9 @@ export function allowLegacyConfirmLink(): boolean {
 }
 
 /**
- * 후원샵 PC 웹 후원에서 구(舊) 즉시 결제를 계속 쓸지 여부. **deprecated**
+ * 결제 페이지 PC 웹 결제에서 구(舊) 즉시 결제를 계속 쓸지 여부. **deprecated**
  *
- * 기본값 false — 웹 후원도 결제사 PIN 인증 링크를 문자로 보내고, PIN 입력 후에 결제된다.
+ * 기본값 false — 웹 결제도 결제사 PIN 인증 링크를 문자로 보내고, PIN 입력 후에 결제된다.
  * 되돌림(롤백)이 필요할 때만 ALLOW_LEGACY_WEB_INSTANT_PAY=true 로 연다.
  * (allowLegacyConfirmLink 와 같은 이유로 함수로 노출한다)
  */

@@ -72,7 +72,7 @@ export default async function MyConsentsPage() {
       {records.length === 0 ? (
         <EmptyState
           title="동의 이력이 없습니다"
-          description="문자후원 계좌 등록 과정에서 약관에 동의하면 이곳에 기록이 표시됩니다."
+          description="문자결제 계좌 등록 과정에서 약관에 동의하면 이곳에 기록이 표시됩니다."
         />
       ) : (
         <div className="space-y-2.5">

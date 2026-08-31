@@ -8,7 +8,7 @@ import { requestDonationRefund, type DonorActionState } from '@/app/actions/dono
 const initial: DonorActionState = { ok: false };
 
 /**
- * 후원 건별 환불 요청.
+ * 결제 건별 환불 요청.
  * - 이미 요청된 건은 버튼이 비활성화된다.
  * - 소유권 검증은 서버 액션에서 다시 수행한다.
  */

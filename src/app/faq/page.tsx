@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: '자주 묻는 질문 | 문자페이',
-  description: '문자후원 이용, 계좌 등록, 한도, 환불, 방송 노출에 대해 자주 묻는 질문을 모았습니다.',
+  description: '문자결제 이용, 계좌 등록, 한도, 환불, 충전 반영에 대해 자주 묻는 질문을 모았습니다.',
 };
 
 const UNCATEGORIZED = '기타';
@@ -73,7 +73,7 @@ export default async function FaqPage() {
         <Card>
           <CardTitle>답을 찾지 못하셨나요</CardTitle>
           <p className="mt-1.5 text-[13px] leading-relaxed text-ink-500">
-            후원 취소·환불, 계좌 등록 오류, 방송 노출 문제는 거래번호와 함께 문의해 주시면 더 빠르게 확인할 수 있습니다.
+            결제 취소·환불, 계좌 등록 오류, 충전 반영 문제는 거래번호와 함께 문의해 주시면 더 빠르게 확인할 수 있습니다.
           </p>
           <LinkButton href="/support" variant="secondary" size="md" className="mt-3">
             고객센터 문의하기

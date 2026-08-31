@@ -8,9 +8,9 @@ import { checkDonorName } from '@/lib/donor-name';
 import { validateDonorName } from '@/server/services/donor-name';
 
 /**
- * 문자후원 결제 확인 서버 액션.
+ * 문자결제 결제 확인 서버 액션.
  * - 보안링크는 1회용이므로 서버에서 중복 클릭이 방어된다.
- * - 결제가 실패하면 실패로 그대로 안내한다. 실패 건은 방송에 노출되지 않는다.
+ * - 결제가 실패하면 실패로 그대로 안내한다. 실패 건은 충전으로 반영되지 않는다.
  */
 
 export interface ConfirmActionResult {
@@ -42,7 +42,7 @@ export async function confirmDonationAction(token: string): Promise<ConfirmActio
     });
     return {
       ok: true,
-      message: outcome.message || '후원이 완료되었습니다.',
+      message: outcome.message || '결제가 완료되었습니다.',
       transactionNo: donation?.transactionNo,
     };
   } catch (e) {
@@ -56,7 +56,7 @@ export interface NicknameUpdateResult {
 }
 
 /**
- * PIN 입력 화면에서 후원자 닉네임·SNS 플랫폼을 저장/수정한다.
+ * PIN 입력 화면에서 이용자 닉네임·SNS 플랫폼을 저장/수정한다.
  * 닉네임이 비어 있으면 아무것도 하지 않는다(기존 값 유지).
  */
 export async function updateDonorNicknameAction(

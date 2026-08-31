@@ -109,7 +109,7 @@ export const settlementStatusLabel: Record<SettlementRequestStatus, { text: stri
 };
 
 export const ledgerEntryLabel: Record<LedgerEntryType, string> = {
-  DONATION_GROSS: '후원 총액',
+  DONATION_GROSS: '결제 총액',
   PG_FEE: '결제수수료',
   PLATFORM_FEE: '플랫폼수수료',
   REFUND: '환불',
@@ -127,11 +127,11 @@ export const riskLevelLabel: Record<RiskLevel, { text: string; tone: Tone }> = {
 };
 
 export const riskTypeLabel: Record<RiskType, string> = {
-  VELOCITY: '연속 후원',
+  VELOCITY: '연속 결제',
   DAILY_LIMIT: '일일 한도',
   MONTHLY_LIMIT: '월간 한도',
   REPEATED_FAILURE: '반복 실패',
-  NEW_DONOR: '신규 후원자',
+  NEW_DONOR: '신규 이용자',
   MANUAL_REVIEW: '수동 검수',
   DUPLICATE_WEBHOOK: '중복 수신',
   ABNORMAL_AMOUNT: '이상 금액',

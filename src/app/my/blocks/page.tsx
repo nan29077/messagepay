@@ -13,8 +13,8 @@ export default async function MyBlocksPage() {
   const { donorId } = await requireDonorContext('/my/blocks');
   if (!donorId) return <EmptyState title={NO_DONOR_TITLE} description={NO_DONOR_DESC} />;
 
-  // 후원자가 건 차단(donorBlockedAt)과 크리에이터가 건 차단(blockedDonor)은 별개다.
-  // 이 화면에서 해제할 수 있는 것은 후원자 본인이 건 차단뿐이다.
+  // 이용자가 건 차단(donorBlockedAt)과 가맹점이 건 차단(blockedDonor)은 별개다.
+  // 이 화면에서 해제할 수 있는 것은 이용자 본인이 건 차단뿐이다.
   const [links, blockedByCreators] = await Promise.all([
     prisma.donorCreatorLink.findMany({
       where: { donorId },
@@ -43,17 +43,17 @@ export default async function MyBlocksPage() {
           <ChevronLeft size={14} strokeWidth={1.8} />
           내 정보로 돌아가기
         </Link>
-        <h2 className="mt-1 text-[18px] font-black tracking-[-0.025em] text-ink-900">후원 차단</h2>
+        <h2 className="mt-1 text-[18px] font-black tracking-[-0.025em] text-ink-900">결제 차단</h2>
       </div>
-      <Notice tone="brand" title="크리에이터별 후원 차단">
-        차단하면 해당 크리에이터에게 보낸 문자는 후원으로 접수되지 않습니다. 실수로 반복 발송하는 것을 막고 싶을 때
+      <Notice tone="brand" title="가맹점별 결제 차단">
+        차단하면 해당 가맹점에게 보낸 문자는 결제로 접수되지 않습니다. 실수로 반복 발송하는 것을 막고 싶을 때
         사용하세요. 차단은 언제든 해제할 수 있습니다.
       </Notice>
 
       {links.length === 0 ? (
         <EmptyState
-          title="후원한 크리에이터가 없습니다"
-          description="문자후원을 이용하면 크리에이터별 차단을 설정할 수 있습니다."
+          title="결제한 가맹점이 없습니다"
+          description="문자결제를 이용하면 가맹점별 차단을 설정할 수 있습니다."
         />
       ) : (
         <div className="space-y-2.5">
@@ -75,8 +75,8 @@ export default async function MyBlocksPage() {
                         )}
                       </p>
                       {blocked ? <Badge tone="danger">차단됨</Badge> : null}
-                      {blockedByCreator ? <Badge tone="neutral">크리에이터가 차단함</Badge> : null}
-                      {!blocked && !blockedByCreator ? <Badge tone="success">후원 가능</Badge> : null}
+                      {blockedByCreator ? <Badge tone="neutral">가맹점이 차단함</Badge> : null}
+                      {!blocked && !blockedByCreator ? <Badge tone="success">결제 가능</Badge> : null}
                     </div>
                     <p className="mt-1 text-[12.5px] text-ink-400">
                       누적 {formatWon(l.totalAmount)} · {formatNumber(l.totalCount)}건
@@ -99,7 +99,7 @@ export default async function MyBlocksPage() {
       <Card>
         <CardTitle>전체 이용을 중단하고 싶다면</CardTitle>
         <p className="mt-1.5 text-[13px] leading-relaxed text-ink-500">
-          모든 크리에이터에 대한 문자후원을 멈추려면 등록 계좌 관리에서 자동출금 동의를 해지해 주세요.
+          모든 가맹점에 대한 문자결제를 멈추려면 등록 계좌 관리에서 자동출금 동의를 해지해 주세요.
         </p>
         <LinkButton href="/my/account" variant="secondary" size="md" className="mt-3">
           등록 계좌 관리

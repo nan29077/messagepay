@@ -6,13 +6,13 @@ import { executePayment, setStatus } from './donation-flow';
 /**
  * **deprecated — 구(舊) CONFIRM_LINK 경로.**
  *
- * 후원자가 MT 로 받은 문자페이 자체 확인 링크에서 버튼을 누르면 빌키로 곧바로 승인한다.
+ * 이용자가 MT 로 받은 문자페이 자체 확인 링크에서 버튼을 누르면 빌키로 곧바로 승인한다.
  * 현재 기본 경로는 결제사 PIN 인증(`pin-authorization.ts`)이며, 이 경로는
  * `ALLOW_LEGACY_CONFIRM_LINK=true` 일 때만 새 링크가 발급된다
  * (발급 지점: donation-flow.ts 의 resolveConfirmChannel).
  *
  * 링크 해석·확인 함수 자체는 계속 동작한다. 플래그를 끄는 순간 이미 발송된 링크까지
- * 막아 버리면, 문자를 받아 둔 후원자의 대기 건이 갈 곳 없이 멈추기 때문이다.
+ * 막아 버리면, 문자를 받아 둔 이용자의 대기 건이 갈 곳 없이 멈추기 때문이다.
  * (미확인 건은 기존대로 expireStaleConfirmations 로 자동 취소된다)
  *
  * PIN 인증 흐름이 안정화되면 이 파일과 /r/[token] 확인 화면을 함께 제거한다.
@@ -26,9 +26,9 @@ export interface ConfirmContext {
   amount: bigint;
   message: string;
   expiresAt: Date;
-  /** 후원자가 기존에 저장한 닉네임 (없으면 null) */
+  /** 이용자가 기존에 저장한 닉네임 (없으면 null) */
   donorNickname: string | null;
-  /** 후원자가 기존에 저장한 SNS 플랫폼 (없으면 null) */
+  /** 이용자가 기존에 저장한 SNS 플랫폼 (없으면 null) */
   donorSnsPlatform: string | null;
 }
 
@@ -41,7 +41,7 @@ export async function loadConfirmContext(
     if (res.reason === 'EXPIRED') await expireConfirmationByToken(token);
     const reason =
       res.reason === 'EXPIRED'
-        ? '확인 시간이 지나 후원이 자동 취소되었습니다. 결제는 진행되지 않았습니다.'
+        ? '확인 시간이 지나 결제가 자동 취소되었습니다. 결제는 진행되지 않았습니다.'
         : res.reason === 'USED'
           ? '이미 처리된 요청입니다.'
           : '유효하지 않은 링크입니다.';
@@ -59,9 +59,9 @@ export async function loadConfirmContext(
       donor: { select: { id: true, displayName: true, snsPlatform: true } },
     },
   });
-  if (!donation) return { ok: false, reason: '후원 거래를 찾을 수 없습니다.' };
+  if (!donation) return { ok: false, reason: '결제 거래를 찾을 수 없습니다.' };
   if (donation.status !== 'PENDING_CONFIRM') {
-    return { ok: false, reason: '이미 처리된 후원입니다.' };
+    return { ok: false, reason: '이미 처리된 결제입니다.' };
   }
 
   return {
@@ -91,7 +91,7 @@ export async function confirmDonation(token: string, ip?: string, userAgent?: st
   return executePayment(loaded.ctx.donationId);
 }
 
-/** 만료된 확인 링크 한 건에 연결된 확인 대기 후원을 취소한다. */
+/** 만료된 확인 링크 한 건에 연결된 확인 대기 결제를 취소한다. */
 async function expireConfirmationByToken(token: string) {
   const link = await prisma.secureLink.findUnique({
     where: { tokenHash: tokenHash(token) },

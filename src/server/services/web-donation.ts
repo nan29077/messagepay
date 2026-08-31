@@ -13,13 +13,13 @@ import type { DonationStatus } from '@/generated/prisma/enums';
 const MAX_MESSAGE_LEN = 80;
 
 /**
- * 후원샵(웹, PC) 후원 파이프라인.
+ * 결제 페이지(웹, PC) 결제 파이프라인.
  *
  * 모바일 MO 문자 흐름과 동일한 안전장치(금칙어 필터, 한도, 멱등, 원장)를 그대로 거치되,
- * 접수 채널만 WEB 이다. 결제가 성공한 후원만 유튜브 댓글·오버레이로 전달된다.
+ * 접수 채널만 WEB 이다. 결제가 성공한 결제만 유튜브 댓글·오버레이로 전달된다.
  *
  * 결제 단계는 두 갈래다.
- *  - `PIN`(기본): 결제사 PIN 입력 링크를 문자로 보내고, 후원자가 PIN 을 넣어야 결제된다.
+ *  - `PIN`(기본): 결제사 PIN 입력 링크를 문자로 보내고, 이용자가 PIN 을 넣어야 결제된다.
  *                 MO 문자 흐름과 같은 startPinAuthorization() 을 그대로 재사용한다.
  *  - `LEGACY_INSTANT`(**deprecated**): 화면 버튼 클릭 즉시 빌키로 출금한다.
  *                 ALLOW_LEGACY_WEB_INSTANT_PAY=true 일 때만 사용한다.
@@ -34,7 +34,7 @@ export function resolveWebDonationChannel(
 }
 
 export interface WebDonationInput {
-  /** 전화번호 인증을 마친 후원자의 phoneHash */
+  /** 전화번호 인증을 마친 이용자의 phoneHash */
   phoneHash: string;
   creatorId: string;
   amount: bigint;
@@ -59,10 +59,10 @@ export async function createWebDonation(input: WebDonationInput): Promise<WebDon
   const creator = await prisma.creatorProfile.findFirst({
     where: { id: input.creatorId, status: 'APPROVED' },
   });
-  if (!creator) return { ok: false, message: '후원할 수 없는 크리에이터입니다.' };
+  if (!creator) return { ok: false, message: '결제할 수 없는 가맹점입니다.' };
 
   const donor = await prisma.donorProfile.findUnique({ where: { phoneHash: input.phoneHash } });
-  if (!donor) return { ok: false, message: '등록된 후원자 정보가 없습니다. 내통장결제 가입을 먼저 완료해 주세요.' };
+  if (!donor) return { ok: false, message: '등록된 이용자 정보가 없습니다. 내통장결제 가입을 먼저 완료해 주세요.' };
 
   const token = await prisma.paymentMethodToken.findFirst({
     where: { donorId: donor.id, status: 'ACTIVE' },
@@ -82,7 +82,7 @@ export async function createWebDonation(input: WebDonationInput): Promise<WebDon
     return { ok: false, message: '메시지에 사용할 수 없는 단어가 포함되어 있습니다. 내용을 수정해 주세요.' };
   }
 
-  // 한도 확인 (후원 생성 전에 먼저 확인해 불필요한 레코드를 만들지 않는다)
+  // 한도 확인 (결제 생성 전에 먼저 확인해 불필요한 레코드를 만들지 않는다)
   const blocked = await prisma.blockedDonor.findUnique({
     where: { creatorId_donorId: { creatorId: creator.id, donorId: donor.id } },
   });
@@ -107,10 +107,10 @@ export async function createWebDonation(input: WebDonationInput): Promise<WebDon
     return { ok: false, message: limit.message ?? '이용 한도를 초과했습니다.' };
   }
 
-  // 멱등: 같은 requestId 로 두 번 제출돼도 후원이 중복 생성되지 않는다
+  // 멱등: 같은 requestId 로 두 번 제출돼도 결제가 중복 생성되지 않는다
   const idem = await acquireIdempotency('donation', `web:${creator.id}:${donor.id}:${input.requestId}`);
   if (idem.status === 'DUPLICATE') {
-    return { ok: false, message: '이미 처리 중인 후원입니다. 잠시 후 후원 내역에서 확인해 주세요.' };
+    return { ok: false, message: '이미 처리 중인 결제입니다. 잠시 후 결제 내역에서 확인해 주세요.' };
   }
 
   let donation;
@@ -123,18 +123,18 @@ export async function createWebDonation(input: WebDonationInput): Promise<WebDon
         donorId: donor.id,
         channel: 'WEB',
         amount: input.amount,
-        // 닉네임을 설정하지 않았으면 번호 끝 4자리로 만든 기본 이름을 쓴다 (예: 후원자5678).
+        // 닉네임을 설정하지 않았으면 번호 끝 4자리로 만든 기본 이름을 쓴다 (예: 이용자5678).
         // phoneMasked(010-****-5678)에도 끝 4자리는 남아 있어 그대로 재료로 쓸 수 있다.
         displayName: donorDisplayName(donor.displayName, donor.phoneMasked),
         message: filtered.clean,
         messageRawEnc: encrypt(input.message),
         status: 'RECEIVED',
-        statusReason: '후원샵 웹 후원',
+        statusReason: '결제 페이지 웹 결제',
         paymentMode: resolvePaymentMode(creator.paymentMode),
       },
     });
   } catch (error) {
-    // 후원 생성에 실패했는데 멱등키를 IN_PROGRESS 로 남기면 TTL(7일) 동안
+    // 결제 생성에 실패했는데 멱등키를 IN_PROGRESS 로 남기면 TTL(7일) 동안
     // 같은 requestId 재제출이 전부 DUPLICATE 로 막힌다. 키를 지워 재시도를 허용한다.
     await idem.abort();
     throw error;
@@ -165,7 +165,7 @@ export async function createWebDonation(input: WebDonationInput): Promise<WebDon
     donationId: donation.id,
     transactionNo: donation.transactionNo,
     message: paid.ok
-      ? '후원이 완료되었습니다. 결제된 후원만 유튜브 댓글과 방송 오버레이로 전달됩니다.'
+      ? '결제가 완료되었습니다. 결제된 결제만 유튜브 댓글과 방송 오버레이로 전달됩니다.'
       : paid.message,
   };
 }

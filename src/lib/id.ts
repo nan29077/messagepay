@@ -29,9 +29,9 @@ export function newOrderNo(now = new Date()): string {
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 혼동 문자 제외
 
-/** 크리에이터 코드: MJP-8K2M */
+/** 가맹점 코드: MJP-8K2M */
 export function newCreatorCode(): string {
-  // 예측 가능한 코드는 타인의 후원샵 코드 추측으로 이어지므로 CSPRNG 를 쓴다.
+  // 예측 가능한 코드는 타인의 결제 페이지 코드 추측으로 이어지므로 CSPRNG 를 쓴다.
   return `MJP-${randomCodeString(CODE_ALPHABET, 4)}`;
 }
 

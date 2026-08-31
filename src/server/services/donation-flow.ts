@@ -21,7 +21,7 @@ import type { TemplateOutput } from './mt-templates';
 const MAX_MESSAGE_LEN = 80;
 
 /**
- * MO 수신 → 후원 거래 → 결제 → 방송 노출로 이어지는 핵심 흐름.
+ * MO 수신 → 결제 거래 → 결제 → 방송 노출로 이어지는 핵심 흐름.
  *
  * 절대 원칙
  *  1) 결제 성공 건만 방송(유튜브/오버레이/TTS)에 노출한다.
@@ -137,7 +137,7 @@ async function raiseUnknownPaymentAlert(
     });
 
     // 화면을 열어보기 전에도 알 수 있도록 최고관리자 알림함에도 올린다.
-    // 이 건은 후원자 통장에서 돈이 빠졌을 수 있어 대사가 늦을수록 손해가 커진다.
+    // 이 건은 이용자 통장에서 돈이 빠졌을 수 있어 대사가 늦을수록 손해가 커진다.
     await notifySuperAdmins({
       title: '결제 결과를 확인하지 못한 건이 있습니다',
       body: `주문번호 ${orderNo} · ${amount.toString()}원. 결제사 원장과 대사한 뒤 승인/실패를 확정해 주세요.`,
@@ -167,15 +167,15 @@ export async function loadBannedWords(creatorId: string): Promise<BannedWordRule
   return rows.map((r) => ({ word: r.word, action: r.action }));
 }
 
-/** 수신번호(+키워드)로 크리에이터를 찾는다. */
+/** 수신번호(+키워드)로 가맹점을 찾는다. */
 
 /**
  * 문자 본문 맨 앞의 "N원" 표기를 금액으로 해석하는 파서.
  *
  * 현재 MO 수신 흐름에서는 **호출하지 않는다.**
- * 모바일 문자 후원은 크리에이터가 설정한 고정 금액만 사용하며, 본문의 금액 표기가
+ * 모바일 문자 결제는 가맹점이 설정한 고정 금액만 사용하며, 본문의 금액 표기가
  * 결제 금액을 덮어쓰지 않도록 processMoRow 의 호출부를 비활성화했다.
- * 금액을 직접 지정하는 후원은 PC 웹 경로(web-donation)에서 화면 입력값으로 처리한다.
+ * 금액을 직접 지정하는 결제는 PC 웹 경로(web-donation)에서 화면 입력값으로 처리한다.
  * 파서 자체는 향후 재도입·이력 분석을 위해 남겨 둔다.
  *
  * 예) "5000원 오늘도 화이팅" → amount 5000, rest "오늘도 화이팅"
@@ -197,8 +197,8 @@ export async function routeCreator(receivedNumber: string, content: string) {
 
   // 같은 번호에 걸린 배정 행을 한 번에 읽는다.
   // 전용(DEDICATED)과 대표번호공유(SHARED_PREFIX)가 같은 번호에 공존하면
-  // 전용이 먼저 매칭돼 대표번호를 쓰던 모든 크리에이터의 후원이 전용 크리에이터
-  // 1명에게 흘러들어간다. 후원자도 크리에이터도 알아챌 수 없는 사고이므로
+  // 전용이 먼저 매칭돼 대표번호를 쓰던 모든 가맹점의 결제가 전용 가맹점
+  // 1명에게 흘러들어간다. 이용자도 가맹점도 알아챌 수 없는 사고이므로
   // 라우팅을 진행하지 않고 차단한 뒤 관리자에게 알린다.
   const rows = await prisma.creatorMoNumber.findMany({
     where: { phoneNumber: number, status: 'ASSIGNED', creatorId: { not: null } },
@@ -281,7 +281,7 @@ export function resolvePaymentMode(
 }
 
 /**
- * CONFIRM_LINK 모드에서 후원자에게 무엇을 보낼지 결정한다.
+ * CONFIRM_LINK 모드에서 이용자에게 무엇을 보낼지 결정한다.
  *
  *  - `PIN`(기본): 결제사(헥토/카드)가 발급한 PIN 입력 링크를 보낸다.
  *                 PIN 을 입력해야 결제사가 콜백을 보내고 그때 승인이 실행된다.
@@ -307,7 +307,7 @@ export async function handleMoInbound(inbound: MoInbound): Promise<MoHandleResul
     where: { providerMessageId: inbound.providerMessageId },
     select: { id: true, result: true, donation: { select: { id: true, status: true } } },
   });
-  // 이전 수신이 후원 생성 전에 예외로 끝난 건(result=ERROR, 후원 없음)은 사업자 재전송 시 다시 처리한다.
+  // 이전 수신이 결제 생성 전에 예외로 끝난 건(result=ERROR, 결제 없음)은 사업자 재전송 시 다시 처리한다.
   // 그 외에는 모두 중복으로 막는다.
   const retryable = Boolean(dup && dup.result === 'ERROR' && !dup.donation);
   if (dup && !retryable) {
@@ -338,8 +338,8 @@ export async function handleMoInbound(inbound: MoInbound): Promise<MoHandleResul
     return await processMoRow(inbound, routed, ph, moRow);
   } catch (error) {
     // 예외로 끝난 행을 PENDING 으로 남기면 재전송이 영원히 DUPLICATE 로 막힌다.
-    // 후원이 만들어지기 전에 실패한 행만 ERROR 로 표시해 관리자 화면에 드러내고 재전송을 허용한다.
-    // (후원이 이미 생긴 뒤의 예외는 후원 상태·결제 기록이 진실이므로 수신 결과를 덮어쓰지 않는다)
+    // 결제가 만들어지기 전에 실패한 행만 ERROR 로 표시해 관리자 화면에 드러내고 재전송을 허용한다.
+    // (결제가 이미 생긴 뒤의 예외는 결제 상태·결제 기록이 진실이므로 수신 결과를 덮어쓰지 않는다)
     await prisma.moInboundMessage
       .updateMany({
         where: { id: moRow.id, donation: null },
@@ -398,25 +398,25 @@ async function processMoRow(
   if (!routed) {
     await prisma.moInboundMessage.update({
       where: { id: moRow.id },
-      data: { result: 'UNKNOWN_ROUTE', resultDetail: '배정된 크리에이터 없음', processedAt: new Date() },
+      data: { result: 'UNKNOWN_ROUTE', resultDetail: '배정된 가맹점 없음', processedAt: new Date() },
     });
     await sendMt({ phone: inbound.fromNumber, template: tpl.tplUnknownRoute() });
-    return { result: 'UNKNOWN_ROUTE', moMessageId: moRow.id, message: '크리에이터를 찾을 수 없습니다.' };
+    return { result: 'UNKNOWN_ROUTE', moMessageId: moRow.id, message: '가맹점을 찾을 수 없습니다.' };
   }
 
   const creator = routed.creator;
   if (creator.status !== 'APPROVED') {
     await prisma.moInboundMessage.update({
       where: { id: moRow.id },
-      data: { result: 'BLOCKED', resultDetail: `크리에이터 상태: ${creator.status}`, processedAt: new Date() },
+      data: { result: 'BLOCKED', resultDetail: `가맹점 상태: ${creator.status}`, processedAt: new Date() },
     });
     await sendMt({ phone: inbound.fromNumber, template: tpl.tplUnknownRoute() });
-    return { result: 'BLOCKED', moMessageId: moRow.id, message: '이용할 수 없는 크리에이터입니다.' };
+    return { result: 'BLOCKED', moMessageId: moRow.id, message: '이용할 수 없는 가맹점입니다.' };
   }
 
   const donor = await getOrCreateDonor(inbound.fromNumber);
 
-  // (3) 실제 활성 빌키가 있을 때만 후원 결제로 진행한다.
+  // (3) 실제 활성 빌키가 있을 때만 결제 결제로 진행한다.
   const token = await prisma.paymentMethodToken.findFirst({
     where: { donorId: donor.id, status: 'ACTIVE' },
     orderBy: { registeredAt: 'desc' },
@@ -468,7 +468,7 @@ async function processMoRow(
       return {
         result: 'UNREGISTERED_DONOR',
         moMessageId: moRow.id,
-        message: '미등록 이용자입니다. 최초 가입 안내를 발송했습니다. 이 문자는 후원 처리되지 않습니다.',
+        message: '미등록 이용자입니다. 최초 가입 안내를 발송했습니다. 이 문자는 결제 처리되지 않습니다.',
       };
     }
 
@@ -498,7 +498,7 @@ async function processMoRow(
     return {
       result: 'UNREGISTERED_DONOR',
       moMessageId: moRow.id,
-      message: '가입 안내가 이미 발송된 번호입니다. 가입 완료 전 문자는 후원 처리되지 않으며 링크를 다시 보내지 않습니다.',
+      message: '가입 안내가 이미 발송된 번호입니다. 가입 완료 전 문자는 결제 처리되지 않으며 링크를 다시 보내지 않습니다.',
     };
   }
 
@@ -511,9 +511,9 @@ async function processMoRow(
   }
 
   // (4) 콘텐츠 필터
-  // 모바일 MO 후원은 "문자 한 통 = 크리에이터가 설정한 고정 금액" 이다.
+  // 모바일 MO 결제는 "문자 한 통 = 가맹점이 설정한 고정 금액" 이다.
   // 본문의 "5000원" 같은 표기를 금액으로 해석하지 않는다(parseExplicitAmount 호출 비활성화).
-  // 금액을 직접 지정하는 후원은 화면에서 금액을 입력·확인하는 PC 웹 경로(web-donation)만 사용한다.
+  // 금액을 직접 지정하는 결제는 화면에서 금액을 입력·확인하는 PC 웹 경로(web-donation)만 사용한다.
   const bannedWords = await loadBannedWords(creator.id);
   const filtered = filterContent(routed.body, {
     bannedWords,
@@ -521,18 +521,18 @@ async function processMoRow(
   });
 
   const amount = creator.donationAmount;
-  // 닉네임을 설정하지 않았으면 번호 끝 4자리로 만든 기본 이름을 쓴다 (예: 후원자5678).
-  // 이 값은 후원 시점에 박제되므로, 나중에 닉네임을 바꿔도 과거 내역은 그대로 남는다.
+  // 닉네임을 설정하지 않았으면 번호 끝 4자리로 만든 기본 이름을 쓴다 (예: 이용자5678).
+  // 이 값은 결제 시점에 박제되므로, 나중에 닉네임을 바꿔도 과거 내역은 그대로 남는다.
   const displayName = donorDisplayName(donor.displayName, inbound.fromNumber);
 
-  // (5) 후원 거래 생성 (멱등)
+  // (5) 결제 거래 생성 (멱등)
   const idem = await acquireIdempotency('donation', `${creator.id}:${inbound.providerMessageId}`);
   if (idem.status === 'DUPLICATE') {
     return {
       result: 'DUPLICATE',
       moMessageId: moRow.id,
       donationId: idem.resourceId ?? undefined,
-      message: '이미 생성된 후원 거래입니다.',
+      message: '이미 생성된 결제 거래입니다.',
     };
   }
 
@@ -554,7 +554,7 @@ async function processMoRow(
       },
     });
   } catch (error) {
-    // 후원 생성에 실패했는데 멱등키를 IN_PROGRESS 로 남기면 TTL(7일) 동안
+    // 결제 생성에 실패했는데 멱등키를 IN_PROGRESS 로 남기면 TTL(7일) 동안
     // 재전송이 전부 DUPLICATE 로 막혀 문자가 유실된다. 키를 지워 재시도를 허용한다.
     await idem.abort();
     throw error;
@@ -628,7 +628,7 @@ async function processMoRow(
     // ── deprecated: 문자페이 자체 확인 링크 ────────────────────────────────
     // ALLOW_LEGACY_CONFIRM_LINK=true 일 때만 이 경로를 탄다.
     // 확인 버튼 클릭이 곧 출금이므로, PIN 인증 흐름이 안정화되면 제거한다.
-    await setStatus(donation.id, 'PENDING_CONFIRM', '후원자 확인 대기');
+    await setStatus(donation.id, 'PENDING_CONFIRM', '이용자 확인 대기');
     const link = await issueSecureLink({
       purpose: 'CONFIRM_PAYMENT',
       phoneHash: ph,
@@ -694,21 +694,21 @@ function toAbsolutePinUrl(url: string): string {
 }
 
 /**
- * 결제사에 PIN 입력 링크를 요청하고, 받은 링크를 후원자에게 MT 로 보낸다.
+ * 결제사에 PIN 입력 링크를 요청하고, 받은 링크를 이용자에게 MT 로 보낸다.
  *
- * 이 함수는 **출금을 일으키지 않는다.** 후원자가 PIN 을 입력하면 결제사가
+ * 이 함수는 **출금을 일으키지 않는다.** 이용자가 PIN 을 입력하면 결제사가
  * `/api/webhooks/pin-callback` 으로 통지하고, 그때 executePayment() 가 실행된다.
  *
- * 멱등: 후원 1건당 인증 세션은 1건(payment_pin_session.donation_id UNIQUE)이다.
- * 같은 후원으로 두 번 들어와도 링크를 두 장 발급하지 않는다.
+ * 멱등: 결제 1건당 인증 세션은 1건(payment_pin_session.donation_id UNIQUE)이다.
+ * 같은 결제로 두 번 들어와도 링크를 두 장 발급하지 않는다.
  */
 export async function startPinAuthorization(donationId: string): Promise<PinStartOutcome> {
   const donation = await prisma.donation.findUnique({
     where: { id: donationId },
     include: { creator: true, donor: true },
   });
-  if (!donation) return { ok: false, status: 'PAYMENT_FAILED', message: '후원 거래를 찾을 수 없습니다.' };
-  if (!donation.donor) return { ok: false, status: 'UNREGISTERED', message: '후원자 정보가 없습니다.' };
+  if (!donation) return { ok: false, status: 'PAYMENT_FAILED', message: '결제 거래를 찾을 수 없습니다.' };
+  if (!donation.donor) return { ok: false, status: 'UNREGISTERED', message: '이용자 정보가 없습니다.' };
 
   // 이미 발급된 세션이 있으면 새로 만들지 않는다(문자 재수신 시 링크가 늘어나는 것을 막는다).
   const existing = await prisma.paymentPinSession.findUnique({ where: { donationId } });
@@ -719,7 +719,7 @@ export async function startPinAuthorization(donationId: string): Promise<PinStar
       message:
         existing.status === 'PENDING'
           ? '이미 발송된 PIN 입력 링크가 있습니다. 받으신 문자에서 진행해 주세요.'
-          : '이미 처리된 후원입니다.',
+          : '이미 처리된 결제입니다.',
       sessionId: existing.sessionId,
       expiresAt: existing.expiresAt,
       mock: existing.mock,
@@ -805,7 +805,7 @@ export async function startPinAuthorization(donationId: string): Promise<PinStar
   });
 
   if (!sent) {
-    // 링크를 받지 못한 후원자가 결제될 수는 없다. 세션을 닫고 실패로 확정한다.
+    // 링크를 받지 못한 이용자가 결제될 수는 없다. 세션을 닫고 실패로 확정한다.
     // (아직 승인 전이므로 출금은 발생하지 않았다)
     await prisma.paymentPinSession.updateMany({
       where: { donationId, status: 'PENDING' },
@@ -850,8 +850,8 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
     where: { id: donationId },
     include: { creator: true, donor: true },
   });
-  if (!donation) return { ok: false, status: 'PAYMENT_FAILED', message: '후원 거래를 찾을 수 없습니다.' };
-  if (!donation.donor) return { ok: false, status: 'UNREGISTERED', message: '후원자 정보가 없습니다.' };
+  if (!donation) return { ok: false, status: 'PAYMENT_FAILED', message: '결제 거래를 찾을 수 없습니다.' };
+  if (!donation.donor) return { ok: false, status: 'UNREGISTERED', message: '이용자 정보가 없습니다.' };
   const donor = donation.donor;
 
   if (['PAYMENT_SUCCESS', 'BROADCAST_PENDING', 'BROADCASTED', 'PARTIAL_DELIVERY_FAILED', 'SETTLEMENT_PENDING', 'SETTLED'].includes(donation.status)) {
@@ -872,7 +872,7 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
   // 접수 시점 검사만으로는 일/월 한도를 얼마든지 넘길 수 있다. 실제 출금 직전에 다시 확인한다.
   //
   // 재검사부터 결제 판정(집계 예약 + 결제 트랜잭션 확정)까지를 하나의 트랜잭션으로 묶고,
-  // 그 안에서 후원자 행을 FOR UPDATE 로 잠근다. 같은 후원자가 동시에 두 번 눌러도
+  // 그 안에서 이용자 행을 FOR UPDATE 로 잠근다. 같은 이용자가 동시에 두 번 눌러도
   // 뒤 요청은 앞 트랜잭션이 끝날 때까지 대기했다가, 예약이 반영된 집계를 보고 한도 판정을 받는다.
   const reservedAt = new Date();
   const decision = await prisma.$transaction(async (tx) => {
@@ -910,13 +910,13 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
       }));
 
     // 승인 결과를 기다리지 않고 집계를 먼저 잡아둔다(예약).
-    // 잠금 밖에서 승인 후에 반영하면, 그사이 들어온 같은 후원자의 요청이
+    // 잠금 밖에서 승인 후에 반영하면, 그사이 들어온 같은 이용자의 요청이
     // 이 건이 빠진 집계를 읽고 함께 통과해 한도를 넘긴다. 실패하면 아래에서 되돌린다.
     await commitCounters(donor.id, donation.creatorId, donation.amount, reservedAt, tx);
     return { limit, txn: row, alreadyApproved: false };
   }, {
     // 기본값(5초)에 기대지 않고 명시한다.
-    // 이 트랜잭션은 후원자 행을 FOR UPDATE 로 잠그므로, 같은 후원자가 연속으로 누르면
+    // 이 트랜잭션은 이용자 행을 FOR UPDATE 로 잠그므로, 같은 이용자가 연속으로 누르면
     // 뒤 요청은 앞 트랜잭션이 끝날 때까지 줄을 선다. 잠금 대기와 실행 시간을 나눠서 잡아 둔다.
     maxWait: 5_000,
     timeout: 10_000,
@@ -964,7 +964,7 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
       orderNo: txn.orderNo,
       amount: donation.amount,
       billKey: decryptBillKey(token.billKeyEnc),
-      productName: `${donation.creator.displayName} 문자후원`,
+      productName: `${donation.creator.displayName} 문자결제`,
       buyerName: donation.displayName,
     });
     await prisma.paymentAttempt.create({
@@ -992,7 +992,7 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
     await prisma.paymentTransaction.update({ where: { id: txn.id }, data: { status: 'TIMEOUT' } });
 
     // 거래결과조회 자체가 실패해도 예외를 밖으로 내보내지 않는다.
-    // 여기서 throw 하면 후원이 PENDING_PAYMENT 로 영구히 멈춰 아무도 복구할 수 없다.
+    // 여기서 throw 하면 결제가 PENDING_PAYMENT 로 영구히 멈춰 아무도 복구할 수 없다.
     // 조회 불가 = "결과 미확인(UNKNOWN)" 으로 확정하고 관리자 확인 큐로 보낸다.
     let inq: Awaited<ReturnType<typeof adapter.inquire>> | null = null;
     try {
@@ -1021,8 +1021,8 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
   if (!approved) {
     // ── 결과 미확인(UNKNOWN) ────────────────────────────────────────────
     // 출금이 실제로 일어났을 수 있으므로 "실패"로 확정하면 안 된다.
-    // FAILED 로 덮으면 (1) 원장 분개가 없어 크리에이터에게 정산되지 않고
-    // (2) 후원자에게 실패 문자가 나가며 (3) 실패 카운터로 정상 후원자가 잠기고
+    // FAILED 로 덮으면 (1) 원장 분개가 없어 가맹점에게 정산되지 않고
+    // (2) 이용자에게 실패 문자가 나가며 (3) 실패 카운터로 정상 이용자가 잠기고
     // (4) 관리자 '확인 필요' 큐(status IN UNKNOWN,TIMEOUT)가 영구히 비어 대사 자체가 불가능해진다.
     // 따라서 UNKNOWN 은 UNKNOWN 그대로 남기고 사람이 판단하도록 넘긴다.
     if (failure?.code === 'UNKNOWN') {
@@ -1030,7 +1030,7 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
         where: { id: txn.id },
         data: { status: 'UNKNOWN', resultCode: 'UNKNOWN', resultMessage: failure.message ?? null },
       });
-      // 후원 상태는 PENDING_PAYMENT 로 유지한다(실패 아님). 사유만 남긴다.
+      // 결제 상태는 PENDING_PAYMENT 로 유지한다(실패 아님). 사유만 남긴다.
       await prisma.donation.update({
         where: { id: donationId },
         data: { statusReason: '결제 결과 미확인 — 관리자 확인 대기' },
@@ -1038,7 +1038,7 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
       await raiseUnknownPaymentAlert(donationId, txn.id, txn.orderNo, donation.amount);
       // 실패 카운터를 올리지 않는다. 실패 문자도 보내지 않는다(이중청구 오해 방지).
       // 예약해 둔 한도 집계도 되돌리지 않는다. 실제로 출금되었을 수 있으므로
-      // 되돌렸다가 다시 후원이 통과하면 그날 한도를 넘겨 이중으로 빠져나간다.
+      // 되돌렸다가 다시 결제가 통과하면 그날 한도를 넘겨 이중으로 빠져나간다.
       logger.error('결제 결과 미확인 — 수동 대사 필요', {
         donationId, transactionId: txn.id, orderNo: txn.orderNo, phone,
       });
@@ -1066,8 +1066,8 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
   // ── 승인 성공 ──────────────────────────────────────────────────────
   // 승인 기록과 정산 원장 분개는 반드시 같은 트랜잭션이어야 한다.
   // 둘이 갈라져 있으면 그 사이에 프로세스가 죽었을 때
-  // "후원은 성공인데 원장에는 없는" 상태가 되고, 앞쪽 조기 return 가드가
-  // 재시도를 '이미 완료'로 되돌려 보내 크리에이터가 그 금액을 영영 못 받는다.
+  // "결제는 성공인데 원장에는 없는" 상태가 되고, 앞쪽 조기 return 가드가
+  // 재시도를 '이미 완료'로 되돌려 보내 가맹점이 그 금액을 영영 못 받는다.
   const fees = await calculateFees(donation.creatorId, donation.amount);
   await prisma.$transaction(async (tx) => {
     await tx.paymentTransaction.update({
@@ -1119,7 +1119,7 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
   // 집계는 결제 판정 트랜잭션에서 이미 반영(예약)했다. 여기서 다시 더하면 두 번 세어진다.
   await clearFailures(donation.donorId!);
 
-  // 누적 후원금 안내
+  // 누적 결제 금액 안내
   const link = await prisma.donorCreatorLink.findUnique({
     where: { donorId_creatorId: { donorId: donation.donorId!, creatorId: donation.creatorId } },
     select: { totalAmount: true },
@@ -1132,7 +1132,7 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
       amount: donation.amount,
       message: donation.message,
       cumulative: link?.totalAmount ?? donation.amount,
-      // 크리에이터가 스튜디오에서 설정한 감사 문자 본문. 없으면 기본 문구가 쓰인다.
+      // 가맹점이 스튜디오에서 설정한 감사 문자 본문. 없으면 기본 문구가 쓰인다.
       custom: donation.creator.thanksMtMessage,
     }),
     donationId,
@@ -1142,7 +1142,7 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
   // TODO(4단계): 결제 성공 이후 가맹 서비스에 충전을 반영하는 연동이 들어갈 자리다.
   // 반영 실패가 결제 결과를 뒤집으면 안 된다(절대 규칙 3). 어댑터 실패는 삼키고 별도 재시도로 처리한다.
 
-  return { ok: true, status: 'PAYMENT_SUCCESS', message: '후원이 완료되었습니다.' };
+  return { ok: true, status: 'PAYMENT_SUCCESS', message: '결제가 완료되었습니다.' };
 }
 
 // ---------------------------------------------------------------------------

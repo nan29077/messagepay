@@ -67,7 +67,7 @@ export function MockPinForm({
           {result.transactionNo ? <DataRow label="거래번호" value={result.transactionNo} /> : null}
         </div>
         <p className="mt-3 text-[12px] leading-relaxed text-ink-400">
-          결제 결과는 문자로도 안내됩니다. 결제가 완료된 후원만 방송에 표시됩니다.
+          결제 결과는 문자로도 안내됩니다. 결제가 완료된 건만 충전으로 반영됩니다.
         </p>
       </Card>
     );

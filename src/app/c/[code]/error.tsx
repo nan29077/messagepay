@@ -3,10 +3,10 @@
 import { CircleAlert } from 'lucide-react';
 
 /**
- * 크리에이터 후원 페이지 세그먼트 에러 경계.
+ * 가맹점 결제 페이지 세그먼트 에러 경계.
  *
  * 서버 오류(DB 연결 실패, 렌더 오류 등)가 발생할 때 루트 error.tsx 대신
- * 후원 페이지 디자인과 어울리는 화면을 보여준다.
+ * 결제 페이지 디자인과 어울리는 화면을 보여준다.
  */
 export default function CreatorDonationError({
   error,
@@ -26,7 +26,7 @@ export default function CreatorDonationError({
             <CircleAlert size={20} strokeWidth={1.7} />
           </span>
           <h1 className="mt-3 text-[19px] font-extrabold leading-snug tracking-tight text-ink-900">
-            후원 페이지를 불러오지 못했습니다
+            결제 페이지를 불러오지 못했습니다
           </h1>
           <p className="mt-2 text-[13.5px] leading-relaxed text-ink-500">
             {looksLikeDb

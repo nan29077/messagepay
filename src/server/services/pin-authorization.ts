@@ -7,20 +7,20 @@ import type { DonationStatus } from '@/generated/prisma/enums';
  * PIN 인증 완료 처리 / 만료 정리.
  *
  * 흐름상 위치
- *   MO 수신 → 후원 생성 → (donation-flow) startPinAuthorization → 후원자 PIN 입력
+ *   MO 수신 → 결제 생성 → (donation-flow) startPinAuthorization → 이용자 PIN 입력
  *   → 결제사 콜백 → **이 파일** → executePayment → 결제 완료
  *
  * 절대 원칙
  *  1) 콜백이 몇 번 들어와도 결제는 한 번만 일어난다.
  *     세션 행을 `PENDING → COMPLETED` 로 **원자적으로 선점**한 요청만 승인 단계로 넘어간다.
  *  2) 만료된 인증은 승인하지 않는다. 시간이 지난 링크로는 결제되지 않는다.
- *  3) 인증 세션이 없거나 후원 상태가 PIN 대기가 아니면 아무것도 하지 않는다.
+ *  3) 인증 세션이 없거나 결제 상태가 PIN 대기가 아니면 아무것도 하지 않는다.
  */
 
 export interface PinCallbackInput {
   /** 결제사 인증 세션 ID. 있으면 이 값을 우선 사용한다. */
   sessionId?: string | null;
-  /** 후원 거래 ID. Mock 수동 테스트에서는 이 값만으로도 처리할 수 있다. */
+  /** 결제 거래 ID. Mock 수동 테스트에서는 이 값만으로도 처리할 수 있다. */
   donationId?: string | null;
   /** 결제사가 보낸 결과 코드/메시지 (감사 기록용) */
   resultCode?: string | null;
@@ -71,7 +71,7 @@ export async function completePinAuthorization(input: PinCallbackInput): Promise
     select: { id: true, status: true },
   });
   if (!donation) {
-    return { ok: false, code: 'NOT_FOUND', message: '후원 거래를 찾을 수 없습니다.' };
+    return { ok: false, code: 'NOT_FOUND', message: '결제 거래를 찾을 수 없습니다.' };
   }
 
   // (1) 이미 끝난 세션 — 결제를 다시 실행하지 않는다.
@@ -92,7 +92,7 @@ export async function completePinAuthorization(input: PinCallbackInput): Promise
         code: 'EXPIRED',
         donationId: session.donationId,
         status: donation.status,
-        message: 'PIN 입력 시간이 지나 후원이 취소되었습니다. 결제는 진행되지 않았습니다.',
+        message: 'PIN 입력 시간이 지나 결제가 취소되었습니다. 결제는 진행되지 않았습니다.',
       };
     }
     if (session.status === 'FAILED') {
@@ -132,11 +132,11 @@ export async function completePinAuthorization(input: PinCallbackInput): Promise
       code: 'EXPIRED',
       donationId: session.donationId,
       status: 'PAYMENT_FAILED',
-      message: 'PIN 입력 시간이 지나 후원이 취소되었습니다. 결제는 진행되지 않았습니다.',
+      message: 'PIN 입력 시간이 지나 결제가 취소되었습니다. 결제는 진행되지 않았습니다.',
     };
   }
 
-  // (3) 후원 상태 확인 — PIN 대기 상태가 아니면 승인하지 않는다.
+  // (3) 결제 상태 확인 — PIN 대기 상태가 아니면 승인하지 않는다.
   if (donation.status !== 'PENDING_PIN') {
     await prisma.paymentPinSession.update({
       where: { id: session.id },
@@ -147,7 +147,7 @@ export async function completePinAuthorization(input: PinCallbackInput): Promise
       code: 'INVALID_STATE',
       donationId: session.donationId,
       status: donation.status,
-      message: '결제를 진행할 수 없는 상태의 후원입니다.',
+      message: '결제를 진행할 수 없는 상태의 결제입니다.',
     };
   }
 
@@ -203,7 +203,7 @@ export async function completePinAuthorization(input: PinCallbackInput): Promise
  * 결제사가 **PIN 인증 실패**를 통지한 경우.
  *
  * 성공 통지(completePinAuthorization)와 대칭되는 경로다. 승인(출금)은 절대 실행하지 않고
- * 인증 세션과 후원을 실패로 확정한다. 후원자에게는 별도 문자를 보내지 않는다
+ * 인증 세션과 결제를 실패로 확정한다. 이용자에게는 별도 문자를 보내지 않는다
  * (결제사 화면에서 이미 실패를 봤고, 문자가 또 가면 이중 청구로 오해할 수 있다).
  *
  * 선점(updateMany)에 성공한 요청만 상태를 바꾸므로 중복 통지에도 안전하다.
@@ -222,7 +222,7 @@ export async function failPinAuthorization(
     select: { id: true, status: true },
   });
   if (!donation) {
-    return { ok: false, code: 'NOT_FOUND', message: '후원 거래를 찾을 수 없습니다.' };
+    return { ok: false, code: 'NOT_FOUND', message: '결제 거래를 찾을 수 없습니다.' };
   }
 
   // 이미 끝난 세션은 다시 건드리지 않는다. 특히 COMPLETED 는 이미 승인이 끝났을 수 있어
@@ -282,8 +282,8 @@ export async function failPinAuthorization(
 /**
  * 인증 세션 한 건이 만료됐으면 그 자리에서 취소 처리한다.
  *
- * 배치가 돌기 전이라도 대기 화면(웹 후원 폴링)이 만료를 즉시 보여줄 수 있어야 한다.
- * 선점(updateMany)에 성공한 호출만 후원 상태를 바꾸므로 중복 실행돼도 안전하다.
+ * 배치가 돌기 전이라도 대기 화면(웹 결제 폴링)이 만료를 즉시 보여줄 수 있어야 한다.
+ * 선점(updateMany)에 성공한 호출만 결제 상태를 바꾸므로 중복 실행돼도 안전하다.
  *
  * @returns 이 호출이 실제로 만료 처리했으면 true
  */
@@ -311,7 +311,7 @@ export async function expirePinSessionIfStale(donationId: string, now = new Date
 /**
  * 만료된 PIN 인증 대기 건 정리 (배치).
  *
- * PIN 을 입력하지 않은 후원은 자동 취소한다. 출금이 없었으므로 원장 분개도 없고,
+ * PIN 을 입력하지 않은 결제는 자동 취소한다. 출금이 없었으므로 원장 분개도 없고,
  * 이미 결제로 넘어간 건(PENDING_PAYMENT 이후)은 건드리지 않는다.
  * 취소 안내 문자는 보내지 않는다 — 일부러 입력하지 않은 사람에게 문자가 또 가면 스팸이 된다.
  */

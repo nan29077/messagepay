@@ -7,8 +7,8 @@ import { createSession, getSessionUser, hashPassword } from '@/server/auth';
 import { consumeIpRateLimit } from '@/server/rate-limit';
 
 /**
- * 크리에이터 가입 신청.
- * - 로그인 상태면 해당 계정에 크리에이터 프로필을 붙인다.
+ * 가맹점 가입 신청.
+ * - 로그인 상태면 해당 계정에 가맹점 프로필을 붙인다.
  * - 비로그인 상태면 이메일/비밀번호로 계정을 만들고 로그인 처리한다.
  * - 프로필은 PENDING 으로 생성되며 MO 번호는 관리자 승인 후 배정된다.
  */
@@ -16,7 +16,7 @@ import { consumeIpRateLimit } from '@/server/rate-limit';
 export interface CreatorApplyState {
   ok: boolean;
   message?: string;
-  /** 신청 완료 시 발급된 크리에이터 코드 */
+  /** 신청 완료 시 발급된 가맹점 코드 */
   code?: string;
   displayName?: string;
   /** 이미 신청 이력이 있는 경우 현재 상태 */
@@ -46,7 +46,7 @@ const schema = z
     passwordConfirm: z.string().optional(),
   })
   .refine((v) => v.agree === 'on', {
-    message: '크리에이터 이용 조건과 개인정보 수집·이용에 동의해 주세요.',
+    message: '가맹점 이용 조건과 개인정보 수집·이용에 동의해 주세요.',
     path: ['agree'],
   })
   .refine((v) => v.isBusiness !== 'on' || (v.businessNo ?? '').replace(/\D/g, '').length === 10, {
@@ -54,7 +54,7 @@ const schema = z
     path: ['businessNo'],
   });
 
-/** 중복되지 않는 크리에이터 코드를 확보한다. */
+/** 중복되지 않는 가맹점 코드를 확보한다. */
 async function reserveCreatorCode(): Promise<string> {
   for (let i = 0; i < 20; i += 1) {
     const candidate = newCreatorCode();
@@ -64,7 +64,7 @@ async function reserveCreatorCode(): Promise<string> {
     ]);
     if (!profileDup && !codeDup) return candidate;
   }
-  throw new Error('크리에이터 코드를 발급하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+  throw new Error('가맹점 코드를 발급하지 못했습니다. 잠시 후 다시 시도해 주세요.');
 }
 
 export async function applyCreator(_prev: CreatorApplyState, formData: FormData): Promise<CreatorApplyState> {
@@ -108,7 +108,7 @@ export async function applyCreator(_prev: CreatorApplyState, formData: FormData)
   let newUser: { id: string; email: string; name: string; role: 'CREATOR'; passwordHash: string } | null = null;
   if (session) {
     if (session.role === 'ADMIN') {
-      return { ok: false, message: '관리자 계정으로는 크리에이터를 신청할 수 없습니다.', values };
+      return { ok: false, message: '관리자 계정으로는 가맹점을 신청할 수 없습니다.', values };
     }
     const existing = await prisma.creatorProfile.findUnique({
       where: { userId: session.id },
@@ -117,7 +117,7 @@ export async function applyCreator(_prev: CreatorApplyState, formData: FormData)
     if (existing) {
       return {
         ok: false,
-        message: '이미 크리에이터 신청 이력이 있습니다.',
+        message: '이미 가맹점 신청 이력이 있습니다.',
         code: existing.code,
         displayName: existing.displayName,
         alreadyStatus: existing.status,
@@ -163,8 +163,8 @@ export async function applyCreator(_prev: CreatorApplyState, formData: FormData)
 
   const businessNo = data.isBusiness === 'on' ? (data.businessNo ?? '').replace(/\D/g, '') : null;
   // 채널 주소를 소개글에 이어 붙이면 안 된다.
-  // 소개 300자 + "채널: <URL>" 304자 = 최대 604자가 되는데, 스튜디오 후원샵 설정은
-  // 소개를 300자로 검증하므로 크리에이터가 손대지도 않은 필드 때문에
+  // 소개 300자 + "채널: <URL>" 304자 = 최대 604자가 되는데, 스튜디오 결제 페이지 설정은
+  // 소개를 300자로 검증하므로 가맹점이 손대지도 않은 필드 때문에
   // 이후 모든 설정 저장이 영구히 실패한다. 반드시 별도 컬럼에 보관한다.
   const description = data.description?.trim() || null;
   const channelUrl = data.channelUrl?.trim() || null;
@@ -192,7 +192,7 @@ export async function applyCreator(_prev: CreatorApplyState, formData: FormData)
         data: { id: newId(), creatorId: profile.id, code: profile.code, active: true },
       });
 
-      // 로그인 사용자의 역할을 크리에이터로 승격 (관리자는 위에서 차단)
+      // 로그인 사용자의 역할을 가맹점으로 승격 (관리자는 위에서 차단)
       if (session && session.role !== 'CREATOR') {
         await tx.user.update({ where: { id: userId }, data: { role: 'CREATOR' } });
       }

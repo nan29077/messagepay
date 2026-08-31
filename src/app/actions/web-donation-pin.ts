@@ -14,10 +14,10 @@ import { expirePinSessionIfStale } from '@/server/services/pin-authorization';
 import * as tpl from '@/server/services/mt-templates';
 
 /**
- * 후원샵 PC 웹 후원 — PIN 인증 흐름 서버 액션.
+ * 결제 페이지 PC 웹 결제 — PIN 인증 흐름 서버 액션.
  *
  *   금액·메시지 작성 → 휴대전화 번호 입력 → 결제사 PIN 링크 요청 → MT 발송
- *   → (후원자가 문자 링크에서 PIN 입력) → 콜백 → 결제 완료
+ *   → (이용자가 문자 링크에서 PIN 입력) → 콜백 → 결제 완료
  *
  * 이 경로에는 인증번호(SMS OTP) 단계가 없다. 결제를 확정하는 주체는
  * **문자를 받은 휴대전화 본인**이며, PIN 을 입력하지 않으면 출금은 일어나지 않는다.
@@ -26,8 +26,8 @@ import * as tpl from '@/server/services/mt-templates';
  *  1) PIN 링크는 **이미 결제수단이 등록된 번호**로만 나간다. 임의의 번호로는 발송되지 않는다.
  *  2) 번호당 발송 횟수를 제한한다(문자 폭탄·한도 소모 방지).
  *
- * 진행 상태는 클라이언트가 보낸 값이 아니라 **HttpOnly 쿠키에 담긴 후원 ID**로만 조회한다.
- * (거래번호·후원 상태가 ID 를 아는 제3자에게 노출되지 않도록)
+ * 진행 상태는 클라이언트가 보낸 값이 아니라 **HttpOnly 쿠키에 담긴 결제 ID**로만 조회한다.
+ * (거래번호·결제 상태가 ID 를 아는 제3자에게 노출되지 않도록)
  */
 
 /** 번호당 PIN 링크 발송 제한 (문자 폭탄과 한도 소모 방지) */
@@ -35,7 +35,7 @@ const PIN_SEND_WINDOW_SEC = 600;
 const PIN_SEND_MAX = 3;
 const pinSendKey = (ph: string) => `webdon:pinsend:${ph}`;
 
-/** 진행 중인 웹 후원 ID. 상태 조회의 유일한 근거다. */
+/** 진행 중인 웹 결제 ID. 상태 조회의 유일한 근거다. */
 const PIN_COOKIE = 'webdon_pin';
 
 async function setPinCookie(donationId: string) {
@@ -85,9 +85,9 @@ export async function startWebPinDonation(_prev: WebPinState, formData: FormData
     return { ok: false, step: 'phone', message: '휴대전화 번호 형식을 확인해 주세요. (예: 010-1234-5678)' };
   }
   if (!creatorId || !requestId) return { ok: false, step: 'phone', message: '요청 정보가 올바르지 않습니다.' };
-  if (!message) return { ok: false, step: 'phone', message: '후원 메시지를 입력해 주세요.' };
-  if (message.length > 200) return { ok: false, step: 'phone', message: '후원 메시지는 200자 이내로 입력해 주세요.' };
-  if (!/^\d{3,7}$/.test(amountRaw)) return { ok: false, step: 'phone', message: '후원 금액을 확인해 주세요.' };
+  if (!message) return { ok: false, step: 'phone', message: '결제 메시지를 입력해 주세요.' };
+  if (message.length > 200) return { ok: false, step: 'phone', message: '결제 메시지는 200자 이내로 입력해 주세요.' };
+  if (!/^\d{3,7}$/.test(amountRaw)) return { ok: false, step: 'phone', message: '결제 금액을 확인해 주세요.' };
 
   const ph = phoneHash(phone);
   const masked = maskPhone(phone);
@@ -130,7 +130,7 @@ export async function startWebPinDonation(_prev: WebPinState, formData: FormData
   }
 
   await setPinCookie(result.donationId);
-  logger.info('후원샵 웹 후원 PIN 링크 발송', { phone: masked, donationId: result.donationId });
+  logger.info('결제 페이지 웹 결제 PIN 링크 발송', { phone: masked, donationId: result.donationId });
 
   return {
     ok: true,
@@ -148,7 +148,7 @@ export async function startWebPinDonation(_prev: WebPinState, formData: FormData
  * 이 액션은 비로그인 상태에서 전화번호만 받고, 본인확인(SMS 인증번호)을 거치지 않는다.
  * 그래서 발급한 가입 링크를 응답으로 돌려주면 남의 번호를 적어 넣은 사람이
  * 그 번호에 묶인 링크를 그대로 받아 가게 된다. 그 링크로는 피해자의 마스킹 번호를 보고,
- * 자기 카드로 등록을 마치고, 로그인 상태라면 그 후원자 프로필을 자기 계정에 붙일 수도 있다.
+ * 자기 카드로 등록을 마치고, 로그인 상태라면 그 이용자 프로필을 자기 계정에 붙일 수도 있다.
  *
  * 그래서 링크는 번호의 실제 소유자만 받을 수 있는 문자로만 내보낸다.
  * (인증번호를 확인하는 web-donation.ts 경로는 본인확인을 마친 뒤라 팝업으로 열어 준다)
@@ -161,7 +161,7 @@ async function registerGuide(input: {
   donorExists: boolean;
   reason?: string;
 }): Promise<WebPinState> {
-  // 가입 화면(loadRegistrationContext)은 전화번호로 후원자 프로필을 찾으므로,
+  // 가입 화면(loadRegistrationContext)은 전화번호로 이용자 프로필을 찾으므로,
   // 문자를 한 번도 보낸 적 없는 번호는 여기서 프로필을 먼저 만들어 둔다.
   if (!input.donorExists) {
     await prisma.donorProfile.upsert({
@@ -171,7 +171,7 @@ async function registerGuide(input: {
     });
   }
 
-  // 폼의 creatorId 는 검증되지 않은 값이므로 승인된 크리에이터일 때만 링크에 연결한다.
+  // 폼의 creatorId 는 검증되지 않은 값이므로 승인된 가맹점일 때만 링크에 연결한다.
   const linkedCreator = input.creatorId
     ? await prisma.creatorProfile.findFirst({
         where: { id: input.creatorId, status: 'APPROVED' },
@@ -196,7 +196,7 @@ async function registerGuide(input: {
       creatorId: linkedCreator?.id ?? null,
     });
   } catch (error) {
-    logger.error('후원샵 웹 가입 안내 문자 발송 실패', { message: (error as Error).message });
+    logger.error('결제 페이지 웹 가입 안내 문자 발송 실패', { message: (error as Error).message });
   }
 
   return {
@@ -207,14 +207,14 @@ async function registerGuide(input: {
     message:
       (input.reason ? `${input.reason} ` : '') +
       (mtSent
-        ? '결제수단 등록이 필요합니다. 등록 링크를 문자로 보냈습니다. 등록을 마친 뒤 이 창에서 다시 후원해 주세요.'
-        : '결제수단 등록이 필요합니다. 잠시 뒤 도착하는 등록 안내 문자의 링크로 등록을 마친 뒤 이 창에서 다시 후원해 주세요.'),
+        ? '결제수단 등록이 필요합니다. 등록 링크를 문자로 보냈습니다. 등록을 마친 뒤 이 창에서 다시 결제해 주세요.'
+        : '결제수단 등록이 필요합니다. 잠시 뒤 도착하는 등록 안내 문자의 링크로 등록을 마친 뒤 이 창에서 다시 결제해 주세요.'),
   };
 }
 
 // ---------------------------------------------------------------- 2) 결제 완료 폴링
 
-/** 결제가 승인되어 방송·정산으로 넘어간 상태들 */
+/** 결제가 승인되어 충전 반영·정산으로 넘어간 상태들 */
 const PAID_STATUSES = [
   'PAYMENT_SUCCESS',
   'BROADCAST_PENDING',
@@ -227,13 +227,13 @@ const PAID_STATUSES = [
 /**
  * 대기 화면 폴링.
  *
- * 조회 대상은 HttpOnly 쿠키에 담긴 후원 ID 뿐이다. 클라이언트가 후원 ID 를 보내
+ * 조회 대상은 HttpOnly 쿠키에 담긴 결제 ID 뿐이다. 클라이언트가 결제 ID 를 보내
  * 남의 거래 상태를 들여다보는 일이 생기지 않는다.
  */
 export async function checkWebPinDonationStatus(): Promise<WebPinState> {
   const donationId = await readPinCookie();
   if (!donationId) {
-    return { ok: false, step: 'phone', message: '진행 중인 후원이 없습니다. 처음부터 다시 시도해 주세요.' };
+    return { ok: false, step: 'phone', message: '진행 중인 결제가 없습니다. 처음부터 다시 시도해 주세요.' };
   }
 
   // 배치가 돌기 전이라도 만료를 화면에 바로 반영한다.
@@ -249,7 +249,7 @@ export async function checkWebPinDonationStatus(): Promise<WebPinState> {
     },
   });
   if (!donation) {
-    return { ok: false, step: 'phone', message: '후원 정보를 찾을 수 없습니다. 처음부터 다시 시도해 주세요.' };
+    return { ok: false, step: 'phone', message: '결제 정보를 찾을 수 없습니다. 처음부터 다시 시도해 주세요.' };
   }
 
   if (PAID_STATUSES.includes(donation.status)) {
@@ -257,7 +257,7 @@ export async function checkWebPinDonationStatus(): Promise<WebPinState> {
       ok: true,
       step: 'done',
       transactionNo: donation.transactionNo,
-      message: '후원이 완료되었습니다. 결제된 후원만 유튜브 댓글과 방송 오버레이로 전달됩니다.',
+      message: '결제가 완료되었습니다. 결제된 건만 가맹 서비스에 충전으로 반영됩니다.',
     };
   }
 
@@ -280,7 +280,7 @@ export async function checkWebPinDonationStatus(): Promise<WebPinState> {
     ok: false,
     step: 'failed',
     message: expired
-      ? 'PIN 입력 시간이 지나 후원이 취소되었습니다. 결제는 진행되지 않았습니다. 다시 시도해 주세요.'
-      : donation.statusReason || '후원이 완료되지 않았습니다. 결제는 진행되지 않았습니다.',
+      ? 'PIN 입력 시간이 지나 결제가 취소되었습니다. 결제는 진행되지 않았습니다. 다시 시도해 주세요.'
+      : donation.statusReason || '결제가 완료되지 않았습니다. 결제는 진행되지 않았습니다.',
   };
 }

@@ -28,7 +28,7 @@ export function formatNumber(value: bigint | number): string {
 
 /**
  * 요율 적용. rate 는 문자열 또는 number(예: 0.018).
- * 소수점 이하는 버림(원 단위). 수수료가 후원금을 초과하지 않도록 clamp.
+ * 소수점 이하는 버림(원 단위). 수수료가 결제 금액을 초과하지 않도록 clamp.
  */
 export function applyRate(amount: bigint, rate: string | number, fixed: bigint = 0n): bigint {
   const rateStr = typeof rate === 'number' ? rate.toFixed(6) : Number(rate).toFixed(6);

@@ -10,7 +10,7 @@ import {
 /**
  * 정산 주기 계산.
  *
- * 운영 규칙: **후원(결제 완료)일 다음날부터 영업일 5일째가 정산일.**
+ * 운영 규칙: **결제(결제 완료)일 다음날부터 영업일 5일째가 정산일.**
  * 영업일에서 토·일과 공휴일(법정공휴일·대체공휴일·임시공휴일·근로자의 날)을 뺀다.
  *
  * 공휴일은 public_holiday 표에서 읽는다. 임시공휴일은 매년 갑자기 지정되므로
@@ -28,7 +28,7 @@ export async function loadHolidays(fromDateKey: string, toDateKeyStr: string): P
 
 /**
  * 정산일 계산에 필요한 여유 구간까지 포함해 공휴일을 읽는다.
- * 월 마지막 날 후원의 정산일은 다음 달로 넘어가므로 뒤쪽을 넉넉히 잡는다.
+ * 월 마지막 날 결제의 정산일은 다음 달로 넘어가므로 뒤쪽을 넉넉히 잡는다.
  */
 export async function loadHolidaysAround(fromDateKey: string, toDateKeyStr: string): Promise<Set<string>> {
   return loadHolidays(addDaysKey(fromDateKey, -40), addDaysKey(toDateKeyStr, 40));
@@ -47,7 +47,7 @@ export async function findYearsMissingHolidays(years: number[]): Promise<number[
 }
 
 export interface SettlementScheduleRow {
-  /** 후원(결제 완료)일 YYYY-MM-DD */
+  /** 결제(결제 완료)일 YYYY-MM-DD */
   donationDate: string;
   /** 정산 예정일 YYYY-MM-DD */
   settlementDate: string;
@@ -57,7 +57,7 @@ export interface SettlementScheduleRow {
 }
 
 /**
- * 기간 내 결제 완료 후원을 후원일별로 묶고, 각 후원일의 정산 예정일을 붙인다.
+ * 기간 내 결제 완료 결제를 결제일별로 묶고, 각 결제일의 정산 예정일을 붙인다.
  * 화면(캘린더·안내)과 검증에서 같은 함수를 쓰도록 여기 한 곳에만 둔다.
  */
 export async function buildSettlementSchedule(
@@ -101,9 +101,9 @@ export async function buildSettlementSchedule(
 export interface ScheduleNotice {
   /** 오늘(KST) */
   today: string;
-  /** 오늘 후원하면 언제 정산되는지 */
+  /** 오늘 결제하면 언제 정산되는지 */
   todaySettlement: string;
-  /** 이번 주 금·토·일 후원이 언제 정산되는지 (동일 정산일로 모인다) */
+  /** 이번 주 금·토·일 결제가 언제 정산되는지 (동일 정산일로 모인다) */
   weekendDonationDate: string;
   weekendSettlement: string;
   businessDays: number;

@@ -13,11 +13,11 @@ import {
 } from '@/app/actions/web-donation';
 
 /**
- * 후원샵 PC 웹 후원 패널.
+ * 결제 페이지 PC 웹 결제 패널.
  *
- * "문자후원하기" 버튼을 누르면 곧바로 금액 선택 + 메시지 입력 단계로 넘어가고,
+ * "문자결제하기" 버튼을 누르면 곧바로 금액 선택 + 메시지 입력 단계로 넘어가고,
  * 그다음 전화번호 본인 인증(미가입 시 내통장결제 가입 팝업)을 거쳐 즉시 결제된다.
- * 결제가 성공한 후원만 유튜브 댓글과 방송 오버레이로 전달된다.
+ * 결제가 성공한 건만 가맹 서비스에 충전으로 반영된다.
  */
 
 const PRESET_AMOUNTS = [1000n, 3000n, 5000n, 10000n];
@@ -72,7 +72,7 @@ export function WebDonationPanel({
   /**
    * 결제 멱등키.
    * 금액·메시지를 확정한 시점에 1회 생성해 고정한다. 제출할 때마다 새로 만들면
-   * 더블클릭·새로고침 재전송이 서로 다른 키가 되어 같은 후원이 두 번 출금된다.
+   * 더블클릭·새로고침 재전송이 서로 다른 키가 되어 같은 결제가 두 번 출금된다.
    * 결제가 성공한 뒤에만 새 키로 회전한다.
    */
   const [requestId, setRequestId] = React.useState('');
@@ -128,21 +128,21 @@ export function WebDonationPanel({
       {paymentMock ? (
         <div className="mb-3">
           <Notice tone="warning" title="현재 모의(mock) 결제 상태입니다">
-            내통장결제·유튜브 전송이 아직 실제 연동 전이라 실제 출금이나 유튜브 댓글 등록은 일어나지 않습니다. 계약과
+            내통장결제가 아직 실제 연동 전이라 실제 출금은 일어나지 않습니다. 계약과
             연동이 완료되면 이 화면 그대로 실제 결제로 전환됩니다.
           </Notice>
         </div>
       ) : null}
 
-      {/* 시작 전: 문자후원하기 버튼 → 바로 금액·메시지 단계 */}
+      {/* 시작 전: 문자결제하기 버튼 → 바로 금액·메시지 단계 */}
       {phase === 'idle' ? (
         <div>
           <button type="button" onClick={() => setStarted(true)} className={ctaClass}>
             <MessageSquare size={18} strokeWidth={1.7} />
-            문자후원하기
+            문자결제하기
           </button>
           <p className="mt-2.5 text-center text-[11.5px] leading-relaxed text-ink-400">
-            금액과 응원 메시지를 고르면 등록된 내통장결제 계좌에서 바로 결제되고, 메시지가 유튜브 라이브 채팅과 방송
+            금액과 메모를 고르면 등록된 내통장결제 계좌에서 바로 결제되고, 가맹 서비스에 충전이
             화면에 표시됩니다.
           </p>
         </div>
@@ -173,7 +173,7 @@ export function WebDonationPanel({
           {phase === 'compose' ? (
             <div className="space-y-4">
               <div>
-                <p className="text-[13px] font-bold text-ink-900">후원 금액</p>
+                <p className="text-[13px] font-bold text-ink-900">결제 금액</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {amountChips.map((v) => {
                     const active = amountMode === 'preset' && amount === v;
@@ -223,13 +223,13 @@ export function WebDonationPanel({
               </div>
 
               <div>
-                <p className="text-[13px] font-bold text-ink-900">후원 메시지</p>
+                <p className="text-[13px] font-bold text-ink-900">결제 메시지</p>
                 <textarea
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   rows={3}
                   maxLength={200}
-                  placeholder={`${creatorName} 님에게 전할 응원 메시지 (200자 이내). 결제 완료 후 유튜브 라이브 채팅과 방송 화면에 표시됩니다.`}
+                  placeholder={`${creatorName} 님에게 남길 메모 (200자 이내). 결제 내역에 함께 저장됩니다.`}
                   className="mt-2 w-full resize-none rounded-xl border border-ink-200 px-3.5 py-3 text-[14px] leading-relaxed outline-none transition-colors focus:border-brand-400"
                 />
               </div>
@@ -244,7 +244,7 @@ export function WebDonationPanel({
                 className={ctaClass}
               >
                 {composeValid && effectiveAmount !== null
-                  ? `${formatWon(effectiveAmount)} 후원 진행 (본인 인증)`
+                  ? `${formatWon(effectiveAmount)} 결제 진행 (본인 인증)`
                   : '금액과 메시지를 입력해 주세요'}
               </button>
             </div>
@@ -314,7 +314,7 @@ export function WebDonationPanel({
           {phase === 'register' ? (
             <div className="space-y-3">
               <Notice tone="warning" title="내통장결제 가입이 필요합니다">
-                처음 한 번만 본인 명의 계좌를 등록하면 이후에는 바로 후원할 수 있습니다. 아래 버튼을 누르면 가입 창이
+                처음 한 번만 본인 명의 계좌를 등록하면 이후에는 바로 결제할 수 있습니다. 아래 버튼을 누르면 가입 창이
                 팝업으로 열립니다.
               </Notice>
               <div className="flex flex-wrap gap-2">
@@ -356,7 +356,7 @@ export function WebDonationPanel({
 
               <div className="rounded-xl bg-ink-50 px-4 py-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-[13px] font-semibold text-ink-500">후원 금액</span>
+                  <span className="text-[13px] font-semibold text-ink-500">결제 금액</span>
                   <span className="text-[20px] font-extrabold tracking-tight text-brand-700">
                     {amountValid && effectiveAmount !== null ? formatWon(effectiveAmount) : '-'}
                   </span>
@@ -371,7 +371,7 @@ export function WebDonationPanel({
                 {donatePending
                   ? '결제 진행 중...'
                   : amountValid && effectiveAmount !== null
-                    ? `${formatWon(effectiveAmount)} 결제하고 후원하기`
+                    ? `${formatWon(effectiveAmount)} 결제하고 충전하기`
                     : '금액을 확인해 주세요'}
               </button>
               <p className="text-center text-[11.5px] leading-relaxed text-ink-400">
@@ -393,7 +393,7 @@ export function WebDonationPanel({
               <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-brand-100 text-brand-700">
                 <Check size={26} strokeWidth={2.2} />
               </span>
-              <p className="text-[16px] font-extrabold text-ink-900">후원이 완료되었습니다</p>
+              <p className="text-[16px] font-extrabold text-ink-900">결제가 완료되었습니다</p>
               <p className="text-[13px] leading-relaxed text-ink-500">
                 {view.message}
                 {view.transactionNo ? (
@@ -410,7 +410,7 @@ export function WebDonationPanel({
                 }}
                 className="mx-auto h-10 rounded-xl border border-ink-200 px-4 text-[13px] font-bold text-ink-700"
               >
-                한 번 더 후원하기
+                한 번 더 충전하기
               </button>
             </div>
           ) : null}
@@ -419,7 +419,7 @@ export function WebDonationPanel({
 
       <p className="mt-4 flex items-center justify-center gap-1.5 border-t border-ink-100 pt-3 text-[11.5px] text-ink-400">
         <Smartphone size={13} strokeWidth={1.8} />
-        휴대전화에서는 문자후원하기 버튼 한 번으로 더 간단하게 후원할 수 있습니다.
+        휴대전화에서는 문자결제하기 버튼 한 번으로 더 간단하게 결제할 수 있습니다.
       </p>
     </div>
   );

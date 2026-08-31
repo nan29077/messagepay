@@ -14,8 +14,8 @@ import { logger } from '@/lib/logger';
 /**
  * 휴대폰 번호 인증 → DonorProfile 연결.
  *
- * 문자후원의 후원자 식별 기준은 휴대전화 번호(phoneHash)다. 회원가입은 이메일만 받으므로,
- * 웹 계정에서 후원/결제 내역을 보려면 본인 휴대폰 번호를 인증해 DonorProfile 과 연결해야 한다.
+ * 문자결제의 이용자 식별 기준은 휴대전화 번호(phoneHash)다. 회원가입은 이메일만 받으므로,
+ * 웹 계정에서 결제/결제 내역을 보려면 본인 휴대폰 번호를 인증해 DonorProfile 과 연결해야 한다.
  *
  * 보안 설계
  *  - 인증 상태(코드 검증값·시도 횟수)는 전부 서버측 KV(Redis, 개발 환경은 인메모리 폴백)에만 둔다.
@@ -184,7 +184,7 @@ export async function confirmPhoneVerification(
     }),
     existing
       ? prisma.donorProfile.update({ where: { id: existing.id }, data: { userId: user.id } })
-      : // 문자후원 이력이 없는 번호도 미리 연결해 두면 이후 후원이 자동으로 이 계정에 표시된다.
+      : // 문자결제 이력이 없는 번호도 미리 연결해 두면 이후 결제가 자동으로 이 계정에 표시된다.
         prisma.donorProfile.create({
           data: {
             id: newId(),
@@ -201,7 +201,7 @@ export async function confirmPhoneVerification(
   revalidatePath('/my');
   revalidatePath('/my/account');
 
-  return { ok: true, linked: true, message: '휴대폰 번호가 연결되었습니다. 이제 후원·결제 내역이 표시됩니다.' };
+  return { ok: true, linked: true, message: '휴대폰 번호가 연결되었습니다. 이제 결제·결제 내역이 표시됩니다.' };
 }
 
 // ---------------------------------------------------------------- 연결 해제
@@ -218,5 +218,5 @@ export async function unlinkPhone(_prev: PhoneLinkState, _fd: FormData): Promise
 
   revalidatePath('/my');
   revalidatePath('/my/account');
-  return { ok: true, message: '휴대폰 번호 연결을 해제했습니다. 후원 이력 자체는 삭제되지 않습니다.' };
+  return { ok: true, message: '휴대폰 번호 연결을 해제했습니다. 결제 이력 자체는 삭제되지 않습니다.' };
 }

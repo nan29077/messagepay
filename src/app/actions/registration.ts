@@ -9,7 +9,7 @@ import type { ConsentType, PaymentMethodKind } from '@/generated/prisma/enums';
 import { clientIpFrom } from '@/server/rate-limit';
 
 /**
- * 후원자 계좌 등록 서버 액션.
+ * 이용자 계좌 등록 서버 액션.
  * - 결제창(현재는 Mock)으로 리다이렉트하는 진입점과, 결제창 복귀 처리 두 가지를 제공한다.
  * - 실패 시 임의로 "성공"으로 위장하지 않고 사유를 그대로 화면에 전달한다.
  */
@@ -38,7 +38,7 @@ export async function startRegistrationAction(
   consents: ConsentPayload[],
   // 결제수단 종류. 카드 빌링키는 구조만 준비되어 있고 화면에서는 아직 계좌만 넘긴다.
   method: PaymentMethodKind = 'ACCOUNT',
-  // 방송에 표시될 닉네임(선택). 빈 문자열이면 설정하지 않은 것으로 본다.
+  // 결제 내역에 표시될 이름(선택). 빈 문자열이면 설정하지 않은 것으로 본다.
   nickname = '',
   // SNS 플랫폼(선택). 닉네임과 세트로 저장된다.
   snsPlatform?: string,
@@ -91,8 +91,8 @@ export async function completeRegistrationAction(input: {
       userAgent: meta.userAgent,
     });
 
-    // 로그인 상태에서 계좌 등록을 마쳤다면 후원자 프로필을 계정에 자동 연결한다.
-    // (연결돼 있어야 마이페이지에서 후원·결제 내역을 볼 수 있다)
+    // 로그인 상태에서 계좌 등록을 마쳤다면 이용자 프로필을 계정에 자동 연결한다.
+    // (연결돼 있어야 마이페이지에서 결제·결제 내역을 볼 수 있다)
     try {
       const user = await getSessionUser();
       if (user && res.donorId) {

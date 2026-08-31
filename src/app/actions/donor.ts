@@ -12,7 +12,7 @@ import { validateDonorName } from '@/server/services/donor-name';
 import { newId } from '@/lib/id';
 
 /**
- * 후원자 마이페이지 서버 액션.
+ * 이용자 마이페이지 서버 액션.
  *
  * 공통 규칙
  *  - 반드시 로그인 사용자의 DonorProfile 을 먼저 확인한다.
@@ -24,7 +24,7 @@ export interface DonorActionState {
   message?: string;
 }
 
-/** 로그인 사용자의 후원자 프로필. 없으면 null */
+/** 로그인 사용자의 이용자 프로필. 없으면 null */
 async function currentDonor() {
   const user = await getSessionUser();
   if (!user) return null;
@@ -36,7 +36,7 @@ async function currentDonor() {
   return { user, donor };
 }
 
-const NO_DONOR = '문자후원 이용 내역이 없어 처리할 수 없습니다.';
+const NO_DONOR = '문자결제 이용 내역이 없어 처리할 수 없습니다.';
 const NO_SESSION = '로그인이 필요합니다.';
 
 // ---------------------------------------------------------------- 자동출금 해지
@@ -96,7 +96,7 @@ export async function updateDonorLimits(
 
   const policy = await resolvePolicy(null, ctx.donor.id);
 
-  // 후원자는 전역 정책보다 낮은 값만 설정할 수 있다.
+  // 이용자는 전역 정책보다 낮은 값만 설정할 수 있다.
   if (daily !== null && daily > policy.donorDailyLimit) {
     return { ok: false, message: '일일 한도는 기본 정책보다 높게 설정할 수 없습니다.' };
   }
@@ -117,14 +117,14 @@ export async function updateDonorLimits(
   return { ok: true, message: '한도가 저장되었습니다.' };
 }
 
-// ---------------------------------------------------------------- 방송 닉네임
+// ---------------------------------------------------------------- 표시 이름
 
 /**
- * 방송에 표시될 닉네임 변경.
+ * 결제 내역에 표시될 이름 변경.
  *
- * 이미 접수된 후원(Donation.displayName)은 그때의 이름을 그대로 둔다.
- * 방송에 이미 나간 이름을 나중에 바꾸면 기록이 실제 송출과 어긋나기 때문이다.
- * 이후 후원부터 새 닉네임이 적용된다.
+ * 이미 접수된 결제(Donation.displayName)은 그때의 이름을 그대로 둔다.
+ * 이미 결제 내역에 남은 이름을 나중에 바꾸면 기록이 실제와 어긋나기 때문이다.
+ * 이후 결제부터 새 닉네임이 적용된다.
  */
 export async function updateDonorNickname(
   _prev: DonorActionState,
@@ -139,7 +139,7 @@ export async function updateDonorNickname(
 
   await prisma.donorProfile.update({
     where: { id: ctx.donor.id },
-    // 빈 값으로 저장하면 기본 이름(후원자5678)으로 되돌아간다.
+    // 빈 값으로 저장하면 기본 이름(이용자5678)으로 되돌아간다.
     data: { displayName: checked.value.length > 0 ? checked.value : null },
   });
   revalidatePath('/my/account');
@@ -147,12 +147,12 @@ export async function updateDonorNickname(
     ok: true,
     message:
       checked.value.length > 0
-        ? '닉네임이 저장되었습니다. 다음 후원부터 적용됩니다.'
+        ? '닉네임이 저장되었습니다. 다음 결제부터 적용됩니다.'
         : '닉네임을 지웠습니다. 기본 이름으로 표시됩니다.',
   };
 }
 
-// ---------------------------------------------------------------- 크리에이터 차단
+// ---------------------------------------------------------------- 가맹점 차단
 
 export async function toggleCreatorBlock(
   _prev: DonorActionState,
@@ -165,7 +165,7 @@ export async function toggleCreatorBlock(
   const next = String(formData.get('next') ?? '');
   if (!linkId) return { ok: false, message: '대상을 찾을 수 없습니다.' };
 
-  // 소유권 검증: 반드시 로그인 후원자의 링크여야 한다.
+  // 소유권 검증: 반드시 로그인 이용자의 링크여야 한다.
   const link = await prisma.donorCreatorLink.findUnique({
     where: { id: linkId },
     select: { id: true, donorId: true, donorBlockedAt: true, creator: { select: { displayName: true } } },
@@ -177,14 +177,14 @@ export async function toggleCreatorBlock(
   const shouldBlock = next === 'BLOCK';
   await prisma.donorCreatorLink.update({
     where: { id: link.id },
-    // 후원자 방향 차단만 건드린다. 크리에이터가 건 차단(blocked_donor)은 그대로 유지된다.
+    // 이용자 방향 차단만 건드린다. 가맹점이 건 차단(blocked_donor)은 그대로 유지된다.
     data: { donorBlockedAt: shouldBlock ? new Date() : null },
   });
   revalidatePath('/my/blocks');
   return {
     ok: true,
     message: shouldBlock
-      ? `${link.creator.displayName} 님에 대한 후원이 차단되었습니다.`
+      ? `${link.creator.displayName} 님에 대한 결제가 차단되었습니다.`
       : `${link.creator.displayName} 님에 대한 차단이 해제되었습니다.`,
   };
 }
@@ -206,7 +206,7 @@ export async function requestDonationRefund(
   if (reason.length < 2) return { ok: false, message: '환불 사유를 2자 이상 입력해 주세요.' };
   if (reason.length > 300) return { ok: false, message: '환불 사유는 300자 이내로 입력해 주세요.' };
 
-  // 소유권 검증: 반드시 로그인 후원자의 거래여야 한다.
+  // 소유권 검증: 반드시 로그인 이용자의 거래여야 한다.
   const donation = await prisma.donation.findUnique({
     where: { id: donationId },
     select: { id: true, donorId: true },
@@ -274,7 +274,7 @@ export async function setMarketingConsent(
 // ---------------------------------------------------------------- 회원 탈퇴
 
 /**
- * 후원자 회원 탈퇴.
+ * 이용자 회원 탈퇴.
  *
  * 처리 원칙
  *  - 거래·정산 기록은 법정 보존 대상이므로 삭제하지 않는다. 계정과의 연결만 끊는다.
@@ -286,14 +286,14 @@ export async function withdrawAccount(_prev: DonorActionState, formData: FormDat
   const user = await getSessionUser();
   if (!user) return { ok: false, message: NO_SESSION };
 
-  // 후원자 전용 절차다. 크리에이터는 정산·MO 번호 정리가, 관리자는 권한 이관이 선행돼야 하므로
+  // 이용자 전용 절차다. 가맹점은 정산·MO 번호 정리가, 관리자는 권한 이관이 선행돼야 하므로
   // 이 경로로 탈퇴하면 프로필과 배정 자원이 고아 상태로 남는다.
   if (user.role !== 'DONOR') {
     return {
       ok: false,
       message:
         user.role === 'CREATOR'
-          ? '크리에이터 계정은 정산과 후원 번호 정리가 필요해 이 화면에서 탈퇴할 수 없습니다. 고객센터로 요청해 주세요.'
+          ? '가맹점 계정은 정산과 결제 수신번호 정리가 필요해 이 화면에서 탈퇴할 수 없습니다. 고객센터로 요청해 주세요.'
           : '관리자 계정은 이 화면에서 탈퇴할 수 없습니다. 다른 최고관리자에게 권한 이관 후 처리해 주세요.',
     };
   }
@@ -328,7 +328,7 @@ export async function withdrawAccount(_prev: DonorActionState, formData: FormDat
 
   try {
     await prisma.$transaction([
-      // 후원자 프로필은 남기고 계정 연결만 끊는다 (거래 이력 보존)
+      // 이용자 프로필은 남기고 계정 연결만 끊는다 (거래 이력 보존)
       prisma.donorProfile.updateMany({
         where: { userId: user.id },
         data: { userId: null, onboardingStatus: 'WITHDRAWN' },

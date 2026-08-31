@@ -12,7 +12,7 @@ import type { LedgerEntryType } from '@/generated/prisma/enums';
  * 규칙
  *  - settlement_ledger 는 APPEND ONLY. UPDATE/DELETE 하지 않는다.
  *  - 정정이 필요하면 반대 부호 분개를 추가한다.
- *  - 후원 거래 원장 / 결제 거래 원장 / 정산 원장은 분리하되 donation_id 로 추적한다.
+ *  - 결제 거래 원장 / 결제 거래 원장 / 정산 원장은 분리하되 donation_id 로 추적한다.
  *  - 정산 가능 금액 = 원장 합계 - 보류(미정산 요청 중) - 이미 지급
  */
 
@@ -127,19 +127,19 @@ export const FALLBACK_FEE_RATES: FeeRates = {
 /**
  * 수수료 계산 (부가세 포함).
  *
- *   공급가액  = 후원금 x 요율            (원 미만 버림)
+ *   공급가액  = 결제 금액 x 요율            (원 미만 버림)
  *   부가세    = 공급가액 x 10%           (원 미만 버림)
  *   차감액    = 공급가액 + 부가세
- *   정산금    = 후원금 - 결제수수료 차감액 - 플랫폼수수료 차감액
+ *   정산금    = 결제 금액 - 결제수수료 차감액 - 플랫폼수수료 차감액
  *
  * `vatIncluded = true` 이면 요율 자체에 부가세가 이미 포함된 것으로 보고
  * **부가세를 추가로 차감하지 않는다.** (요율 10% = 부가세 포함 10%)
  *
- * 예) 3,000원 후원 / 플랫폼 10% / vatIncluded=false / 결제수수료 0%
- *     공급가액 300원 + 부가세 30원 = 330원 차감 -> 크리에이터 정산 2,670원
+ * 예) 3,000원 결제 / 플랫폼 10% / vatIncluded=false / 결제수수료 0%
+ *     공급가액 300원 + 부가세 30원 = 330원 차감 -> 가맹점 정산 2,670원
  *
  * 예) 같은 조건에 vatIncluded=true
- *     300원만 차감 -> 크리에이터 정산 2,700원
+ *     300원만 차감 -> 가맹점 정산 2,700원
  */
 export function computeFees(amount: bigint, rates: FeeRates): FeeBreakdown {
   const pgRate = String(rates.pgFeeRate);
@@ -154,11 +154,11 @@ export function computeFees(amount: bigint, rates: FeeRates): FeeBreakdown {
   const pgFee = pgFeeSupply + pgFeeVat;
   const platformFeeRaw = platformFeeSupply + platformFeeVat;
 
-  // 수수료 합은 절대 후원금을 넘지 않는다.
+  // 수수료 합은 절대 결제 금액을 넘지 않는다.
   //
   // 예전에는 net 만 0 으로 보정하고 pgFee·platformFee 는 보정 전 값을 그대로 원장에 넣었다.
   // 그래서 요율을 잘못 넣으면 화면에는 "정산예정금 0원" 으로 보이는데 원장 합계는 음수가 되어
-  // 그 크리에이터의 정산 가능액을 깎았다. 화면과 장부가 어긋나면 원인을 찾기 매우 어렵다.
+  // 그 가맹점의 정산 가능액을 깎았다. 화면과 장부가 어긋나면 원인을 찾기 매우 어렵다.
   //
   // 결제 수수료는 실제로 PG 에 나가는 돈이므로 먼저 채우고, 남는 만큼만 플랫폼 수수료로 잡는다.
   const pgFeeCapped = pgFee > amount ? amount : pgFee;
@@ -269,12 +269,12 @@ function feeMemo(label: string, rate: string, vat: bigint): string {
 }
 
 /**
- * 후원 결제 성공 시 3분개 (총액 / PG수수료 / 플랫폼수수료).
+ * 결제 결제 성공 시 3분개 (총액 / PG수수료 / 플랫폼수수료).
  *
  * 반드시 결제 승인 기록과 **같은 트랜잭션**에서 호출한다(client 로 tx 전달).
- * 분리되면 "후원은 성공인데 원장에는 없는" 상태가 생기고, 조기 return 가드 때문에
- * 재시도로도 복구되지 않아 크리에이터가 그 금액을 영영 받지 못한다.
- * 재시도·중복 호출에도 분개가 두 번 쌓이지 않도록 이미 기록된 후원은 건너뛴다.
+ * 분리되면 "결제는 성공인데 원장에는 없는" 상태가 생기고, 조기 return 가드 때문에
+ * 재시도로도 복구되지 않아 가맹점이 그 금액을 영영 받지 못한다.
+ * 재시도·중복 호출에도 분개가 두 번 쌓이지 않도록 이미 기록된 결제는 건너뛴다.
  */
 export async function postDonationSettlement(
   input: {
@@ -296,7 +296,7 @@ export async function postDonationSettlement(
     [
       {
         creatorId: input.creatorId, entryType: 'DONATION_GROSS', amount: input.fees.gross,
-        donationId: input.donationId, occurredAt: input.occurredAt, memo: '문자후원 결제 승인',
+        donationId: input.donationId, occurredAt: input.occurredAt, memo: '문자결제 결제 승인',
       },
       {
         creatorId: input.creatorId, entryType: 'PG_FEE', amount: -input.fees.pgFee,
@@ -378,7 +378,7 @@ export async function postRefundSettlement(
   const entries: LedgerInput[] = [
     {
       creatorId: input.creatorId, entryType: 'REFUND', amount: -input.amount,
-      donationId: input.donationId, refundId: input.refundId, occurredAt: input.occurredAt, memo: '후원 환불',
+      donationId: input.donationId, refundId: input.refundId, occurredAt: input.occurredAt, memo: '결제 환불',
     },
   ];
   if (input.returnPlatformFee !== false) {
@@ -415,7 +415,7 @@ type SummaryClient = Pick<typeof prisma, 'settlementLedger' | 'settlementRequest
   | Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 /**
- * 크리에이터 정산 요약.
+ * 가맹점 정산 요약.
  *
  * 잠금 안에서 잔액을 검증할 때는 반드시 `client` 로 tx 를 넘겨야 한다.
  * 전역 prisma 로 읽으면 트랜잭션 밖 스냅샷을 보게 되어, 락을 잡은 의미가 사라진다.
@@ -458,7 +458,7 @@ export async function getSettlementSummary(
 
 /**
  * 정산 요청 생성. 가능 금액 초과 요청을 막는다.
- * 크리에이터 단위 advisory lock 으로 동시 요청을 직렬화한다.
+ * 가맹점 단위 advisory lock 으로 동시 요청을 직렬화한다.
  * (잠금 없이는 두 요청이 같은 가용 금액을 읽고 둘 다 통과해 잔액 초과 이중 요청이 생긴다)
  */
 export interface CreateSettlementInput {
@@ -474,7 +474,7 @@ export async function createSettlementRequest(
 ) {
   if (amount <= 0n) throw new Error('정산 요청 금액이 올바르지 않습니다.');
 
-  // 개인(사업소득 3.3% 원천징수) 크리에이터는 신고용 주민등록번호가 반드시 필요하다.
+  // 개인(사업소득 3.3% 원천징수) 가맹점은 신고용 주민등록번호가 반드시 필요하다.
   const resident = input.resident ? normalizeResident(input.resident) : null;
   if (input.resident && !resident) throw new Error('주민등록번호 형식이 올바르지 않습니다.');
 
@@ -514,7 +514,7 @@ export async function createSettlementRequest(
  *
  * 계좌 인증·잔액 확인은 반드시 돈이 나가기 전에 해야 한다.
  * 이체가 끝난 뒤(markSettlementPaid) 검증해서 throw 하면 이미 나간 돈이
- * 원장에 남지 않아 잔액이 줄지 않고, 크리에이터가 다시 신청해 **이중 지급**이 된다.
+ * 원장에 남지 않아 잔액이 줄지 않고, 가맹점이 다시 신청해 **이중 지급**이 된다.
  * 이체파일을 만들 때 이 함수로 걸러낸다.
  */
 export async function assertPayable(requestId: string): Promise<{ ok: true } | { ok: false; reason: string }> {
@@ -545,9 +545,9 @@ export async function assertPayable(requestId: string): Promise<{ ok: true } | {
  * 이체 전에 끝내고, 여기서는 **어떤 경우에도 분개를 남긴다.**
  * 문제가 있는 건은 막는 대신 경고 메모를 붙여 사람이 확인하도록 한다.
  *
- * advisory lock 키는 요청ID가 아니라 **크리에이터**다.
- * 실제로 보호해야 하는 자원은 그 크리에이터의 잔액이므로, 요청ID로 잠그면
- * 같은 크리에이터의 서로 다른 요청 2건이 서로 다른 락을 잡고 동시에 통과한다.
+ * advisory lock 키는 요청ID가 아니라 **가맹점**다.
+ * 실제로 보호해야 하는 자원은 그 가맹점의 잔액이므로, 요청ID로 잠그면
+ * 같은 가맹점의 서로 다른 요청 2건이 서로 다른 락을 잡고 동시에 통과한다.
  */
 export async function markSettlementPaid(requestId: string, adminId?: string, payoutRef?: string) {
   return prisma.$transaction(async (tx) =>
@@ -609,7 +609,7 @@ export async function markSettlementPaid(requestId: string, adminId?: string, pa
   );
 }
 
-/** 락 키로 쓸 크리에이터 ID를 먼저 조회한다. */
+/** 락 키로 쓸 가맹점 ID를 먼저 조회한다. */
 async function creatorIdOf(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
   requestId: string,
@@ -664,7 +664,7 @@ export async function markPayoutFileIssued(
  */
 export async function markSettlementPayoutFailed(requestId: string, reason: string, adminId?: string) {
   return prisma.$transaction(async (tx) =>
-    // 지급 완료 처리와 같은 락(크리에이터 단위)을 잡아야 서로 경합하지 않는다.
+    // 지급 완료 처리와 같은 락(가맹점 단위)을 잡아야 서로 경합하지 않는다.
     withAdvisoryLock(tx, `settlement:creator:${await creatorIdOf(tx, requestId)}`, async () => {
       const req = await tx.settlementRequest.findUnique({ where: { id: requestId } });
       if (!req) throw new Error('정산 요청을 찾을 수 없습니다.');

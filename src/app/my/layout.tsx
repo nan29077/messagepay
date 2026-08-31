@@ -29,7 +29,7 @@ export default async function MyLayout({ children }: { children: React.ReactNode
         <GeneratedAvatar seed={user.id} avatarIndex={user.avatarIndex} name={user.name} className="h-12 w-12" />
         <div className="min-w-0">
           <h1 className="truncate text-[18px] font-black tracking-[-0.03em] text-ink-900">
-            {user.name ?? '후원자'} 님
+            {user.name ?? '이용자'} 님
           </h1>
           <p className="mt-0.5 truncate text-[12.5px] text-ink-400">
             {donor?.phoneMasked ?? user.email ?? '휴대폰 번호 미연결'}

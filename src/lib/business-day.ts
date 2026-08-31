@@ -1,14 +1,14 @@
 /**
  * 영업일 계산.
  *
- * 정산일 규칙: **후원일 다음날부터 세어 영업일 5일째** 가 정산일이다.
+ * 정산일 규칙: **결제일 다음날부터 세어 영업일 5일째** 가 정산일이다.
  * 영업일 = 토요일·일요일·공휴일을 뺀 날. (공휴일은 public_holiday 표에서 온다)
  *
  * 검증된 예시
- *  - 2026-08-03(월) 후원 → 4,5,6,7(4일) + 8·9 주말 건너뜀 + 10(월) = **2026-08-10**
- *  - 2026-08-07(금) 후원 → 10,11,12,13,14 = **2026-08-14** (다음 주 금요일)
- *  - 2026-08-08(토) 후원 → 9 주말 건너뜀, 10~14 = **2026-08-14** (금·토·일 동일)
- *  - 2026-08-09(일) 후원 → 10~14 = **2026-08-14**
+ *  - 2026-08-03(월) 결제 → 4,5,6,7(4일) + 8·9 주말 건너뜀 + 10(월) = **2026-08-10**
+ *  - 2026-08-07(금) 결제 → 10,11,12,13,14 = **2026-08-14** (다음 주 금요일)
+ *  - 2026-08-08(토) 결제 → 9 주말 건너뜀, 10~14 = **2026-08-14** (금·토·일 동일)
+ *  - 2026-08-09(일) 결제 → 10~14 = **2026-08-14**
  *
  * 날짜는 전부 KST 기준 'YYYY-MM-DD' 문자열로 다룬다.
  * Date 객체로 주고받으면 서버 타임존(AWS 는 UTC)에 따라 하루가 밀리는데,
@@ -76,7 +76,7 @@ export function nextBusinessDay(key: string, holidays: ReadonlySet<string>): str
  * `from` 다음날부터 세어 영업일 `count` 일째 날짜.
  *
  * from 자체는 세지 않는다. from 이 주말이면 자연히 건너뛰므로
- * 금·토·일 후원이 모두 같은 정산일로 모이게 된다(운영 규칙과 일치).
+ * 금·토·일 결제가 모두 같은 정산일로 모이게 된다(운영 규칙과 일치).
  */
 export function addBusinessDays(from: string, count: number, holidays: ReadonlySet<string>): string {
   let cur = from;
@@ -90,7 +90,7 @@ export function addBusinessDays(from: string, count: number, holidays: ReadonlyS
   return cur;
 }
 
-/** 후원일 → 정산 예정일 */
+/** 결제일 → 정산 예정일 */
 export function settlementDateFor(
   donationDateKey: string,
   holidays: ReadonlySet<string>,

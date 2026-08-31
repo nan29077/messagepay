@@ -29,9 +29,9 @@ export interface ShellViewer {
   /** 역할별 마이페이지 목적지 (/admin, /studio, /my) */
   myHref: string;
   roleLabel: string;
-  /** 프로필 캐릭터(아바타) 이미지. 크리에이터 프로필의 아바타를 그대로 사용한다. */
+  /** 프로필 캐릭터(아바타) 이미지. 가맹점 프로필의 아바타를 그대로 사용한다. */
   avatarUrl: string | null;
-  /** 크리에이터는 재시드에도 바뀌지 않는 크리에이터 코드를 사용한다. */
+  /** 가맹점은 재시드에도 바뀌지 않는 가맹점 코드를 사용한다. */
   avatarSeed: string;
   /** 가입 시 무작위로 배정되어 DB에 고정된 0~49 캐릭터 번호 */
   avatarIndex: number;

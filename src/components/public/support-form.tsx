@@ -69,7 +69,7 @@ export function SupportForm({ defaultTransactionNo }: { defaultTransactionNo?: s
 
       <Field
         label="거래번호 (선택)"
-        hint="후원 결과 문자나 마이페이지 후원 내역에서 확인할 수 있습니다. 예: TRD-20260819-XXXXXXXX"
+        hint="결제 결과 문자나 마이페이지 결제 내역에서 확인할 수 있습니다. 예: TRD-20260819-XXXXXXXX"
       >
         <Input
           name="transactionNo"

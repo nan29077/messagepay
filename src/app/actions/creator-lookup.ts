@@ -7,10 +7,10 @@ import { normalizeCreatorCode } from '@/lib/id';
 import { clientIpFrom } from '@/server/rate-limit';
 
 /**
- * 크리에이터 검색 / 코드 조회.
- * - 코드(MJP-XXXX)뿐 아니라 크리에이터 이름·유튜브 채널명으로도 검색할 수 있다.
+ * 가맹점 검색 / 코드 조회.
+ * - 코드(MJP-XXXX)뿐 아니라 가맹점 이름·서비스명으로도 검색할 수 있다.
  * - 무차별 탐색을 막기 위해 IP 단위 요청 제한을 유지하고, 결과는 최대 8건까지만 반환한다.
- * - 승인(APPROVED)된 크리에이터만 노출한다.
+ * - 승인(APPROVED)된 가맹점만 노출한다.
  */
 
 const WINDOW_SEC = 60;
@@ -70,7 +70,7 @@ export async function lookupCreatorCode(input: string): Promise<LookupResult> {
 
   const raw = String(input ?? '').trim();
   if (raw.length < 2) {
-    return { ok: false, message: '크리에이터 코드 또는 이름을 2자 이상 입력해 주세요.' };
+    return { ok: false, message: '가맹점 코드 또는 이름을 2자 이상 입력해 주세요.' };
   }
 
   // 1) 코드 형태면 코드 우선 조회
@@ -84,7 +84,7 @@ export async function lookupCreatorCode(input: string): Promise<LookupResult> {
     // 코드 형태인데 없으면 이름 검색으로 넘어가지 않고 바로 안내한다 (오타 가능성)
     return {
       ok: false,
-      message: '해당 코드의 크리에이터를 찾을 수 없습니다. 코드를 다시 확인하거나 이름으로 검색해 보세요.',
+      message: '해당 코드의 가맹점을 찾을 수 없습니다. 코드를 다시 확인하거나 이름으로 검색해 보세요.',
     };
   }
 
@@ -105,7 +105,7 @@ export async function lookupCreatorCode(input: string): Promise<LookupResult> {
   if (matches.length === 0) {
     return {
       ok: false,
-      message: '검색 결과가 없습니다. 크리에이터 코드(예: MJP-8K2M) 또는 정확한 채널명·이름으로 다시 검색해 주세요.',
+      message: '검색 결과가 없습니다. 가맹점 코드(예: MJP-8K2M) 또는 정확한 채널명·이름으로 다시 검색해 주세요.',
     };
   }
   return { ok: true, matches: matches.map(toSearchItem) };

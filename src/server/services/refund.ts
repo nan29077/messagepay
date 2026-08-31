@@ -18,7 +18,7 @@ export async function requestRefund(input: {
   requestedBy?: string;
 }) {
   const donation = await prisma.donation.findUnique({ where: { id: input.donationId } });
-  if (!donation) throw new Error('후원 거래를 찾을 수 없습니다.');
+  if (!donation) throw new Error('결제 거래를 찾을 수 없습니다.');
   if (!['PAYMENT_SUCCESS', 'BROADCAST_PENDING', 'BROADCASTED', 'PARTIAL_DELIVERY_FAILED', 'SETTLEMENT_PENDING', 'SETTLED'].includes(donation.status)) {
     throw new Error('결제가 완료된 거래만 환불할 수 있습니다.');
   }
@@ -27,7 +27,7 @@ export async function requestRefund(input: {
   });
   if (existing) throw new Error('이미 환불이 요청된 거래입니다.');
 
-  // 더블클릭·동시 요청으로 REQUESTED 가 두 건 생기지 않도록, 후원 상태 전이를 조건부 UPDATE 로 선점한다.
+  // 더블클릭·동시 요청으로 REQUESTED 가 두 건 생기지 않도록, 결제 상태 전이를 조건부 UPDATE 로 선점한다.
   const claimed = await prisma.donation.updateMany({
     where: { id: donation.id, status: donation.status },
     data: { status: 'REFUND_REQUESTED' },

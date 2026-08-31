@@ -8,7 +8,7 @@ import { Card, CardTitle, Notice, LinkButton } from '@/components/ui';
 
 export const metadata: Metadata = {
   title: '고객센터 | 문자페이',
-  description: '후원 취소·환불, 계좌 등록, 결제 오류, 방송 노출 문제를 접수합니다.',
+  description: '결제 취소·환불, 계좌 등록, 결제 오류, 충전 반영 문제를 접수합니다.',
 };
 
 export default async function SupportPage({
@@ -24,7 +24,7 @@ export default async function SupportPage({
       <PageHeader
         eyebrow="고객센터"
         title="문의 접수"
-        description="문의 유형과 내용을 남겨주시면 담당자가 확인 후 답변드립니다. 후원 관련 문의는 거래번호를 함께 적어주세요."
+        description="문의 유형과 내용을 남겨주시면 담당자가 확인 후 답변드립니다. 결제 관련 문의는 거래번호를 함께 적어주세요."
       />
 
       <BannerStrip position="SUPPORT_TOP" className="mb-4" />
@@ -85,7 +85,7 @@ function SupportAside() {
             자주 묻는 질문
           </LinkButton>
           <LinkButton href="/my" variant="secondary" size="md" className="w-full">
-            내 후원 내역
+            내 결제 내역
           </LinkButton>
         </div>
       </Card>

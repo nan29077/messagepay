@@ -8,7 +8,7 @@ import { updateDonorLimits, type DonorActionState } from '@/app/actions/donor';
 const initial: DonorActionState = { ok: false };
 
 /**
- * 후원자 한도 설정.
+ * 이용자 한도 설정.
  * 전역 정책보다 높은 값은 서버에서 거부되며, 여기서도 입력 상한으로 한 번 더 막는다.
  */
 export function LimitsForm({

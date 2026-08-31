@@ -24,14 +24,14 @@ export function TestLoginPanel({ seedAccounts }: { seedAccounts: { email: string
     },
     {
       account: 'creator',
-      label: '크리에이터로 로그인',
-      hint: '크리에이터 관리자 · /studio',
+      label: '가맹점으로 로그인',
+      hint: '가맹점 관리자 · /studio',
       icon: <Radio size={17} strokeWidth={1.7} />,
       className: 'bg-ink-900 text-white hover:opacity-90',
     },
     {
       account: 'donor',
-      label: '후원자로 로그인',
+      label: '이용자로 로그인',
       hint: '마이페이지 · /my',
       icon: <Heart size={17} strokeWidth={1.7} />,
       className: 'border border-ink-200 bg-white text-ink-900 hover:bg-ink-50',

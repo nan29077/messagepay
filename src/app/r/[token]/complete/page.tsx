@@ -68,8 +68,8 @@ export default async function RegistrationCompletePage({
   const [link, owner] = await Promise.all([
     prisma.secureLink.findUnique({
       where: { tokenHash: tokenHash(token) },
-      // creatorId 는 완료 후 이동할 후원 페이지를 찾는 데 쓴다.
-      // (등록 건에 크리에이터가 비어 있는 예전 데이터의 대비책)
+      // creatorId 는 완료 후 이동할 결제 페이지를 찾는 데 쓴다.
+      // (등록 건에 가맹점이 비어 있는 예전 데이터의 대비책)
       select: { purpose: true, phoneHash: true, creatorId: true },
     }),
     registration
@@ -85,7 +85,7 @@ export default async function RegistrationCompletePage({
         <FailCard
           token={token}
           title="등록 정보를 찾을 수 없습니다"
-          message="등록 요청이 만료되었거나 존재하지 않습니다. 크리에이터 번호로 문자를 다시 보내주세요."
+          message="등록 요청이 만료되었거나 존재하지 않습니다. 가맹점 번호로 문자를 다시 보내주세요."
         />
       </LinkShell>
     );
@@ -156,7 +156,7 @@ export default async function RegistrationCompletePage({
     );
   }
 
-  // 어느 크리에이터로 돌아가야 하는지: 등록 건에 기록된 값을 우선하고, 없으면 링크에 기록된 값을 쓴다.
+  // 어느 가맹점으로 돌아가야 하는지: 등록 건에 기록된 값을 우선하고, 없으면 링크에 기록된 값을 쓴다.
   const creatorId = registration.creatorId ?? link?.creatorId ?? null;
 
   const creator = creatorId
@@ -176,7 +176,7 @@ export default async function RegistrationCompletePage({
   return (
     <LinkShell>
       <div className="space-y-3">
-        {/* 가입 완료 후에는 바로 문자를 보낼 수 있도록 크리에이터 후원 페이지로 이동시킨다. */}
+        {/* 가입 완료 후에는 바로 문자를 보낼 수 있도록 가맹점 결제 페이지로 이동시킨다. */}
         {creator ? <CompleteRedirect creatorCode={creator.code} creatorName={creator.displayName} /> : null}
 
         <Card>
@@ -201,10 +201,10 @@ export default async function RegistrationCompletePage({
                 </span>
               }
             />
-            {creator ? <DataRow label="후원 대상" value={creator.displayName} /> : null}
+            {creator ? <DataRow label="결제 대상" value={creator.displayName} /> : null}
             {moNumber ? (
               <DataRow
-                label="후원 번호"
+                label="결제 수신번호"
                 value={
                   <span>
                     {moNumber.phoneNumber}
@@ -221,9 +221,9 @@ export default async function RegistrationCompletePage({
           </p>
         </Card>
 
-        <Notice tone="brand" title="이제 같은 번호로 문자를 보내면 후원이 접수됩니다">
+        <Notice tone="brand" title="이제 같은 번호로 문자를 보내면 결제가 접수됩니다">
           문자를 보내면 결제 PIN 입력 링크가 발송되고, PIN 을 입력하면 등록한
-          {resultMethod === 'CARD' ? ' 카드로 후원금이 결제됩니다' : ' 계좌에서 후원금이 출금됩니다'}. 문자 1건마다
+          {resultMethod === 'CARD' ? ' 카드로 결제 금액이 결제됩니다' : ' 계좌에서 결제 금액이 출금됩니다'}. 문자 1건마다
           결제가 요청되니 반복 발송에 주의해 주세요.
         </Notice>
 
@@ -240,7 +240,7 @@ export default async function RegistrationCompletePage({
         {creator ? (
           <LinkButton href={`/c/${creator.code}`} size="lg" variant="secondary">
             <MessageSquare size={17} strokeWidth={1.7} />
-            {creator.displayName} 후원샵 보기
+            {creator.displayName} 결제 페이지 보기
           </LinkButton>
         ) : null}
 
@@ -252,7 +252,7 @@ export default async function RegistrationCompletePage({
             <CardTitle>자동출금 해지 방법</CardTitle>
           </div>
           <ul className="space-y-2 text-[13px] leading-relaxed text-ink-700">
-            <li>마이페이지의 결제수단 관리에서 등록한 계좌를 해지하면 이후 문자 후원이 진행되지 않습니다.</li>
+            <li>마이페이지의 결제수단 관리에서 등록한 계좌를 해지하면 이후 문자 결제가 진행되지 않습니다.</li>
             <li>고객센터로 해지를 요청하셔도 즉시 처리됩니다.</li>
             <li>해지 후에는 문자를 보내도 결제가 진행되지 않으며, 다시 이용하려면 계좌를 새로 등록해야 합니다.</li>
           </ul>
@@ -291,7 +291,7 @@ function FailCard({ token, title, message }: { token: string; title: string; mes
         등록 다시 시도하기
       </LinkButton>
       <p className="text-center text-[12px] leading-relaxed text-ink-400">
-        링크가 만료되었다면 크리에이터 번호로 문자를 다시 보내주세요.
+        링크가 만료되었다면 가맹점 번호로 문자를 다시 보내주세요.
       </p>
     </div>
   );

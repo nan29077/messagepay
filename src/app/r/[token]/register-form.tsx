@@ -11,7 +11,7 @@ import { SNS_PLATFORMS, type SnsPlatform, SnsPlatformSelector } from '@/componen
  * 이용 동의 + 계좌 등록 시작.
  * - 필수 항목을 모두 동의하기 전에는 제출할 수 없다.
  * - 마케팅(선택) 동의는 필수 항목과 분리해 표시한다.
- * - 방송 닉네임은 선택 입력이다. 비워두면 번호 끝 4자리로 만든 기본 이름이 쓰인다.
+ * - 표시 이름은 선택 입력이다. 비워두면 번호 끝 4자리로 만든 기본 이름이 쓰인다.
  */
 
 export interface TermsItem {
@@ -30,7 +30,7 @@ export function RegisterForm({
 }: {
   token: string;
   terms: TermsItem[];
-  /** 닉네임을 비워둘 경우 쓰이는 이름 (예: 후원자5678) */
+  /** 닉네임을 비워둘 경우 쓰이는 이름 (예: 이용자5678) */
   defaultName: string;
 }) {
   const required = terms.filter((t) => t.required);
@@ -79,7 +79,7 @@ export function RegisterForm({
     });
   }
 
-  // 방송에서는 자동 생성된 기본 이름을 끝 4자리로 줄여 부른다.
+  // 결제 내역에서는 자동 생성된 기본 이름을 끝 4자리로 줄여 부른다.
   // 미리보기도 같은 함수를 거쳐야 화면에서 약속한 이름과 실제 방송이 어긋나지 않는다.
   const preview = broadcastDonorName(
     nameCheck.ok && nameCheck.value.length > 0 ? nameCheck.value : defaultName,
@@ -88,14 +88,14 @@ export function RegisterForm({
   return (
     <div className="space-y-3">
       {/*
-        방송 닉네임 (선택).
-        후원자는 번호만 남기므로, 설정하지 않으면 크리에이터 화면과 방송에
-        "후원자5678" 처럼 표시된다. 결과를 미리 보여줘야 그냥 넘기지 않는다.
+        표시 이름 (선택).
+        이용자는 번호만 남기므로, 설정하지 않으면 가맹점 화면과 결제 내역에
+        "이용자5678" 처럼 표시된다. 결과를 미리 보여줘야 그냥 넘기지 않는다.
       */}
       <Card>
-        <p className="text-[14.5px] font-bold text-ink-900">방송에 표시될 닉네임 (선택)</p>
+        <p className="text-[14.5px] font-bold text-ink-900">결제 내역에 표시될 이름 (선택)</p>
         <p className="mt-1 text-[12px] leading-relaxed text-ink-500">
-          유튜브·인스타 등에서 쓰는 닉네임을 적어두면 크리에이터가 누가 보냈는지 알아볼 수 있습니다.
+          평소 쓰는 닉네임을 적어두면 가맹점이 누구의 결제인지 알아볼 수 있습니다.
         </p>
         <div className="mt-2.5">
           <SnsPlatformSelector value={snsPlatform} onChange={setSnsPlatform} />
@@ -106,7 +106,7 @@ export function RegisterForm({
             onChange={(e) => setNickname(e.target.value)}
             maxLength={DONOR_NAME_MAX + 4}
             placeholder={snsPlatform ? `${SNS_PLATFORMS.find(p => p.value === snsPlatform)?.label ?? ''} 닉네임` : '예: 밤톨이'}
-            aria-label="방송에 표시될 닉네임"
+            aria-label="결제 내역에 표시될 이름"
             aria-invalid={Boolean(nameError)}
           />
         </div>
@@ -119,9 +119,9 @@ export function RegisterForm({
           </p>
         )}
         <div className="mt-2.5 rounded-xl bg-brand-50 px-3.5 py-2.5">
-          <p className="text-[11px] font-bold text-brand-700">방송·유튜브 채팅에 이렇게 표시됩니다</p>
+          <p className="text-[11px] font-bold text-brand-700">결제 내역에 이렇게 표시됩니다</p>
           <p className="mt-0.5 text-[13px] font-semibold text-ink-900">
-            {preview}님이 3,000원을 후원하셨습니다
+            {preview}님이 3,000원을 충전했습니다
           </p>
         </div>
         <p className="mt-2 text-[11.5px] leading-relaxed text-ink-400">

@@ -88,11 +88,11 @@ export async function submitSupportRequest(
       creatorId = donation.creatorId;
       linkNote = `거래번호 ${transactionNo} 건이 문의에 연결되었습니다.`;
     } else {
-      linkNote = `거래번호 ${transactionNo} 에 해당하는 후원 내역을 찾지 못해 문의만 접수했습니다. 담당자가 직접 확인합니다.`;
+      linkNote = `거래번호 ${transactionNo} 에 해당하는 결제 내역을 찾지 못해 문의만 접수했습니다. 담당자가 직접 확인합니다.`;
     }
   }
 
-  // 로그인 사용자는 후원자 프로필의 phoneHash 로 문의자를 식별한다 (원문은 저장하지 않음)
+  // 로그인 사용자는 이용자 프로필의 phoneHash 로 문의자를 식별한다 (원문은 저장하지 않음)
   let reporterHash: string | null = null;
   if (user) {
     const donor = await prisma.donorProfile.findUnique({

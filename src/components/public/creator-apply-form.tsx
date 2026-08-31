@@ -9,9 +9,9 @@ const initial: CreatorApplyState = { ok: false };
 
 const STATUS_TEXT: Record<string, string> = {
   PENDING: '심사 대기 중입니다.',
-  APPROVED: '이미 승인된 크리에이터 계정입니다.',
+  APPROVED: '이미 승인된 가맹점 계정입니다.',
   REJECTED: '이전 신청이 반려되었습니다. 고객센터로 문의해 주세요.',
-  SUSPENDED: '이용이 정지된 크리에이터 계정입니다. 고객센터로 문의해 주세요.',
+  SUSPENDED: '이용이 정지된 가맹점 계정입니다. 고객센터로 문의해 주세요.',
 };
 
 
@@ -33,7 +33,7 @@ export function CreatorApplyForm({ loggedIn, sessionEmail }: { loggedIn: boolean
           {STATUS_TEXT[state.alreadyStatus] ?? '신청 상태를 확인해 주세요.'}
         </p>
         <div className="mt-4 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">
-          <p className="text-[12px] font-semibold text-brand-700">크리에이터 코드</p>
+          <p className="text-[12px] font-semibold text-brand-700">가맹점 코드</p>
           <p className="mt-1 font-mono text-[18px] font-extrabold tracking-[0.1em] text-ink-900">{state.code}</p>
         </div>
         <LinkButton href="/support" variant="secondary" size="md" className="mt-4 w-full">
@@ -68,7 +68,7 @@ export function CreatorApplyForm({ loggedIn, sessionEmail }: { loggedIn: boolean
         </Field>
 
         <Field label="소개" hint="결제 페이지에 표시할 짧은 소개입니다. (300자 이내)">
-          <Textarea name="description" rows={4} maxLength={300} defaultValue={state.values?.description} placeholder="문자 한 통으로 응원을 보내주세요." />
+          <Textarea name="description" rows={4} maxLength={300} defaultValue={state.values?.description} placeholder="문자 한 통으로 충전할 수 있습니다." />
         </Field>
       </Card>
 
@@ -126,7 +126,7 @@ export function CreatorApplyForm({ loggedIn, sessionEmail }: { loggedIn: boolean
           <div>
             <CardTitle>로그인 계정 만들기</CardTitle>
             <p className="mt-1 text-[12.5px] leading-relaxed text-ink-500">
-              입력한 연락 이메일로 크리에이터 계정이 생성되고, 신청 후 자동으로 로그인됩니다.
+              입력한 연락 이메일로 가맹점 계정이 생성되고, 신청 후 자동으로 로그인됩니다.
             </p>
           </div>
           <Field label="비밀번호" required hint="8자 이상 입력해 주세요.">
@@ -145,7 +145,7 @@ export function CreatorApplyForm({ loggedIn, sessionEmail }: { loggedIn: boolean
       <Card>
         <Checkbox
           name="agree"
-          label="크리에이터 이용 조건과 개인정보 수집·이용에 동의합니다. (필수)"
+          label="가맹점 이용 조건과 개인정보 수집·이용에 동의합니다. (필수)"
           description="심사 과정에서 채널 운영 정보와 본인 확인 자료를 요청할 수 있습니다."
         />
       </Card>
@@ -180,11 +180,11 @@ function ApplyDone({ code, displayName }: { code: string; displayName?: string }
         <div className="mt-4 rounded-2xl border border-brand-200 bg-brand-50 px-4 py-4 text-center">
           <p className="flex items-center justify-center gap-1.5 text-[12px] font-semibold text-brand-700">
             <Hash size={14} strokeWidth={1.8} />
-            크리에이터 코드
+            가맹점 코드
           </p>
           <p className="mt-1.5 font-mono text-[26px] font-extrabold tracking-[0.12em] text-ink-900">{code}</p>
           <p className="mt-1.5 text-[12px] leading-relaxed text-ink-500">
-            승인 후 시청자가 이 코드로 후원 페이지에 접속할 수 있습니다.
+            승인 후 이용자가 이 코드로 결제 페이지에 접속할 수 있습니다.
           </p>
         </div>
       </Card>
@@ -201,15 +201,15 @@ function ApplyDone({ code, displayName }: { code: string; displayName?: string }
             채널 운영 정보와 신청 내용을 확인합니다.
           </li>
           <li>
-            <span className="font-bold text-ink-900">2. MO 후원 번호 배정</span>
+            <span className="font-bold text-ink-900">2. MO 결제 수신번호 배정</span>
             <br />
-            문자 수신 번호는 관리자 승인 이후에 배정됩니다. 승인 전에는 후원 페이지가 공개되지 않고 문자후원도 접수되지
+            문자 수신 번호는 관리자 승인 이후에 배정됩니다. 승인 전에는 결제 페이지가 공개되지 않고 문자결제도 접수되지
             않습니다.
           </li>
           <li>
-            <span className="font-bold text-ink-900">3. 방송 연동 설정</span>
+            <span className="font-bold text-ink-900">3. 결제 연동 설정</span>
             <br />
-            승인 후 크리에이터 콘솔에서 유튜브 연동, 오버레이, 음성 안내, 정산 계좌를 설정합니다.
+            승인 후 가맹점 콘솔에서 결제 수신번호, 결제 설정, 정산 계좌를 설정합니다.
           </li>
         </ol>
       </Card>
@@ -221,7 +221,7 @@ function ApplyDone({ code, displayName }: { code: string; displayName?: string }
 
       <div className="grid grid-cols-2 gap-2">
         <LinkButton href="/studio" variant="primary" size="md" className="w-full">
-          크리에이터 콘솔
+          가맹점 콘솔
         </LinkButton>
         <LinkButton href="/support" variant="secondary" size="md" className="w-full">
           고객센터 문의

@@ -24,7 +24,7 @@ export interface EffectivePolicy {
   donorDailyLimit: bigint;
   donorMonthlyLimit: bigint;
   perCreatorDailyLimit: bigint;
-  /** 1인(후원자) 1일 최대 후원 건수 */
+  /** 1인(이용자) 1일 최대 결제 건수 */
   donorDailyMaxCount: number;
   velocityWindowSec: number;
   velocityMaxCount: number;
@@ -133,29 +133,29 @@ export interface LimitCheckInput {
   creatorId: string;
   amount: bigint;
   now?: Date;
-  /** 크리에이터가 이 후원자를 차단했는지 */
+  /** 가맹점이 이 이용자를 차단했는지 */
   blockedByCreator?: boolean;
   /**
    * 속도 제한(velocity/streak) 카운터를 이번 호출에서 소진할지 여부. 기본 true.
    *
-   * 같은 후원 1건에 대해 checkLimits 를 두 번 호출하는 경로(접수 시 + 결제 직전 재검사)에서는
+   * 같은 결제 1건에 대해 checkLimits 를 두 번 호출하는 경로(접수 시 + 결제 직전 재검사)에서는
    * 두 번째 호출을 false 로 둬야 한다. 그렇지 않으면 1건이 2건으로 계산돼
-   * 설정한 속도 제한의 절반에서 정상 후원자가 차단되고 쿨다운도 두 배 빨리 걸린다.
+   * 설정한 속도 제한의 절반에서 정상 이용자가 차단되고 쿨다운도 두 배 빨리 걸린다.
    */
   consumeVelocity?: boolean;
   /**
    * 결제 판정 트랜잭션. 넘기면 모든 조회를 이 트랜잭션 안에서 수행하고,
-   * 한도 집계를 읽기 직전에 후원자 행을 `FOR UPDATE` 로 잠근다.
-   * 같은 후원자의 동시 요청은 앞선 트랜잭션이 끝날 때까지 여기서 대기하므로,
+   * 한도 집계를 읽기 직전에 이용자 행을 `FOR UPDATE` 로 잠근다.
+   * 같은 이용자의 동시 요청은 앞선 트랜잭션이 끝날 때까지 여기서 대기하므로,
    * 두 요청이 같은 집계를 읽고 나란히 통과하는 일이 생기지 않는다.
    */
   tx?: LimitsTx;
 }
 
 /**
- * 후원자 행 잠금 (`SELECT ... FOR UPDATE`).
+ * 이용자 행 잠금 (`SELECT ... FOR UPDATE`).
  * donor_profile 행은 항상 존재하므로 집계 행이 아직 없어도 직렬화 지점이 된다.
- * (donation_counter 를 잠그면 첫 후원처럼 행이 없을 때 아무것도 잠기지 않는다)
+ * (donation_counter 를 잠그면 첫 결제처럼 행이 없을 때 아무것도 잠기지 않는다)
  */
 async function lockDonorRow(tx: LimitsTx, donorId: string) {
   await tx.$queryRawUnsafe('SELECT id FROM donor_profile WHERE id = $1 FOR UPDATE', donorId);
@@ -188,21 +188,21 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
     ok: false, code, message, requiresManualReview: false, policy,
   });
 
-  if (input.blockedByCreator) return deny('BLOCKED', '크리에이터가 차단한 후원자입니다.');
-  if (input.donor.blockedAt) return deny('BLOCKED', '이용이 제한된 후원자입니다.');
-  // 후원자가 /my/blocks 에서 직접 건 차단(donorCreatorLink.donorBlockedAt). 결제 경로 전부에서 막아야 한다.
-  // 크리에이터가 건 차단은 blockedByCreator(blocked_donor) 로 따로 들어온다.
+  if (input.blockedByCreator) return deny('BLOCKED', '가맹점이 차단한 이용자입니다.');
+  if (input.donor.blockedAt) return deny('BLOCKED', '이용이 제한된 이용자입니다.');
+  // 이용자가 /my/blocks 에서 직접 건 차단(donorCreatorLink.donorBlockedAt). 결제 경로 전부에서 막아야 한다.
+  // 가맹점이 건 차단은 blockedByCreator(blocked_donor) 로 따로 들어온다.
   const link = await db.donorCreatorLink.findUnique({
     where: { donorId_creatorId: { donorId: input.donor.id, creatorId: input.creatorId } },
     select: { donorBlockedAt: true },
   });
-  if (link?.donorBlockedAt) return deny('BLOCKED', '후원자가 차단한 크리에이터입니다. 내 정보 > 차단 관리에서 해제할 수 있습니다.');
+  if (link?.donorBlockedAt) return deny('BLOCKED', '이용자가 차단한 가맹점입니다. 내 정보 > 차단 관리에서 해제할 수 있습니다.');
   if (input.donor.lockedUntil && input.donor.lockedUntil > now) {
     return deny('LOCKED', '결제 실패가 반복되어 일시적으로 잠겼습니다. 관리자 해제가 필요합니다.');
   }
-  // 허용 범위 = 플랫폼 한도 정책 ∩ 크리에이터가 후원샵 설정에서 정한 범위.
-  // 크리에이터 설정을 보지 않으면, 후원자가 문자로 금액을 지정했을 때
-  // 크리에이터가 정한 상·하한을 그냥 넘어가 버린다.
+  // 허용 범위 = 플랫폼 한도 정책 ∩ 가맹점이 결제 페이지 설정에서 정한 범위.
+  // 가맹점 설정을 보지 않으면, 이용자가 문자로 금액을 지정했을 때
+  // 가맹점이 정한 상·하한을 그냥 넘어가 버린다.
   const creatorRange = await db.creatorProfile.findUnique({
     where: { id: input.creatorId },
     select: { minAmount: true, maxAmount: true },
@@ -213,49 +213,49 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
     creatorRange && creatorRange.maxAmount < policy.maxAmount ? creatorRange.maxAmount : policy.maxAmount;
 
   if (input.amount < effMin || input.amount > effMax) {
-    return deny('AMOUNT_RANGE', `후원금은 ${effMin}원 ~ ${effMax}원 사이여야 합니다.`);
+    return deny('AMOUNT_RANGE', `결제 금액은 ${effMin}원 ~ ${effMax}원 사이여야 합니다.`);
   }
 
   const dayKey = kstDateKey(now);
   const monthKey = kstMonthKey(now);
 
-  // 한도 집계를 읽기 직전에 후원자 행을 잠근다.
-  // 잠금을 잡은 트랜잭션이 커밋될 때까지 같은 후원자의 다음 요청은 여기서 멈춘다.
+  // 한도 집계를 읽기 직전에 이용자 행을 잠근다.
+  // 잠금을 잡은 트랜잭션이 커밋될 때까지 같은 이용자의 다음 요청은 여기서 멈춘다.
   if (input.tx) await lockDonorRow(input.tx, input.donor.id);
 
   const donorDay = await readCounter(db, input.donor.id, ALL, 'DAY', dayKey);
   if (donorDay.amount + input.amount > donorDaily) {
-    return deny('DONOR_DAILY', '일일 후원 한도를 초과했습니다.');
+    return deny('DONOR_DAILY', '일일 결제 한도를 초과했습니다.');
   }
 
   // 1인 1일 최대 건수 (금액과 별개로 건수 자체를 제한)
   if (donorDay.count + 1 > policy.donorDailyMaxCount) {
-    return deny('DONOR_DAILY_COUNT', `하루 최대 ${policy.donorDailyMaxCount}건까지 후원할 수 있습니다.`);
+    return deny('DONOR_DAILY_COUNT', `하루 최대 ${policy.donorDailyMaxCount}건까지 결제할 수 있습니다.`);
   }
 
   const donorMonth = await readCounter(db, input.donor.id, ALL, 'MONTH', monthKey);
   if (donorMonth.amount + input.amount > donorMonthly) {
-    return deny('DONOR_MONTHLY', '월간 후원 한도를 초과했습니다.');
+    return deny('DONOR_MONTHLY', '월간 결제 한도를 초과했습니다.');
   }
 
   const creatorDay = await readCounter(db, input.donor.id, input.creatorId, 'DAY', dayKey);
   if (creatorDay.amount + input.amount > policy.perCreatorDailyLimit) {
-    return deny('CREATOR_DAILY', '해당 크리에이터에 대한 일일 한도를 초과했습니다.');
+    return deny('CREATOR_DAILY', '해당 가맹점에 대한 일일 한도를 초과했습니다.');
   }
 
-  // 신규 후원자 첫날 한도
+  // 신규 이용자 첫날 한도
   if (kstDateKey(input.donor.firstSeenAt) === dayKey && donorDay.amount + input.amount > policy.newDonorFirstDayLimit) {
-    return deny('NEW_DONOR_FIRST_DAY', '신규 후원자 첫날 한도를 초과했습니다.');
+    return deny('NEW_DONOR_FIRST_DAY', '신규 이용자 첫날 한도를 초과했습니다.');
   }
 
   // ------------------------------------------------------------------
-  // 여기부터는 Redis 를 쓰는 판정(연속 후원 대기·속도 제한)이다.
+  // 여기부터는 Redis 를 쓰는 판정(연속 결제 대기·속도 제한)이다.
   //
   // 트랜잭션 안에서는 하지 않는다.
-  // 결제 판정(executePayment)은 후원자 행을 FOR UPDATE 로 잠근 채 이 함수를 부르는데,
+  // 결제 판정(executePayment)은 이용자 행을 FOR UPDATE 로 잠근 채 이 함수를 부르는데,
   // 그 상태로 Redis 응답을 기다리면 DB 잠금과 커넥션을 쥔 채 외부 네트워크에 매달리게 된다.
   // Redis 가 죽지 않고 느려지기만 해도(페일오버, 순단) 인터랙티브 트랜잭션 제한 시간을 넘겨
-  // 결제 승인이 통째로 실패하고, 같은 후원자의 다른 요청까지 줄줄이 막힌다. DB 는 멀쩡한데도.
+  // 결제 승인이 통째로 실패하고, 같은 이용자의 다른 요청까지 줄줄이 막힌다. DB 는 멀쩡한데도.
   //
   // 이 두 판정은 접수 시점(트랜잭션 밖)에서 이미 한 번 거친다.
   // 결제 직전 재검사가 반드시 확인해야 하는 것은 DB 집계 기반 한도이고, 그건 위에서 끝냈다.
@@ -263,7 +263,7 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
   if (!input.tx) {
     const cooldownKey = `cooldown:${input.donor.id}`;
     if (await kv.get(cooldownKey)) {
-      return deny('COOLDOWN', '연속 후원으로 대기 중입니다. 잠시 후 다시 시도해 주세요.');
+      return deny('COOLDOWN', '연속 결제로 대기 중입니다. 잠시 후 다시 시도해 주세요.');
     }
 
     if (input.consumeVelocity !== false) {
@@ -271,7 +271,7 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
       const velocityKey = `velocity:${input.donor.id}:${Math.floor(now.getTime() / (policy.velocityWindowSec * 1000))}`;
       const vCount = await kv.incr(velocityKey, policy.velocityWindowSec);
       if (vCount > policy.velocityMaxCount) {
-        return deny('VELOCITY', `${policy.velocityWindowSec}초 내 최대 ${policy.velocityMaxCount}건까지 후원할 수 있습니다.`);
+        return deny('VELOCITY', `${policy.velocityWindowSec}초 내 최대 ${policy.velocityMaxCount}건까지 결제할 수 있습니다.`);
       }
 
       // 연속 N건 이후 쿨다운 부여

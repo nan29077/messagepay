@@ -183,7 +183,7 @@ export function generateNumericCode(digits = 6): string {
   return String(crypto.randomInt(min, max));
 }
 
-/** 지정한 알파벳으로 CSPRNG 난수 문자열 생성 (크리에이터 코드 등). */
+/** 지정한 알파벳으로 CSPRNG 난수 문자열 생성 (가맹점 코드 등). */
 export function randomCodeString(alphabet: string, length: number): string {
   let s = '';
   for (let i = 0; i < length; i += 1) s += alphabet[crypto.randomInt(0, alphabet.length)];

@@ -25,7 +25,7 @@ async function main() {
   const settings: Array<[string, unknown, string]> = [
     ['payment.mode', 'CONFIRM_LINK', '전역 기본 결제 모드. DIRECT_TRIGGER 는 금융사 서면승인 후에만 허용'],
     ['payment.confirmTtlSec', 300, '결제 확인 링크 유효시간(초). 헥토 10분 제한보다 짧게 유지'],
-    ['donation.defaultAmount', 3000, '문자 1건당 기본 후원금'],
+    ['donation.defaultAmount', 3000, '문자 1건당 기본 결제 금액'],
     ['service.name', '문자페이', '서비스명'],
   ];
   for (const [key, value, memo] of settings) {
@@ -38,10 +38,10 @@ async function main() {
 
   // ---------------------------------------------------------------- 약관
   const terms: Array<{ type: 'TERMS_SERVICE' | 'PRIVACY' | 'E_FINANCE' | 'WITHDRAWAL_AGREE' | 'AGE_CONFIRM' | 'MARKETING'; title: string; content: string; required: boolean }> = [
-    { type: 'TERMS_SERVICE', title: '문자페이 서비스 이용약관', content: '제1조(목적) 이 약관은 문자페이가 제공하는 문자후원 서비스의 이용조건 및 절차를 규정합니다. (샘플 문안 — 법률 검토 후 교체 필요)', required: true },
-    { type: 'PRIVACY', title: '개인정보 수집 및 이용 동의', content: '수집항목: 휴대전화번호, 결제 관련 정보. 이용목적: 후원 처리 및 결과 안내. 보유기간: 관계 법령에 따름. (샘플 문안)', required: true },
+    { type: 'TERMS_SERVICE', title: '문자페이 서비스 이용약관', content: '제1조(목적) 이 약관은 문자페이가 제공하는 문자결제 서비스의 이용조건 및 절차를 규정합니다. (샘플 문안 — 법률 검토 후 교체 필요)', required: true },
+    { type: 'PRIVACY', title: '개인정보 수집 및 이용 동의', content: '수집항목: 휴대전화번호, 결제 관련 정보. 이용목적: 결제 처리 및 결과 안내. 보유기간: 관계 법령에 따름. (샘플 문안)', required: true },
     { type: 'E_FINANCE', title: '전자금융거래 이용약관', content: '전자금융거래의 이용조건, 거래내용 확인, 오류 정정 절차를 규정합니다. (샘플 문안)', required: true },
-    { type: 'WITHDRAWAL_AGREE', title: '출금이체 동의', content: '문자후원 발생 시 등록한 계좌에서 후원금이 출금되는 것에 동의합니다. (샘플 문안)', required: true },
+    { type: 'WITHDRAWAL_AGREE', title: '출금이체 동의', content: '문자결제 발생 시 등록한 계좌에서 결제 금액이 출금되는 것에 동의합니다. (샘플 문안)', required: true },
     { type: 'AGE_CONFIRM', title: '만 19세 이상 확인', content: '본인은 만 19세 이상이며 미성년자가 아님을 확인합니다.', required: true },
     { type: 'MARKETING', title: '마케팅 정보 수신 동의', content: '이벤트 및 혜택 안내를 받는 것에 동의합니다. (선택)', required: false },
   ];
@@ -91,7 +91,7 @@ async function main() {
     update: { permission: 'SUPER_ADMIN' },
   });
 
-  // ---------------------------------------------------------------- 크리에이터
+  // ---------------------------------------------------------------- 가맹점
   const creatorSeeds = [
     { email: 'creator1@munjapay.kr', name: '바람소리', code: 'MJP-8K2M', mo: '05051001001', mode: 'DEDICATED' as const, keyword: null },
     { email: 'creator2@munjapay.kr', name: '별하늘', code: 'MJP-3QP7', mo: '05059000000', mode: 'SHARED_PREFIX' as const, keyword: 'MJP3QP7' },
@@ -150,13 +150,13 @@ async function main() {
     });
   }
 
-  // ---------------------------------------------------------------- 테스트 후원자 (계좌 등록 완료 상태)
+  // ---------------------------------------------------------------- 테스트 이용자 (계좌 등록 완료 상태)
   const testPhone = '01012345678';
   const donor = await prisma.donorProfile.upsert({
     where: { phoneHash: phoneHash(testPhone) },
     create: {
       id: newId(), phoneHash: phoneHash(testPhone), phoneEnc: encrypt(testPhone),
-      phoneMasked: maskPhone(testPhone), displayName: '테스트후원자',
+      phoneMasked: maskPhone(testPhone), displayName: '테스트이용자',
       ageVerified: true, registeredAt: new Date(), onboardingStatus: 'REGISTERED',
     },
     update: { onboardingStatus: 'REGISTERED' },
@@ -173,11 +173,11 @@ async function main() {
     });
   }
 
-  // 후원자 웹 계정 (테스트 로그인용) — DonorProfile 과 휴대폰 번호 기준으로 연결한다.
+  // 이용자 웹 계정 (테스트 로그인용) — DonorProfile 과 휴대폰 번호 기준으로 연결한다.
   const donorUser = await prisma.user.upsert({
     where: { email: 'donor@munjapay.kr' },
     create: {
-      id: newId(), email: 'donor@munjapay.kr', name: '테스트후원자',
+      id: newId(), email: 'donor@munjapay.kr', name: '테스트이용자',
       role: 'DONOR', passwordHash: await bcrypt.hash('munjapay1234!', 10),
     },
     update: { role: 'DONOR' },
@@ -188,12 +188,12 @@ async function main() {
 
   // ---------------------------------------------------------------- 옛 번호 샘플 정리
   // 050 전환 이전 번호(1588…)로 들어가 UNKNOWN_ROUTE 로 실패한 샘플 수신문자를 지운다.
-  // 지워야 아래 샘플 후원 블록이 다시 실행되어 정상 데이터가 만들어진다.
+  // 지워야 아래 샘플 결제 블록이 다시 실행되어 정상 데이터가 만들어진다.
   await prisma.moInboundMessage.deleteMany({
     where: { providerMessageId: { startsWith: 'SEED-MO-' }, result: 'UNKNOWN_ROUTE' },
   });
 
-  // ---------------------------------------------------------------- 샘플 후원 이력
+  // ---------------------------------------------------------------- 샘플 결제 이력
   // 실제 서비스 흐름(handleMoInbound → executePayment)을 그대로 사용해 생성한다.
   // 수기 INSERT 가 아니므로 결제 트랜잭션·정산 원장·MT 발송 기록까지 일관되게 만들어진다.
   // (mock 어댑터 기준이며, 이미 이력이 있으면 건너뛴다)
@@ -204,7 +204,7 @@ async function main() {
       const { completePinAuthorization } = await import('../src/server/services/pin-authorization');
       const { requestRefund } = await import('../src/server/services/refund');
 
-      // 수신번호는 시드에 정의된 크리에이터 MO 번호를 그대로 사용한다.
+      // 수신번호는 시드에 정의된 가맹점 MO 번호를 그대로 사용한다.
       // (번호 체계를 바꿀 때 이 목록을 같이 고치지 않으면 전부 UNKNOWN_ROUTE 로 실패한다)
       const moA = creatorSeeds[0].mo;
       const moB = creatorSeeds[1].mo;
@@ -230,7 +230,7 @@ async function main() {
           receivedAt: new Date(Date.now() - (samples.length - i) * 86_400_000),
         });
         if (s.pay && result.donationId) {
-          // PIN 인증 흐름에서는 후원자가 PIN 을 입력한 것과 같은 경로로 결제를 마친다.
+          // PIN 인증 흐름에서는 이용자가 PIN 을 입력한 것과 같은 경로로 결제를 마친다.
           // (직접 executePayment 를 부르면 인증 세션이 대기 상태로 남아 실제 데이터와 달라진다)
           if (result.status === 'PENDING_PIN') await completePinAuthorization({ donationId: result.donationId });
           else await executePayment(result.donationId);
@@ -242,19 +242,19 @@ async function main() {
       if (refundTarget) {
         await requestRefund({ donationId: refundTarget, reason: '실수로 중복 발송했습니다.', requestedBy: 'donor' });
       }
-      console.log('  샘플 후원 이력 5건 생성 (결제 완료·환불 요청·한도 차단 등 실제 흐름 그대로)');
+      console.log('  샘플 결제 이력 5건 생성 (결제 완료·환불 요청·한도 차단 등 실제 흐름 그대로)');
     } catch (e) {
-      console.warn('  샘플 후원 이력 생성 건너뜀:', (e as Error).message);
+      console.warn('  샘플 결제 이력 생성 건너뜀:', (e as Error).message);
     }
   }
 
   // ---------------------------------------------------------------- 콘텐츠
   const posts: Array<{ type: string; title: string; body: string; category?: string; sortOrder: number }> = [
-    { type: 'FAQ', title: '문자후원은 어떻게 이용하나요?', body: '크리에이터의 후원 번호로 문자를 보내면 됩니다. 최초 1회 계좌 등록과 이용 동의가 필요하며, 최초 문자는 후원 처리되지 않습니다.', category: '이용방법', sortOrder: 1 },
-    { type: 'FAQ', title: '최초 문자도 후원되나요?', body: '아니요. 최초 문자는 후원 처리되지 않고 계좌 등록 안내만 발송됩니다. 등록 완료 후 보내는 문자부터 후원이 접수됩니다.', category: '이용방법', sortOrder: 2 },
-    { type: 'FAQ', title: '후원 한도가 있나요?', body: '기본 일일 100,000원, 1분 내 3건, 연속 5건 이후 대기시간이 적용됩니다. 한도는 마이페이지에서 더 낮게 설정할 수 있습니다.', category: '한도', sortOrder: 3 },
-    { type: 'FAQ', title: '후원을 취소할 수 있나요?', body: '결제 직후 고객센터로 요청하시면 정산 전인 건에 한해 취소·환불이 가능합니다.', category: '환불', sortOrder: 4 },
-    { type: 'FAQ', title: '유튜브 슈퍼챗과 같은 건가요?', body: '아닙니다. 문자페이 후원은 유튜브 공식 슈퍼챗이 아닌 외부 후원이며, 채팅에는 연결된 채널 계정으로 표시됩니다.', category: '방송', sortOrder: 5 },
+    { type: 'FAQ', title: '문자결제는 어떻게 이용하나요?', body: '가맹점의 결제 수신번호로 문자를 보내면 됩니다. 최초 1회 계좌 등록과 이용 동의가 필요하며, 최초 문자는 결제 처리되지 않습니다.', category: '이용방법', sortOrder: 1 },
+    { type: 'FAQ', title: '최초 문자도 결제되나요?', body: '아니요. 최초 문자는 결제 처리되지 않고 계좌 등록 안내만 발송됩니다. 등록 완료 후 보내는 문자부터 결제가 접수됩니다.', category: '이용방법', sortOrder: 2 },
+    { type: 'FAQ', title: '결제 한도가 있나요?', body: '기본 일일 100,000원, 1분 내 3건, 연속 5건 이후 대기시간이 적용됩니다. 한도는 마이페이지에서 더 낮게 설정할 수 있습니다.', category: '한도', sortOrder: 3 },
+    { type: 'FAQ', title: '결제를 취소할 수 있나요?', body: '결제 직후 고객센터로 요청하시면 정산 전인 건에 한해 취소·환불이 가능합니다.', category: '환불', sortOrder: 4 },
+    { type: 'FAQ', title: '유튜브 슈퍼챗과 같은 건가요?', body: '아닙니다. 문자페이 결제는 유튜브 공식 슈퍼챗이 아닌 외부 결제이며, 채팅에는 연결된 채널 계정으로 표시됩니다.', category: '방송', sortOrder: 5 },
     { type: 'NOTICE', title: '문자페이 베타 서비스 안내', body: '현재 문자페이는 준비 단계이며 실제 결제와 문자 발송은 비활성화되어 있습니다.', sortOrder: 1 },
   ];
   for (const p of posts) {
@@ -273,7 +273,7 @@ async function main() {
 
   // ---------------------------------------------------------------- 브랜드명 정리
   // 브랜드명이 문자페이로 바뀌기 전(토네이도 · 도네이도)에 만들어진 시드 데이터가 남아 있으면
-  // 계정 이메일과 크리에이터 코드 체계까지 달라지므로 `npm run db:reset` 으로 새로 만든다.
+  // 계정 이메일과 가맹점 코드 체계까지 달라지므로 `npm run db:reset` 으로 새로 만든다.
 
   // 시드 버전 기록. 다음 실행 때 이 값으로 보충 시드 필요 여부를 판단한다.
   await prisma.systemSetting.upsert({
@@ -284,15 +284,15 @@ async function main() {
 
   console.log('시드 완료');
   console.log('  관리자     : admin@munjapay.kr / munjapay1234!');
-  console.log('  크리에이터 : creator1@munjapay.kr / munjapay1234! (코드 MJP-8K2M, MO 0505-100-1001)');
-  console.log('  크리에이터 : creator2@munjapay.kr / munjapay1234! (코드 MJP-3QP7, MO 0505-900-0000 + 키워드 MJP3QP7)');
-  console.log('  후원자     : donor@munjapay.kr / munjapay1234! (010-1234-5678, 계좌 등록·계정 연결 완료)');
+  console.log('  가맹점 : creator1@munjapay.kr / munjapay1234! (코드 MJP-8K2M, MO 0505-100-1001)');
+  console.log('  가맹점 : creator2@munjapay.kr / munjapay1234! (코드 MJP-3QP7, MO 0505-900-0000 + 키워드 MJP3QP7)');
+  console.log('  이용자     : donor@munjapay.kr / munjapay1234! (010-1234-5678, 계좌 등록·계정 연결 완료)');
 }
 
 main()
   .then(async () => {
     await prisma.$disconnect();
-    // 샘플 후원 이력 생성 시 동적 import 된 앱 모듈(별도 Prisma 클라이언트/Redis)이
+    // 샘플 결제 이력 생성 시 동적 import 된 앱 모듈(별도 Prisma 클라이언트/Redis)이
     // 이벤트 루프를 붙잡아 프로세스가 종료되지 않는 것을 방지한다.
     process.exit(0);
   })
