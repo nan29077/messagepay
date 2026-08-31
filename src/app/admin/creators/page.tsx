@@ -196,7 +196,7 @@ export default async function AdminCreatorsPage({
           <ActionForm
             action={applyGlobalAmountBounds}
             submitLabel="전체 적용"
-            confirm="모든 가맹점에게 새 허용 범위를 일괄 적용합니다. 범위를 벗어난 1건 결제 금액은 자동 보정되며 감사로그에 기록됩니다. 계속할까요?"
+            confirm="모든 가맹점에 새 허용 범위를 일괄 적용합니다. 범위를 벗어난 1건 결제 금액은 자동 보정되며 감사로그에 기록됩니다. 계속할까요?"
           >
             <div className="grid max-w-xl grid-cols-2 gap-2">
               <AdminField label="1건 최소 (원)">

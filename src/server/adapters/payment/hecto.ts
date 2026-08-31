@@ -471,7 +471,7 @@ export const hectoPaymentAdapter: PaymentAdapter = {
       ordNo: orderNo,
       trNo: providerTid,
       trPrice: hectoEncrypt(amount.toString()),
-      cancelMsg: reason ?? '후원 환불',
+      cancelMsg: reason ?? '결제 환불',
       reqDay,
       reqTime,
       signature: apiSignature({

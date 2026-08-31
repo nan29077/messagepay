@@ -29,8 +29,8 @@ export const prisma = globalForPrisma.prisma ?? createClient();
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 
 /**
- * 후원자 단위 직렬화용 advisory lock.
- * 동일 후원자의 동시 결제 요청을 트랜잭션 내에서 직렬화한다.
+ * 이용자 단위 직렬화용 advisory lock.
+ * 동일 이용자의 동시 결제 요청을 트랜잭션 내에서 직렬화한다.
  */
 export async function withAdvisoryLock<T>(
   tx: { $executeRawUnsafe: (q: string, ...v: unknown[]) => Promise<unknown> },

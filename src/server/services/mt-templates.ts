@@ -65,10 +65,10 @@ export function tplRegisterGuide(
   method: 'ACCOUNT' | 'CARD' = 'ACCOUNT',
 ): TemplateOutput {
   const what = method === 'CARD' ? '카드 등록' : '계좌 등록';
-  // 등록 화면에서 방송 닉네임도 정할 수 있다는 것을 미리 알려 입력률을 높인다.
+  // 등록 화면에서 표시 이름도 정할 수 있다는 것을 미리 알려 입력률을 높인다.
   // (선택 항목이라 안내가 없으면 대부분 그냥 지나친다)
   const text = withLink(
-    `[문자페이] ${creatorName} 가맹점 문자결제를 이용하려면 ${what}과 이용 동의가 필요합니다. 최초 문자는 결제 처리되지 않았습니다. 등록 화면에서 방송에 표시될 닉네임도 정할 수 있습니다. 등록:`,
+    `[문자페이] ${creatorName} 가맹점 문자결제를 이용하려면 ${what}과 이용 동의가 필요합니다. 최초 문자는 결제 처리되지 않았습니다. 등록 화면에서 결제 내역에 표시될 이름도 정할 수 있습니다. 등록:`,
     link,
   );
   return { code: MT_TEMPLATE.REGISTER_GUIDE, text, masked: maskLink(text) };
@@ -76,7 +76,7 @@ export function tplRegisterGuide(
 
 export function tplConfirmPayment(creatorName: string, amount: bigint, link: string, ttlMin: number): TemplateOutput {
   const text = withLink(
-    `[문자페이] ${creatorName} 가맹점에게 ${formatNumber(amount)}원을 결제하시려면 아래 링크에서 확인해 주세요. ${ttlMin}분 내 미확인 시 자동 취소됩니다. 확인:`,
+    `[문자페이] ${creatorName} 가맹점에 ${formatNumber(amount)}원을 충전하시려면 아래 링크에서 확인해 주세요. ${ttlMin}분 내 미확인 시 자동 취소됩니다. 확인:`,
     link,
   );
   return { code: MT_TEMPLATE.CONFIRM_PAYMENT, text, masked: maskLink(text) };
@@ -100,7 +100,7 @@ export function tplPinRequest(input: {
 }): TemplateOutput {
   const tag = input.mock ? ' [MOCK]' : '';
   const text = withLink(
-    `[문자페이]${tag} ${input.creatorName} 가맹점에게 ${formatNumber(input.amount)}원 결제를 진행합니다. ` +
+    `[문자페이]${tag} ${input.creatorName} 가맹점에 ${formatNumber(input.amount)}원 결제를 진행합니다. ` +
       `아직 결제되지 않았습니다. 결제 PIN 입력 링크: `,
     `${input.pinUrl} (유효시간: ${input.ttlMin}분)`,
   );
@@ -161,7 +161,7 @@ export function renderThanksMessage(template: string, input: DonationSuccessInpu
 /** 감사 문자 기본 문구 (가맹점 설정이 없을 때) */
 export function defaultThanksMessage(input: DonationSuccessInput): string {
   return (
-    `${input.donorName}님, ${input.creatorName} 가맹점에게 ${formatNumber(input.amount)}원이 결제되었습니다. 감사합니다. ` +
+    `${input.donorName}님, ${input.creatorName} 가맹점에 ${formatNumber(input.amount)}원이 충전되었습니다. 이용해 주셔서 감사합니다. ` +
     `메시지: "${input.message}" 누적 결제: ${formatNumber(input.cumulative)}원`
   );
 }
@@ -197,7 +197,7 @@ export function tplDonationSuccess(input: DonationSuccessInput): TemplateOutput 
 export function tplDonationFailed(creatorName: string, reason?: string): TemplateOutput {
   const text =
     `[문자페이] ${creatorName} 가맹점 결제가 완료되지 않았습니다. ` +
-    `${reason ? `사유: ${reason} ` : ''}계좌 상태 또는 이용 한도를 확인해 주세요. 결제되지 않은 메시지는 방송에 표시되지 않습니다.`;
+    `${reason ? `사유: ${reason} ` : ''}계좌 상태 또는 이용 한도를 확인해 주세요. 결제되지 않은 요청은 충전으로 반영되지 않습니다.`;
   return {
     code: MT_TEMPLATE.DONATION_FAILED,
     text,
@@ -219,7 +219,7 @@ export function tplLimitBlocked(creatorName: string, reason: string): TemplateOu
 }
 
 export function tplContentBlocked(creatorName: string): TemplateOutput {
-  const text = `[문자페이] ${creatorName} 가맹점에게 보낸 메시지가 운영정책에 따라 차단되었습니다. 결제는 진행되지 않았습니다.`;
+  const text = `[문자페이] ${creatorName} 가맹점에 보낸 메시지가 운영정책에 따라 차단되었습니다. 결제는 진행되지 않았습니다.`;
   return { code: MT_TEMPLATE.CONTENT_BLOCKED, text, masked: text, vars: { 가맹점: creatorName } };
 }
 
@@ -235,7 +235,7 @@ export function tplRefundDone(creatorName: string, amount: bigint): TemplateOutp
 
 export function tplUnknownRoute(): TemplateOutput {
   const text =
-    '[문자페이] 결제 대상 가맹점을 찾을 수 없습니다. 방송 화면에 안내된 번호와 코드를 다시 확인해 주세요. 결제는 진행되지 않았습니다.';
+    '[문자페이] 결제 대상 가맹점을 찾을 수 없습니다. 가맹 서비스 화면에 안내된 번호와 코드를 다시 확인해 주세요. 결제는 진행되지 않았습니다.';
   return { code: MT_TEMPLATE.UNKNOWN_ROUTE, text, masked: text, vars: {} };
 }
 
@@ -324,7 +324,7 @@ export const MT_TEMPLATE_META: Record<MtTemplateCode, MtTemplateMeta> = {
     label: '결제 확인 링크',
     description: '결제 진행 여부를 확인받는 링크를 보냅니다.',
     editable: false,
-    defaultBody: '{가맹점} 가맹점에게 {금액}을 결제하시려면 아래 링크에서 확인해 주세요. 확인: [보안링크]',
+    defaultBody: '{가맹점} 가맹점에 {금액}을 충전하시려면 아래 링크에서 확인해 주세요. 확인: [보안링크]',
     variables: [V.creator, V.amount],
   },
   [MT_TEMPLATE.PIN_REQUEST]: {
@@ -332,7 +332,7 @@ export const MT_TEMPLATE_META: Record<MtTemplateCode, MtTemplateMeta> = {
     description: '결제사 PIN 입력 링크를 보냅니다. 이 시점에는 아직 출금되지 않았습니다.',
     editable: false,
     defaultBody:
-      '{가맹점} 가맹점에게 {금액} 결제를 진행합니다. 아직 결제되지 않았습니다. 결제 PIN 입력 링크: [보안링크]',
+      '{가맹점} 가맹점에 {금액} 결제를 진행합니다. 아직 결제되지 않았습니다. 결제 PIN 입력 링크: [보안링크]',
     variables: [V.creator, V.amount],
   },
   [MT_TEMPLATE.DONATION_SUCCESS]: {
@@ -341,7 +341,7 @@ export const MT_TEMPLATE_META: Record<MtTemplateCode, MtTemplateMeta> = {
       '결제가 완료되었을 때 이용자에게 보냅니다. 가맹점이 스튜디오에서 직접 문구를 설정한 경우에는 그 문구가 우선합니다.',
     editable: true,
     defaultBody:
-      '{이용자}님, {가맹점} 가맹점에게 {금액}이 결제되었습니다. 감사합니다. 메시지: "{메시지}" 누적 결제: {누적}',
+      '{이용자}님, {가맹점} 가맹점에 {금액}이 충전되었습니다. 이용해 주셔서 감사합니다. 메시지: "{메시지}" 누적 충전: {누적}',
     variables: [V.donor, V.creator, V.amount, V.message, V.cumulative],
   },
   [MT_TEMPLATE.DONATION_FAILED]: {
@@ -349,7 +349,7 @@ export const MT_TEMPLATE_META: Record<MtTemplateCode, MtTemplateMeta> = {
     description: '결제가 완료되지 않았을 때 보냅니다.',
     editable: true,
     defaultBody:
-      '{가맹점} 가맹점 결제가 완료되지 않았습니다. 사유: {사유} 계좌 상태 또는 이용 한도를 확인해 주세요. 결제되지 않은 메시지는 방송에 표시되지 않습니다.',
+      '{가맹점} 가맹점 결제가 완료되지 않았습니다. 사유: {사유} 계좌 상태 또는 이용 한도를 확인해 주세요. 결제되지 않은 요청은 충전으로 반영되지 않습니다.',
     variables: [V.creator, V.reason],
   },
   [MT_TEMPLATE.ACCOUNT_INACTIVE]: {
@@ -371,7 +371,7 @@ export const MT_TEMPLATE_META: Record<MtTemplateCode, MtTemplateMeta> = {
     label: '금칙어 차단 안내',
     description: '메시지가 운영정책(금칙어)에 걸렸을 때 보냅니다.',
     editable: true,
-    defaultBody: '{가맹점} 가맹점에게 보낸 메시지가 운영정책에 따라 차단되었습니다. 결제는 진행되지 않았습니다.',
+    defaultBody: '{가맹점} 가맹점에 보낸 메시지가 운영정책에 따라 차단되었습니다. 결제는 진행되지 않았습니다.',
     variables: [V.creator],
   },
   [MT_TEMPLATE.REFUND_DONE]: {
@@ -383,10 +383,10 @@ export const MT_TEMPLATE_META: Record<MtTemplateCode, MtTemplateMeta> = {
   },
   [MT_TEMPLATE.UNKNOWN_ROUTE]: {
     label: '수신 대상 없음 안내',
-    description: '어느 가맹점에게 보낸 문자인지 찾지 못했을 때 보냅니다.',
+    description: '어느 가맹점에 보낸 문자인지 찾지 못했을 때 보냅니다.',
     editable: true,
     defaultBody:
-      '결제 대상 가맹점을 찾을 수 없습니다. 방송 화면에 안내된 번호와 코드를 다시 확인해 주세요. 결제는 진행되지 않았습니다.',
+      '결제 대상 가맹점을 찾을 수 없습니다. 가맹 서비스 화면에 안내된 번호와 코드를 다시 확인해 주세요. 결제는 진행되지 않았습니다.',
     variables: [],
   },
   [MT_TEMPLATE.LOOKUP_VERIFY]: {

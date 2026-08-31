@@ -73,7 +73,7 @@ export default async function AdminSimulatorPage() {
             <Link href="/admin/mo-numbers" className="font-semibold text-brand-700">
               MO 번호 관리
             </Link>
-            에서 승인된 가맹점에게 수신번호를 배정해야 합니다.
+            에서 승인된 가맹점에 수신번호를 배정해야 합니다.
           </Notice>
         </div>
       ) : null}

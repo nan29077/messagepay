@@ -124,7 +124,7 @@ export default async function StudioMessagesPage({
 
         <Notice tone="neutral" title="문자 원문은 표시되지 않습니다">
           필터링을 마친 내용만 확인할 수 있습니다. 개인정보가 포함될 수 있는 원문과 이용자 전화번호 전체는
-          가맹점에게 제공되지 않습니다.
+          가맹점에 제공되지 않습니다.
         </Notice>
 
         <Card padded={false}>

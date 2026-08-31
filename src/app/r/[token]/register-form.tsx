@@ -80,7 +80,7 @@ export function RegisterForm({
   }
 
   // 결제 내역에서는 자동 생성된 기본 이름을 끝 4자리로 줄여 부른다.
-  // 미리보기도 같은 함수를 거쳐야 화면에서 약속한 이름과 실제 방송이 어긋나지 않는다.
+  // 미리보기도 같은 함수를 거쳐야 화면에서 약속한 이름과 실제 기록이 어긋나지 않는다.
   const preview = broadcastDonorName(
     nameCheck.ok && nameCheck.value.length > 0 ? nameCheck.value : defaultName,
   );

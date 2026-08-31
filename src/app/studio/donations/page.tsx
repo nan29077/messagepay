@@ -178,7 +178,7 @@ export default async function StudioDonationsPage({
               amount: d.amount,
               status: d.status,
               channel: d.channel,
-              // 마스킹된 값만 내려온다. 원문 전화번호는 가맹점에게 제공하지 않는다.
+              // 마스킹된 값만 내려온다. 원문 전화번호는 가맹점에 제공하지 않는다.
               phoneMasked: d.donor?.phoneMasked ?? null,
               delivery: { mt: d.mtStatus },
               refundStatus: d.refunds[0]?.status ?? null,

@@ -61,7 +61,7 @@ export default async function StudioReportsPage() {
         <section>
           <SectionTitle title="신고 목록" />
           {reports.length === 0 ? (
-            <EmptyState title="접수된 신고가 없습니다" description="시청자 신고가 들어오면 여기에 표시됩니다." />
+            <EmptyState title="접수된 신고가 없습니다" description="이용자 신고가 들어오면 여기에 표시됩니다." />
           ) : (
             <Table className="min-w-full">
               <thead>

@@ -59,11 +59,11 @@ export function MockPinForm({
       <Card>
         <div className="flex items-center gap-2 text-success-500">
           <CircleCheck size={20} strokeWidth={1.7} />
-          <p className="text-[16px] font-extrabold text-ink-900">후원이 완료되었습니다</p>
+          <p className="text-[16px] font-extrabold text-ink-900">결제가 완료되었습니다</p>
         </div>
         <div className="mt-3">
-          <DataRow label="크리에이터" value={result.creatorName ?? creatorName} />
-          <DataRow label="후원금" value={result.amountText ?? amountText} />
+          <DataRow label="가맹점" value={result.creatorName ?? creatorName} />
+          <DataRow label="결제 금액" value={result.amountText ?? amountText} />
           {result.transactionNo ? <DataRow label="거래번호" value={result.transactionNo} /> : null}
         </div>
         <p className="mt-3 text-[12px] leading-relaxed text-ink-400">
@@ -96,18 +96,18 @@ export function MockPinForm({
         </div>
         <p className="mt-2 text-[22px] font-extrabold tracking-tight text-ink-900">{amountText}</p>
         <div className="mt-3">
-          <DataRow label="크리에이터" value={creatorName} />
+          <DataRow label="가맹점" value={creatorName} />
           <DataRow label="메시지" value={message || '(내용 없음)'} />
         </div>
       </Card>
 
       {expired ? (
         <Notice tone="warning" title="입력 시간이 지났습니다">
-          PIN 입력 시간이 지나 후원이 자동 취소됩니다. 결제는 진행되지 않았습니다.
+          PIN 입력 시간이 지나 결제가 자동 취소됩니다. 결제는 진행되지 않았습니다.
         </Notice>
       ) : (
         <Notice tone="brand" title="PIN 입력 시 출금됩니다">
-          PIN 을 입력하면 등록한 결제수단에서 후원금이 출금됩니다. 입력하지 않으면 결제는 진행되지 않습니다.
+          PIN 을 입력하면 등록한 결제수단에서 결제 금액이 출금됩니다. 입력하지 않으면 결제는 진행되지 않습니다.
         </Notice>
       )}
 
@@ -132,7 +132,7 @@ export function MockPinForm({
 
       <Button size="lg" onClick={submit} disabled={!canSubmit}>
         <KeyRound size={18} strokeWidth={1.7} />
-        {pending ? '결제 처리 중' : 'PIN 입력하고 후원하기'}
+        {pending ? '결제 처리 중' : 'PIN 입력하고 결제하기'}
       </Button>
     </div>
   );

@@ -85,7 +85,7 @@ export async function assignMoNumber(_prev: AdminActionState, fd: FormData): Pro
       select: { id: true, displayName: true, status: true },
     });
     if (!creator) throw new Error('가맹점을 찾을 수 없습니다.');
-    if (creator.status !== 'APPROVED') throw new Error('승인된 가맹점에게만 번호를 배정할 수 있습니다.');
+    if (creator.status !== 'APPROVED') throw new Error('승인된 가맹점에만 번호를 배정할 수 있습니다.');
 
     await prisma.creatorMoNumber.update({
       where: { id },

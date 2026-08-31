@@ -6,13 +6,13 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * 이미지 업로드 (프로필 아바타 / 후원페이지 배너).
+ * 이미지 업로드 (프로필 아바타 / 결제페이지 배너).
  *
  * 저장 위치: var/uploads/ (서버 로컬 디스크). /api/media/<파일> 라우트로 서빙된다.
  * S3 등 오브젝트 스토리지는 추후 도입. 그때는 업로드/미디어 라우트만 교체하면 된다.
  *
  * 안전장치
- *  - 크리에이터 로그인 필수 + 동일 출처(CSRF) 검사
+ *  - 가맹점 로그인 필수 + 동일 출처(CSRF) 검사
  *  - 형식 화이트리스트(jpg/png/webp/gif) — 확장자·MIME 이 아니라 파일 시그니처(매직바이트)로 판정
  *  - 용량 제한 5MB
  */
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
 
   const creator = await requireCreator().catch(() => null);
   if (!creator) {
-    return Response.json({ ok: false, message: '크리에이터 로그인이 필요합니다.' }, { status: 401 });
+    return Response.json({ ok: false, message: '가맹점 로그인이 필요합니다.' }, { status: 401 });
   }
 
   const form = await req.formData().catch(() => null);

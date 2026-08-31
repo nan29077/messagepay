@@ -99,7 +99,7 @@ export default async function StudioModerationPage() {
         <section>
           <SectionTitle title="내 금칙어" description={`${myWords.length}건 등록됨`} />
           {myWords.length === 0 ? (
-            <EmptyState title="등록한 금칙어가 없습니다" description="방송에 노출되지 않았으면 하는 단어를 추가해 보세요." />
+            <EmptyState title="등록한 금칙어가 없습니다" description="결제 내역에 남지 않았으면 하는 단어를 추가해 보세요." />
           ) : (
             <Table>
               <thead>

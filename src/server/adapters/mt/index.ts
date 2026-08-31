@@ -33,7 +33,7 @@ export function decideMessageType(text: string, force?: 'SMS' | 'LMS'): 'SMS' | 
  * globalThis 에 보관하는 이유:
  * 개발 서버(Turbopack)는 서버 액션과 라우트 핸들러를 서로 다른 모듈 그래프로 로드할 수 있다.
  * 모듈 스코프 배열로 두면 서버 액션이 적재한 문자를 /api/dev/outbox 가 못 보고 늘 빈 배열이 나온다.
- * (오버레이 버스도 같은 이유로 globalThis 를 쓴다)
+ * (프로세스 단위 상태는 같은 이유로 globalThis 를 쓴다)
  */
 const globalForMt = globalThis as unknown as {
   mtMockOutbox?: Array<{ to: string; text: string; at: Date; id: string }>;

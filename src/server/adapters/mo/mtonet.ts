@@ -15,7 +15,7 @@ import { verifyMoRequest, type MoAdapter, type MoInbound } from './index';
  *
  * 안전 원칙
  *  - 서명/IP 검증은 공용 verifyMoRequest 를 그대로 쓴다 (운영에서 fail-closed).
- *  - 필수값이 하나라도 없으면 파싱을 실패시킨다. 임의 기본값으로 후원을 만들지 않는다.
+ *  - 필수값이 하나라도 없으면 파싱을 실패시킨다. 임의 기본값으로 결제를 만들지 않는다.
  *  - 수신번호는 050 형식만 허용한다. 형식이 다르면 라우팅 사고이므로 즉시 거절한다.
  */
 
@@ -121,7 +121,7 @@ export const mtonetMoAdapter: MoAdapter = {
     const text = firstOf(inner, FIELD_ALIASES.text);
 
     // 필수값이 없으면 임의 기본값으로 채우지 않고 실패시킨다.
-    // (여기서 관대하게 처리하면 잘못된 크리에이터에게 후원이 꽂힌다)
+    // (여기서 관대하게 처리하면 잘못된 가맹점에 결제가 꽂힌다)
     const missing = [
       messageId ? null : 'messageId',
       to ? null : 'to(수신 050 번호)',
@@ -142,7 +142,7 @@ export const mtonetMoAdapter: MoAdapter = {
       throw new Error('MTONET MO 발신번호 형식 오류');
     }
 
-    // LMS/MMS 는 제목이 따로 오므로 본문 앞에 붙여 크리에이터가 전체 맥락을 보게 한다.
+    // LMS/MMS 는 제목이 따로 오므로 본문 앞에 붙여 가맹점이 전체 맥락을 보게 한다.
     const subject = firstOf(inner, FIELD_ALIASES.subject);
     const content = subject ? `${subject} ${text!}` : text!;
 

@@ -46,7 +46,7 @@ export default async function MyBlocksPage() {
         <h2 className="mt-1 text-[18px] font-black tracking-[-0.025em] text-ink-900">결제 차단</h2>
       </div>
       <Notice tone="brand" title="가맹점별 결제 차단">
-        차단하면 해당 가맹점에게 보낸 문자는 결제로 접수되지 않습니다. 실수로 반복 발송하는 것을 막고 싶을 때
+        차단하면 해당 가맹점에 보낸 문자는 결제로 접수되지 않습니다. 실수로 반복 발송하는 것을 막고 싶을 때
         사용하세요. 차단은 언제든 해제할 수 있습니다.
       </Notice>
 

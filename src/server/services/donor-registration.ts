@@ -74,7 +74,7 @@ export async function startRegistration(input: {
   token: string;
   consents: ConsentInput[];
   method?: PaymentMethodKind;
-  /** 방송에 표시될 닉네임(선택). 빈 값이면 설정하지 않은 것으로 본다. */
+  /** 결제 내역에 표시될 이름(선택). 빈 값이면 설정하지 않은 것으로 본다. */
   nickname?: string;
   /** SNS 플랫폼(선택). 닉네임과 세트로 저장한다. */
   snsPlatform?: string;
@@ -95,7 +95,7 @@ export async function startRegistration(input: {
   const donor = await prisma.donorProfile.findUnique({ where: { id: ctx.donorId } });
   if (!donor) throw new Error('이용자 정보를 찾을 수 없습니다.');
 
-  // 방송 닉네임(선택). 결제창으로 넘어가기 전에 저장해 둔다.
+  // 표시 이름(선택). 결제창으로 넘어가기 전에 저장해 둔다.
   // 결제창에서 이탈해도 닉네임은 남으므로 다시 등록할 때 또 입력하지 않아도 된다.
   if (input.nickname !== undefined && input.nickname.trim().length > 0) {
     const checked = await validateDonorName(input.nickname);

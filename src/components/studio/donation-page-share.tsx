@@ -40,7 +40,7 @@ export function DonationPageShare({ url, creatorName }: { url: string; creatorNa
       try {
         await navigator.share({
           title: `${creatorName} 결제페이지`,
-          text: `${creatorName}님에게 응원을 보내보세요.`,
+          text: `${creatorName}님의 서비스를 문자로 충전해 보세요.`,
           url,
         });
         return;

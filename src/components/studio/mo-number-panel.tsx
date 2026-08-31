@@ -15,10 +15,10 @@ export interface MoNumberView {
 }
 
 /**
- * 가맹점에게 배정된 MO 수신번호 패널.
+ * 가맹점에 배정된 MO 수신번호 패널.
  *
  * 번호의 배정·변경·회수는 통합 관리자 권한이다(잘못 바꾸면 다른 가맹점의 결제가 섞인다).
- * 가맹점은 여기서 번호를 확인하고 시청자 안내 문구를 복사할 수 있다.
+ * 가맹점은 여기서 번호를 확인하고 이용자 안내 문구를 복사할 수 있다.
  */
 export function MoNumberPanel({ numbers, guideText }: { numbers: MoNumberView[]; guideText: string | null }) {
   if (numbers.length === 0) {
@@ -44,7 +44,7 @@ export function MoNumberPanel({ numbers, guideText }: { numbers: MoNumberView[];
       <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3">
         <p className="text-[13px] font-bold text-ink-900">
           내 결제 문자번호
-          <span className="ml-2 text-[11.5px] font-medium text-ink-400">시청자가 문자를 보내는 번호입니다</span>
+          <span className="ml-2 text-[11.5px] font-medium text-ink-400">이용자가 문자를 보내는 번호입니다</span>
         </p>
       </div>
 
@@ -82,7 +82,7 @@ export function MoNumberPanel({ numbers, guideText }: { numbers: MoNumberView[];
 
       {guideText ? (
         <div className="border-t border-ink-100 bg-ink-50/60 px-4 py-3">
-          <p className="text-[11.5px] font-semibold text-ink-400">방송에 띄울 안내 문구</p>
+          <p className="text-[11.5px] font-semibold text-ink-400">서비스 화면에 띄울 안내 문구</p>
           <div className="mt-1.5 flex items-start gap-2">
             <p className="min-w-0 flex-1 whitespace-pre-line break-words rounded-lg bg-white px-3 py-2 text-[12.5px] leading-relaxed text-ink-700">
               {guideText}

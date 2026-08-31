@@ -145,7 +145,7 @@ export default async function HowItWorksPage() {
               icon={<CircleAlert size={17} strokeWidth={1.7} />}
               tone="warning"
               title="환불이 제한되는 경우"
-              body="이미 가맹점에게 정산이 완료된 건, 부정 이용이 확인된 건, 본인 확인이 어려운 건은 환불이 제한될 수 있습니다."
+              body="이미 가맹점에 정산이 완료된 건, 부정 이용이 확인된 건, 본인 확인이 어려운 건은 환불이 제한될 수 있습니다."
             />
             <Line
               icon={<ScrollText size={17} strokeWidth={1.7} />}

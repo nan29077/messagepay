@@ -57,7 +57,7 @@ export default async function AdminBannersPage() {
                 </AdminSelect>
               </AdminField>
               <AdminField label="제목">
-                <AdminInput name="title" required placeholder="문자 한 통으로 응원하기" />
+                <AdminInput name="title" required placeholder="문자 한 통으로 충전하기" />
               </AdminField>
               <AdminField label="부제목">
                 <AdminInput name="subtitle" placeholder="선택 입력" />

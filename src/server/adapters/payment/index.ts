@@ -14,7 +14,7 @@ export { mockPinUrl } from './mock-pin';
  *   1) 결제창에서 계좌 인증 + 출금이체 등록  → createRegistrationSession / completeRegistration
  *   2) 빌키(자동결제 키) 발급               → completeRegistration 결과
  *   3) MO 수신 시 PIN 인증 링크 발급        → requestPinLink
- *   4) 후원자가 PIN 입력 → 결제사 콜백      → (앱: /api/webhooks/pin-callback)
+ *   4) 이용자가 PIN 입력 → 결제사 콜백      → (앱: /api/webhooks/pin-callback)
  *   5) 콜백 수신 후 빌키로 승인             → approve
  *   6) 타임아웃 시 거래결과조회로 확정      → inquire
  *   7) 취소/환불                            → cancel
@@ -52,11 +52,11 @@ export interface RegistrationResult {
 /**
  * 결제사가 발급하는 PIN 입력 세션.
  *
- * 후원자는 이 URL 에서 PIN 을 입력하고, 결제사가 완료 콜백을 보내면
+ * 이용자는 이 URL 에서 PIN 을 입력하고, 결제사가 완료 콜백을 보내면
  * 그때 승인(approve)이 실행된다. 링크 발급 자체는 출금이 아니다.
  */
 export interface PinLinkSession {
-  /** 후원자에게 MT 로 보낼 PIN 입력 URL */
+  /** 이용자에게 MT 로 보낼 PIN 입력 URL */
   pinUrl: string;
   /** 결제사 인증 세션 식별자 */
   sessionId: string;
@@ -97,12 +97,12 @@ export interface PaymentAdapter {
   /**
    * 등록된 빌키로 결제하기 위한 PIN 입력 링크를 결제사에 요청한다.
    *
-   * 이 호출은 출금을 일으키지 않는다. 후원자가 PIN 을 입력해야 결제사가 콜백을 보내고,
+   * 이 호출은 출금을 일으키지 않는다. 이용자가 PIN 을 입력해야 결제사가 콜백을 보내고,
    * 그 콜백을 받은 뒤에야 approve() 로 실제 승인이 이루어진다.
    *
-   * @param donationId 후원 거래 ID. 콜백에서 거래를 식별하는 키로 쓴다.
+   * @param donationId 결제 거래 ID. 콜백에서 거래를 식별하는 키로 쓴다.
    * @param amount     결제 금액(원). 금액은 전 구간 bigint 로 다룬다.
-   * @param phone      후원자 전화번호(정규화된 원문). 결제사 인증 대상 확인용이며 저장하지 않는다.
+   * @param phone      이용자 전화번호(정규화된 원문). 결제사 인증 대상 확인용이며 저장하지 않는다.
    * @param method     인증할 결제수단 종류. 생략하면 ACCOUNT(내통장결제 계좌 빌키).
    */
   requestPinLink(

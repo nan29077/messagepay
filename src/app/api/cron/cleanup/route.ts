@@ -19,7 +19,7 @@ export const dynamic = 'force-dynamic';
  *   Authorization: Bearer ${CRON_SECRET}
  *
  * 하는 일
- *  1) expireStalePinSessions      — PIN 을 입력하지 않아 TTL 이 지난 후원을 자동 취소한다.
+ *  1) expireStalePinSessions      — PIN 을 입력하지 않아 TTL 이 지난 결제를 자동 취소한다.
  *                                   (결제사 콜백이 오지 않은 PENDING_PIN 건의 보정 경로이기도 하다)
  *  2) expireStaleConfirmations    — 구 확인 링크(CONFIRM_LINK) 만료 건을 자동 취소한다.
  *  3) purgeExpiredIdempotencyKeys — 만료된 멱등키를 지운다.

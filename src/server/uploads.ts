@@ -38,7 +38,7 @@ export function mediaUrl(name: string): string {
   return `/api/media/${name}`;
 }
 
-/** 예측 불가능한 저장 파일명. 크리에이터 식별자가 드러나지 않게 한다. */
+/** 예측 불가능한 저장 파일명. 가맹점 식별자가 드러나지 않게 한다. */
 export function newObjectName(ext: string): string {
   return `${crypto.randomBytes(16).toString('hex')}.${ext}`;
 }

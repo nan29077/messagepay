@@ -111,9 +111,9 @@ async function main() {
       where: { userId: user.id },
       create: {
         id: newId(), userId: user.id, code: c.code, displayName: c.name,
-        channelName: `${c.name} 채널`, status: 'APPROVED', donationAmount: 3000,
+        channelName: `${c.name} 서비스`, status: 'APPROVED', donationAmount: 3000,
         approvedAt: new Date(),
-        description: '문자 한 통으로 응원을 보내주세요.',
+        description: '문자 한 통으로 캐시를 충전할 수 있습니다.',
         avatarUrl: null,
       },
       // 과거 시드에서는 25개 캐릭터가 합쳐진 스프라이트 전체를 저장해 잘못 보였다.
@@ -210,11 +210,11 @@ async function main() {
       const moB = creatorSeeds[1].mo;
       const kwB = creatorSeeds[1].keyword ? `${creatorSeeds[1].keyword} ` : '';
       const samples: Array<{ to: string; content: string; pay: boolean }> = [
-        { to: moA, content: '오늘 방송 너무 재밌어요! 항상 응원합니다', pay: true },
-        { to: moA, content: '목 관리 잘 하세요. 다음 방송도 기대할게요', pay: true },
-        { to: moA, content: '드디어 구독 1년! 축하드려요', pay: true },
-        { to: moB, content: `${kwB}별하늘님 노래 최고예요`, pay: true },
-        { to: moA, content: '이번 주도 수고 많으셨어요', pay: false }, // 결제 전 단계(확인 대기/한도 차단)로 남긴다
+        { to: moA, content: '캐시 충전합니다', pay: true },
+        { to: moA, content: '아이템 구매용 충전', pay: true },
+        { to: moA, content: '멤버십 연장 충전', pay: true },
+        { to: moB, content: `${kwB}이용권 충전합니다`, pay: true },
+        { to: moA, content: '충전 요청', pay: false }, // 결제 전 단계(확인 대기/한도 차단)로 남긴다
       ];
 
       let refundTarget: string | null = null;
@@ -250,11 +250,11 @@ async function main() {
 
   // ---------------------------------------------------------------- 콘텐츠
   const posts: Array<{ type: string; title: string; body: string; category?: string; sortOrder: number }> = [
-    { type: 'FAQ', title: '문자결제는 어떻게 이용하나요?', body: '가맹점의 결제 수신번호로 문자를 보내면 됩니다. 최초 1회 계좌 등록과 이용 동의가 필요하며, 최초 문자는 결제 처리되지 않습니다.', category: '이용방법', sortOrder: 1 },
+    { type: 'FAQ', title: '문자결제는 어떻게 이용하나요?', body: '가맹 서비스가 안내한 결제 수신번호로 문자를 보내면 됩니다. 최초 1회 계좌 등록과 이용 동의가 필요하며, 최초 문자는 결제 처리되지 않습니다.', category: '이용방법', sortOrder: 1 },
     { type: 'FAQ', title: '최초 문자도 결제되나요?', body: '아니요. 최초 문자는 결제 처리되지 않고 계좌 등록 안내만 발송됩니다. 등록 완료 후 보내는 문자부터 결제가 접수됩니다.', category: '이용방법', sortOrder: 2 },
     { type: 'FAQ', title: '결제 한도가 있나요?', body: '기본 일일 100,000원, 1분 내 3건, 연속 5건 이후 대기시간이 적용됩니다. 한도는 마이페이지에서 더 낮게 설정할 수 있습니다.', category: '한도', sortOrder: 3 },
     { type: 'FAQ', title: '결제를 취소할 수 있나요?', body: '결제 직후 고객센터로 요청하시면 정산 전인 건에 한해 취소·환불이 가능합니다.', category: '환불', sortOrder: 4 },
-    { type: 'FAQ', title: '유튜브 슈퍼챗과 같은 건가요?', body: '아닙니다. 문자페이 결제는 유튜브 공식 슈퍼챗이 아닌 외부 결제이며, 채팅에는 연결된 채널 계정으로 표시됩니다.', category: '방송', sortOrder: 5 },
+    { type: 'FAQ', title: '충전은 언제 반영되나요?', body: '결제가 완료되면 가맹 서비스에 충전이 반영되고 완료 문자를 받습니다. 가맹 서비스 연동 상태에 따라 반영이 몇 분 늦어질 수 있습니다.', category: '충전', sortOrder: 5 },
     { type: 'NOTICE', title: '문자페이 베타 서비스 안내', body: '현재 문자페이는 준비 단계이며 실제 결제와 문자 발송은 비활성화되어 있습니다.', sortOrder: 1 },
   ];
   for (const p of posts) {

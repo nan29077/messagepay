@@ -17,7 +17,7 @@ import type { DeliveryStatus, DonationStatus, RefundStatus } from '@/generated/p
  *  - 전화번호는 저장 시점에 마스킹된 값(`donor.phoneMasked`, 010-****-1234)만 받는다.
  *    이 컴포넌트는 복호화나 원문 접근을 하지 않는다.
  *  - 문자 내용도 금칙어 필터를 거친 노출용 본문(`donation.message`)만 받는다.
- *    분쟁 대응용 원문(messageRawEnc)은 가맹점에게 제공하지 않는다.
+ *    분쟁 대응용 원문(messageRawEnc)은 가맹점에 제공하지 않는다.
  */
 
 export interface DonationCardItem {

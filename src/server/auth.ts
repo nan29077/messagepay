@@ -24,10 +24,10 @@ export interface SessionUser {
   role: UserRole;
   avatarIndex: number;
   creatorId?: string;
-  /** 크리에이터 캐릭터를 DB 재생성 후에도 동일하게 유지하는 고정 코드 */
+  /** 가맹점 캐릭터를 DB 재생성 후에도 동일하게 유지하는 고정 코드 */
   creatorCode?: string;
   creatorAvatarUrl?: string | null;
-  /** 크리에이터 프로필 상태. APPROVED 가 아니면 스튜디오 기능을 쓸 수 없다. */
+  /** 가맹점 프로필 상태. APPROVED 가 아니면 스튜디오 기능을 쓸 수 없다. */
   creatorStatus?: CreatorStatus;
   adminPermission?: string;
 }
@@ -122,15 +122,15 @@ export async function requireRole(role: UserRole): Promise<SessionUser> {
 }
 
 /**
- * 크리에이터 전용 화면/액션 가드.
+ * 가맹점 전용 화면/액션 가드.
  *
  * 프로필 존재만으로는 부족하다. 심사 대기(PENDING)·반려(REJECTED)·정지(SUSPENDED) 상태에서도
- * 스튜디오에 접근되면 미승인 채널이 후원을 받거나, 정지된 채널이 정산을 신청할 수 있다.
+ * 스튜디오에 접근되면 미승인 채널이 결제를 받거나, 정지된 채널이 정산을 신청할 수 있다.
  * 정지 상태는 세션 자체를 무효화해 모든 탭에서 즉시 로그아웃시킨다.
  */
 export async function requireCreator(): Promise<SessionUser & { creatorId: string }> {
   const user = await requireUser();
-  if (!user.creatorId) throw new Error('크리에이터 권한이 필요합니다.');
+  if (!user.creatorId) throw new Error('가맹점 권한이 필요합니다.');
 
   const status = user.creatorStatus;
   if (status !== 'APPROVED') {

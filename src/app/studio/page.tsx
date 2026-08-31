@@ -156,8 +156,8 @@ export default async function StudioDashboardPage() {
         <p className="flex items-start gap-2 rounded-xl border border-warning-500/25 bg-warning-50 px-3.5 py-2.5 text-[12px] leading-relaxed text-ink-700">
           <Info size={15} strokeWidth={1.8} className="mt-0.5 shrink-0 text-warning-500" />
           <span>
-            현재 mock 모드입니다. 결제·문자 전송이 모두 모의 처리되며, 화면의 성공 표시는 실제 금융 거래나 실제
-            유튜브 전송이 아닙니다.
+            현재 mock 모드입니다. 결제·문자 전송이 모두 모의 처리되며, 화면의 성공 표시는 실제 금융 거래가
+            아닙니다.
           </span>
         </p>
 

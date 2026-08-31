@@ -84,7 +84,7 @@ export default async function StudioDonationDetailPage({ params }: { params: Pro
               {donation.message || '(내용 없음)'}
             </p>
             <p className="mt-2 text-[11.5px] leading-relaxed text-ink-400">
-              필터링 결과만 표시됩니다. 문자 원문과 이용자 전화번호 전체는 가맹점에게 제공되지 않습니다.
+              필터링 결과만 표시됩니다. 문자 원문과 이용자 전화번호 전체는 가맹점에 제공되지 않습니다.
             </p>
           </Card>
 

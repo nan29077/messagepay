@@ -9,7 +9,7 @@ import { mtonetMoAdapter } from './mtonet';
  *
  * - IP 허용목록: 로컬에서만 "비어 있으면 검사 생략"을 허용한다.
  * - 서명 시크릿: 로컬에서만 "없으면 통과"를 허용한다.
- *   운영/스테이징에서 시크릿이 없으면 누구나 후원 거래를 만들 수 있으므로 반드시 거절한다.
+ *   운영/스테이징에서 시크릿이 없으면 누구나 결제 거래를 만들 수 있으므로 반드시 거절한다.
  */
 export function verifyMoRequest(
   rawBody: string,

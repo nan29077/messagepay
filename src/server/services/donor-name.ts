@@ -5,7 +5,7 @@ import { checkDonorName, type DonorNameCheck } from '@/lib/donor-name';
 /**
  * 이용자 닉네임 저장 전 검증 (서버 전용).
  *
- * 닉네임은 방송 오버레이·TTS·유튜브 라이브 채팅에 그대로 노출되므로
+ * 닉네임은 가맹점 화면과 결제 내역에 그대로 노출되므로
  * 결제 메시지와 같은 금칙어 기준을 적용한다.
  *
  * 메시지 필터(filterContent)와 달리 여기서는 마스킹하지 않고 **거절**한다.

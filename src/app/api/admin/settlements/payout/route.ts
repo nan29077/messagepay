@@ -67,7 +67,7 @@ export async function GET(req: Request) {
     },
   });
 
-  const header = ['순번', '은행코드', '계좌번호', '예금주', '이체금액', '적요', '요청ID', '크리에이터', '코드'];
+  const header = ['순번', '은행코드', '계좌번호', '예금주', '이체금액', '적요', '요청ID', '가맹점', '코드'];
   const lines = [header.join(',')];
   rows.forEach((r, i) => {
     lines.push(

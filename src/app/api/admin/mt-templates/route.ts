@@ -23,7 +23,7 @@ export const dynamic = 'force-dynamic';
  *                                          { code, reset: true }  기본 문구로 되돌리기
  *
  * 화면 액션과 동일하게 최고관리자·운영 권한만 변경할 수 있다.
- * 문자 본문은 후원자에게 그대로 발송되므로 검증 규칙을 우회하는 경로를 만들지 않는다.
+ * 문자 본문은 이용자에게 그대로 발송되므로 검증 규칙을 우회하는 경로를 만들지 않는다.
  */
 
 const WRITE_PERMISSIONS = new Set(['SUPER_ADMIN', 'OPERATION']);

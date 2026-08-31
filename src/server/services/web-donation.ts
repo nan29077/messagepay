@@ -16,7 +16,7 @@ const MAX_MESSAGE_LEN = 80;
  * 결제 페이지(웹, PC) 결제 파이프라인.
  *
  * 모바일 MO 문자 흐름과 동일한 안전장치(금칙어 필터, 한도, 멱등, 원장)를 그대로 거치되,
- * 접수 채널만 WEB 이다. 결제가 성공한 결제만 유튜브 댓글·오버레이로 전달된다.
+ * 접수 채널만 WEB 이다. 결제가 성공한 건만 가맹 서비스에 충전으로 반영된다.
  *
  * 결제 단계는 두 갈래다.
  *  - `PIN`(기본): 결제사 PIN 입력 링크를 문자로 보내고, 이용자가 PIN 을 넣어야 결제된다.
@@ -165,7 +165,7 @@ export async function createWebDonation(input: WebDonationInput): Promise<WebDon
     donationId: donation.id,
     transactionNo: donation.transactionNo,
     message: paid.ok
-      ? '결제가 완료되었습니다. 결제된 결제만 유튜브 댓글과 방송 오버레이로 전달됩니다.'
+      ? '결제가 완료되었습니다. 결제된 건만 가맹 서비스에 충전으로 반영됩니다.'
       : paid.message,
   };
 }

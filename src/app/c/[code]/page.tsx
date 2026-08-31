@@ -445,7 +445,7 @@ export default async function CreatorDonationPage({ params }: Params) {
             </p>
             <ul className="mt-2 space-y-1.5 text-[12.5px] leading-relaxed text-ink-500">
               <li>1일 {formatWon(policy.donorDailyLimit)} · 1개월 {formatWon(policy.donorMonthlyLimit)}까지 결제할 수 있습니다.</li>
-              <li>이 가맹점에게는 1일 {formatWon(policy.perCreatorDailyLimit)}까지 결제할 수 있습니다.</li>
+              <li>이 가맹점에는 1일 {formatWon(policy.perCreatorDailyLimit)}까지 결제할 수 있습니다.</li>
               <li>{formatNumber(policy.velocityWindowSec)}초 내 {formatNumber(policy.velocityMaxCount)}건을 넘으면 잠시 대기해야 합니다.</li>
               <li>만 19세 미만은 이용할 수 없습니다.</li>
             </ul>
