@@ -2,14 +2,14 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-title 토네이도 - 간편 미리보기 (포트 3025)
+title 문자페이 - 간편 미리보기 (포트 3030)
 
-set TORNADO_URL=http://localhost:3025
+set APP_URL=http://localhost:3030
 
 echo.
 echo ==========================================
-echo   토네이도 TORNADO - 간편 미리보기
-echo   %TORNADO_URL%
+echo   문자페이 BASIC - 간편 미리보기
+echo   %APP_URL%
 echo ==========================================
 echo.
 echo   Docker 나 PostgreSQL 설치 없이 실행됩니다.
@@ -60,7 +60,7 @@ if not exist "src\generated\prisma" (
   )
 )
 
-netstat -ano | findstr /r /c:":3025 .*LISTENING" >nul 2>nul
+netstat -ano | findstr /r /c:":3030 .*LISTENING" >nul 2>nul
 if not errorlevel 1 (
   echo [정리] 이전에 실행된 서버가 남아 있습니다. 정리한 뒤 새로 시작합니다.
 )
@@ -71,10 +71,10 @@ echo        처음에는 화면 빌드에 1~3분 걸립니다. 두 번째부터�
 echo        종료하려면 이 창에서 Ctrl+C 를 누르거나 창을 닫으세요.
 echo        (창을 닫으면 서버도 함께 종료됩니다)
 echo.
-echo   메인        %TORNADO_URL%
-echo   크리에이터  %TORNADO_URL%/studio   creator1@tornado.kr / tornado1234!
-echo   관리자      %TORNADO_URL%/admin    admin@tornado.kr / tornado1234!
-echo   문자 시뮬   %TORNADO_URL%/admin/simulator
+echo   메인        %APP_URL%
+echo   크리에이터  %APP_URL%/studio   creator1@munjapay.kr / munjapay1234!
+echo   관리자      %APP_URL%/admin    admin@munjapay.kr / munjapay1234!
+echo   문자 시뮬   %APP_URL%/admin/simulator
 echo.
 
 call npm run preview

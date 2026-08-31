@@ -123,8 +123,8 @@ export function OverlayLivePreview({ creatorId }: { creatorId: string }) {
         | { type?: string; creatorId?: string; phase?: string; retrySec?: number; recovered?: number }
         | null;
       if (!data || data.creatorId !== creatorId) return;
-      if (data.type === 'donaido-overlay-ready') setLink((prev) => prev ?? { phase: 'connected' });
-      if (data.type === 'donaido-overlay-status' && data.phase) {
+      if (data.type === 'munjapay-overlay-ready') setLink((prev) => prev ?? { phase: 'connected' });
+      if (data.type === 'munjapay-overlay-status' && data.phase) {
         setLink({ phase: data.phase, retrySec: data.retrySec, recovered: data.recovered });
       }
     };
@@ -142,7 +142,7 @@ export function OverlayLivePreview({ creatorId }: { creatorId: string }) {
   React.useEffect(() => {
     if (link) return;
     const ask = () => {
-      const msg = { type: 'donaido-overlay-hello' };
+      const msg = { type: 'munjapay-overlay-hello' };
       try { overlayFrame.current?.contentWindow?.postMessage(msg, window.location.origin); } catch { /* 아직 로드 전 */ }
       try { mobileFrame.current?.contentWindow?.postMessage(msg, window.location.origin); } catch { /* 아직 로드 전 */ }
     };

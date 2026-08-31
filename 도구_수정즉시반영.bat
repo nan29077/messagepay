@@ -2,15 +2,15 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-title 토네이도 - 개발 모드 미리보기 (수정 즉시 반영)
+title 문자페이 - 개발 모드 미리보기 (수정 즉시 반영)
 
-set TORNADO_URL=http://localhost:3025
+set APP_URL=http://localhost:3030
 set PREVIEW_MODE=dev
 
 echo.
 echo ==========================================
-echo   토네이도 TORNADO - 개발 모드 미리보기
-echo   %TORNADO_URL%
+echo   문자페이 BASIC - 개발 모드 미리보기
+echo   %APP_URL%
 echo ==========================================
 echo.
 echo   코드를 저장하면 서버 재시작 없이 화면에 바로 반영됩니다.
@@ -52,7 +52,7 @@ if not exist "src\generated\prisma" (
   )
 )
 
-netstat -ano | findstr /r /c:":3025 .*LISTENING" >nul 2>nul
+netstat -ano | findstr /r /c:":3030 .*LISTENING" >nul 2>nul
 if not errorlevel 1 (
   echo [정리] 이전에 실행된 서버가 남아 있습니다. 정리한 뒤 새로 시작합니다.
 )
@@ -62,10 +62,10 @@ echo [안내] 준비가 끝나면 브라우저가 자동으로 열립니다. (�
 echo        이후에는 파일을 저장할 때마다 화면이 자동으로 갱신됩니다.
 echo        종료하려면 이 창에서 Ctrl+C 를 누르거나 창을 닫으세요.
 echo.
-echo   메인        %TORNADO_URL%
-echo   크리에이터  %TORNADO_URL%/studio   creator1@tornado.kr / tornado1234!
-echo   관리자      %TORNADO_URL%/admin    admin@tornado.kr / tornado1234!
-echo   후원자      %TORNADO_URL%/my       donor@tornado.kr / tornado1234!
+echo   메인        %APP_URL%
+echo   크리에이터  %APP_URL%/studio   creator1@munjapay.kr / munjapay1234!
+echo   관리자      %APP_URL%/admin    admin@munjapay.kr / munjapay1234!
+echo   후원자      %APP_URL%/my       donor@munjapay.kr / munjapay1234!
 echo.
 
 call npm run preview

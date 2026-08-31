@@ -55,7 +55,7 @@ export function DonationPageShare({ url, creatorName }: { url: string; creatorNa
     if (!qrDataUrl) return;
     const anchor = document.createElement('a');
     anchor.href = qrDataUrl;
-    anchor.download = `donaido-${creatorName.replace(/[^a-zA-Z0-9가-힣_-]/g, '-')}-qr.png`;
+    anchor.download = `munjapay-${creatorName.replace(/[^a-zA-Z0-9가-힣_-]/g, '-')}-qr.png`;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();

@@ -77,7 +77,7 @@ describe('크리에이터 금칙어', () => {
       data: { id: newId(), email: `other-${newId()}@test.kr`, name: '다른크리에이터', role: 'CREATOR' },
     });
     const other = await prisma.creatorProfile.create({
-      data: { id: newId(), userId: otherUser.id, displayName: '다른채널', code: `TOR-${newId().slice(-4)}`, status: 'APPROVED' },
+      data: { id: newId(), userId: otherUser.id, displayName: '다른채널', code: `MJP-${newId().slice(-4)}`, status: 'APPROVED' },
     });
 
     const mine = await loadBannedWords(fx.creatorId);

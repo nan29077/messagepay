@@ -226,7 +226,7 @@ export async function verifyWebDonateCode(_prev: WebDonateState, formData: FormD
   try {
     mtSent = await sendMt({
       phone,
-      template: tpl.tplRegisterGuide(linkedCreator?.displayName ?? '도네이도', link.url),
+      template: tpl.tplRegisterGuide(linkedCreator?.displayName ?? '문자페이', link.url),
       creatorId: linkedCreator?.id ?? null,
     });
   } catch (error) {

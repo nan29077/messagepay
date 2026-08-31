@@ -133,7 +133,7 @@ try {
   const csrf = await fetch(`${BASE}/api/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', origin: 'https://evil.example.com' },
-    body: JSON.stringify({ email: 'admin@tornado.kr', password: 'tornado1234!' }),
+    body: JSON.stringify({ email: 'admin@munjapay.kr', password: 'munjapay1234!' }),
   });
   r.ok('로그인 CSRF: 외부 Origin 은 403', csrf.status === 403, `status=${csrf.status}`);
   r.ok('로그인 CSRF: 거부 메시지', (await csrf.text()).includes('허용되지 않은 요청입니다'));

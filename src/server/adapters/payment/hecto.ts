@@ -321,7 +321,7 @@ export const hectoPaymentAdapter: PaymentAdapter = {
    *
    * 헥토 PIN 인증창 연동규격서를 아직 받지 못했다. 규격 없이 추정 필드로 실 API 를 호출하면
    * 전건 실패하거나 최악의 경우 잘못된 승인으로 이어지므로, 실제 호출은 하지 않는다.
-   * 대신 토네이도 내부의 모의 PIN 화면 주소를 돌려주고 `mock: true` 를 세워
+   * 대신 문자페이 내부의 모의 PIN 화면 주소를 돌려주고 `mock: true` 를 세워
    * 상위 흐름이 문자·화면·로그에 [MOCK] 을 표시하게 한다.
    *
    * TODO(계약 후): HECTO_SPEC.pinAuthPath 로 실제 인증창 발급 API 를 호출하고

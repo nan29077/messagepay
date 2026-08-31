@@ -12,7 +12,7 @@
  *  3) guardOrphan()   : 상위 셸이 사라지면 이 프로세스 트리를 대신 정리해 줄 감시자를 띄운다.
  *  4) onShutdown()    : Ctrl+C / 창 닫힘 / 종료 시 정리 함수를 호출한다.
  *
- * CLI 로도 쓸 수 있다.  node tools/process-guard.mjs free 3025 5433
+ * CLI 로도 쓸 수 있다.  node tools/process-guard.mjs free 3030 5433
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -39,7 +39,7 @@ export function listPortListeners(port) {
   if (IS_WIN) {
     for (const line of quiet('netstat', ['-ano']).split(/\r?\n/)) {
       const parts = line.trim().split(/\s+/);
-      // 예: TCP    0.0.0.0:3025    0.0.0.0:0    LISTENING    12345
+      // 예: TCP    0.0.0.0:3030    0.0.0.0:0    LISTENING    12345
       if (parts.length < 5 || parts[0] !== 'TCP') continue;
       if (parts[3] !== 'LISTENING') continue;
       if (!parts[1].endsWith(`:${port}`)) continue;
@@ -211,7 +211,7 @@ export async function freePort(port, { label = `포트 ${port}`, log = console.l
  * @returns 감시자 프로세스 또는 null
  */
 export function guardOrphan(serverPid) {
-  if (process.env.TORNADO_NO_GUARD === '1') return null;
+  if (process.env.BASIC_NO_GUARD === '1') return null;
   if (!serverPid) return null;
 
   // 상위 셸(배치 파일 / npm)과 이 실행기 자신을 함께 지켜본다.
@@ -244,7 +244,7 @@ export function guardOrphan(serverPid) {
  * 살아 있는 실행이 있으면 새 실행을 막기 위해 잠금 파일을 쓴다.
  */
 function lockPath() {
-  return path.resolve(process.cwd(), '.tornado-server.lock');
+  return path.resolve(process.cwd(), '.munjapay-server.lock');
 }
 
 export function readLock() {

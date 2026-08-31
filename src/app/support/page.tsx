@@ -7,7 +7,7 @@ import { BannerStrip } from '@/components/public/banner-strip';
 import { Card, CardTitle, Notice, LinkButton } from '@/components/ui';
 
 export const metadata: Metadata = {
-  title: '고객센터 | 도네이도',
+  title: '고객센터 | 문자페이',
   description: '후원 취소·환불, 계좌 등록, 결제 오류, 방송 노출 문제를 접수합니다.',
 };
 
@@ -47,7 +47,7 @@ export default async function SupportPage({
             <div>
               <CardTitle>개인정보 보호</CardTitle>
               <p className="mt-1 text-[12.5px] leading-relaxed text-ink-500">
-                문의 내용에는 계좌번호, 카드번호, 주민등록번호 등 민감정보를 절대 입력하지 마세요. 도네이도는 문의
+                문의 내용에는 계좌번호, 카드번호, 주민등록번호 등 민감정보를 절대 입력하지 마세요. 문자페이는 문의
                 과정에서 이러한 정보를 요구하지 않습니다.
               </p>
             </div>

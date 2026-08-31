@@ -65,7 +65,7 @@ export default async function MockYouTubeConsentPage({ searchParams }: { searchP
                 <KeyRound size={17} strokeWidth={1.7} />
               </span>
               <div>
-                <CardTitle>도네이도가 요청하는 권한</CardTitle>
+                <CardTitle>문자페이가 요청하는 권한</CardTitle>
                 <p className="text-[12px] text-ink-400">유튜브 라이브 채팅 연동에 필요한 권한입니다.</p>
               </div>
             </div>
@@ -89,7 +89,7 @@ export default async function MockYouTubeConsentPage({ searchParams }: { searchP
 
             <div className="mt-3">
               <Notice tone="neutral">
-                도네이도는 유튜브 공식 슈퍼챗이 아닌 외부 후원으로 메시지를 등록합니다. 연결은 크리에이터 콘솔에서
+                문자페이는 유튜브 공식 슈퍼챗이 아닌 외부 후원으로 메시지를 등록합니다. 연결은 크리에이터 콘솔에서
                 언제든지 해제할 수 있습니다.
               </Notice>
             </div>

@@ -258,7 +258,7 @@ export function SupportWidget({
               <div ref={listRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
                 {messages.length === 0 ? (
                   <div className="rounded-xl bg-ink-50 px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-600">
-                    안녕하세요, 도네이도입니다. 궁금한 점을 남겨주시면 순차적으로 답변해 드립니다.
+                    안녕하세요, 문자페이입니다. 궁금한 점을 남겨주시면 순차적으로 답변해 드립니다.
                     {loggedIn ? '' : ' 비회원도 문의할 수 있으며, 답변은 이 창에서 확인할 수 있습니다.'}
                   </div>
                 ) : (

@@ -1,6 +1,8 @@
-# 도네이도(DONAIDO) — 개발 가이드
+# 문자페이(MUNJAPAY) — 개발 가이드
 
-문자 기반 크리에이터 후원 플랫폼. 이 문서는 이 저장소에서 작업할 때의 규칙입니다.
+문자 기반 결제·후원 플랫폼. 이 문서는 이 저장소에서 작업할 때의 규칙입니다.
+
+토네이도/도네이도 저장소를 복사해 만들었고 지금은 완전히 분리되어 있다(원격: `github.com/nan29077/munjapay`). 브랜드 표기는 한글 **문자페이**, 영문 **MUNJAPAY**, 식별자 슬러그 `munjapay` 로 통일한다. 코드·자산·시드에 `tornado` / `donaido` / `도네이도` 를 다시 만들지 않는다. 다만 `prisma/migrations/20260819100000_init_tornado` 폴더명과 그 안의 SQL 은 적용 이력이라 그대로 둔다.
 
 ## 절대 규칙
 
@@ -35,7 +37,7 @@ docs/              분석·설계 보고서, 운영 문서
 
 루트 배치 파일은 번호가 붙은 3개가 기본이고, 나머지는 `도구_` 접두사를 쓴다.
 
-- **`1_미리보기실행.bat`** (또는 `npm run preview`) — Docker/PostgreSQL 설치 없이 내장 DB(PGlite)로 실행. 포트 3025.
+- **`1_미리보기실행.bat`** (또는 `npm run preview`) — Docker/PostgreSQL 설치 없이 내장 DB(PGlite)로 실행. 포트 3030.
   - 프로덕션 빌드 방식이라 소스가 바뀌면 재빌드(1~3분)를 한다. 실제 서비스와 같은 조건으로 최종 확인할 때 쓴다.
 - **`2_개발서버실행.bat`** — 실제 PostgreSQL + Redis 를 쓰는 개발 서버. 처음에는 `도구_DB시작.bat` -> `도구_최초설치.bat` 순으로 준비한다.
 - **`3_서버종료.bat`** — 창을 닫아도 남아 있는 서버를 정리한다. 창을 정상적으로 닫으면 서버도 함께 종료된다.
@@ -45,11 +47,11 @@ docs/              분석·설계 보고서, 운영 문서
 - 공통 의존성 점검기는 `tools/ensure-deps.bat` 이다. 각 배치 파일이 `call` 로 부르므로 이름과 위치를 바꾸지 않는다.
 - `.env` 에 `NODE_ENV` 를 넣지 않는다. 빌드/실행 모드가 뒤섞여 React 오류가 난다.
 - `src/app/error.tsx` 등 에러 바운더리에서 훅(useEffect 등)을 쓰지 않는다. `/_global-error` 프리렌더가 실패한다.
-- 서비스 포트는 **3025** 로 고정한다. 변경 시 package.json 의 dev/start, .env 의 PORT·APP_BASE_URL, 배치 파일을 함께 수정한다.
+- 서비스 포트는 **3030** 로 고정한다. 변경 시 package.json 의 dev/start, .env 의 PORT·APP_BASE_URL, 배치 파일을 함께 수정한다.
 
 ## 마이그레이션 주의
 
-- 마이그레이션은 `init_tornado` + `guards_and_indexes` 두 개다. 순서에 의존하는 DROP 문을 넣지 말 것.
+- 마이그레이션은 `prisma/migrations/` 에 시간순으로 쌓여 있다(최초 두 개는 `init_tornado` + `guards_and_indexes`). 폴더명·SQL 은 적용 이력이므로 이미 올라간 것을 고치지 않는다. 순서에 의존하는 DROP 문도 넣지 말 것.
 - 스키마를 바꾼 뒤에는 반드시 **빈 DB 에서 `npm run db:reset`** 으로 처음부터 적용되는지 확인한다.
 - `prisma migrate reset` 대신 `npm run db:reset`(tools/db-reset.mjs)을 사용한다.
 

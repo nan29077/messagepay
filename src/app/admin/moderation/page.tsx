@@ -76,7 +76,7 @@ export default async function AdminModerationPage({
     <>
       <PageHeader
         title="신고·금칙어 관리"
-        description="이용자 신고를 처리하고, 방송 노출 문구에 적용되는 전역 금칙어를 관리합니다."
+        description="이용자 신고를 처리하고, 문자 결제 요청에 적용되는 전역 금칙어를 관리합니다."
       />
 
       <div className="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
@@ -87,7 +87,7 @@ export default async function AdminModerationPage({
       </div>
 
       <Notice tone="neutral" title="금칙어 처리 방식">
-        차단(BLOCK)은 해당 문자를 방송에서 완전히 제외하고, 마스킹(MASK)은 단어만 가려 노출하며, 표시(FLAG)는 노출은
+        차단(BLOCK)은 해당 문자 처리를 중단하고, 마스킹(MASK)은 단어만 가려 표시하며, 표시(FLAG)는 처리는
         하되 검토 대상으로 기록합니다. 크리에이터가 직접 등록한 개별 금칙어는 각 스튜디오에서 관리합니다.
       </Notice>
 

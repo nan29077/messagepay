@@ -5,11 +5,11 @@
  */
 
 export const DEFAULT_BANNERS = [
-  '/banners/donaido-live-banner-01-v2.png',
-  '/banners/donaido-live-banner-02-v2.png',
-  '/banners/donaido-live-banner-03-v2.png',
-  '/banners/donaido-live-banner-04-v2.png',
-  '/banners/donaido-live-banner-05-v2.png',
+  '/banners/munjapay-live-banner-01-v2.png',
+  '/banners/munjapay-live-banner-02-v2.png',
+  '/banners/munjapay-live-banner-03-v2.png',
+  '/banners/munjapay-live-banner-04-v2.png',
+  '/banners/munjapay-live-banner-05-v2.png',
 ] as const;
 
 export function defaultBannerFor(creatorId: string): string {

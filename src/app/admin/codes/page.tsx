@@ -65,11 +65,11 @@ export default async function AdminCodesPage({
         <StatTile label="활성 코드" value={formatNumber(activeCount)} tone="success" />
         <StatTile label="폐기 코드" value={formatNumber(revokedCount)} />
         <StatTile label="현재 조건 결과" value={formatNumber(total)} />
-        <StatTile label="코드 형식" value="TOR-XXXX" sub="혼동 문자 제외 32진 알파벳" />
+        <StatTile label="코드 형식" value="MJP-XXXX" sub="혼동 문자 제외 32진 알파벳" />
       </div>
 
       <Notice tone="warning" title="재발급 시 주의">
-        코드를 재발급하면 기존 코드가 즉시 폐기되고 새 코드가 활성화됩니다. 방송 화면·SNS·인쇄물에 노출된 기존
+        코드를 재발급하면 기존 코드가 즉시 폐기되고 새 코드가 활성화됩니다. 서비스 화면·안내문에 노출된 기존
         후원 링크는 더 이상 동작하지 않으므로, 크리에이터에게 사전 공지 후 진행해 주세요. 모든 재발급은 감사로그에
         기록됩니다.
       </Notice>
@@ -77,7 +77,7 @@ export default async function AdminCodesPage({
       <div className="mt-4">
         <FilterBar action="/admin/codes" resetHref="/admin/codes">
           <AdminField label="검색 (코드/크리에이터)" className="w-56">
-            <AdminInput name="q" defaultValue={q} placeholder="TOR-8K2M" />
+            <AdminInput name="q" defaultValue={q} placeholder="MJP-8K2M" />
           </AdminField>
           <AdminField label="상태" className="w-36">
             <AdminSelect name="state" defaultValue={state}>

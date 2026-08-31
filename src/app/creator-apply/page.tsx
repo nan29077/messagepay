@@ -11,7 +11,7 @@ import { creatorStatusLabel } from '@/lib/labels';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '크리에이터 가입 신청 | 도네이도',
+  title: '크리에이터 가입 신청 | 문자페이',
   description: '문자후원 번호를 배정받고 방송에 후원 알림을 연결하려면 크리에이터 가입을 신청하세요.',
 };
 

@@ -111,7 +111,7 @@ export default async function AdminMoMessagesPage({
 
       <Notice tone="neutral" title="원문 비노출 원칙">
         수신 문자 원문(content_enc)은 분쟁 대응 목적의 암호문으로만 보관합니다. 관리자 화면에는 금칙어 필터링을 거친
-        방송 노출용 문구만 표시되며, 발신 번호는 마스킹된 값만 제공합니다.
+        결제 요청 문구만 표시되며, 발신 번호는 마스킹된 값만 제공합니다.
       </Notice>
 
       <div className="mt-4">

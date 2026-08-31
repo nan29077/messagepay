@@ -92,9 +92,7 @@ function LimitFields({ v }: { v: LimitValues }) {
       <AdminField label="수동 검수 기준 (원)" hint="이 금액 이상이면 검수 대상">
         <AdminInput name="manualReviewAmount" inputMode="numeric" defaultValue={v.manualReviewAmount} required />
       </AdminField>
-      <AdminField label="TTS 최소 후원금 (원)">
-        <AdminInput name="ttsMinAmount" inputMode="numeric" defaultValue={v.ttsMinAmount} required />
-      </AdminField>
+      <input type="hidden" name="ttsMinAmount" value={v.ttsMinAmount} />
     </div>
   );
 }

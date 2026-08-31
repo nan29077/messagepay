@@ -12,7 +12,7 @@ import type { ConsentType, PaymentMethodKind } from '@/generated/prisma/enums';
  * 후원자 계좌 등록 (헥토 내통장결제 0원 인증 후 빌키 발급 흐름).
  *
  * 저장 규칙
- *  - 계좌번호 원문과 인증정보는 도네이도 DB 에 저장하지 않는다.
+ *  - 계좌번호 원문과 인증정보는 문자페이 DB 에 저장하지 않는다.
  *  - 은행명과 계좌 끝 4자리, 암호화된 빌키만 보관한다.
  */
 

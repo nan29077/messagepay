@@ -241,7 +241,7 @@ export default async function AdminCreatorsPage({
 
       <FilterBar action="/admin/creators" resetHref="/admin/creators">
         <AdminField label="검색 (이름/채널/코드/이메일)" className="w-64">
-          <AdminInput name="q" defaultValue={q} placeholder="도네이도 또는 TOR-8K2M" />
+          <AdminInput name="q" defaultValue={q} placeholder="문자페이 또는 MJP-8K2M" />
         </AdminField>
         <AdminField label="상태" className="w-36">
           <AdminSelect name="status" defaultValue={status ?? ''}>

@@ -25,9 +25,9 @@
 
 ### 접속 문자열
 ```env
-DATABASE_URL="postgresql://tornado:***@tornado.cluster-xxxx.ap-northeast-2.rds.amazonaws.com:5432/tornado?schema=public&sslmode=require&connection_limit=10"
+DATABASE_URL="postgresql://munjapay:***@munjapay.cluster-xxxx.ap-northeast-2.rds.amazonaws.com:5432/munjapay?schema=public&sslmode=require&connection_limit=10"
 # 마이그레이션은 Proxy 를 우회한다
-DIRECT_DATABASE_URL="postgresql://tornado:***@tornado.cluster-xxxx.ap-northeast-2.rds.amazonaws.com:5432/tornado?schema=public&sslmode=require"
+DIRECT_DATABASE_URL="postgresql://munjapay:***@munjapay.cluster-xxxx.ap-northeast-2.rds.amazonaws.com:5432/munjapay?schema=public&sslmode=require"
 ```
 
 ### 파티셔닝 (운영 전환 시)
@@ -89,7 +89,7 @@ COMMIT;
 용도: 한도 카운터 캐시, 속도 제한, 로그인 브루트포스 방어, 유튜브 할당량 카운터, 오버레이 Pub/Sub.
 
 ```env
-REDIS_URL="rediss://tornado-cache.xxxx.ng.0001.apn2.cache.amazonaws.com:6379"
+REDIS_URL="rediss://munjapay-cache.xxxx.ng.0001.apn2.cache.amazonaws.com:6379"
 ALLOW_INMEMORY_FALLBACK="false"   # 운영에서는 반드시 false
 ```
 

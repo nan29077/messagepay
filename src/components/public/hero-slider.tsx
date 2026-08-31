@@ -8,7 +8,7 @@ import { cx } from '@/components/ui';
 
 const slides = [
   {
-    image: '/assets/tornado-hero-creator-v2.png',
+    image: '/assets/munjapay-hero-creator-v2.png',
     eyebrow: 'MESSAGE TO LIVE',
     title: '문자 한 통이\n방송을 움직입니다',
     description: '진심을 담아 보낸 메시지가 결제 완료 후 라이브 화면과 음성으로 전달됩니다.',
@@ -16,7 +16,7 @@ const slides = [
     cta: '문자후원 알아보기',
   },
   {
-    image: '/assets/tornado-hero-viewer-v2.png',
+    image: '/assets/munjapay-hero-viewer-v2.png',
     eyebrow: 'SIMPLE SUPPORT',
     title: '보는 순간 바로\n응원을 전하세요',
     description: '복잡한 앱 설치 없이 안내된 번호로 문자를 보내고 안전하게 후원하세요.',
@@ -24,7 +24,7 @@ const slides = [
     cta: '이용방법 보기',
   },
   {
-    image: '/assets/tornado-hero-studio-v2.png',
+    image: '/assets/munjapay-hero-studio-v2.png',
     eyebrow: 'FOR CREATORS',
     title: '후원의 순간을\n더 특별한 장면으로',
     description: '유튜브·OBS·PRISM·TTS를 연결해 크리에이터만의 후원 경험을 만드세요.',
@@ -32,12 +32,12 @@ const slides = [
     cta: '크리에이터 시작하기',
   },
   {
-    image: '/assets/tornado-hero-mascot-v1.png',
-    eyebrow: 'MEET DONAIDO',
-    title: '도네이도와 함께\n응원이 주인공이 됩니다',
-    description: '마음을 담은 문자 한 통이 도네이도 캐릭터와 방송 효과로 살아납니다.',
+    image: '/assets/munjapay-hero-mascot-v1.png',
+    eyebrow: 'MEET MUNJAPAY',
+    title: '문자페이와 함께\n응원이 주인공이 됩니다',
+    description: '마음을 담은 문자 한 통이 문자페이 캐릭터와 방송 효과로 살아납니다.',
     href: '/how-it-works',
-    cta: '도네이도 경험하기',
+    cta: '문자페이 경험하기',
   },
 ];
 
@@ -62,7 +62,7 @@ export function HeroSlider() {
       className="hero-slider group relative isolate overflow-hidden rounded-[30px] bg-ink-900 shadow-[0_24px_70px_rgba(23,18,54,0.22)]"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
-      aria-label="도네이도 주요 서비스"
+      aria-label="문자페이 주요 서비스"
     >
       {/* 이미지 영역.
           모바일: 원본 비율(3:2)에 맞춰 이미지가 잘리지 않게 보여주고, 텍스트는 이미지 아래에 배치한다.

@@ -11,8 +11,6 @@ const providerRows: Array<{ key: string; label: string }> = [
   { key: 'payment', label: '결제(PG)' },
   { key: 'mo', label: 'MO 수신' },
   { key: 'mt', label: 'MT 발송' },
-  { key: 'youtube', label: '유튜브' },
-  { key: 'tts', label: 'TTS' },
 ];
 
 export function SafetyBanner() {
@@ -20,10 +18,8 @@ export function SafetyBanner() {
     payment: env.payment.provider,
     mo: env.mo.provider,
     mt: env.mt.provider,
-    youtube: env.youtube.provider,
-    tts: env.tts.provider,
   };
-  const warnings = assertProductionSafety();
+  const warnings = assertProductionSafety().filter((warning) => !/youtube|유튜브|tts/i.test(warning));
   const mockCount = providerRows.filter((r) => providers[r.key] === 'mock').length;
 
   return (
@@ -50,7 +46,7 @@ export function SafetyBanner() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
         {providerRows.map((r) => {
           const mode = providers[r.key];
           const isMock = mode === 'mock';
@@ -67,7 +63,7 @@ export function SafetyBanner() {
 
       {mockCount > 0 ? (
         <Notice tone="warning" title={`외부 연동 ${mockCount}개가 mock 어댑터로 동작 중입니다`}>
-          mock 어댑터는 실제 결제·문자 발송·방송 전송을 수행하지 않습니다. 화면에 표시되는 성공 결과는 모의 처리
+          mock 어댑터는 실제 결제·문자 발송을 수행하지 않습니다. 화면에 표시되는 성공 결과는 모의 처리
           결과이며, 실계약 체결 후 어댑터를 교체해야 실제 처리로 전환됩니다.
         </Notice>
       ) : null}

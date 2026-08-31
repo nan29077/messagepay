@@ -46,13 +46,14 @@ _to_delete/
 logs/
 
 # 서버 실행 잠금 파일
-.tornado-server.lock
+.munjapay-server.lock
 .stale/
 
 # 런타임 업로드 이미지
 /public/uploads/
 /var/uploads/
-local-wip.diff
-tornado-audit-fixes.patch
 output/
-tornado-nickname-preview.patch
+
+# 작업용 패치/diff
+*.patch
+*.diff

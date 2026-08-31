@@ -79,7 +79,7 @@ export default async function MyLimitsPage() {
       </div>
 
       <Notice tone="brand" title="한도는 낮추는 방향으로만 설정할 수 있습니다">
-        도네이도 기본 정책보다 높은 한도는 설정할 수 없습니다. 과도한 후원이 걱정된다면 한도를 더 낮게 조정해 주세요.
+        문자페이 기본 정책보다 높은 한도는 설정할 수 없습니다. 과도한 후원이 걱정된다면 한도를 더 낮게 조정해 주세요.
       </Notice>
 
       <section>
@@ -97,7 +97,7 @@ export default async function MyLimitsPage() {
       </section>
 
       <section>
-        <SectionTitle title="기본 정책" description="아래 값은 도네이도가 모든 후원자에게 공통 적용하는 상한입니다." />
+        <SectionTitle title="기본 정책" description="아래 값은 문자페이가 모든 후원자에게 공통 적용하는 상한입니다." />
         <Card>
           <div className="mb-2 flex items-center gap-2">
             <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-50 text-brand-700">

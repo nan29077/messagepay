@@ -7,7 +7,7 @@ import { Card, CardTitle, Notice, LinkButton } from '@/components/ui';
 import { SocialAuthButtons } from '@/components/public/social-auth';
 
 export const metadata: Metadata = {
-  title: '후원자 회원가입 | 도네이도',
+  title: '후원자 회원가입 | 문자페이',
   description: '후원 내역과 결제 수단, 이용 한도를 웹에서 관리하려면 후원자 계정을 만들어 주세요.',
 };
 

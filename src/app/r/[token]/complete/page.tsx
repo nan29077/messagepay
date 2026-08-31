@@ -20,7 +20,7 @@ import { CompleteRedirect } from '../complete-redirect';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '도네이도 계좌 등록 결과',
+  title: '문자페이 계좌 등록 결과',
   robots: { index: false, follow: false },
 };
 
@@ -216,8 +216,8 @@ export default async function RegistrationCompletePage({
           </div>
           <p className="mt-3 text-[12px] leading-relaxed text-ink-400">
             {resultMethod === 'CARD'
-              ? '카드번호 원문은 도네이도에 저장되지 않습니다. 카드사명과 끝 4자리만 보관합니다.'
-              : '계좌번호 원문은 도네이도에 저장되지 않습니다. 은행명과 끝 4자리만 보관합니다.'}
+              ? '카드번호 원문은 문자페이에 저장되지 않습니다. 카드사명과 끝 4자리만 보관합니다.'
+              : '계좌번호 원문은 문자페이에 저장되지 않습니다. 은행명과 끝 4자리만 보관합니다.'}
           </p>
         </Card>
 

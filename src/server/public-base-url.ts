@@ -18,7 +18,7 @@ export async function getPublicBaseUrl() {
 
   const h = await headers();
   const host = h.get('x-forwarded-host')?.split(',')[0]?.trim() || h.get('host');
-  if (!host) return (configured || 'http://localhost:3025').replace(/\/$/, '');
+  if (!host) return (configured || 'http://localhost:3030').replace(/\/$/, '');
   const forwardedProto = h.get('x-forwarded-proto')?.split(',')[0]?.trim();
   const protocol = forwardedProto === 'http' || forwardedProto === 'https'
     ? forwardedProto

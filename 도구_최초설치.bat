@@ -2,12 +2,12 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-title 토네이도 - 최초 설치
+title 문자페이 - 최초 설치
 
 echo.
 echo ==========================================
-echo   토네이도 TORNADO - 최초 설치
-echo   서비스 포트: 3025
+echo   문자페이 BASIC - 최초 설치
+echo   서비스 포트: 3030
 echo ==========================================
 echo.
 
@@ -73,9 +73,9 @@ echo   설치가 완료되었습니다.
 echo   2_개발서버실행.bat 을 실행하면 앱이 열립니다.
 echo ==========================================
 echo.
-echo   주소       http://localhost:3025
-echo   관리자     admin@tornado.kr / tornado1234!
-echo   크리에이터 creator1@tornado.kr / tornado1234!
+echo   주소       http://localhost:3030
+echo   관리자     admin@munjapay.kr / munjapay1234!
+echo   크리에이터 creator1@munjapay.kr / munjapay1234!
 echo.
 pause
 exit /b 0

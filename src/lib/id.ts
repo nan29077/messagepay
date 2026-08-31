@@ -24,19 +24,19 @@ export function newTransactionNo(now = new Date()): string {
 export function newOrderNo(now = new Date()): string {
   const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
   const stamp = kst.toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
-  return `TOR${stamp}${ulid().slice(-6)}`;
+  return `MJP${stamp}${ulid().slice(-6)}`;
 }
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 혼동 문자 제외
 
-/** 크리에이터 코드: TOR-8K2M */
+/** 크리에이터 코드: MJP-8K2M */
 export function newCreatorCode(): string {
   // 예측 가능한 코드는 타인의 후원샵 코드 추측으로 이어지므로 CSPRNG 를 쓴다.
-  return `TOR-${randomCodeString(CODE_ALPHABET, 4)}`;
+  return `MJP-${randomCodeString(CODE_ALPHABET, 4)}`;
 }
 
 export function normalizeCreatorCode(input: string): string {
   const v = (input || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (v.startsWith('TOR')) return `TOR-${v.slice(3)}`;
-  return `TOR-${v}`;
+  if (v.startsWith('MJP')) return `MJP-${v.slice(3)}`;
+  return `MJP-${v}`;
 }

@@ -22,7 +22,7 @@ describe('개별 프로필 캐릭터', () => {
     const hashes = new Set<string>();
     for (let number = 1; number <= 50; number += 1) {
       const filename = `avatar-${String(number).padStart(2, '0')}.png`;
-      const image = readFileSync(join(process.cwd(), 'public', 'avatars', 'donaido-v2', filename));
+      const image = readFileSync(join(process.cwd(), 'public', 'avatars', 'munjapay-v2', filename));
       expect(image.subarray(1, 4).toString('ascii')).toBe('PNG');
       hashes.add(createHash('sha256').update(image).digest('hex'));
     }

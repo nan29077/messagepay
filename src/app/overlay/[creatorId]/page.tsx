@@ -14,7 +14,7 @@ import { authorizeOverlay } from '@/server/services/overlay-access';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '도네이도 오버레이',
+  title: '문자페이 오버레이',
   robots: { index: false, follow: false },
 };
 
@@ -64,7 +64,7 @@ export default async function OverlayPage({
       position={setting?.position ?? 'BOTTOM_CENTER'}
       defaultDurationMs={setting?.durationMs ?? 7000}
       maxMessageLen={setting?.maxMessageLen ?? 80}
-      theme={setting?.theme ?? 'TORNADO'}
+      theme={setting?.theme ?? 'BASIC'}
       debug={debug}
     />
   );

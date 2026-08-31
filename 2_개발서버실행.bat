@@ -2,15 +2,15 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-title 토네이도 - 개발 서버 (포트 3025)
+title 문자페이 - 개발 서버 (포트 3030)
 
-set TORNADO_PORT=3025
-set TORNADO_URL=http://localhost:%TORNADO_PORT%
+set APP_PORT=3030
+set APP_URL=http://localhost:%APP_PORT%
 
 echo.
 echo ==========================================
-echo   토네이도 TORNADO - 개발 서버
-echo   %TORNADO_URL%
+echo   문자페이 BASIC - 개발 서버
+echo   %APP_URL%
 echo ==========================================
 echo.
 echo   이 방식은 별도 PostgreSQL 이 필요합니다.
@@ -62,7 +62,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-netstat -ano | findstr /r /c:":%TORNADO_PORT% .*LISTENING" >nul 2>nul
+netstat -ano | findstr /r /c:":%APP_PORT% .*LISTENING" >nul 2>nul
 if not errorlevel 1 (
   echo [정리] 이전에 실행된 서버가 남아 있습니다. 정리한 뒤 새로 시작합니다.
 )
@@ -73,12 +73,12 @@ echo        첫 실행은 화면 컴파일 때문에 20~60초 정도 걸립니�
 echo        서버를 끄려면 이 창에서 Ctrl+C 를 누르거나 창을 닫으세요.
 echo        (창을 닫으면 서버도 함께 종료됩니다)
 echo.
-echo   메인        %TORNADO_URL%
-echo   크리에이터  %TORNADO_URL%/studio   creator1@tornado.kr / tornado1234!
-echo   관리자      %TORNADO_URL%/admin    admin@tornado.kr / tornado1234!
+echo   메인        %APP_URL%
+echo   크리에이터  %APP_URL%/studio   creator1@munjapay.kr / munjapay1234!
+echo   관리자      %APP_URL%/admin    admin@munjapay.kr / munjapay1234!
 echo.
 
-start "" powershell -NoProfile -ExecutionPolicy Bypass -Command "$u='%TORNADO_URL%/api/health'; for($i=0;$i -lt 150;$i++){ try{ $r=Invoke-WebRequest -Uri $u -UseBasicParsing -TimeoutSec 5; if($r.StatusCode -eq 200){ Start-Process '%TORNADO_URL%'; exit } }catch{}; Start-Sleep -Seconds 2 }"
+start "" powershell -NoProfile -ExecutionPolicy Bypass -Command "$u='%APP_URL%/api/health'; for($i=0;$i -lt 150;$i++){ try{ $r=Invoke-WebRequest -Uri $u -UseBasicParsing -TimeoutSec 5; if($r.StatusCode -eq 200){ Start-Process '%APP_URL%'; exit } }catch{}; Start-Sleep -Seconds 2 }"
 
 call node tools\serve.mjs dev
 

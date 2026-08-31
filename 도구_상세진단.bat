@@ -2,13 +2,13 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-title 토네이도 - 상세 진단
+title 문자페이 - 상세 진단
 
 if not exist "logs" mkdir "logs"
 set LOG=logs\diag.log
 
 echo. > "%LOG%"
-echo ================= 토네이도 진단 ================= >> "%LOG%"
+echo ================= 문자페이 진단 ================= >> "%LOG%"
 echo [시각] %DATE% %TIME% >> "%LOG%"
 echo [경로] %CD% >> "%LOG%"
 echo. >> "%LOG%"

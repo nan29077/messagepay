@@ -226,7 +226,7 @@ export async function updateCreatorStatus(_prev: AdminActionState, fd: FormData)
       title: status === 'APPROVED' ? '크리에이터 승인이 완료되었습니다' : '크리에이터 심사 상태가 변경되었습니다',
       body:
         status === 'APPROVED'
-          ? '이제 크리에이터 관리자에서 후원샵과 방송 연동을 설정할 수 있습니다.'
+          ? '이제 관리자에서 문자결제와 정산 정보를 설정할 수 있습니다.'
           : `${before.displayName}님의 심사 상태가 ${status}(으)로 변경되었습니다.`,
       linkUrl: '/studio',
     });

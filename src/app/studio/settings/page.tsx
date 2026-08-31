@@ -30,7 +30,7 @@ const SETTINGS_TABS = [
 /** 감사 문자 미리보기 예시값. 실제 발송과 같은 템플릿 함수에 넣어 결과를 보여준다. */
 const THANKS_PREVIEW = {
   donorName: '홍길동',
-  creatorName: '도네이도',
+  creatorName: '문자페이',
   amount: 3_000n,
   message: '오늘 방송 정말 재밌었어요',
   cumulative: 12_000n,
@@ -210,7 +210,7 @@ export default async function StudioSettingsPage({
             <div className="mt-4">
               <Notice tone="warning" title="링크와 개인정보는 넣을 수 없습니다">
                 감사 문자에 링크(http, www)나 전화번호·계좌번호를 넣으면 저장되지 않습니다. 통신사 스팸 차단으로 문자
-                자체가 전달되지 않거나 후원자가 피싱으로 오인할 수 있기 때문입니다. 발신 주체 표기 [도네이도] 는 항상 문장
+                자체가 전달되지 않거나 후원자가 피싱으로 오인할 수 있기 때문입니다. 발신 주체 표기 [문자페이] 는 항상 문장
                 앞에 자동으로 붙습니다.
               </Notice>
             </div>

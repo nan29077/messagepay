@@ -192,7 +192,7 @@ async function registerGuide(input: {
   try {
     mtSent = await sendMt({
       phone: input.phone,
-      template: tpl.tplRegisterGuide(linkedCreator?.displayName ?? '도네이도', link.url),
+      template: tpl.tplRegisterGuide(linkedCreator?.displayName ?? '문자페이', link.url),
       creatorId: linkedCreator?.id ?? null,
     });
   } catch (error) {

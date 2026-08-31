@@ -7,7 +7,7 @@ import { getSessionUser, requireCreator } from '@/server/auth';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '크리에이터 관리자 | 도네이도',
+  title: '크리에이터 관리자 | 문자페이',
   robots: { index: false, follow: false },
 };
 

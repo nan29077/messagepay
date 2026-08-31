@@ -2,7 +2,7 @@ import * as React from 'react';
 import Link from 'next/link';
 
 /**
- * 도네이도 공통 UI 프리미티브.
+ * 문자페이 공통 UI 프리미티브.
  * - 이모지를 사용하지 않는다. 아이콘은 lucide-react 라인 아이콘만 사용한다.
  * - 카드형 UI, 둥근 모서리, 부드러운 그림자, 충분한 여백.
  */

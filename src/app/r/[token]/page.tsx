@@ -32,7 +32,7 @@ import { ConfirmPanel } from './confirm-panel';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '도네이도 후원 확인',
+  title: '문자페이 후원 확인',
   robots: { index: false, follow: false },
 };
 
@@ -130,7 +130,7 @@ function InvalidLink({ reason }: { reason: 'NOT_FOUND' | 'EXPIRED' | 'USED' }) {
       </p>
       <div className="mt-3">
         <Notice tone="warning" title="주의">
-          도네이도는 문자로 발송한 링크 외에 다른 경로로 계좌 정보를 요구하지 않습니다.
+          문자페이는 문자로 발송한 링크 외에 다른 경로로 계좌 정보를 요구하지 않습니다.
         </Notice>
       </div>
     </Card>

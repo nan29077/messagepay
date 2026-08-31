@@ -66,7 +66,7 @@ export const mockMoAdapter: MoAdapter = {
   },
 
   verify(rawBody, headers, ip) {
-    return verifyMoRequest(rawBody, headers, ip, ['x-tornado-signature', 'x-signature']);
+    return verifyMoRequest(rawBody, headers, ip, ['x-munjapay-signature', 'x-signature']);
   },
 
   parse(body) {

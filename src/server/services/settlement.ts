@@ -811,7 +811,7 @@ export async function buildPayoutRows(requestIds: string[]): Promise<PayoutRow[]
       account: decrypt(acc.accountEnc),
       holder: decrypt(acc.holderNameEnc),
       amount: r.payoutAmount,
-      note: `도네이도 정산 ${r.creator.code}`,
+      note: `문자페이 정산 ${r.creator.code}`,
     });
   }
   return rows;

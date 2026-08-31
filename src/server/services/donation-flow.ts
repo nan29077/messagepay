@@ -283,7 +283,7 @@ export function resolvePaymentMode(
  *
  *  - `PIN`(기본): 결제사(헥토/카드)가 발급한 PIN 입력 링크를 보낸다.
  *                 PIN 을 입력해야 결제사가 콜백을 보내고 그때 승인이 실행된다.
- *  - `LEGACY_LINK`(**deprecated**): 토네이도 자체 확인 페이지 링크를 보낸다.
+ *  - `LEGACY_LINK`(**deprecated**): 문자페이 자체 확인 페이지 링크를 보낸다.
  *                 확인 버튼을 누르면 빌키로 곧바로 승인한다.
  *                 되돌림이 필요한 경우에만 ALLOW_LEGACY_CONFIRM_LINK=true 로 연다.
  */
@@ -624,7 +624,7 @@ async function processMoRow(
       };
     }
 
-    // ── deprecated: 토네이도 자체 확인 링크 ────────────────────────────────
+    // ── deprecated: 문자페이 자체 확인 링크 ────────────────────────────────
     // ALLOW_LEGACY_CONFIRM_LINK=true 일 때만 이 경로를 탄다.
     // 확인 버튼 클릭이 곧 출금이므로, PIN 인증 흐름이 안정화되면 제거한다.
     await setStatus(donation.id, 'PENDING_CONFIRM', '후원자 확인 대기');

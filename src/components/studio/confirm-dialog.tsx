@@ -8,7 +8,7 @@ import { Portal } from '@/components/ui/portal';
 /**
  * 스튜디오 공용 확인 알림창.
  *
- * 브라우저 기본 confirm/alert 대신 도네이도 디자인을 그대로 쓴다.
+ * 브라우저 기본 confirm/alert 대신 문자페이 디자인을 그대로 쓴다.
  * [설정 저장] · [테스트 후원 보내기] 처럼 "누른 것이 확실히 보여야 하는" 동작에 붙인다.
  *
  * 흐름

@@ -1,9 +1,9 @@
 param(
   [string[]]$Sources = @(
-    (Join-Path $PSScriptRoot '..\public\avatars-donaido-a-v1.png'),
-    (Join-Path $PSScriptRoot '..\public\avatars-donaido-b-v1.png')
+    (Join-Path $PSScriptRoot '..\public\avatars-munjapay-a-v1.png'),
+    (Join-Path $PSScriptRoot '..\public\avatars-munjapay-b-v1.png')
   ),
-  [string]$Destination = (Join-Path $PSScriptRoot '..\public\avatars\donaido')
+  [string]$Destination = (Join-Path $PSScriptRoot '..\public\avatars\munjapay')
 )
 
 $ErrorActionPreference = 'Stop'

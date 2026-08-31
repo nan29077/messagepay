@@ -21,7 +21,7 @@ import { clientIpFrom } from '@/server/rate-limit';
 
 // 'use server' 파일은 async 함수만 export 할 수 있으므로 상수는 내부에만 둔다.
 // (API 라우트 src/app/api/inquiry/route.ts 와 동일한 값을 사용해야 한다)
-const GUEST_COOKIE = 'donaido_inquiry';
+const GUEST_COOKIE = 'munjapay_inquiry';
 const RATE_WINDOW_SEC = 600;
 const RATE_MAX = 10;
 

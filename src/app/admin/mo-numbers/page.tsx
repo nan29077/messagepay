@@ -87,7 +87,7 @@ export default async function AdminMoNumbersPage({
               <AdminInput name="phoneNumber" inputMode="numeric" placeholder="05051234567" required />
             </AdminField>
             <AdminField label="키워드" hint="대표번호 공유 모드에서 문자 맨 앞에 붙는 식별 키워드">
-              <AdminInput name="keyword" placeholder="DONAIDO" />
+              <AdminInput name="keyword" placeholder="MUNJAPAY" />
             </AdminField>
             <AdminField label="수신 모드">
               <AdminSelect name="mode" defaultValue="DEDICATED">
@@ -113,7 +113,7 @@ export default async function AdminMoNumbersPage({
           <div className="mt-3">
             <FilterBar action="/admin/mo-numbers" resetHref="/admin/mo-numbers">
               <AdminField label="번호·키워드 검색" className="w-52">
-                <AdminInput name="q" defaultValue={q} placeholder="0505... 또는 DONAIDO" />
+                <AdminInput name="q" defaultValue={q} placeholder="0505... 또는 MUNJAPAY" />
               </AdminField>
               <AdminField label="상태" className="w-40">
                 <AdminSelect name="status" defaultValue={status ?? ''}>

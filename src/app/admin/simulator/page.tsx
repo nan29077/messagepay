@@ -56,7 +56,7 @@ export default async function AdminSimulatorPage() {
     <>
       <PageHeader
         title="MO 시뮬레이터"
-        description="실제 MO 사업자 연동 전 수신 → 후원 → 결제 → 방송 흐름을 검증하는 개발·검수용 도구입니다."
+        description="실제 MO 사업자 연동 전 수신 → 결제 → 처리 결과 흐름을 검증하는 개발·검수용 도구입니다."
       />
 
       <Notice tone="danger" title="운영 환경에서는 반드시 비활성화해야 합니다">
@@ -118,7 +118,7 @@ export default async function AdminSimulatorPage() {
               label="문자 내용"
               hint="대표번호 공유 모드에서는 맨 앞에 키워드를 붙여야 크리에이터가 식별됩니다."
             >
-              <AdminTextarea name="content" rows={4} placeholder="오늘 방송 재밌어요" required />
+              <AdminTextarea name="content" rows={4} placeholder="포인트 10,000원 충전" required />
             </AdminField>
             <AdminField label="사업자 메시지 ID" hint="비우면 자동 생성됩니다. 같은 값을 재사용하면 중복으로 처리됩니다.">
               <AdminInput name="messageId" placeholder="자동 생성" />

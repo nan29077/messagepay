@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Activity, CircleAlert, Flag, Wallet } from 'lucide-react';
+import { Activity, Flag, Wallet } from 'lucide-react';
 import { PageHeader } from '@/components/layout/console-shell';
 import { Card, CardTitle, SectionTitle, StatTile, Table, Th, Td, Badge, EmptyState, LinkButton } from '@/components/ui';
 import { SafetyBanner } from '@/components/admin/safety-banner';
@@ -24,7 +24,6 @@ export default async function AdminDashboardPage() {
     txApproved,
     unregistered,
     limitBlocked,
-    youtubeFailed,
     settlementPending,
     openReports,
     openRisks,
@@ -46,7 +45,6 @@ export default async function AdminDashboardPage() {
     prisma.paymentTransaction.count({ where: { requestedAt: { gte: todayStart }, status: 'APPROVED' } }),
     prisma.moInboundMessage.count({ where: { receivedAt: { gte: todayStart }, result: 'UNREGISTERED_DONOR' } }),
     prisma.donation.count({ where: { receivedAt: { gte: todayStart }, status: 'LIMIT_BLOCKED' } }),
-    prisma.youTubeChatDelivery.count({ where: { createdAt: { gte: todayStart }, status: 'FAILED' } }),
     prisma.settlementRequest.aggregate({
       where: { status: { in: ['REQUESTED', 'REVIEWING'] } },
       _count: { _all: true },
@@ -75,13 +73,13 @@ export default async function AdminDashboardPage() {
   // 처리 대기 건이 하나라도 있으면 '확인이 필요한 건' 섹션을 지표보다 위에 배치한다.
   // 운영자가 접속해서 가장 먼저 할 일이 화면 순서와 일치하도록.
   const pendingTotal =
-    unregistered + limitBlocked + youtubeFailed + openRisks + settlementPending._count._all + openReports + openInquiries;
+    unregistered + limitBlocked + openRisks + settlementPending._count._all + openReports + openInquiries;
 
   return (
     <>
       <PageHeader
         title="운영 대시보드"
-        description="오늘(KST) 기준 후원·결제·방송 지표와 즉시 처리해야 할 대기 건을 함께 보여줍니다."
+        description="오늘(KST) 기준 문자·결제 지표와 즉시 처리해야 할 대기 건을 함께 보여줍니다."
       />
 
       <div className="space-y-5">
@@ -107,14 +105,6 @@ export default async function AdminDashboardPage() {
                 value={formatNumber(limitBlocked)}
                 sub="한도·속도 제한에 걸린 후원"
                 tone={limitBlocked > 0 ? 'warning' : 'neutral'}
-              />
-            </Link>
-            <Link href="/admin/youtube">
-              <StatTile
-                label="오늘 유튜브 전송 실패"
-                value={formatNumber(youtubeFailed)}
-                sub="결제 결과와는 무관"
-                tone={youtubeFailed > 0 ? 'danger' : 'neutral'}
               />
             </Link>
             <Link href="/admin/risk?resolved=NO">
@@ -233,14 +223,6 @@ export default async function AdminDashboardPage() {
                 tone={limitBlocked > 0 ? 'warning' : 'neutral'}
               />
             </Link>
-            <Link href="/admin/youtube">
-              <StatTile
-                label="오늘 유튜브 전송 실패"
-                value={formatNumber(youtubeFailed)}
-                sub="결제 결과와는 무관"
-                tone={youtubeFailed > 0 ? 'danger' : 'neutral'}
-              />
-            </Link>
             <Link href="/admin/risk?resolved=NO">
               <StatTile
                 label="미해결 이상거래"
@@ -329,7 +311,7 @@ export default async function AdminDashboardPage() {
           )}
         </section>
 
-        <div className="grid gap-3 lg:grid-cols-3">
+        <div className="grid gap-3 lg:grid-cols-2">
           <Card>
             <div className="mb-2 flex items-center gap-2">
               <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-50 text-brand-700">
@@ -340,17 +322,6 @@ export default async function AdminDashboardPage() {
             <p className="text-[13px] leading-relaxed text-ink-500">
               모든 날짜 경계는 KST(UTC+9) 기준입니다. 결제 금액은 승인 시각(paidAt) 기준이며, 문자 접수 건수는 수신
               시각(receivedAt) 기준입니다.
-            </p>
-          </Card>
-          <Card>
-            <div className="mb-2 flex items-center gap-2">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-50 text-brand-700">
-                <CircleAlert size={16} strokeWidth={1.7} />
-              </span>
-              <CardTitle>결제와 방송은 분리됩니다</CardTitle>
-            </div>
-            <p className="text-[13px] leading-relaxed text-ink-500">
-              유튜브 전송 실패는 결제 결과를 바꾸지 않습니다. 전송 실패 건은 별도로 재처리 대상입니다.
             </p>
           </Card>
           <Card>

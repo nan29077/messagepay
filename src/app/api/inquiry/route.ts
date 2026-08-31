@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
  * 다른 사람의 문의는 어떤 경로로도 조회할 수 없다.
  */
 
-const GUEST_COOKIE = 'donaido_inquiry';
+const GUEST_COOKIE = 'munjapay_inquiry';
 
 export async function GET() {
   const user = await getSessionUser().catch(() => null);

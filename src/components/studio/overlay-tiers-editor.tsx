@@ -6,7 +6,7 @@ import { Badge, Button, Checkbox, Field, Input, Notice, Select, cx } from '@/com
 import { SaveButtonLabel, SaveToast, useSaveFeedback } from '@/components/studio/save-feedback';
 import { previewOverlayTierAction, saveOverlayTiersAction } from '@/app/actions/studio';
 import type { StudioActionState } from '@/app/actions/studio';
-import { DONAIDO_CHARACTER_STICKERS } from '@/lib/overlay-effect-catalog';
+import { MUNJAPAY_CHARACTER_STICKERS } from '@/lib/overlay-effect-catalog';
 
 /**
  * 금액 구간별 오버레이 효과 편집기 + 미리보기.
@@ -50,7 +50,7 @@ const EFFECT_OPTIONS = [
   { value: 'FIREWORK', label: '폭죽' },
   { value: 'CONFETTI', label: '꽃가루' },
   { value: 'COIN', label: '동전' },
-  ...DONAIDO_CHARACTER_STICKERS.map((sticker) => ({ value: sticker.value, label: `캐릭터 · ${sticker.label}` })),
+  ...MUNJAPAY_CHARACTER_STICKERS.map((sticker) => ({ value: sticker.value, label: `캐릭터 · ${sticker.label}` })),
   { value: 'NONE', label: '효과 없음' },
 ];
 
@@ -538,10 +538,10 @@ function PreviewModal({
         | { type?: string; creatorId?: string; phase?: string; retrySec?: number; recovered?: number }
         | null;
       if (!data || data.creatorId !== creatorId) return;
-      if (data.type === 'donaido-overlay-ready') setReady(true);
+      if (data.type === 'munjapay-overlay-ready') setReady(true);
       // 오버레이가 알려 주는 연결 상태. OBS 에서도 같은 방식으로 붙으므로
       // 여기서 '연결됨'이 보이면 브라우저 소스 설정 문제는 아니라고 판단할 수 있다.
-      if (data.type === 'donaido-overlay-status' && data.phase) {
+      if (data.type === 'munjapay-overlay-status' && data.phase) {
         setLink({ phase: data.phase, retrySec: data.retrySec, recovered: data.recovered });
       }
     };

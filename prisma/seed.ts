@@ -6,7 +6,7 @@ import { newId } from '../src/lib/id';
 import { encrypt, phoneHash, maskPhone, generateToken, tokenHash, maskSecret } from '../src/lib/crypto';
 import { SEED_VERSION, SEED_VERSION_KEY } from './seed-version.mjs';
 
-// 운영 환경 가드: 시드는 테스트 계정(admin@tornado.kr 등)과 샘플 데이터를 만들므로
+// 운영 환경 가드: 시드는 테스트 계정(admin@munjapay.kr 등)과 샘플 데이터를 만들므로
 // 운영 DB 에서는 절대 실행하지 않는다. (APP_ENV 별칭 규칙은 src/lib/env.ts 와 동일하게 prod/production 을 본다)
 const appEnv = (process.env.APP_ENV ?? '').trim().toLowerCase();
 const isProd = appEnv === 'prod' || appEnv === 'production' || process.env.NODE_ENV === 'production';
@@ -19,7 +19,7 @@ const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  console.log('도네이도 시드 데이터 생성 시작');
+  console.log('문자페이 시드 데이터 생성 시작');
 
   // ---------------------------------------------------------------- 시스템 설정
   const settings: Array<[string, unknown, string]> = [
@@ -27,7 +27,7 @@ async function main() {
     ['payment.confirmTtlSec', 300, '결제 확인 링크 유효시간(초). 헥토 10분 제한보다 짧게 유지'],
     ['donation.defaultAmount', 3000, '문자 1건당 기본 후원금'],
     ['youtube.dailyQuota', 10000, 'YouTube Data API 일일 할당량(실측 후 조정)'],
-    ['service.name', '도네이도', '서비스명'],
+    ['service.name', '문자페이', '서비스명'],
   ];
   for (const [key, value, memo] of settings) {
     await prisma.systemSetting.upsert({
@@ -39,7 +39,7 @@ async function main() {
 
   // ---------------------------------------------------------------- 약관
   const terms: Array<{ type: 'TERMS_SERVICE' | 'PRIVACY' | 'E_FINANCE' | 'WITHDRAWAL_AGREE' | 'AGE_CONFIRM' | 'MARKETING'; title: string; content: string; required: boolean }> = [
-    { type: 'TERMS_SERVICE', title: '도네이도 서비스 이용약관', content: '제1조(목적) 이 약관은 도네이도가 제공하는 문자후원 서비스의 이용조건 및 절차를 규정합니다. (샘플 문안 — 법률 검토 후 교체 필요)', required: true },
+    { type: 'TERMS_SERVICE', title: '문자페이 서비스 이용약관', content: '제1조(목적) 이 약관은 문자페이가 제공하는 문자후원 서비스의 이용조건 및 절차를 규정합니다. (샘플 문안 — 법률 검토 후 교체 필요)', required: true },
     { type: 'PRIVACY', title: '개인정보 수집 및 이용 동의', content: '수집항목: 휴대전화번호, 결제 관련 정보. 이용목적: 후원 처리 및 결과 안내. 보유기간: 관계 법령에 따름. (샘플 문안)', required: true },
     { type: 'E_FINANCE', title: '전자금융거래 이용약관', content: '전자금융거래의 이용조건, 거래내용 확인, 오류 정정 절차를 규정합니다. (샘플 문안)', required: true },
     { type: 'WITHDRAWAL_AGREE', title: '출금이체 동의', content: '문자후원 발생 시 등록한 계좌에서 후원금이 출금되는 것에 동의합니다. (샘플 문안)', required: true },
@@ -79,10 +79,10 @@ async function main() {
 
   // ---------------------------------------------------------------- 관리자
   const adminUser = await prisma.user.upsert({
-    where: { email: 'admin@tornado.kr' },
+    where: { email: 'admin@munjapay.kr' },
     create: {
-      id: newId(), email: 'admin@tornado.kr', name: '도네이도 관리자',
-      role: 'ADMIN', passwordHash: await bcrypt.hash('tornado1234!', 10),
+      id: newId(), email: 'admin@munjapay.kr', name: '문자페이 관리자',
+      role: 'ADMIN', passwordHash: await bcrypt.hash('munjapay1234!', 10),
     },
     update: { role: 'ADMIN' },
   });
@@ -94,8 +94,8 @@ async function main() {
 
   // ---------------------------------------------------------------- 크리에이터
   const creatorSeeds = [
-    { email: 'creator1@tornado.kr', name: '바람소리', code: 'TOR-8K2M', mo: '05051001001', mode: 'DEDICATED' as const, keyword: null },
-    { email: 'creator2@tornado.kr', name: '별하늘', code: 'TOR-3QP7', mo: '05059000000', mode: 'SHARED_PREFIX' as const, keyword: 'TOR3QP7' },
+    { email: 'creator1@munjapay.kr', name: '바람소리', code: 'MJP-8K2M', mo: '05051001001', mode: 'DEDICATED' as const, keyword: null },
+    { email: 'creator2@munjapay.kr', name: '별하늘', code: 'MJP-3QP7', mo: '05059000000', mode: 'SHARED_PREFIX' as const, keyword: 'MJP3QP7' },
   ];
 
   for (const c of creatorSeeds) {
@@ -103,7 +103,7 @@ async function main() {
       where: { email: c.email },
       create: {
         id: newId(), email: c.email, name: c.name, role: 'CREATOR',
-        passwordHash: await bcrypt.hash('tornado1234!', 10),
+        passwordHash: await bcrypt.hash('munjapay1234!', 10),
       },
       update: { role: 'CREATOR' },
     });
@@ -206,10 +206,10 @@ async function main() {
 
   // 후원자 웹 계정 (테스트 로그인용) — DonorProfile 과 휴대폰 번호 기준으로 연결한다.
   const donorUser = await prisma.user.upsert({
-    where: { email: 'donor@tornado.kr' },
+    where: { email: 'donor@munjapay.kr' },
     create: {
-      id: newId(), email: 'donor@tornado.kr', name: '테스트후원자',
-      role: 'DONOR', passwordHash: await bcrypt.hash('tornado1234!', 10),
+      id: newId(), email: 'donor@munjapay.kr', name: '테스트후원자',
+      role: 'DONOR', passwordHash: await bcrypt.hash('munjapay1234!', 10),
     },
     update: { role: 'DONOR' },
   });
@@ -285,8 +285,8 @@ async function main() {
     { type: 'FAQ', title: '최초 문자도 후원되나요?', body: '아니요. 최초 문자는 후원 처리되지 않고 계좌 등록 안내만 발송됩니다. 등록 완료 후 보내는 문자부터 후원이 접수됩니다.', category: '이용방법', sortOrder: 2 },
     { type: 'FAQ', title: '후원 한도가 있나요?', body: '기본 일일 100,000원, 1분 내 3건, 연속 5건 이후 대기시간이 적용됩니다. 한도는 마이페이지에서 더 낮게 설정할 수 있습니다.', category: '한도', sortOrder: 3 },
     { type: 'FAQ', title: '후원을 취소할 수 있나요?', body: '결제 직후 고객센터로 요청하시면 정산 전인 건에 한해 취소·환불이 가능합니다.', category: '환불', sortOrder: 4 },
-    { type: 'FAQ', title: '유튜브 슈퍼챗과 같은 건가요?', body: '아닙니다. 도네이도 후원은 유튜브 공식 슈퍼챗이 아닌 외부 후원이며, 채팅에는 연결된 채널 계정으로 표시됩니다.', category: '방송', sortOrder: 5 },
-    { type: 'NOTICE', title: '도네이도 베타 서비스 안내', body: '현재 도네이도는 준비 단계이며 실제 결제와 문자 발송은 비활성화되어 있습니다.', sortOrder: 1 },
+    { type: 'FAQ', title: '유튜브 슈퍼챗과 같은 건가요?', body: '아닙니다. 문자페이 후원은 유튜브 공식 슈퍼챗이 아닌 외부 후원이며, 채팅에는 연결된 채널 계정으로 표시됩니다.', category: '방송', sortOrder: 5 },
+    { type: 'NOTICE', title: '문자페이 베타 서비스 안내', body: '현재 문자페이는 준비 단계이며 실제 결제와 문자 발송은 비활성화되어 있습니다.', sortOrder: 1 },
   ];
   for (const p of posts) {
     const exists = await prisma.contentPost.findFirst({ where: { type: p.type, title: p.title } });
@@ -303,54 +303,8 @@ async function main() {
   await prisma.creatorMoNumber.updateMany({ where: { phoneNumber: '15889000' }, data: { phoneNumber: '05059000000' } });
 
   // ---------------------------------------------------------------- 브랜드명 정리
-  // 예전 시드로 만들어진 데이터에 남은 '토네이도' 를 '도네이도' 로 바꾼다.
-  // (시드는 "이미 있으면 건너뛰기" 방식이라 기존 행은 자동 갱신되지 않기 때문)
-  {
-    const renamed: string[] = [];
-
-    const users = await prisma.user.findMany({
-      where: { name: { contains: '토네이도' } },
-      select: { id: true, name: true },
-    });
-    for (const u of users) {
-      await prisma.user.update({ where: { id: u.id }, data: { name: u.name!.replaceAll('토네이도', '도네이도') } });
-    }
-    if (users.length) renamed.push(`계정 이름 ${users.length}건`);
-
-    const posts = await prisma.contentPost.findMany({
-      where: { OR: [{ title: { contains: '토네이도' } }, { body: { contains: '토네이도' } }] },
-      select: { id: true, title: true, body: true },
-    });
-    for (const c of posts) {
-      await prisma.contentPost.update({
-        where: { id: c.id },
-        data: { title: c.title.replaceAll('토네이도', '도네이도'), body: c.body.replaceAll('토네이도', '도네이도') },
-      });
-    }
-    if (posts.length) renamed.push(`콘텐츠 ${posts.length}건`);
-
-    const termsRows = await prisma.termsVersion.findMany({
-      where: { OR: [{ title: { contains: '토네이도' } }, { content: { contains: '토네이도' } }] },
-      select: { id: true, title: true, content: true },
-    });
-    for (const t of termsRows) {
-      await prisma.termsVersion.update({
-        where: { id: t.id },
-        data: { title: t.title.replaceAll('토네이도', '도네이도'), content: t.content.replaceAll('토네이도', '도네이도') },
-      });
-    }
-    if (termsRows.length) renamed.push(`약관 ${termsRows.length}건`);
-
-    const settings = await prisma.systemSetting.findMany({ where: { key: 'service.name' } });
-    for (const st of settings) {
-      if (JSON.stringify(st.value).includes('토네이도')) {
-        await prisma.systemSetting.update({ where: { key: st.key }, data: { value: '도네이도' } });
-        renamed.push('서비스명 설정');
-      }
-    }
-
-    if (renamed.length) console.log(`  브랜드명 정리: ${renamed.join(', ')}`);
-  }
+  // 브랜드명이 문자페이로 바뀌기 전(토네이도 · 도네이도)에 만들어진 시드 데이터가 남아 있으면
+  // 계정 이메일과 크리에이터 코드 체계까지 달라지므로 `npm run db:reset` 으로 새로 만든다.
 
   // 시드 버전 기록. 다음 실행 때 이 값으로 보충 시드 필요 여부를 판단한다.
   await prisma.systemSetting.upsert({
@@ -360,10 +314,10 @@ async function main() {
   });
 
   console.log('시드 완료');
-  console.log('  관리자     : admin@tornado.kr / tornado1234!');
-  console.log('  크리에이터 : creator1@tornado.kr / tornado1234! (코드 TOR-8K2M, MO 0505-100-1001)');
-  console.log('  크리에이터 : creator2@tornado.kr / tornado1234! (코드 TOR-3QP7, MO 0505-900-0000 + 키워드 TOR3QP7)');
-  console.log('  후원자     : donor@tornado.kr / tornado1234! (010-1234-5678, 계좌 등록·계정 연결 완료)');
+  console.log('  관리자     : admin@munjapay.kr / munjapay1234!');
+  console.log('  크리에이터 : creator1@munjapay.kr / munjapay1234! (코드 MJP-8K2M, MO 0505-100-1001)');
+  console.log('  크리에이터 : creator2@munjapay.kr / munjapay1234! (코드 MJP-3QP7, MO 0505-900-0000 + 키워드 MJP3QP7)');
+  console.log('  후원자     : donor@munjapay.kr / munjapay1234! (010-1234-5678, 계좌 등록·계정 연결 완료)');
 }
 
 main()

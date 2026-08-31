@@ -25,7 +25,7 @@ try {
   r.ok('PC: 후원 패널 제목', pcText.includes(`${SEED.creator1Name} 님에게 후원하기`));
   r.ok(
     'PC: 기본 배너가 적용된다',
-    (await pc.locator('header img[src*="/banners/donaido-live-banner-"]').count()) > 0,
+    (await pc.locator('header img[src*="/banners/munjapay-live-banner-"]').count()) > 0,
   );
   r.ok('PC: 모의 결제 안내가 보인다', pcText.includes('현재 모의(mock) 결제 상태입니다'));
   r.ok('PC: 최근 후원 섹션', pcText.includes('최근 후원'));
@@ -238,7 +238,7 @@ try {
   // ══════════════════════════════ 잘못된 코드 ══════════════════════════════
   const nctx = await b.newContext(desktop);
   const n = await nctx.newPage();
-  await gotoReady(n, `${BASE}/c/TOR-XXXX`);
+  await gotoReady(n, `${BASE}/c/MJP-XXXX`);
   r.ok('없는 코드는 안내 화면을 보여준다', (await bodyText(n)).includes('크리에이터를 찾을 수 없습니다'));
   await nctx.close();
 } catch (e) {

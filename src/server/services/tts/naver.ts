@@ -26,11 +26,11 @@ export interface NaverTtsRequest {
   text: string;
   /** 클로바 화자 이름. 비우면 nara */
   speaker?: string;
-  /** 도네이도 기준 배속(0.5 ~ 2.0) */
+  /** 문자페이 기준 배속(0.5 ~ 2.0) */
   speed?: number;
-  /** 도네이도 기준 음량(0 ~ 1) */
+  /** 문자페이 기준 음량(0 ~ 1) */
   volume?: number;
-  /** 도네이도 기준 피치(0 ~ 2, 1 이 기본) */
+  /** 문자페이 기준 피치(0 ~ 2, 1 이 기본) */
   pitch?: number;
 }
 
@@ -100,7 +100,7 @@ export async function synthesizeWithNaver(
 
   const body = new URLSearchParams({
     speaker: normalizeSpeaker(req.speaker) || normalizeSpeaker(env.tts.naver.speaker) || 'nara',
-    // 클로바는 값이 클수록 느리다. 도네이도 배속(클수록 빠름)과 방향이 반대다.
+    // 클로바는 값이 클수록 느리다. 문자페이 배속(클수록 빠름)과 방향이 반대다.
     speed: String(toClovaScale(req.speed ?? 1, 1, true)),
     volume: String(toClovaScale(req.volume ?? 1, 1)),
     pitch: String(toClovaScale(req.pitch ?? 1, 1, true)),

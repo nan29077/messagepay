@@ -26,7 +26,7 @@ function rand(i: number, salt: number) {
   return x - Math.floor(x);
 }
 
-export function EffectLayer({ effect, theme = 'TORNADO' }: { effect: string; theme?: string }) {
+export function EffectLayer({ effect, theme = 'BASIC' }: { effect: string; theme?: string }) {
   const name = (effect || 'DEFAULT').toUpperCase() as EffectName;
   if (name === 'NONE') return null;
 
@@ -236,7 +236,7 @@ export function isCharacterStickerEffect(effect: string): boolean {
  * 캐릭터 스티커를 배너 바로 위에 인라인으로 렌더링한다.
  * fixed 레이어가 아니므로 배너와 자연스럽게 붙는다.
  */
-export function CharacterStickerInline({ effect, theme = 'TORNADO' }: { effect: string; theme?: string }) {
+export function CharacterStickerInline({ effect, theme = 'BASIC' }: { effect: string; theme?: string }) {
   const name = (effect || 'DEFAULT').toUpperCase() as EffectName;
   const characterSticker = findCharacterSticker(name);
   if (!characterSticker) return null;

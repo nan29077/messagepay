@@ -239,8 +239,7 @@ export default async function AdminPaymentsPage({
             PG 응답이 타임아웃되었거나 결과를 알 수 없는 거래입니다. 실제 승인 여부를 PG 관리자에서 대사한 뒤 오른쪽
             [수동 확정]으로 결론을 반영해 주세요. 확인 전까지는 중복 결제를 유발할 수 있는 재시도를 하지 마세요.
             [결제 확정]은 정산 원장에 분개를 추가하고, [결제 취소]는 후원을 실패로 확정하며 한도 집계를 되돌립니다.
-            어느 쪽도 되돌릴 수 없으므로 대사 근거를 반드시 남겨 주세요. 대사 시점에는 방송이 끝났을 수 있어
-            오버레이·유튜브 송출은 다시 하지 않습니다.
+            어느 쪽도 되돌릴 수 없으므로 대사 근거를 반드시 남겨 주세요. 확정된 거래는 자동으로 다시 시도되지 않습니다.
           </Notice>
           <div className="mt-3">
             <Table className="min-w-[1400px]">
@@ -267,7 +266,7 @@ export default async function AdminPaymentsPage({
 
       <FilterBar action="/admin/payments" resetHref="/admin/payments">
         <AdminField label="주문번호·거래번호·PG TID" className="w-64">
-          <AdminInput name="q" defaultValue={q} placeholder="TOR2026... 또는 TRD-2026..." />
+          <AdminInput name="q" defaultValue={q} placeholder="MJP2026... 또는 TRD-2026..." />
         </AdminField>
         <AdminField label="상태" className="w-40">
           <AdminSelect name="status" defaultValue={status ?? ''}>

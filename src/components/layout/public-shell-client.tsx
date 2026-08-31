@@ -4,12 +4,11 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Bell, CircleHelp, CircleUserRound, HeartHandshake, House, LayoutDashboard,
-  LifeBuoy, LogIn, LogOut, Map, Menu, Sparkles, X,
+  Bell, Building2, CircleHelp, CircleUserRound, CreditCard, House, LayoutDashboard,
+  LifeBuoy, LogIn, LogOut, Map, Menu, X,
 } from 'lucide-react';
-import { Logo, TornadoMark } from '@/components/brand/logo';
+import { Logo, MunjaPayMark } from '@/components/brand/logo';
 import { PublicMarginMascots } from '@/components/brand/mascot-decorations';
-import { DonationLookupSheet } from '@/components/public/donation-lookup-sheet';
 import { NotificationBell } from '@/components/notifications/notification-bell';
 import { ProfileAvatar } from '@/components/profile/generated-avatar';
 import { cx } from '@/components/ui';
@@ -18,7 +17,7 @@ import { cx } from '@/components/ui';
  * 공개 영역 레이아웃 (클라이언트).
  * - PC: 중앙 콘텐츠는 앱 폭 유지, 우측 세로 메뉴는 모바일 하단 내비와 동일한 5개 구성
  *       + 하단에 프로필/로그아웃(로그인) 영역
- * - 모바일: 하단 내비게이션 5개 (홈 / 이용방법 / 크리에이터 / FAQ / 마이페이지)
+ * - 모바일: 하단 내비게이션 5개 (홈 / 이용방법 / 결제내역 / FAQ / 마이페이지)
  * - 마이페이지는 로그인 역할에 따라 대시보드(/admin, /studio) 또는 마이페이지(/my)로 이동
  */
 
@@ -46,22 +45,20 @@ interface NavItem {
   icon: typeof House;
   /** 마이페이지 탭(역할별 이동) */
   my?: boolean;
-  /** 페이지 이동 대신 후원확인 바텀시트를 연다 */
-  sheet?: boolean;
 }
 
 function buildNav(myHref: string): NavItem[] {
   return [
     { href: '/', label: '홈', icon: House },
     { href: '/how-it-works', label: '이용방법', icon: Map },
-    { href: '#lookup', label: '후원확인', icon: HeartHandshake, sheet: true },
+    { href: '/my/payments', label: '결제내역', icon: CreditCard },
     { href: '/faq', label: 'FAQ', icon: CircleHelp },
     { href: myHref, label: '마이페이지', icon: CircleUserRound, my: true },
   ];
 }
 
 const DRAWER_EXTRA = [
-  { href: '/creator-apply', label: '크리에이터 가입', icon: Sparkles },
+  { href: '/support', label: '서비스 도입', icon: Building2 },
   { href: '/notice', label: '공지', icon: Bell },
   { href: '/support', label: '고객센터', icon: LifeBuoy },
 ];
@@ -83,23 +80,17 @@ export function PublicShellClient({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = React.useState(false);
-  const [lookupOpen, setLookupOpen] = React.useState(false);
   const myHref = viewer?.myHref ?? '/my';
   const nav = buildNav(myHref);
-
-  const openLookup = React.useCallback(() => {
-    setOpen(false);
-    setLookupOpen(true);
-  }, []);
 
   return (
     <div className="public-canvas min-h-dvh pb-20 lg:pb-0">
       <PublicMarginMascots home={pathname === '/'} />
-      <div className="relative z-[2] mx-auto flex w-full max-w-[744px] items-start justify-center">
-        <div className="public-app-surface min-h-dvh w-full min-w-0 max-w-[640px] shadow-[0_0_60px_rgba(74,49,25,0.12)]">
+      <div className="relative z-[2] mx-auto flex w-full max-w-[824px] items-start justify-center">
+        <div className="public-app-surface min-h-dvh w-full min-w-0 max-w-[720px] shadow-[0_0_70px_rgba(7,20,38,0.12)]">
       <header className="public-header sticky top-0 z-40 border-b backdrop-blur-xl">
         <div className="flex h-[68px] w-full items-center justify-between px-4 sm:px-6">
-          <Link href="/" aria-label="도네이도 홈">
+          <Link href="/" aria-label="문자페이 홈">
             <Logo />
           </Link>
 
@@ -135,22 +126,8 @@ export function PublicShellClient({
                   <span>{m.label}</span>
                 </>
               );
-              return 'sheet' in m && m.sheet ? (
-                <button
-                  key={m.href + m.label}
-                  type="button"
-                  onClick={openLookup}
-                  className="flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left text-[14px] font-semibold text-ink-700 hover:bg-ink-50"
-                >
-                  {drawerContent}
-                </button>
-              ) : (
-                <Link
-                  key={m.href + m.label}
-                  href={m.href}
-                  onClick={() => setOpen(false)}
-                  className="flex items-center gap-2.5 rounded-xl px-2 py-2 text-[14px] font-semibold text-ink-700 hover:bg-ink-50"
-                >
+              return (
+                <Link key={m.href + m.label} href={m.href} onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-xl px-2 py-2 text-[14px] font-semibold text-ink-700 hover:bg-ink-50">
                   {drawerContent}
                 </Link>
               );
@@ -192,10 +169,10 @@ export function PublicShellClient({
           <nav className="public-side-nav flex w-full flex-col items-center gap-0.5 rounded-[24px] border px-2 py-3 backdrop-blur-xl">
             <Link
               href="/"
-              aria-label="도네이도 홈"
-              className="mb-2 grid h-10 w-10 place-items-center rounded-[14px] bg-[linear-gradient(145deg,#ffd257_0%,#f5b81a_58%,#e09b00_100%)] text-ink-900 shadow-[0_6px_14px_rgba(237,166,0,0.32)] ring-1 ring-ink-900/10 transition-transform hover:-translate-y-0.5"
+              aria-label="문자페이 홈"
+              className="mb-2 grid h-10 w-10 place-items-center rounded-[14px] bg-[#071426] text-[#b7f34a] shadow-[0_8px_18px_rgba(7,20,38,0.24)] ring-1 ring-white/10 transition-transform hover:-translate-y-0.5"
             >
-              <TornadoMark size={21} colored={false} />
+              <MunjaPayMark size={38} onDark />
             </Link>
             {nav.map((item) => {
               const Icon = item.icon;
@@ -219,20 +196,7 @@ export function PublicShellClient({
                   <span>{item.label}</span>
                 </>
               );
-              return item.sheet ? (
-                <button key={item.href + item.label} type="button" onClick={openLookup} className={cls}>
-                  {inner}
-                </button>
-              ) : (
-                <Link
-                  key={item.href + item.label}
-                  href={item.href}
-                  aria-current={active ? 'page' : undefined}
-                  className={cls}
-                >
-                  {inner}
-                </Link>
-              );
+              return <Link key={item.href + item.label} href={item.href} aria-current={active ? 'page' : undefined} className={cls}>{inner}</Link>;
             })}
 
             <div className="mt-1.5 h-px w-8 bg-ink-100" />
@@ -281,13 +245,13 @@ export function PublicShellClient({
               </Link>
             )}
 
-            <p className="mt-2 text-[8px] font-extrabold tracking-[0.16em] text-ink-300">DONAIDO</p>
+            <p className="mt-2 text-[8px] font-extrabold tracking-[0.16em] text-ink-300">MESSAGEPAY</p>
           </nav>
         </aside>
       </div>
 
       <nav className="public-bottom-nav fixed inset-x-0 bottom-0 z-40 border-t pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
-        <div className="mx-auto grid max-w-[640px] grid-cols-5">
+        <div className="mx-auto grid max-w-[720px] grid-cols-5">
           {nav.map((t) => {
             const Icon = t.icon;
             const active = isActive(pathname, t.href, t.my);
@@ -312,20 +276,11 @@ export function PublicShellClient({
                 {t.label}
               </>
             );
-            return t.sheet ? (
-              <button key={t.href + t.label} type="button" onClick={openLookup} className={cls}>
-                {inner}
-              </button>
-            ) : (
-              <Link key={t.href + t.label} href={t.href} className={cls}>
-                {inner}
-              </Link>
-            );
+            return <Link key={t.href + t.label} href={t.href} className={cls}>{inner}</Link>;
           })}
         </div>
       </nav>
 
-      <DonationLookupSheet open={lookupOpen} onClose={() => setLookupOpen(false)} />
     </div>
   );
 }
@@ -340,11 +295,8 @@ function Footer() {
           <Link href="/terms/e-finance">전자금융거래약관</Link>
           <Link href="/support">고객센터</Link>
         </div>
-        <p>도네이도(DONAIDO) | 문자 기반 크리에이터 후원 플랫폼</p>
-        <p className="mt-1">
-          도네이도 후원은 유튜브 공식 슈퍼챗이 아닌 외부 후원 서비스입니다. 방송 채팅에는 크리에이터가 연결한 계정으로
-          표시됩니다.
-        </p>
+        <p>문자페이 | 쉽고 빠른 문자결제</p>
+        <p className="mt-1">문자를 통해 간편하게 결제하고 서비스 포인트와 이용권을 충전하는 결제 서비스입니다.</p>
         <p className="mt-1">현재 준비 단계로 실제 결제와 문자 발송은 비활성화되어 있습니다.</p>
       </div>
     </footer>

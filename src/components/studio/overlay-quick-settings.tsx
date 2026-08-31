@@ -9,7 +9,7 @@ import { ConfirmDialog, useConfirmSubmit } from '@/components/studio/confirm-dia
 import { SaveButtonLabel, useSaveFeedback } from '@/components/studio/save-feedback';
 import { updateOverlaySettingAction } from '@/app/actions/studio';
 import type { StudioActionState } from '@/app/actions/studio';
-import { DONAIDO_CHARACTER_STICKERS } from '@/lib/overlay-effect-catalog';
+import { MUNJAPAY_CHARACTER_STICKERS } from '@/lib/overlay-effect-catalog';
 
 /**
  * 오버레이 간편 설정 (효과 + 테마 + TTS + 세부 표시 설정).
@@ -79,7 +79,7 @@ const EFFECTS: EffectOption[] = [
   { value: 'FIREWORK', label: '폭죽', desc: '폭죽이 터짐', Icon: Sparkles, tint: 'bg-warning-50 text-accent-600' },
   { value: 'CONFETTI', label: '꽃가루', desc: '꽃가루가 내림', Icon: PartyPopper, tint: 'bg-ink-100 text-ink-700' },
   { value: 'NONE', label: '없음', desc: '배너만 표시', Icon: Ban, tint: 'bg-ink-50 text-ink-400' },
-  ...DONAIDO_CHARACTER_STICKERS.map((sticker) => ({
+  ...MUNJAPAY_CHARACTER_STICKERS.map((sticker) => ({
     value: sticker.value,
     label: sticker.label,
     desc: sticker.description,
@@ -90,7 +90,7 @@ const EFFECTS: EffectOption[] = [
 ];
 
 const THEMES = [
-  { value: 'TORNADO', label: '도네이도 기본', desc: '밝은 카드형 배너' },
+  { value: 'BASIC', label: '문자페이 기본', desc: '밝은 카드형 배너' },
   { value: 'MINIMAL', label: '미니멀', desc: '반투명 검정 + 흰 글자, 절제된 효과' },
   { value: 'NEON', label: '네온', desc: '형광빛 글로우 효과' },
 ];
@@ -137,7 +137,7 @@ export function OverlayQuickSettings({
   tts: TtsSettingInput | null;
 }) {
   const [effect, setEffect] = React.useState(setting.stickerSet || 'DEFAULT');
-  const [theme, setTheme] = React.useState(setting.theme || 'TORNADO');
+  const [theme, setTheme] = React.useState(setting.theme || 'BASIC');
   const [ttsOn, setTtsOn] = React.useState(Boolean(tts?.enabled));
   const [ttsVoice, setTtsVoice] = React.useState(tts?.voice ?? '');
   const [ttsSpeed, setTtsSpeed] = React.useState(String(clampSpeed(tts?.speed ?? 1)));
@@ -215,7 +215,7 @@ export function OverlayQuickSettings({
       <section>
         <SectionTitle
           title="효과 선택"
-          description="기본 파티클 또는 도네이도 캐릭터 스티커를 고르세요. 모든 후원에 적용됩니다."
+          description="기본 파티클 또는 문자페이 캐릭터 스티커를 고르세요. 모든 후원에 적용됩니다."
         />
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {EFFECTS.map((o) => {

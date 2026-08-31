@@ -16,7 +16,7 @@ import { playEffectSound } from '@/components/overlay/overlay-sound';
  *  - 금액 구간(effect/banner/durationMs)이 없는 예전 이벤트도 그대로 재생돼야 한다.
  *  - TTS 는 ttsMode 로 갈린다. server 면 서버 합성 mp3 를 재생하고, 실패하면 브라우저 음성으로 되돌아간다.
  *  - 효과음은 Web Audio 로 직접 합성한다(overlay-sound.ts). soundEnabled/soundVolume 을 따른다.
- *  - 테마(TORNADO/MINIMAL/NEON) · 표시 위치 · 최대 글자 수는 이벤트 페이로드 값을 우선 적용한다.
+ *  - 테마(BASIC/MINIMAL/NEON) · 표시 위치 · 최대 글자 수는 이벤트 페이로드 값을 우선 적용한다.
  *    브라우저 소스는 방송 내내 열려 있으므로, 페이지를 열 때 받은 prop 만 쓰면 스튜디오에서
  *    설정을 바꿔 저장해도 새로 고침 전까지 반영되지 않는다. prop 은 값이 없는 예전 이벤트용 기본값이다.
  *  - 오버레이 표시가 꺼진 동안 도착한 이벤트는 방송 화면에서 무시한다(미리보기에서는 재생한다).
@@ -64,7 +64,7 @@ export interface OverlayPayload {
   isTest: boolean;
 }
 
-const OUT_MS = 360; // globals.css 의 .animate-tornado-out 길이와 맞춘다
+const OUT_MS = 360; // globals.css 의 .animate-pop-out 길이와 맞춘다
 const MAX_BACKOFF_MS = 30000;
 
 /**
@@ -96,12 +96,12 @@ const positionClass: Record<string, string> = {
 
 // ------------------------------------------------------------------- 테마
 
-export type OverlayTheme = 'TORNADO' | 'MINIMAL' | 'NEON';
+export type OverlayTheme = 'BASIC' | 'MINIMAL' | 'NEON';
 
 /** DB 에 저장된 문자열을 알고 있는 테마로 좁힌다. 모르는 값은 기본 테마로 동작한다. */
 function themeOf(value?: string): OverlayTheme {
-  const t = (value || 'TORNADO').toUpperCase();
-  return t === 'MINIMAL' || t === 'NEON' ? t : 'TORNADO';
+  const t = (value || 'BASIC').toUpperCase();
+  return t === 'MINIMAL' || t === 'NEON' ? t : 'BASIC';
 }
 
 interface ThemeClasses {
@@ -116,7 +116,7 @@ interface ThemeClasses {
 
 const THEME_CLASSES: Record<OverlayTheme, ThemeClasses> = {
   /** 기본: 밝은 카드형 배너 (기존 스타일) */
-  TORNADO: {
+  BASIC: {
     card: 'border-white/40 bg-white/95 shadow-[0_18px_48px_rgba(19,26,58,0.28)]',
     title: 'text-ink-900',
     message: 'text-ink-700',
@@ -172,7 +172,7 @@ export function OverlayClient({
   position = 'BOTTOM_CENTER',
   defaultDurationMs = 7000,
   maxMessageLen = 80,
-  theme = 'TORNADO',
+  theme = 'BASIC',
   debug = false,
 }: {
   creatorId: string;
@@ -182,7 +182,7 @@ export function OverlayClient({
   position?: string;
   defaultDurationMs?: number;
   maxMessageLen?: number;
-  /** OverlaySetting.theme 값. TORNADO / MINIMAL / NEON 외의 값은 기본 테마로 동작한다. */
+  /** OverlaySetting.theme 값. BASIC / MINIMAL / NEON 외의 값은 기본 테마로 동작한다. */
   theme?: string;
   debug?: boolean;
 }) {
@@ -366,7 +366,7 @@ export function OverlayClient({
 
     /** 스튜디오 미리보기(iframe) 부모 창에 상태를 알린다. 방송 화면에는 아무것도 그리지 않는다. */
     const notifyParent = (type: string, extra?: Record<string, unknown>) => {
-      if (type === 'donaido-overlay-status' && extra) lastStatus = extra;
+      if (type === 'munjapay-overlay-status' && extra) lastStatus = extra;
       if (!preview || typeof window === 'undefined' || window.parent === window) return;
       try {
         window.parent.postMessage({ type, creatorId, ...extra }, window.location.origin);
@@ -384,8 +384,8 @@ export function OverlayClient({
      */
     const onAsk = (e: MessageEvent) => {
       if (typeof window === 'undefined' || e.origin !== window.location.origin) return;
-      if ((e.data as { type?: string } | null)?.type !== 'donaido-overlay-hello') return;
-      notifyParent('donaido-overlay-status', lastStatus);
+      if ((e.data as { type?: string } | null)?.type !== 'munjapay-overlay-hello') return;
+      notifyParent('munjapay-overlay-status', lastStatus);
     };
     if (preview && typeof window !== 'undefined') window.addEventListener('message', onAsk);
 
@@ -414,7 +414,7 @@ export function OverlayClient({
         retry = 0;
         clearCountdown();
         setLink({ phase: 'connected', recovered });
-        notifyParent('donaido-overlay-status', { phase: 'connected', recovered });
+        notifyParent('munjapay-overlay-status', { phase: 'connected', recovered });
       };
 
       es.onopen = () => {
@@ -426,7 +426,7 @@ export function OverlayClient({
         markConnected();
         // 스튜디오 미리보기(iframe)에 구독 완료를 알린다. 구독 전에 보낸 테스트 이벤트는
         // 서버가 보관하지 않으므로, 부모 창은 이 신호를 받은 뒤에 자동 발동해야 한다.
-        notifyParent('donaido-overlay-ready');
+        notifyParent('munjapay-overlay-ready');
       });
 
       es.addEventListener('donation', (ev) => {
@@ -448,7 +448,7 @@ export function OverlayClient({
           if (resuming) {
             recovered += 1;
             setLink({ phase: 'connected', recovered });
-            notifyParent('donaido-overlay-status', { phase: 'connected', recovered });
+            notifyParent('munjapay-overlay-status', { phase: 'connected', recovered });
           }
 
           queue.current.push(payload);
@@ -471,12 +471,12 @@ export function OverlayClient({
 
         let remain = Math.round(wait / 1000);
         setLink({ phase: 'retrying', retrySec: remain });
-        notifyParent('donaido-overlay-status', { phase: 'retrying', retrySec: remain });
+        notifyParent('munjapay-overlay-status', { phase: 'retrying', retrySec: remain });
         clearCountdown();
         countdown = setInterval(() => {
           remain = Math.max(0, remain - 1);
           setLink({ phase: 'retrying', retrySec: remain });
-          notifyParent('donaido-overlay-status', { phase: 'retrying', retrySec: remain });
+          notifyParent('munjapay-overlay-status', { phase: 'retrying', retrySec: remain });
         }, 1000);
 
         console.log(`[overlay] 연결 끊김. ${Math.round(wait / 1000)}초 후 재연결`);
@@ -564,7 +564,7 @@ function DonationCard({
   return (
     <div
       className={`relative w-[420px] max-w-full rounded-[18px] border px-5 py-4 ${t.card} ${
-        leaving ? 'animate-tornado-out' : 'animate-banner-in'
+        leaving ? 'animate-pop-out' : 'animate-banner-in'
       }`}
     >
       {payload.isTest ? (
@@ -574,7 +574,7 @@ function DonationCard({
       ) : null}
 
       <div className="flex items-center gap-3">
-        <TornadoSwirl className={t.swirl} />
+        <MunjapaySwirl className={t.swirl} />
         <div className="min-w-0 flex-1">
           <p className={`truncate text-[16px] font-extrabold leading-tight tracking-tight ${t.title}`}>
             {payload.donorName}님이 {amountText ? `${amountText}을 ` : ''}후원하셨습니다
@@ -587,14 +587,14 @@ function DonationCard({
 
       <div className="mt-3 flex items-center justify-between">
         <ThanksSticker variant={effectOf(payload)} className={t.sticker} />
-        <span className={`text-[11px] font-semibold tracking-[0.16em] ${t.footer}`}>DONAIDO</span>
+        <span className={`text-[11px] font-semibold tracking-[0.16em] ${t.footer}`}>MUNJAPAY</span>
       </div>
     </div>
   );
 }
 
 /** 회오리 라인 애니메이션 */
-function TornadoSwirl({ className }: { className: string }) {
+function MunjapaySwirl({ className }: { className: string }) {
   return (
     <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl ${className}`}>
       <svg
@@ -605,7 +605,7 @@ function TornadoSwirl({ className }: { className: string }) {
         stroke="currentColor"
         strokeWidth={1.7}
         strokeLinecap="round"
-        className="animate-tornado-spin"
+        className="animate-spin-slow"
         aria-hidden
       >
         <path d="M5 7h22" />

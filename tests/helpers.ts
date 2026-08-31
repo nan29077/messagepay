@@ -58,7 +58,7 @@ export async function seedBasics(options: { paymentMode?: 'CONFIRM_LINK' | 'DIRE
   });
   const creator = await prisma.creatorProfile.create({
     data: {
-      id: newId(), userId: user.id, code: `TOR-${newId().slice(-4)}`, displayName: '테스트크리에이터',
+      id: newId(), userId: user.id, code: `MJP-${newId().slice(-4)}`, displayName: '테스트크리에이터',
       status: 'APPROVED', donationAmount: 3000n,
       paymentMode: options.paymentMode ?? 'DIRECT_TRIGGER',
     },

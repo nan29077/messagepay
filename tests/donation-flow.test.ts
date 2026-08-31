@@ -471,7 +471,7 @@ describe('대표번호 + 키워드 라우팅', () => {
     fx = await seedBasics({ paymentMode: 'DIRECT_TRIGGER' });
     await prisma.creatorMoNumber.create({
       data: {
-        id: newId(), phoneNumber: '15889000', keyword: 'TOR3QP7', mode: 'SHARED_PREFIX',
+        id: newId(), phoneNumber: '15889000', keyword: 'MJP3QP7', mode: 'SHARED_PREFIX',
         status: 'ASSIGNED', creatorId: fx.creatorId, providerId: 'mock', assignedAt: new Date(),
       },
     });
@@ -479,7 +479,7 @@ describe('대표번호 + 키워드 라우팅', () => {
 
   it('키워드로 크리에이터를 식별하고 키워드는 메시지에서 제거된다', async () => {
     await seedRegisteredDonor(fx.donorPhone);
-    const res = await inbound(moPayload({ to: '15889000', text: 'TOR3QP7 응원합니다' }));
+    const res = await inbound(moPayload({ to: '15889000', text: 'MJP3QP7 응원합니다' }));
 
     expect(res.result).toBe('ROUTED');
     const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });

@@ -2,11 +2,11 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-title 토네이도 - 설치 복구
+title 문자페이 - 설치 복구
 
 echo.
 echo ==========================================
-echo   토네이도 TORNADO - 설치 복구
+echo   문자페이 BASIC - 설치 복구
 echo ==========================================
 echo.
 echo   node_modules 를 지우고 잠금파일 기준으로 정확히 다시 설치합니다.

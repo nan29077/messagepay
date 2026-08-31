@@ -14,7 +14,7 @@ import { clientIpFrom } from '@/server/rate-limit';
  * - 관리자 화면은 role + permission 을 함께 검사한다.
  */
 
-export const SESSION_COOKIE = 'tornado_session';
+export const SESSION_COOKIE = 'munjapay_session';
 const SESSION_DAYS = 14;
 
 export interface SessionUser {

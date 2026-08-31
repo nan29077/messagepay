@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import { headers } from 'next/headers';
 import './globals.css';
 
-const shareTitle = '도네이도 | 문자 한 통이 방송을 움직입니다';
-const shareDescription = '크리에이터에게 메시지를 보내고, 실시간으로 응원과 후원을 전달하는 문자 기반 후원 플랫폼입니다.';
+const shareTitle = '문자페이 | 문자 한 통으로, 충전이 끝납니다';
+const shareDescription = '앱 설치 없이 문자로 간편하게 결제하고 포인트를 충전하는 쉽고 빠른 문자결제 서비스입니다.';
 
 function isLocalUrl(value: string | undefined) {
   if (!value) return true;
@@ -22,7 +22,7 @@ function isLocalUrl(value: string | undefined) {
  */
 export async function generateMetadata(): Promise<Metadata> {
   const configuredUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_BASE_URL;
-  let siteUrl = configuredUrl || 'http://localhost:3025';
+  let siteUrl = configuredUrl || 'http://localhost:3030';
 
   if (isLocalUrl(configuredUrl)) {
     const h = await headers();
@@ -40,30 +40,27 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 
   const metadataBase = new URL(siteUrl);
-  const shareImage = new URL('/assets/donaido-og-share-v4.png', metadataBase).toString();
+  const shareImage = new URL('/assets/munjapay-og-v1.png', metadataBase).toString();
 
   return {
     metadataBase,
-    title: { default: shareTitle, template: '%s | 도네이도' },
+    title: { default: shareTitle, template: '%s | 문자페이' },
     description: shareDescription,
-    keywords: ['도네이도', '문자후원', '크리에이터 후원', '라이브 방송', 'OBS 오버레이', 'TTS'],
+    keywords: ['문자페이', '문자결제', '포인트 충전', '간편결제', 'SMS 결제', '선불 충전'],
     icons: {
       icon: [
-        { url: '/favicon.ico?v=5', type: 'image/x-icon', sizes: '16x16 32x32 48x48 64x64' },
-        { url: '/donaido-mark-v4.svg', type: 'image/svg+xml' },
-        { url: '/donaido-icon-v4.png', type: 'image/png', sizes: '512x512' },
+        { url: '/munjapay-mark.svg?v=1', type: 'image/svg+xml', sizes: 'any' },
       ],
-      shortcut: '/favicon.ico?v=5',
-      apple: '/apple-touch-icon-v4.png',
+      shortcut: '/munjapay-mark.svg?v=1',
     },
     openGraph: {
       title: shareTitle,
       description: shareDescription,
       type: 'website',
       url: metadataBase,
-      siteName: '도네이도 DONAIDO',
+      siteName: '문자페이',
       locale: 'ko_KR',
-      images: [{ url: shareImage, width: 1200, height: 630, alt: '도네이도 문자 후원 플랫폼' }],
+      images: [{ url: shareImage, width: 1200, height: 630, alt: '문자페이 쉽고 빠른 문자결제' }],
     },
     twitter: {
       card: 'summary_large_image',
@@ -79,7 +76,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
-  themeColor: '#fbb914',
+  themeColor: '#071426',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

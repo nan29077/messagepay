@@ -66,7 +66,7 @@ export function RequestResetForm() {
           autoComplete="email"
           inputMode="email"
           defaultValue={state.values?.email}
-          placeholder="tornado@example.com"
+          placeholder="munjapay@example.com"
         />
       </Field>
 

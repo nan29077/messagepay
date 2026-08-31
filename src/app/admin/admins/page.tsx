@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
 
 const PERMISSIONS: Array<{ value: AdminPermission; label: string; description: string }> = [
   { value: 'SUPER_ADMIN', label: '최고 관리자', description: '모든 기능 + 관리자 권한 변경' },
-  { value: 'OPERATION', label: '운영', description: '회원·크리에이터·문자·방송 운영' },
+  { value: 'OPERATION', label: '운영', description: '회원·서비스·문자·결제 운영' },
   { value: 'FINANCE', label: '재무', description: '정산·수수료·환불 처리' },
   { value: 'SUPPORT', label: '고객지원', description: '조회 및 일반 운영 (환불·정산 승인 제외)' },
   { value: 'READ_ONLY', label: '읽기 전용', description: '조회만 가능. 모든 변경 차단' },

@@ -32,12 +32,7 @@ export default async function AdminCreatorDetailPage({ params }: { params: Promi
         orderBy: { assignedAt: 'desc' },
         select: { id: true, phoneNumber: true, keyword: true, mode: true, status: true, monthlyCost: true, assignedAt: true },
       },
-      youtubeConnection: {
-        select: { channelTitle: true, channelId: true, status: true, expiresAt: true, lastError: true, lastCheckedAt: true },
-      },
       settlementAccount: { select: { bankName: true, accountTail4: true, holderMasked: true, verified: true, verifiedAt: true } },
-      overlaySetting: { select: { enabled: true, durationMs: true, anonymize: true, showAmount: true, showMessage: true } },
-      ttsSetting: { select: { enabled: true, voice: true, minAmount: true, maxChars: true } },
     },
   });
   if (!creator) notFound();
@@ -268,24 +263,7 @@ export default async function AdminCreatorDetailPage({ params }: { params: Promi
           </Card>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-3">
-          <Card>
-            <CardTitle>유튜브 연결</CardTitle>
-            <div className="mt-2">
-              {creator.youtubeConnection ? (
-                <>
-                  <DataRow label="채널" value={creator.youtubeConnection.channelTitle ?? creator.youtubeConnection.channelId} />
-                  <DataRow label="상태" value={creator.youtubeConnection.status} />
-                  <DataRow label="토큰 만료" value={formatKst(creator.youtubeConnection.expiresAt)} />
-                  <DataRow label="마지막 점검" value={formatKst(creator.youtubeConnection.lastCheckedAt)} />
-                  <DataRow label="마지막 오류" value={creator.youtubeConnection.lastError ?? '-'} />
-                </>
-              ) : (
-                <p className="text-[13px] text-ink-400">연결된 유튜브 채널이 없습니다.</p>
-              )}
-            </div>
-          </Card>
-
+        <div className="max-w-2xl">
           <Card>
             <CardTitle>정산 계좌</CardTitle>
             <div className="mt-2">
@@ -339,16 +317,6 @@ export default async function AdminCreatorDetailPage({ params }: { params: Promi
             ) : null}
           </Card>
 
-          <Card>
-            <CardTitle>방송 설정 요약</CardTitle>
-            <div className="mt-2">
-              <DataRow label="오버레이" value={creator.overlaySetting ? (creator.overlaySetting.enabled ? '사용' : '중지') : '미설정'} />
-              <DataRow label="표시 시간" value={creator.overlaySetting ? `${creator.overlaySetting.durationMs}ms` : '-'} />
-              <DataRow label="익명 처리" value={creator.overlaySetting?.anonymize ? '적용' : '미적용'} />
-              <DataRow label="TTS" value={creator.ttsSetting ? (creator.ttsSetting.enabled ? '사용' : '중지') : '미설정'} />
-              <DataRow label="TTS 최소 금액" value={creator.ttsSetting ? formatWon(creator.ttsSetting.minAmount) : '-'} />
-            </div>
-          </Card>
         </div>
 
         <section>

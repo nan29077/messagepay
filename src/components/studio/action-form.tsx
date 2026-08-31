@@ -10,7 +10,7 @@ import type { StudioActionState } from '@/app/actions/studio';
  * 크리에이터 관리자 공용 액션 폼.
  * 서버 컴포넌트에서 필드를 children 으로 넘기고, 서버 액션을 그대로 전달한다.
  *
- * confirmMessage 를 주면 브라우저 기본 confirm 이 아니라 도네이도 알림창을 띄우고,
+ * confirmMessage 를 주면 브라우저 기본 confirm 이 아니라 문자페이 알림창을 띄우고,
  * 그 [확인] 을 눌러야 실제로 제출된다. 처리 결과도 같은 알림창에서 보여 준다.
  */
 
@@ -38,7 +38,7 @@ export function ActionForm({
   pendingLabel?: string;
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent';
   size?: 'sm' | 'md' | 'lg';
-  /** 있으면 도네이도 알림창으로 한 번 물어본 뒤 제출한다. */
+  /** 있으면 문자페이 알림창으로 한 번 물어본 뒤 제출한다. */
   confirmMessage?: string;
   /** 알림창 제목. 없으면 버튼 문구로 물어본다. */
   confirmTitle?: string;

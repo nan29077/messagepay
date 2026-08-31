@@ -1,4 +1,4 @@
-import { Database, Server, Signal, TriangleAlert } from 'lucide-react';
+import { Database, Server, TriangleAlert } from 'lucide-react';
 import { PageHeader } from '@/components/layout/console-shell';
 import { Card, CardTitle, SectionTitle, StatTile, Table, Th, Td, Badge, EmptyState, Notice, DataRow } from '@/components/ui';
 import { SafetyBanner } from '@/components/admin/safety-banner';
@@ -8,7 +8,6 @@ import { kv } from '@/server/redis';
 import { env } from '@/lib/env';
 import { formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
-import { getYouTubeQuotaUsage } from '@/server/services/broadcast-dispatch';
 import { moResultLabel } from '@/lib/labels';
 
 export const dynamic = 'force-dynamic';
@@ -37,10 +36,9 @@ async function checkCache(): Promise<{ ok: boolean; detail: string; latencyMs: n
 }
 
 export default async function AdminSystemPage() {
-  const [db, cache, quota, webhooks, moErrors, paymentErrors] = await Promise.all([
+  const [db, cache, webhooks, moErrors, paymentErrors] = await Promise.all([
     checkDatabase(),
     checkCache(),
-    getYouTubeQuotaUsage(),
     prisma.webhookLog.findMany({
       orderBy: { createdAt: 'desc' },
       take: 30,
@@ -70,8 +68,6 @@ export default async function AdminSystemPage() {
     { label: '결제(PG)', mode: env.payment.provider },
     { label: 'MO 수신', mode: env.mo.provider },
     { label: 'MT 발송', mode: env.mt.provider },
-    { label: '유튜브', mode: env.youtube.provider },
-    { label: 'TTS', mode: env.tts.provider },
     { label: '암호화', mode: env.crypto.provider },
   ];
 
@@ -97,12 +93,6 @@ export default async function AdminSystemPage() {
             value={cache.ok ? '정상' : '오류'}
             sub={`${cache.latencyMs}ms · ${env.redisUrl ? 'Redis' : `인메모리 폴백 ${env.allowInMemoryFallback ? '허용' : '금지'}`}`}
             tone={cache.ok ? 'success' : 'danger'}
-          />
-          <StatTile
-            label="유튜브 할당량"
-            value={`${formatNumber(quota.used)} / ${formatNumber(quota.total)}`}
-            sub={`전송 1건당 ${formatNumber(quota.insertCost)} · 잔여 약 ${formatNumber(quota.remainingMessages)}건`}
-            tone={quota.used / Math.max(1, quota.total) > 0.8 ? 'warning' : 'neutral'}
           />
           <StatTile
             label="Webhook 서명 실패"
@@ -237,7 +227,7 @@ export default async function AdminSystemPage() {
           </section>
         </div>
 
-        <div className="grid gap-3 lg:grid-cols-3">
+        <div className="grid gap-3 lg:grid-cols-2">
           <Card>
             <div className="mb-2 flex items-center gap-2">
               <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-50 text-brand-700">
@@ -259,17 +249,6 @@ export default async function AdminSystemPage() {
             <p className="text-[13px] leading-relaxed text-ink-500">
               한도·속도 제한 카운터는 캐시에 저장되고 DonationCounter 가 영속 원본입니다. 운영에서는 인메모리 폴백을
               금지해야 합니다.
-            </p>
-          </Card>
-          <Card>
-            <div className="mb-2 flex items-center gap-2">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-50 text-brand-700">
-                <Signal size={16} strokeWidth={1.7} />
-              </span>
-              <CardTitle>유튜브 할당량</CardTitle>
-            </div>
-            <p className="text-[13px] leading-relaxed text-ink-500">
-              일일 할당량이 소진되면 채팅 전송이 건너뛰어집니다. 결제 결과에는 영향을 주지 않습니다.
             </p>
           </Card>
         </div>

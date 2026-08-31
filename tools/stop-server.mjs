@@ -1,8 +1,8 @@
 /**
- * 실행 중인 토네이도 서버 종료.
+ * 실행 중인 문자페이 서버 종료.
  *
  * 3_서버종료.bat 이 호출한다. 창을 닫아도 남아 있는 서버(고아 프로세스)를 정리한다.
- *  - 3025 : 앱 서버 (Next.js)
+ *  - 3030 : 앱 서버 (Next.js)
  *  - 5433 : 내장 데이터베이스 (PGlite, 간편 미리보기에서 사용)
  *
  * 안전장치로 node 프로세스만 정리한다. 다른 프로그램이 그 포트를 쓰고 있으면
@@ -10,7 +10,7 @@
  */
 import { clearLock, freePort, portInUse } from './process-guard.mjs';
 
-const APP_PORT = Number(process.env.PORT ?? 3025);
+const APP_PORT = Number(process.env.PORT ?? 3030);
 const DB_PORT = Number(process.env.PGLITE_PORT ?? 5433);
 
 const targets = [
@@ -25,7 +25,7 @@ for (const t of targets) {
 
 if (running.length === 0) {
   clearLock();
-  console.log('[안내] 실행 중인 토네이도 서버가 없습니다.');
+  console.log('[안내] 실행 중인 문자페이 서버가 없습니다.');
   process.exit(0);
 }
 
@@ -38,7 +38,7 @@ for (const t of running) {
     failed = true;
     const who = (res.blockedBy ?? []).map((p) => `${p.name}(PID ${p.pid})`).join(', ');
     console.error(`[경고] ${t.label} 를 종료하지 못했습니다.`);
-    if (who) console.error(`       토네이도가 아닌 다른 프로그램이 사용 중입니다: ${who}`);
+    if (who) console.error(`       문자페이가 아닌 다른 프로그램이 사용 중입니다: ${who}`);
     else console.error('       작업 관리자에서 Node.js 프로세스를 직접 종료해 주세요.');
   }
 }

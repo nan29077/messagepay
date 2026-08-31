@@ -102,33 +102,33 @@ function sequence(
 }
 
 /**
- * 도네이도 캐릭터 스티커 효과음.
+ * 문자페이 캐릭터 스티커 효과음.
  * 스티커 종류마다 분위기를 다르게 준다. 목록에 없으면 null 을 돌려주고 기본 벨소리로 재생된다.
  */
 function playCharacterSound(audio: AudioContext, name: string, t: number, peak: number): boolean {
   switch (name) {
-    case 'DONAIDO_CHEER':
+    case 'MUNJAPAY_CHEER':
       // 응원: 밝게 올라가는 세 음 + 응원봉을 흔드는 듯한 짧은 노이즈
       sequence(audio, t, [587.33, 739.99, 987.77], { step: 0.08, duration: 0.24, peak, type: 'triangle' });
       noiseBurst(audio, t + 0.05, 0.18, peak * 0.35);
       noiseBurst(audio, t + 0.22, 0.16, peak * 0.28);
       return true;
 
-    case 'DONAIDO_HEART_HUG':
+    case 'MUNJAPAY_HEART_HUG':
       // 하트 포옹: 부드러운 벨 뒤에 두근거리는 저음 두 번
       tone(audio, { freq: 659.25, start: t, duration: 0.7, peak: peak * 0.85 });
       tone(audio, { freq: 146.83, start: t + 0.22, duration: 0.18, peak: peak * 0.7, type: 'sine' });
       tone(audio, { freq: 146.83, start: t + 0.46, duration: 0.22, peak: peak * 0.55, type: 'sine' });
       return true;
 
-    case 'DONAIDO_GIFT_POP':
+    case 'MUNJAPAY_GIFT_POP':
       // 선물 팡: 짧게 터지는 팝 소리 + 반짝이는 고음
       tone(audio, { freq: 180, start: t, duration: 0.1, peak, endFreq: 760, type: 'triangle' });
       noiseBurst(audio, t + 0.06, 0.22, peak * 0.8);
       sequence(audio, t + 0.2, [1174.66, 1567.98], { step: 0.07, duration: 0.2, peak: peak * 0.6 });
       return true;
 
-    case 'DONAIDO_MIC_DANCE':
+    case 'MUNJAPAY_MIC_DANCE':
       // 마이크 댄스: 통통 튀는 짧은 리프
       sequence(audio, t, [523.25, 622.25, 783.99, 622.25], {
         step: 0.11,
@@ -138,7 +138,7 @@ function playCharacterSound(audio: AudioContext, name: string, t: number, peak: 
       });
       return true;
 
-    case 'DONAIDO_THANKS_BOW':
+    case 'MUNJAPAY_THANKS_BOW':
       // 감사 인사: 차분하게 내려오는 두 음
       tone(audio, { freq: 783.99, start: t, duration: 0.5, peak: peak * 0.9 });
       tone(audio, { freq: 523.25, start: t + 0.26, duration: 0.8, peak: peak * 0.8 });
@@ -151,7 +151,7 @@ function playCharacterSound(audio: AudioContext, name: string, t: number, peak: 
 
 /**
  * 효과에 맞는 효과음을 재생한다.
- * @param effect NONE | HEART | STAR | COIN | FIREWORK | CONFETTI | DONAIDO_* | 그 외(기본 벨소리)
+ * @param effect NONE | HEART | STAR | COIN | FIREWORK | CONFETTI | MUNJAPAY_* | 그 외(기본 벨소리)
  * @param volume 0~100
  */
 export function playEffectSound(effect: string, volume: number): void {
@@ -166,8 +166,8 @@ export function playEffectSound(effect: string, volume: number): void {
   try {
     const t = audio.currentTime + 0.02;
 
-    // 도네이도 캐릭터 스티커는 스티커별 전용 소리를 쓴다.
-    if (name.startsWith('DONAIDO_') && playCharacterSound(audio, name, t, peak)) return;
+    // 문자페이 캐릭터 스티커는 스티커별 전용 소리를 쓴다.
+    if (name.startsWith('MUNJAPAY_') && playCharacterSound(audio, name, t, peak)) return;
 
     if (name === 'COIN') {
       // 코인: 고음 사인파 두 음 + 급격한 페이드아웃

@@ -6,7 +6,7 @@ import { requireAdmin, type SessionUser } from '@/server/auth';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '통합 관리자 | 도네이도',
+  title: '통합 관리자 | 문자페이',
   robots: { index: false, follow: false },
 };
 
@@ -37,14 +37,6 @@ const groups: NavGroup[] = [
       { href: '/admin/payments', label: '결제', icon: 'payments' },
       { href: '/admin/refunds', label: '환불', icon: 'refunds' },
       { href: '/admin/risk', label: '한도·이상거래', icon: 'risk' },
-    ],
-  },
-  {
-    title: '방송·오버레이',
-    items: [
-      { href: '/admin/youtube', label: '유튜브 연동', icon: 'youtube' },
-      { href: '/admin/tts', label: 'TTS 연동', icon: 'tts' },
-      { href: '/admin/overlay', label: '오버레이', icon: 'overlay' },
     ],
   },
   {
@@ -102,7 +94,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <ConsoleShell
-      title="도네이도 통합 관리자"
+      title="문자페이 통합 관리자"
       groups={visibleGroups}
       user={{
         id: admin.id,

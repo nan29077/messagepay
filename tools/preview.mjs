@@ -25,7 +25,7 @@ import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { acquireLock, freePort, guardOrphan, killTree, releaseLock } from './process-guard.mjs';
 
 const DB_PORT = Number(process.env.PGLITE_PORT ?? 5433);
-const APP_PORT = Number(process.env.PORT ?? 3025);
+const APP_PORT = Number(process.env.PORT ?? 3030);
 const DATA_DIR = path.resolve(process.cwd(), '.pglite');
 const DATABASE_URL = `postgresql://postgres:postgres@127.0.0.1:${DB_PORT}/postgres`;
 
@@ -187,7 +187,7 @@ async function main() {
   const lock = acquireLock('preview');
   if (!lock.ok) {
     const since = lock.startedAt ? new Date(lock.startedAt).toLocaleTimeString('ko-KR') : '알 수 없음';
-    console.error('[안내] 토네이도 미리보기가 이미 실행 중입니다.');
+    console.error('[안내] 문자페이 미리보기가 이미 실행 중입니다.');
     console.error(`       실행 중인 창: PID ${lock.pid} (시작 ${since})`);
     console.error('       화면 빌드 중이면 1~3분 걸립니다. 먼저 실행된 창을 확인해 주세요.');
     console.error('       그 창을 닫았는데도 이 메시지가 보이면 3_서버종료.bat 을 실행한 뒤 다시 시도하세요.');

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// TORNADO (토네이도) - 문자후원 플랫폼 데이터 모델
+// BASIC (문자페이) - 문자후원 플랫폼 데이터 모델
 // Target: PostgreSQL 16 (Amazon RDS / Aurora PostgreSQL 호환)
 //
 // 설계 원칙
@@ -879,7 +879,7 @@ enum PinSessionStatus {
 
 /// 결제사(헥토 내통장결제 / 카드 빌링키)의 PIN 인증 세션.
 ///
-/// MO 수신 후 빌키가 있는 후원자에게는 토네이도 자체 확인 링크 대신
+/// MO 수신 후 빌키가 있는 후원자에게는 문자페이 자체 확인 링크 대신
 /// 결제사가 발급한 PIN 입력 링크를 MT 로 보낸다. 후원자가 PIN 을 넣으면
 /// 결제사가 콜백을 보내고, 그때 승인(executePayment)이 실행된다.
 ///
@@ -1124,7 +1124,7 @@ model OverlaySetting {
   anonymize     Boolean  @default(false)
   position      String   @default("BOTTOM_CENTER")
   durationMs    Int      @default(7000) @map("duration_ms")
-  theme         String   @default("TORNADO")
+  theme         String   @default("BASIC")
   stickerSet    String   @default("DEFAULT") @map("sticker_set")
   /// 효과음 재생 여부와 음량(0~100). 효과음은 오버레이에서 Web Audio 로 직접 합성한다.
   soundEnabled  Boolean  @default(true) @map("sound_enabled")

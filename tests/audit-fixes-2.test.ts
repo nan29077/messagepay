@@ -88,10 +88,10 @@ describe('로그 마스킹', () => {
   it('메시지에 담긴 링크는 경로까지 가려진다', () => {
     // 예전에는 meta 만 걸러서, 비밀번호 재설정 링크를 메시지에 끼워 넣은 곳에서
     // 토큰 원문이 모든 환경의 로그에 그대로 남았다.
-    const line = scrubText('[MOCK 메일] 비밀번호 재설정 링크: https://donaido.kr/reset-password/AbCdEf123456');
+    const line = scrubText('[MOCK 메일] 비밀번호 재설정 링크: https://munjapay.kr/reset-password/AbCdEf123456');
     expect(line).not.toContain('AbCdEf123456');
     expect(line).not.toContain('/reset-password/');
-    expect(line).toContain('https://donaido.kr');
+    expect(line).toContain('https://munjapay.kr');
   });
 
   it('메시지에 담긴 전화번호도 가려진다', () => {
@@ -150,7 +150,7 @@ describe('서버 TTS 합성 허가', () => {
     soundEnabled: false,
     soundVolume: 0,
     durationMs: 5000,
-    theme: 'TORNADO',
+    theme: 'BASIC',
     position: 'TOP_RIGHT',
     maxMessageLen: 60,
     enabled: true,

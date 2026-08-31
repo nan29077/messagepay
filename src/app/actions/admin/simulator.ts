@@ -13,7 +13,7 @@ import { run, text, optText } from './shared';
 
 /**
  * MO 시뮬레이터.
- * 실제 MO 사업자 연동 전에 수신 → 후원 → 결제 → 방송 흐름을 검증하기 위한 개발/검수 도구다.
+ * 실제 MO 사업자 연동 전에 수신 → 결제 → 처리 결과 흐름을 검증하기 위한 개발/검수 도구다.
  * 운영 환경(APP_ENV=prod)에서는 어떤 경우에도 실행되지 않는다.
  */
 export async function runMoSimulation(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {

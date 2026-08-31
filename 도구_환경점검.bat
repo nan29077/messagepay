@@ -2,11 +2,11 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-title 토네이도 - 환경 점검
+title 문자페이 - 환경 점검
 
 echo.
 echo ==========================================
-echo   토네이도 TORNADO - 환경 점검
+echo   문자페이 BASIC - 환경 점검
 echo ==========================================
 echo.
 
@@ -31,8 +31,8 @@ where docker >nul 2>nul
 if errorlevel 1 (
   echo     설치되지 않음 ^(직접 설치한 PostgreSQL 을 쓰신다면 무시^)
 ) else (
-  docker ps --filter "name=tornado-postgres" --format "     컨테이너: {{.Names}} {{.Status}}" 2>nul
-  docker ps --filter "name=tornado-redis" --format "     컨테이너: {{.Names}} {{.Status}}" 2>nul
+  docker ps --filter "name=munjapay-postgres" --format "     컨테이너: {{.Names}} {{.Status}}" 2>nul
+  docker ps --filter "name=munjapay-redis" --format "     컨테이너: {{.Names}} {{.Status}}" 2>nul
 )
 
 echo.
@@ -47,8 +47,8 @@ if exist ".pglite" (echo     내장 DB 데이터 있음) else (echo     내장 D
 if exist "src\generated\prisma" (echo     Prisma 클라이언트 있음) else (echo     Prisma 클라이언트 없음 -^> npx prisma generate 필요)
 
 echo.
-echo [5] 포트 3025
-netstat -ano | findstr /r /c:":3025 .*LISTENING" >nul 2>nul
+echo [5] 포트 3030
+netstat -ano | findstr /r /c:":3030 .*LISTENING" >nul 2>nul
 if errorlevel 1 (echo     사용 가능) else (echo     이미 사용 중 -^> 기존 서버 창을 확인하세요)
 
 echo.

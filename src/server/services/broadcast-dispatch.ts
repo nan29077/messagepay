@@ -128,7 +128,7 @@ function displayOf(
   overlay: { theme: string; position: string; maxMessageLen: number; enabled: boolean } | null,
 ) {
   return {
-    theme: overlay?.theme || 'TORNADO',
+    theme: overlay?.theme || 'BASIC',
     position: overlay?.position || 'BOTTOM_CENTER',
     maxMessageLen: overlay?.maxMessageLen ?? 80,
     enabled: overlay?.enabled ?? true,

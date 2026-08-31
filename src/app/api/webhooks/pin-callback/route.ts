@@ -12,7 +12,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * PIN 인증 완료 콜백 (결제사 → 토네이도).
+ * PIN 인증 완료 콜백 (결제사 → 문자페이).
  *
  * 후원자가 결제사 화면에서 PIN 을 입력하면 결제사가 이 엔드포인트를 호출하고,
  * 그때 비로소 승인(출금)이 실행된다. 브라우저 리턴이 오지 않아도

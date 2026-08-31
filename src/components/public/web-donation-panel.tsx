@@ -321,7 +321,7 @@ export function WebDonationPanel({
                 <button
                   type="button"
                   onClick={() => {
-                    if (view.registerUrl) window.open(view.registerUrl, 'donaido-register', 'width=480,height=760');
+                    if (view.registerUrl) window.open(view.registerUrl, 'munjapay-register', 'width=480,height=760');
                   }}
                   className="inline-flex h-11 items-center gap-1.5 rounded-xl bg-brand-400 px-4 text-[13px] font-extrabold text-ink-900"
                 >

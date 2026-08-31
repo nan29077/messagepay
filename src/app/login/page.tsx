@@ -10,8 +10,8 @@ import { SOCIAL_LABEL, type SocialProvider } from '@/server/adapters/social';
 import { isLocal } from '@/lib/env';
 
 export const metadata: Metadata = {
-  title: '로그인 | 도네이도',
-  description: '도네이도 계정으로 로그인하고 후원 내역과 결제 설정을 확인하세요.',
+  title: '로그인 | 문자페이',
+  description: '문자페이 계정으로 로그인하고 후원 내역과 결제 설정을 확인하세요.',
 };
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -47,7 +47,7 @@ export default async function LoginPage({
     <PublicShell aside={<LoginAside />}>
       <PageHeader
         eyebrow="로그인"
-        title="도네이도 계정으로 로그인"
+        title="문자페이 계정으로 로그인"
         description="후원 내역, 결제 수단, 한도 설정은 로그인 후 확인할 수 있습니다."
       />
 
@@ -77,7 +77,7 @@ export default async function LoginPage({
               required
               autoComplete="email"
               inputMode="email"
-              placeholder="tornado@example.com"
+              placeholder="munjapay@example.com"
             />
           </Field>
           <Field label="비밀번호" required>
@@ -117,9 +117,9 @@ export default async function LoginPage({
         <div className="mt-4">
           <TestLoginPanel
             seedAccounts={[
-              { email: 'admin@tornado.kr', password: 'tornado1234!' },
-              { email: 'creator1@tornado.kr', password: 'tornado1234!' },
-              { email: 'donor@tornado.kr', password: 'tornado1234!' },
+              { email: 'admin@munjapay.kr', password: 'munjapay1234!' },
+              { email: 'creator1@munjapay.kr', password: 'munjapay1234!' },
+              { email: 'donor@munjapay.kr', password: 'munjapay1234!' },
             ]}
           />
         </div>

@@ -147,10 +147,10 @@ describe('크리에이터 감사 문자 커스터마이즈', () => {
     const success = readMockOutbox(10).find((m) => m.text.includes('고마워요'));
     expect(success).toBeDefined();
     expect(success!.text).toBe(
-      '[도네이도] 테스트후원자님 고마워요! 3,000원 잘 받았습니다. 남겨주신 말: 오늘도 화이팅',
+      '[문자페이] 테스트후원자님 고마워요! 3,000원 잘 받았습니다. 남겨주신 말: 오늘도 화이팅',
     );
     // 발신 주체 표기는 설정과 무관하게 항상 붙는다.
-    expect(success!.text.startsWith('[도네이도] ')).toBe(true);
+    expect(success!.text.startsWith('[문자페이] ')).toBe(true);
     // 기본 문구는 더 이상 쓰이지 않는다.
     expect(success!.text).not.toContain('누적 후원');
   });
@@ -159,19 +159,19 @@ describe('크리에이터 감사 문자 커스터마이즈', () => {
     const dollar = '$';
     const out = tplDonationSuccess({
       donorName: `${dollar}&test`,
-      creatorName: '도네이도',
+      creatorName: '문자페이',
       amount: 3_000n,
       message: `${dollar}1`,
       cumulative: 3_000n,
       custom: '{후원자} / {메시지}',
     });
-    expect(out.text).toBe(`[도네이도] ${dollar}&test / ${dollar}1`);
+    expect(out.text).toBe(`[문자페이] ${dollar}&test / ${dollar}1`);
   });
 
   it('설정이 공백뿐이면 기본 문구로 되돌아간다', () => {
     const out = tplDonationSuccess({
       donorName: '홍길동',
-      creatorName: '도네이도',
+      creatorName: '문자페이',
       amount: 3_000n,
       message: '안녕',
       cumulative: 3_000n,
@@ -245,7 +245,7 @@ describe('카드 빌링키 구조', () => {
   });
 
   it('등록 안내 문자는 결제수단에 따라 문구만 달라진다', () => {
-    expect(tplRegisterGuide('도네이도', 'https://x.test/r/abc').text).toContain('계좌 등록과 이용 동의');
-    expect(tplRegisterGuide('도네이도', 'https://x.test/r/abc', 'CARD').text).toContain('카드 등록과 이용 동의');
+    expect(tplRegisterGuide('문자페이', 'https://x.test/r/abc').text).toContain('계좌 등록과 이용 동의');
+    expect(tplRegisterGuide('문자페이', 'https://x.test/r/abc', 'CARD').text).toContain('카드 등록과 이용 동의');
   });
 });

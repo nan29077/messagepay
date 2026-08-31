@@ -1,6 +1,6 @@
-# 도네이도 (DONAIDO)
+# 문자페이 (MUNJAPAY)
 
-문자 한 통으로 크리에이터를 후원하는 플랫폼. 시청자가 크리에이터별 MO 수신번호로 문자를 보내면 도네이도가 이를 수신해 후원 거래로 만들고, 결제가 완료된 건만 유튜브 라이브 채팅 · OBS/PRISM 오버레이 · TTS 로 방송에 노출합니다.
+문자 한 통으로 크리에이터를 후원하는 플랫폼. 시청자가 크리에이터별 MO 수신번호로 문자를 보내면 문자페이가 이를 수신해 후원 거래로 만들고, 결제가 완료된 건만 유튜브 라이브 채팅 · OBS/PRISM 오버레이 · TTS 로 방송에 노출합니다.
 
 > **현재 상태: 1단계 Mock MVP.** 결제(헥토파이낸셜 내통장결제), MO/MT 문자, 유튜브, TTS, RTMPS 는 모두 **어댑터 인터페이스 + mock 구현**입니다. 실제 출금·문자 발송·유튜브 전송은 일어나지 않습니다.
 
@@ -18,7 +18,7 @@
 | `1_미리보기실행.bat` | 설치 → 내장 DB 기동 → 마이그레이션 → 시드 → 빌드 → 서버 실행 → 브라우저 자동 열기 |
 | `3_서버종료.bat` | 창을 닫아도 남아 있는 서버 정리 |
 
-주소는 **http://localhost:3025** 입니다. 데이터는 `.pglite` 폴더에 보관되어 다음 실행에도 유지됩니다.
+주소는 **http://localhost:3030** 입니다. 데이터는 `.pglite` 폴더에 보관되어 다음 실행에도 유지됩니다.
 
 > 첫 실행은 `npm install` 3~7분 + 화면 빌드 1~3분이 걸립니다. 멈춘 것처럼 보여도 정상이며, 두 번째부터는 30초 내외입니다.
 > 코드를 고치면서 바로 확인하려면 `도구_수정즉시반영.bat` 을 쓰세요. 저장 즉시 화면에 반영됩니다(HMR).
@@ -56,19 +56,19 @@
 ```bash
 npm install
 cp .env.example .env
-docker compose -p tornado up -d   # PostgreSQL + Redis
+docker compose -p munjapay up -d   # PostgreSQL + Redis
 npm run db:deploy
 npm run db:seed
-npm run dev                       # http://localhost:3025
+npm run dev                       # http://localhost:3030
 ```
 
 ### 시드 계정
 
 | 구분 | 계정 | 비밀번호 |
 |---|---|---|
-| 통합 관리자 | `admin@tornado.kr` | `tornado1234!` |
-| 크리에이터 | `creator1@tornado.kr` | `tornado1234!` (코드 `TOR-8K2M`, 전용번호 `15881001`) |
-| 크리에이터 | `creator2@tornado.kr` | `tornado1234!` (코드 `TOR-3QP7`, 대표번호 `15889000` + 키워드 `TOR3QP7`) |
+| 통합 관리자 | `admin@munjapay.kr` | `munjapay1234!` |
+| 크리에이터 | `creator1@munjapay.kr` | `munjapay1234!` (코드 `MJP-8K2M`, 전용번호 `15881001`) |
+| 크리에이터 | `creator2@munjapay.kr` | `munjapay1234!` (코드 `MJP-3QP7`, 대표번호 `15889000` + 키워드 `MJP3QP7`) |
 | 테스트 후원자 | `010-1234-5678` | 계좌 등록 완료 상태 |
 
 ---
@@ -77,7 +77,7 @@ npm run dev                       # http://localhost:3025
 
 가장 쉬운 방법은 **관리자 → MO 시뮬레이터** (`/admin/simulator`) 입니다.
 
-1. `admin@tornado.kr` 로 로그인 → `/admin/simulator`
+1. `admin@munjapay.kr` 로 로그인 → `/admin/simulator`
 2. 수신번호 `15881001`, 발신번호 아무 번호, 문자 내용 입력 후 실행
 3. 미등록 번호라면 계좌 등록 안내가 발송됩니다. 로컬에서는 `GET /api/dev/outbox` 로 발송된 문자와 보안링크 원문을 확인할 수 있습니다 (`APP_ENV=local` 에서만 동작).
 4. 등록 링크 → 동의 → 모의 결제창에서 계좌 등록
@@ -89,9 +89,9 @@ MO Webhook 을 직접 호출하려면 HMAC 서명이 필요합니다.
 ```bash
 BODY='{"messageId":"MO-1","to":"15881001","from":"01012345678","text":"오늘 방송 재미있어요","type":"SMS"}'
 SIG=$(node -e "const c=require('crypto');process.stdout.write(c.createHmac('sha256',process.env.MO_WEBHOOK_SECRET).update(process.argv[1]).digest('hex'))" "$BODY")
-curl -X POST http://localhost:3025/api/webhooks/mo \
+curl -X POST http://localhost:3030/api/webhooks/mo \
   -H 'Content-Type: application/json' \
-  -H "x-tornado-signature: sha256=$SIG" \
+  -H "x-munjapay-signature: sha256=$SIG" \
   -d "$BODY"
 ```
 
@@ -188,7 +188,7 @@ Authorization: Bearer {CRON_SECRET}
 로컬에서는 비밀 없이 바로 호출해 확인할 수 있습니다.
 
 ```bash
-curl http://localhost:3025/api/cron/cleanup
+curl http://localhost:3030/api/cron/cleanup
 ```
 
 cron / Task Scheduler 등 다른 스케줄러를 써도 됩니다. 조건은 "1분 간격 GET + Bearer 헤더" 하나뿐입니다.

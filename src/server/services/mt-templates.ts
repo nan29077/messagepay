@@ -68,7 +68,7 @@ export function tplRegisterGuide(
   // 등록 화면에서 방송 닉네임도 정할 수 있다는 것을 미리 알려 입력률을 높인다.
   // (선택 항목이라 안내가 없으면 대부분 그냥 지나친다)
   const text = withLink(
-    `[도네이도] ${creatorName} 크리에이터 문자후원을 이용하려면 ${what}과 이용 동의가 필요합니다. 최초 문자는 후원 처리되지 않았습니다. 등록 화면에서 방송에 표시될 닉네임도 정할 수 있습니다. 등록:`,
+    `[문자페이] ${creatorName} 크리에이터 문자후원을 이용하려면 ${what}과 이용 동의가 필요합니다. 최초 문자는 후원 처리되지 않았습니다. 등록 화면에서 방송에 표시될 닉네임도 정할 수 있습니다. 등록:`,
     link,
   );
   return { code: MT_TEMPLATE.REGISTER_GUIDE, text, masked: maskLink(text) };
@@ -76,7 +76,7 @@ export function tplRegisterGuide(
 
 export function tplConfirmPayment(creatorName: string, amount: bigint, link: string, ttlMin: number): TemplateOutput {
   const text = withLink(
-    `[도네이도] ${creatorName} 크리에이터에게 ${formatNumber(amount)}원을 후원하시려면 아래 링크에서 확인해 주세요. ${ttlMin}분 내 미확인 시 자동 취소됩니다. 확인:`,
+    `[문자페이] ${creatorName} 크리에이터에게 ${formatNumber(amount)}원을 후원하시려면 아래 링크에서 확인해 주세요. ${ttlMin}분 내 미확인 시 자동 취소됩니다. 확인:`,
     link,
   );
   return { code: MT_TEMPLATE.CONFIRM_PAYMENT, text, masked: maskLink(text) };
@@ -100,7 +100,7 @@ export function tplPinRequest(input: {
 }): TemplateOutput {
   const tag = input.mock ? ' [MOCK]' : '';
   const text = withLink(
-    `[도네이도]${tag} ${input.creatorName} 크리에이터에게 ${formatNumber(input.amount)}원 후원을 진행합니다. ` +
+    `[문자페이]${tag} ${input.creatorName} 크리에이터에게 ${formatNumber(input.amount)}원 후원을 진행합니다. ` +
       `아직 결제되지 않았습니다. 결제 PIN 입력 링크: `,
     `${input.pinUrl} (유효시간: ${input.ttlMin}분)`,
   );
@@ -170,12 +170,12 @@ export function defaultThanksMessage(input: DonationSuccessInput): string {
  * 후원 성공 감사 문자.
  *
  * 크리에이터가 스튜디오에서 본문을 설정했으면 그 문구를 쓰고, 없으면 기본 문구를 쓴다.
- * 발신 주체 표기(`[도네이도]`)는 어떤 경우에도 앞에 붙인다.
+ * 발신 주체 표기(`[문자페이]`)는 어떤 경우에도 앞에 붙인다.
  */
 export function tplDonationSuccess(input: DonationSuccessInput): TemplateOutput {
   const custom = input.custom ? sanitizeLine(input.custom) : '';
   const body = custom ? renderThanksMessage(custom, input) : defaultThanksMessage(input);
-  const text = `[도네이도] ${body || defaultThanksMessage(input)}`;
+  const text = `[문자페이] ${body || defaultThanksMessage(input)}`;
   return {
     code: MT_TEMPLATE.DONATION_SUCCESS,
     text,
@@ -196,7 +196,7 @@ export function tplDonationSuccess(input: DonationSuccessInput): TemplateOutput 
 
 export function tplDonationFailed(creatorName: string, reason?: string): TemplateOutput {
   const text =
-    `[도네이도] ${creatorName} 크리에이터 후원이 완료되지 않았습니다. ` +
+    `[문자페이] ${creatorName} 크리에이터 후원이 완료되지 않았습니다. ` +
     `${reason ? `사유: ${reason} ` : ''}계좌 상태 또는 이용 한도를 확인해 주세요. 결제되지 않은 메시지는 방송에 표시되지 않습니다.`;
   return {
     code: MT_TEMPLATE.DONATION_FAILED,
@@ -208,23 +208,23 @@ export function tplDonationFailed(creatorName: string, reason?: string): Templat
 
 export function tplAccountInactive(creatorName: string): TemplateOutput {
   const text =
-    `[도네이도] ${creatorName} 크리에이터 후원을 진행할 수 없습니다. ` +
+    `[문자페이] ${creatorName} 크리에이터 후원을 진행할 수 없습니다. ` +
     '내통장결제 이용 상태를 확인하거나 고객센터로 문의해 주세요. 결제는 진행되지 않았습니다.';
   return { code: MT_TEMPLATE.ACCOUNT_INACTIVE, text, masked: text, vars: { 크리에이터: creatorName } };
 }
 
 export function tplLimitBlocked(creatorName: string, reason: string): TemplateOutput {
-  const text = `[도네이도] ${creatorName} 크리에이터 후원이 제한되었습니다. 사유: ${reason} 결제는 진행되지 않았습니다.`;
+  const text = `[문자페이] ${creatorName} 크리에이터 후원이 제한되었습니다. 사유: ${reason} 결제는 진행되지 않았습니다.`;
   return { code: MT_TEMPLATE.LIMIT_BLOCKED, text, masked: text, vars: { 크리에이터: creatorName, 사유: reason } };
 }
 
 export function tplContentBlocked(creatorName: string): TemplateOutput {
-  const text = `[도네이도] ${creatorName} 크리에이터에게 보낸 메시지가 운영정책에 따라 차단되었습니다. 결제는 진행되지 않았습니다.`;
+  const text = `[문자페이] ${creatorName} 크리에이터에게 보낸 메시지가 운영정책에 따라 차단되었습니다. 결제는 진행되지 않았습니다.`;
   return { code: MT_TEMPLATE.CONTENT_BLOCKED, text, masked: text, vars: { 크리에이터: creatorName } };
 }
 
 export function tplRefundDone(creatorName: string, amount: bigint): TemplateOutput {
-  const text = `[도네이도] ${creatorName} 크리에이터 후원 ${formatNumber(amount)}원이 취소되어 환불 처리되었습니다.`;
+  const text = `[문자페이] ${creatorName} 크리에이터 후원 ${formatNumber(amount)}원이 취소되어 환불 처리되었습니다.`;
   return {
     code: MT_TEMPLATE.REFUND_DONE,
     text,
@@ -235,7 +235,7 @@ export function tplRefundDone(creatorName: string, amount: bigint): TemplateOutp
 
 export function tplUnknownRoute(): TemplateOutput {
   const text =
-    '[도네이도] 후원 대상 크리에이터를 찾을 수 없습니다. 방송 화면에 안내된 번호와 코드를 다시 확인해 주세요. 결제는 진행되지 않았습니다.';
+    '[문자페이] 후원 대상 크리에이터를 찾을 수 없습니다. 방송 화면에 안내된 번호와 코드를 다시 확인해 주세요. 결제는 진행되지 않았습니다.';
   return { code: MT_TEMPLATE.UNKNOWN_ROUTE, text, masked: text, vars: {} };
 }
 
@@ -256,7 +256,7 @@ function maskVerifyCode(text: string, code: string): string {
 }
 
 function verifyTemplate(code: MtTemplateCode, purpose: string, verifyCode: string): TemplateOutput {
-  const text = `[도네이도] ${purpose} 인증번호는 ${verifyCode} 입니다. ${VERIFY_CODE_TTL_MIN}분 안에 입력해 주세요.`;
+  const text = `[문자페이] ${purpose} 인증번호는 ${verifyCode} 입니다. ${VERIFY_CODE_TTL_MIN}분 안에 입력해 주세요.`;
   return {
     code,
     text,
@@ -418,7 +418,7 @@ export const MT_TEMPLATE_CODES = Object.keys(MT_TEMPLATE_META) as MtTemplateCode
 /** 관리자 커스텀 본문 최대 길이. LMS(2,000byte) 안에 확실히 들어가는 보수적인 값. */
 export const MT_TEMPLATE_BODY_MAX_LENGTH = 400;
 
-const SENDER_TAG = '[도네이도]';
+const SENDER_TAG = '[문자페이]';
 
 /** 발신 주체 표기는 어떤 커스텀 본문에서도 빠지지 않게 강제한다. */
 function ensureSenderTag(text: string): string {

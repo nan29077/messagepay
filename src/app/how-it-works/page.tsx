@@ -12,7 +12,7 @@ import { resolvePolicy } from '@/server/services/limits';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '문자후원 이용방법 | 도네이도',
+  title: '문자후원 이용방법 | 문자페이',
   description: '문자 한 통으로 크리에이터를 후원하는 방법과 계좌 등록, 결제, 방송 노출 절차를 안내합니다.',
 };
 
@@ -52,7 +52,7 @@ export default async function HowItWorksPage() {
             icon={<CreditCard size={18} strokeWidth={1.7} />}
             title="안내 문자의 링크에서 계좌 등록"
             body="문자로 받은 1회용 보안 링크를 열어 본인 명의 계좌를 등록하고 이용 동의를 진행합니다. 등록 화면에서 후원 대상, 문자 1건당 후원금, 이용 한도, 취소·환불 조건을 모두 확인할 수 있습니다."
-            note="계좌번호 원문은 도네이도에 저장하지 않습니다. 은행명과 계좌 끝 4자리만 보관합니다."
+            note="계좌번호 원문은 문자페이에 저장하지 않습니다. 은행명과 계좌 끝 4자리만 보관합니다."
           />
           <Step
             no={3}
@@ -161,7 +161,7 @@ export default async function HowItWorksPage() {
       <section className="mt-8">
         <SectionTitle title="미성년자 이용 제한" />
         <Notice tone="danger" title="만 19세 미만은 이용할 수 없습니다">
-          도네이도 문자후원은 만 19세 이상만 이용할 수 있습니다. 계좌 등록 시 연령 확인에 동의해야 하며, 명의자 동의
+          문자페이 문자후원은 만 19세 이상만 이용할 수 있습니다. 계좌 등록 시 연령 확인에 동의해야 하며, 명의자 동의
           없이 이루어진 후원은 확인 즉시 이용이 정지되고 환불 절차가 진행됩니다. 가족 명의 휴대전화나 계좌를 무단으로
           사용하지 마세요.
         </Notice>

@@ -5,7 +5,7 @@
  * 단위 테스트(tests/*.test.ts)가 서버 로직을 보는 것과 역할이 다르다.
  *
  * 실행 전제
- *  - 개발 서버가 떠 있어야 한다: npm run dev  (기본 http://localhost:3025)
+ *  - 개발 서버가 떠 있어야 한다: npm run dev  (기본 http://localhost:3030)
  *  - 시드 계정이 있어야 한다: npm run db:reset && npm run db:seed
  *  - 크로미움: 기본은 Playwright 가 설치한 브라우저를 쓴다.
  *    (컨테이너처럼 사전 설치본을 쓰는 환경은 E2E_CHROMIUM 으로 경로를 넘긴다)
@@ -13,24 +13,24 @@
 import fs from 'node:fs';
 import { chromium } from 'playwright';
 
-export const BASE = process.env.E2E_BASE ?? 'http://localhost:3025';
-export const PASSWORD = 'tornado1234!';
+export const BASE = process.env.E2E_BASE ?? 'http://localhost:3030';
+export const PASSWORD = 'munjapay1234!';
 
 export const ACCOUNTS = {
-  admin: 'admin@tornado.kr',
-  creator1: 'creator1@tornado.kr',
-  creator2: 'creator2@tornado.kr',
-  donor: 'donor@tornado.kr',
+  admin: 'admin@munjapay.kr',
+  creator1: 'creator1@munjapay.kr',
+  creator2: 'creator2@munjapay.kr',
+  donor: 'donor@munjapay.kr',
 };
 
 /** 시드 고정값 */
 export const SEED = {
-  creator1Code: 'TOR-8K2M',
-  creator2Code: 'TOR-3QP7',
+  creator1Code: 'MJP-8K2M',
+  creator2Code: 'MJP-3QP7',
   creator1Name: '바람소리',
   creator1Mo: '05051001001',
   creator2Mo: '05059000000',
-  creator2Keyword: 'TOR3QP7',
+  creator2Keyword: 'MJP3QP7',
   donorPhone: '010-1234-5678',
 };
 

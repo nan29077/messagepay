@@ -17,7 +17,7 @@ export function avatarIndexFromSeed(seed: string) {
 export function normalizeAvatarIndex(index: number | null | undefined, seed: string) {
   return typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < 50
     ? index
-    : avatarIndexFromSeed(seed || 'donaido');
+    : avatarIndexFromSeed(seed || 'munjapay');
 }
 
 export function GeneratedAvatar({
@@ -32,7 +32,7 @@ export function GeneratedAvatar({
   className?: string;
 }) {
   const index = normalizeAvatarIndex(avatarIndex, seed);
-  const avatarSrc = `/avatars/donaido-v2/avatar-${String(index + 1).padStart(2, '0')}.png`;
+  const avatarSrc = `/avatars/munjapay-v2/avatar-${String(index + 1).padStart(2, '0')}.png`;
 
   return (
     // eslint-disable-next-line @next/next/no-img-element
@@ -48,7 +48,7 @@ export function GeneratedAvatar({
   );
 }
 
-const CHARACTER_SHEETS = ['/avatars-donaido-a-v1.png', '/avatars-donaido-b-v1.png'];
+const CHARACTER_SHEETS = ['/avatars-munjapay-a-v1.png', '/avatars-munjapay-b-v1.png'];
 
 /**
  * 앱 전역 프로필 표시 컴포넌트.

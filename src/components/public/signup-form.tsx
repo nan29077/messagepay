@@ -40,7 +40,7 @@ export function SignupForm() {
           defaultValue={state.values?.email}
           autoComplete="email"
           inputMode="email"
-          placeholder="tornado@example.com"
+          placeholder="munjapay@example.com"
         />
       </Field>
 

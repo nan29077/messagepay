@@ -1,101 +1,44 @@
 import * as React from 'react';
 
-/**
- * 도네이도 브랜드 로고 (v3).
- *
- * 따뜻한 허니 골드 토네이도 소용돌이 + 코랄 하트 심볼과
- * 볼드 대문자 "DONAIDO" 워드마크로 구성한다.
- * (사용자 제공 로고 시안을 벡터로 재현 — 아이콘은 꿀색 그라데이션,
- *  워드마크는 잉크 블랙. 텍스트는 HTML 로 렌더링해 어떤 해상도에서도 선명하다.)
- */
-
-export function TornadoMark({
-  size = 28,
+/** 문자 말풍선과 결제 완료 체크를 결합한 문자페이 브랜드 심볼. */
+export function MunjaPayMark({
+  size = 32,
   className,
-  /** true 면 허니 골드 그라데이션, false 면 currentColor 스트로크 */
-  colored = true,
+  onDark = false,
 }: {
   size?: number;
   className?: string;
-  colored?: boolean;
+  onDark?: boolean;
 }) {
-  // 같은 화면에 여러 개 렌더링돼도 gradient id 가 충돌하지 않게 한다.
-  const gradId = React.useId().replace(/[^a-zA-Z0-9]/g, '');
-  const stroke = colored ? `url(#g${gradId})` : 'currentColor';
-  const heartFill = '#f36f5b';
+  const background = onDark ? '#b7f34a' : '#071426';
+  const foreground = onDark ? '#071426' : '#b7f34a';
 
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 48 48"
-      fill="none"
-      className={className}
-      aria-hidden
-    >
-      {colored ? (
-        <defs>
-          <linearGradient id={`g${gradId}`} x1="6" y1="4" x2="42" y2="46" gradientUnits="userSpaceOnUse">
-            <stop offset="0" stopColor="#ffdc78" />
-            <stop offset="0.52" stopColor="#f2b541" />
-            <stop offset="1" stopColor="#c77a2b" />
-          </linearGradient>
-        </defs>
-      ) : null}
-
-      {/* 토네이도 소용돌이: 위가 넓고 아래로 갈수록 좁아지는 3단 스파이럴 + 꼬리 */}
-      <g stroke={stroke} strokeWidth={4.4} strokeLinecap="round" strokeLinejoin="round">
-        <path d="M7.5 12.2C13 6.6 30.6 5.4 36.8 10.2C42.6 14.7 34.6 20 23.4 19.4C13.9 18.8 10.5 15 14.9 12.3C19.6 9.4 30.5 10.5 32.4 14.6" />
-        <path d="M14.6 24.6C13.4 28.4 17.7 30.8 24 30.6C29.5 30.4 33 28.3 32.6 25.5" opacity="0.95" />
-        <path d="M18.3 35.2C17.9 38 20.6 39.7 24.2 39.5C27.2 39.3 29.2 38 29.2 36.2" opacity="0.9" />
-        <path d="M22.3 44.2C23.2 45.2 24.6 45.6 26.2 45.4" opacity="0.85" />
-      </g>
-
-      {/* 우측 상단 하트 */}
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className} aria-hidden>
+      <rect x="3" y="3" width="42" height="42" rx="13" fill={background} />
       <path
-        d="M40.9 3.2c1.5 0 2.7 1.2 2.7 2.7 0 2.3-2.5 3.9-4.3 5-1.8-1.1-4.3-2.7-4.3-5 0-1.5 1.2-2.7 2.7-2.7 0.9 0 1.5 0.5 1.6 1 0.1-0.5 0.7-1 1.6-1z"
-        fill={heartFill}
+        d="M13 14.5h22a3 3 0 0 1 3 3v11a3 3 0 0 1-3 3H24l-6.8 5.2c-.7.5-1.7 0-1.7-.9v-4.3H13a3 3 0 0 1-3-3v-11a3 3 0 0 1 3-3Z"
+        fill={foreground}
       />
+      <path d="m25.4 23 3.2 3.1 5.5-6" stroke={background} strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="16.2" cy="23" r="1.5" fill={background} />
+      <circle cx="21" cy="23" r="1.5" fill={background} />
     </svg>
   );
 }
 
-export function Logo({
-  compact = false,
-  /** 어두운 배경 위에 놓일 때 true 로 지정하면 워드마크가 흰색이 된다. */
-  onDark = false,
-}: {
-  compact?: boolean;
-  onDark?: boolean;
-}) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <TornadoMark size={compact ? 30 : 34} />
-      {!compact ? (
-        <Wordmark onDark={onDark} />
-      ) : null}
-    </span>
-  );
-}
+/** 이전 화면의 import 호환을 유지하되 실제 표시는 문자페이 심볼로 통일한다. */
+export const MunjapayMark = MunjaPayMark;
 
-function Wordmark({ onDark }: { onDark: boolean }) {
+export function Logo({ compact = false, onDark = false }: { compact?: boolean; onDark?: boolean }) {
   return (
-    <span
-      aria-label="DONAIDO"
-      className={`inline-flex items-baseline text-[19px] font-black leading-none tracking-[-0.035em] ${onDark ? 'text-white' : 'text-ink-900'}`}
-    >
-      {Array.from('DONAIDO').map((letter, index) => (
-        <span key={`${letter}-${index}`} aria-hidden className="relative inline-block">
-          {letter}
-          {letter === 'D' ? (
-            <span className="pointer-events-none absolute left-[52%] top-[30%] h-[42%] w-[20%] rounded-full bg-[#e9a936]" />
-          ) : letter === 'O' ? (
-            <span className="pointer-events-none absolute left-[36%] top-[28%] h-[45%] w-[28%] rounded-full bg-[#e9a936]" />
-          ) : letter === 'A' ? (
-            <span className="pointer-events-none absolute left-[40%] top-[50%] h-[14%] w-[20%] bg-[#e9a936] [clip-path:polygon(50%_0,100%_100%,0_100%)]" />
-          ) : null}
+    <span className="inline-flex items-center gap-2">
+      <MunjaPayMark size={compact ? 30 : 34} onDark={onDark} />
+      {!compact ? (
+        <span aria-label="문자페이" className={`text-[20px] font-black leading-none tracking-[-0.055em] ${onDark ? 'text-white' : 'text-ink-900'}`}>
+          문자페이
         </span>
-      ))}
+      ) : null}
     </span>
   );
 }

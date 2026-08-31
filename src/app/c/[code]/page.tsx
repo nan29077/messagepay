@@ -31,7 +31,7 @@ export const dynamic = 'force-dynamic';
  * 메인 서비스(PublicShell)의 하단 탭·우측 메뉴를 쓰지 않는 완전히 독립된 페이지다.
  * 방송·프로필에 붙는 "크리에이터 자신의 링크"로 보여야 하므로
  *  - 상단은 크리에이터 아이덴티티(아바타·이름·채널)가 차지하고
- *  - 도네이도 브랜드는 하단 풋터에 서비스 표기로만 남긴다.
+ *  - 문자페이 브랜드는 하단 풋터에 서비스 표기로만 남긴다.
  *  - 모바일에서는 하단 고정 CTA(문자 보내기)가 탭바를 대신한다.
  */
 
@@ -73,7 +73,7 @@ async function currentViewerDonor() {
 
 async function findCreator(rawCode: string) {
   const code = normalizeCreatorCode(rawCode);
-  if (!/^TOR-[A-Z0-9]{2,10}$/.test(code)) return null;
+  if (!/^MJP-[A-Z0-9]{2,10}$/.test(code)) return null;
   return prisma.creatorProfile.findFirst({
     where: {
       code,
@@ -96,7 +96,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { code } = await params;
   const creator = await findCreator(code);
   if (!creator) {
-    return { title: '크리에이터를 찾을 수 없습니다 | 도네이도', robots: { index: false, follow: false } };
+    return { title: '크리에이터를 찾을 수 없습니다 | 문자페이', robots: { index: false, follow: false } };
   }
   return {
     title: `${creator.displayName} 문자후원`,
@@ -502,7 +502,7 @@ export default async function CreatorDonationPage({ params }: Params) {
         {/* 서비스 풋터 */}
         <footer className="mt-10 border-t border-ink-100 pt-6 text-center">
           <p className="text-[11.5px] leading-relaxed text-ink-400">
-            이 페이지는 <span className="font-bold text-ink-500">도네이도 문자후원</span>으로 운영됩니다.
+            이 페이지는 <span className="font-bold text-ink-500">문자페이 문자후원</span>으로 운영됩니다.
             <br />
             유튜브 공식 슈퍼챗이 아닌 외부 후원 서비스입니다.
           </p>
@@ -511,7 +511,7 @@ export default async function CreatorDonationPage({ params }: Params) {
             <span aria-hidden className="h-3 w-px bg-ink-200" />
             <Link href="/support" className="transition-colors hover:text-ink-900">고객센터</Link>
             <span aria-hidden className="h-3 w-px bg-ink-200" />
-            <Link href="/" className="transition-colors hover:text-ink-900">도네이도 홈</Link>
+            <Link href="/" className="transition-colors hover:text-ink-900">문자페이 홈</Link>
           </div>
         </footer>
       </main>
@@ -586,7 +586,7 @@ function NotFoundView() {
           </div>
         </div>
         <div className="mt-5 flex justify-center opacity-70">
-          <Link href="/" aria-label="도네이도 홈으로">
+          <Link href="/" aria-label="문자페이 홈으로">
             <Logo compact />
           </Link>
         </div>

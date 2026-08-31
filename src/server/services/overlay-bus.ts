@@ -46,7 +46,7 @@ export interface OverlayEventPayload {
   soundEnabled: boolean;
   soundVolume: number;
   durationMs: number;
-  /// 알림 배너 테마 (TORNADO | MINIMAL | NEON)
+  /// 알림 배너 테마 (BASIC | MINIMAL | NEON)
   theme: string;
   /// 알림 배너 표시 위치 (TOP_LEFT ... BOTTOM_RIGHT)
   position: string;
@@ -58,7 +58,7 @@ export interface OverlayEventPayload {
   isTest: boolean;
 }
 
-const CHANNEL = 'tornado:overlay';
+const CHANNEL = 'munjapay:overlay';
 
 const globalForBus = globalThis as unknown as {
   overlayEmitter?: EventEmitter;
