@@ -23,7 +23,7 @@ const validPayload = {
   msgId: 'MT-20260820-0001',
   callee: '050-5100-1001',
   caller: '010-1234-5678',
-  msg: '오늘 방송 최고예요',
+  msg: '캐시 충전합니다',
   msgType: 'SMS',
   recvDate: '20260820153012',
 };
@@ -36,7 +36,7 @@ describe('MTONET MO 어댑터 - 파싱', () => {
     expect(out.receivedNumber).toBe('05051001001');
     expect(out.fromNumber).toBe('01012345678');
     expect(out.messageType).toBe('SMS');
-    expect(out.content).toBe('오늘 방송 최고예요');
+    expect(out.content).toBe('캐시 충전합니다');
     // 2026-08-20 15:30:12 KST = 06:30:12 UTC
     expect(out.receivedAt.toISOString()).toBe('2026-08-20T06:30:12.000Z');
   });
@@ -78,7 +78,7 @@ describe('MTONET MO 어댑터 - 파싱', () => {
 
   it('제목이 오면 본문 앞에 붙인다', () => {
     const out = mtonetMoAdapter.parse({ ...validPayload, subject: '[응원]' });
-    expect(out.content).toBe('[응원] 오늘 방송 최고예요');
+    expect(out.content).toBe('[응원] 캐시 충전합니다');
   });
 
   it('시각 표기 3종을 모두 KST 로 해석한다', () => {
@@ -86,7 +86,7 @@ describe('MTONET MO 어댑터 - 파싱', () => {
     expect(parseMtonetDate('20260820153012').toISOString()).toBe(iso);
     expect(parseMtonetDate('2026-08-20 15:30:12').toISOString()).toBe(iso);
     expect(parseMtonetDate('2026-08-20T15:30:12+09:00').toISOString()).toBe(iso);
-    // 파싱 불가 값은 fallback 을 쓴다 (예외로 후원 유실 방지)
+    // 파싱 불가 값은 fallback 을 쓴다 (예외로 결제 유실 방지)
     const fb = new Date('2020-01-01T00:00:00.000Z');
     expect(parseMtonetDate('알수없음', fb).toISOString()).toBe(fb.toISOString());
   });
@@ -206,7 +206,7 @@ describe('헥토 어댑터 - 설정 누락 시 fail-closed', () => {
         orderNo: 'ORD-1',
         amount: 3000n,
         billKey: 'BILL',
-        productName: '문자후원',
+        productName: '문자결제',
       }),
     ).rejects.toBeInstanceOf(AdapterNotConfiguredError);
 

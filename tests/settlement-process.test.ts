@@ -18,7 +18,7 @@ import { buildSettlementSchedule } from '@/server/services/settlement-schedule';
 
 /**
  * 정산 프로세스 전 구간 검수 + 오버레이 파이프라인 검수.
- * "크리에이터 요청이 최고관리자에게 제대로 들어오는가" 를 실행으로 확인한다.
+ * "가맹점 요청이 최고관리자에게 제대로 들어오는가" 를 실행으로 확인한다.
  */
 
 let fx: Fixture;
@@ -40,7 +40,7 @@ describe('정산 프로세스 — 요청부터 지급까지', () => {
     fx = await seedBasics({ paymentMode: 'DIRECT_TRIGGER' });
   });
 
-  it('크리에이터 요청이 최고관리자 알림함과 관리자 목록에 모두 들어온다', async () => {
+  it('가맹점 요청이 최고관리자 알림함과 관리자 목록에 모두 들어온다', async () => {
     await accumulate();
     const summary = await getSettlementSummary(fx.creatorId);
     expect(summary.available).toBeGreaterThan(0n);
@@ -76,7 +76,7 @@ describe('정산 프로세스 — 요청부터 지급까지', () => {
       include: { creator: { select: { displayName: true, code: true } } },
     });
     expect(adminList.map((r) => r.id)).toContain(req.id);
-    // 관리자 화면이 크리에이터 이름·코드를 함께 보여줄 수 있어야 한다.
+    // 관리자 화면이 가맹점 이름·코드를 함께 보여줄 수 있어야 한다.
     const listed = adminList.find((r) => r.id === req.id)!;
     expect(listed.creator.displayName).toBeTruthy();
     expect(listed.creator.code).toBeTruthy();
@@ -134,7 +134,7 @@ describe('정산 프로세스 — 요청부터 지급까지', () => {
     expect((await prisma.settlementLedger.findMany({ where: { requestId: req.id } })).length).toBe(2);
   });
 
-  it('후원일별 정산 예정일이 계산되어 캘린더 데이터로 나온다', async () => {
+  it('결제일별 정산 예정일이 계산되어 캘린더 데이터로 나온다', async () => {
     await accumulate(2);
     const rows = await buildSettlementSchedule(
       fx.creatorId,

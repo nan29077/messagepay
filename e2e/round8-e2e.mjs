@@ -100,12 +100,12 @@ try {
   r.ok('금칙어 입력칸', (await p.locator('input[name=word]').count()) > 0);
   {
     const opts = await p.locator('select[name=action] option').allInnerTexts();
-    const miss = missingOf(opts.join('|'), ['마스킹 (별표 처리)', '차단 (후원 접수 거부)', '표시 (기록만)']);
+    const miss = missingOf(opts.join('|'), ['마스킹 (별표 처리)', '차단 (결제 접수 거부)', '표시 (기록만)']);
     r.ok('처리 방식 3종', miss.length === 0, miss.join(','));
   }
   r.ok('기본 비속어 세트 버튼', (await p.locator('button:has-text("기본 비속어 세트 추가")').count()) > 0);
   r.ok('전역 금칙어 섹션', mod.includes('전역 금칙어'));
-  r.ok('차단된 후원자 섹션', mod.includes('차단된 후원자'));
+  r.ok('차단된 이용자 섹션', mod.includes('차단된 이용자'));
 
   // 실제 추가 → 목록 반영 → 사용 중지 → 삭제
   const WORD = `E2E금칙어${Date.now() % 100000}`;

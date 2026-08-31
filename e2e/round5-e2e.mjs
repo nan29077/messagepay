@@ -1,5 +1,5 @@
 /**
- * 5차 E2E — 크리에이터 스튜디오 셸·내비게이션 구조.
+ * 5차 E2E — 가맹점 스튜디오 셸·내비게이션 구조.
  *  - 사이드바 그룹/메뉴가 현재 정보구조 그대로인지
  *  - 각 메뉴가 실제로 열리고 제목이 맞는지
  *  - 모바일 햄버거 열고 닫기
@@ -13,12 +13,12 @@ const b = await launch();
 
 const GROUPS = ['현황', '방송', '운영', '정산', '계정'];
 const MENUS = [
-  ['대시보드', '/studio', '크리에이터 관리자'],
-  ['후원 내역', '/studio/donations', '후원 내역'],
+  ['대시보드', '/studio', '가맹점 관리자'],
+  ['결제 내역', '/studio/donations', '결제 내역'],
   ['문자 관리', '/studio/messages', null],
   ['유튜브 채널 연결', '/studio/youtube', '유튜브 채널 연결'],
   ['방송·오버레이', '/studio/overlay', '방송·오버레이'],
-  ['후원 설정', '/studio/settings', '후원 설정'],
+  ['결제 설정', '/studio/settings', '결제 설정'],
   ['금칙어·차단', '/studio/moderation', '금칙어 · 차단'],
   ['신고', '/studio/reports', null],
   ['정산 관리', '/studio/settlement', '정산 관리'],
@@ -46,8 +46,8 @@ try {
   r.ok('내비: 프로필 설정 메뉴가 있다', nav.includes('프로필 설정'));
 
   // ── 2. 셸 상단/하단
-  r.ok('상단 제목이 크리에이터 관리자', (await bodyText(page)).includes('크리에이터 관리자'));
-  r.ok('사이드바에 역할 표기(크리에이터)', nav.includes('크리에이터'));
+  r.ok('상단 제목이 가맹점 관리자', (await bodyText(page)).includes('가맹점 관리자'));
+  r.ok('사이드바에 역할 표기(가맹점)', nav.includes('가맹점'));
   r.ok('사이드바 하단 메인으로 링크', (await page.locator('aside a[href="/"]').count()) > 0);
   r.ok(
     '사이드바 하단 로그아웃 폼',

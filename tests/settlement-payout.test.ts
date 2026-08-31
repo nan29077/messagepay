@@ -41,10 +41,10 @@ async function verifiedAccount(creatorId: string) {
 }
 
 async function fund(creatorId: string) {
-  // 결제 완료 후원 몇 건으로 정산 잔액을 만든다.
+  // 결제 완료 결제 몇 건으로 정산 잔액을 만든다.
   await seedRegisteredDonor(fx.donorPhone);
   for (let i = 0; i < 5; i += 1) {
-    // 금액은 본문이 아니라 크리에이터 고정 금액(3000원)으로 결정된다.
+    // 금액은 본문이 아니라 가맹점 고정 금액(3000원)으로 결정된다.
     await inbound(moPayload({ to: fx.moNumber, messageId: `FUND-${i}-${Date.now()}`, text: `응원 ${i}` }));
   }
   const s = await getSettlementSummary(creatorId);

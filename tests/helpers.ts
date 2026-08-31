@@ -50,11 +50,11 @@ export async function seedBasics(options: { paymentMode?: 'CONFIRM_LINK' | 'DIRE
   }
 
   const user = await prisma.user.create({
-    data: { id: newId(), email: `creator-${newId()}@test.kr`, name: '테스트크리에이터', role: 'CREATOR' },
+    data: { id: newId(), email: `creator-${newId()}@test.kr`, name: '테스트가맹점', role: 'CREATOR' },
   });
   const creator = await prisma.creatorProfile.create({
     data: {
-      id: newId(), userId: user.id, code: `MJP-${newId().slice(-4)}`, displayName: '테스트크리에이터',
+      id: newId(), userId: user.id, code: `MJP-${newId().slice(-4)}`, displayName: '테스트가맹점',
       status: 'APPROVED', donationAmount: 3000n,
       paymentMode: options.paymentMode ?? 'DIRECT_TRIGGER',
     },
@@ -79,12 +79,12 @@ export async function seedBasics(options: { paymentMode?: 'CONFIRM_LINK' | 'DIRE
   return { creatorId: creator.id, creatorUserId: user.id, moNumber, donorPhone: '01012345678' } as Fixture;
 }
 
-/** 계좌 등록이 완료된 후원자를 만든다. */
+/** 계좌 등록이 완료된 이용자를 만든다. */
 export async function seedRegisteredDonor(phone = '01012345678') {
   const donor = await prisma.donorProfile.create({
     data: {
       id: newId(), phoneHash: phoneHash(phone), phoneEnc: encrypt(phone),
-      phoneMasked: maskPhone(phone), displayName: '테스트후원자',
+      phoneMasked: maskPhone(phone), displayName: '테스트이용자',
       ageVerified: true, registeredAt: new Date(),
       onboardingStatus: 'REGISTERED',
     },
@@ -112,7 +112,7 @@ export function moPayload(input: {
     messageId: input.messageId ?? `MO-TEST-${Date.now()}-${seq}`,
     to: input.to,
     from: input.from ?? '01012345678',
-    text: input.text ?? '오늘 방송 재미있어요',
+    text: input.text ?? '캐시 충전합니다',
     type: 'SMS',
     receivedAt: (input.receivedAt ?? new Date()).toISOString(),
   };

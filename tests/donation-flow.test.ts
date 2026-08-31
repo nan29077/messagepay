@@ -23,21 +23,21 @@ async function inbound(payload: Record<string, unknown>) {
   return handleMoInbound(mockMoAdapter.parse(payload));
 }
 
-describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
+describe('MO 수신 → 결제 → 충전 반영 흐름', () => {
   beforeEach(async () => {
     await resetDb();
     fx = await seedBasics({ paymentMode: 'DIRECT_TRIGGER' });
   });
 
   it('[1] 미등록 번호의 최초 MO 는 결제되지 않고 계좌 등록 안내만 발송한다', async () => {
-    const res = await inbound(moPayload({ to: fx.moNumber, text: '첫 후원입니다' }));
+    const res = await inbound(moPayload({ to: fx.moNumber, text: '첫 결제입니다' }));
 
     expect(res.result).toBe('UNREGISTERED_DONOR');
     expect(await prisma.donation.count()).toBe(0);
     expect(await prisma.paymentTransaction.count()).toBe(0);
 
     const mt = readMockOutbox(1)[0];
-    expect(mt.text).toContain('최초 문자는 후원 처리되지 않았습니다');
+    expect(mt.text).toContain('최초 문자는 결제 처리되지 않았습니다');
 
     const link = await prisma.secureLink.findFirst({ where: { purpose: 'REGISTER_ACCOUNT' } });
     expect(link).not.toBeNull();
@@ -89,9 +89,9 @@ describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
     ).rejects.toThrow();
   });
 
-  it('[4] 등록 사용자의 MO 는 후원 거래를 생성하고 결제 후 방송에 노출된다', async () => {
+  it('[4] 등록 사용자의 MO 는 결제 거래를 생성하고 결제 후 충전으로 반영된다', async () => {
     await seedRegisteredDonor(fx.donorPhone);
-    const res = await inbound(moPayload({ to: fx.moNumber, text: '오늘 방송 재미있어요!' }));
+    const res = await inbound(moPayload({ to: fx.moNumber, text: '캐시 충전합니다!' }));
 
     expect(res.result).toBe('ROUTED');
     const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
@@ -106,19 +106,19 @@ describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
     expect(summary.totalGross).toBe(3000n);
     expect(summary.balance).toBe(2496n);
 
-    const success = readMockOutbox(10).find((m) => m.text.includes('후원되었습니다'));
+    const success = readMockOutbox(10).find((m) => m.text.includes('충전되었습니다'));
     expect(success).toBeDefined();
   });
 
-  it('[4-1] 본문에 "N원" 표기가 있어도 크리에이터 고정 금액으로만 결제된다', async () => {
+  it('[4-1] 본문에 "N원" 표기가 있어도 가맹점 고정 금액으로만 결제된다', async () => {
     await seedRegisteredDonor(fx.donorPhone);
     const res = await inbound(moPayload({ to: fx.moNumber, text: '10000원 화이팅' }));
 
     expect(res.result).toBe('ROUTED');
     const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
-    // 파싱된 10000원이 아니라 크리에이터가 설정한 3000원이 청구된다.
+    // 파싱된 10000원이 아니라 가맹점가 설정한 3000원이 청구된다.
     expect(donation.amount).toBe(3000n);
-    // 금액 표기를 잘라내지 않고 본문 전체를 후원 메시지로 사용한다.
+    // 금액 표기를 잘라내지 않고 본문 전체를 결제 메시지로 사용한다.
     expect(donation.message).toBe('10000원 화이팅');
     expect(donation.paidAt).not.toBeNull();
 
@@ -135,7 +135,7 @@ describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
     expect(donation.message).toBe('오늘도 응원합니다');
   });
 
-  it('[4-3] 크리에이터가 고정 금액을 바꾸면 바뀐 금액으로 결제된다', async () => {
+  it('[4-3] 가맹점가 고정 금액을 바꾸면 바뀐 금액으로 결제된다', async () => {
     await seedRegisteredDonor(fx.donorPhone);
     await prisma.creatorProfile.update({ where: { id: fx.creatorId }, data: { donationAmount: 5000n } });
 
@@ -161,7 +161,7 @@ describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
     expect(await prisma.moInboundMessage.count()).toBe(1);
   });
 
-  it('[6] 짧은 시간 연속 후원은 속도 제한에 걸린다', async () => {
+  it('[6] 짧은 시간 연속 결제은 속도 제한에 걸린다', async () => {
     await seedRegisteredDonor(fx.donorPhone);
     const results = [];
     for (let i = 0; i < 5; i += 1) {
@@ -182,7 +182,7 @@ describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
     expect(res.status).toBe('LIMIT_BLOCKED');
     expect(await prisma.paymentTransaction.count()).toBe(0);
 
-    const mt = readMockOutbox(5).find((m) => m.text.includes('후원이 제한'));
+    const mt = readMockOutbox(5).find((m) => m.text.includes('결제가 제한'));
     expect(mt).toBeDefined();
   });
 
@@ -205,7 +205,7 @@ describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
     expect(d2.status).toBe('PAYMENT_FAILED');
   });
 
-  it('[9] 결제 실패 시 방송에 노출되지 않고 실패 안내가 발송된다', async () => {
+  it('[9] 결제 실패 시 충전이 반영되지 않고 실패 안내가 발송된다', async () => {
     await seedRegisteredDonor(fx.donorPhone);
     await prisma.creatorProfile.update({ where: { id: fx.creatorId }, data: { donationAmount: 2999n } });
 
@@ -227,7 +227,7 @@ describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
     expect(await prisma.paymentTransaction.count()).toBe(0);
   });
 
-  it('[13] 개인정보가 포함된 문자는 마스킹되어 방송에 노출된다', async () => {
+  it('[13] 개인정보가 포함된 문자는 마스킹되어 기록된다', async () => {
     await seedRegisteredDonor(fx.donorPhone);
     const res = await inbound(
       moPayload({ to: fx.moNumber, text: '연락주세요 010-9876-5432 abc@test.com' }),
@@ -238,7 +238,7 @@ describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
     expect(donation.messageRawEnc).not.toBeNull();
   });
 
-  it('[14] 크리에이터가 차단한 후원자는 결제되지 않는다', async () => {
+  it('[14] 가맹점가 차단한 이용자는 결제되지 않는다', async () => {
     const donor = await seedRegisteredDonor(fx.donorPhone);
     await prisma.blockedDonor.create({
       data: { id: newId(), creatorId: fx.creatorId, donorId: donor.id, reason: '테스트 차단' },
@@ -325,7 +325,7 @@ describe('MO 수신 → 후원 → 결제 → 방송 흐름', () => {
     expect(mt).toBeDefined();
   });
 
-  it('[19] 결제 실패가 반복되면 후원자가 잠긴다', async () => {
+  it('[19] 결제 실패가 반복되면 이용자가 잠긴다', async () => {
     await seedRegisteredDonor(fx.donorPhone);
     await prisma.creatorProfile.update({ where: { id: fx.creatorId }, data: { donationAmount: 2999n } });
     await prisma.donationLimitPolicy.updateMany({ data: { velocityMaxCount: 100, cooldownAfterCount: 100 } });
@@ -408,7 +408,7 @@ describe('CONFIRM_LINK + 구(舊) 확인 링크 (ALLOW_LEGACY_CONFIRM_LINK=true)
   });
 
   it('ALLOW_DIRECT_TRIGGER=false 이면 DIRECT_TRIGGER 설정도 CONFIRM_LINK 로 강등된다', () => {
-    // 금융사 서면승인이 등록되지 않은 상태에서는 어떤 크리에이터 설정으로도 즉시 결제가 열리지 않는다
+    // 금융사 서면승인이 등록되지 않은 상태에서는 어떤 가맹점 설정으로도 즉시 결제가 열리지 않는다
     expect(resolvePaymentMode('DIRECT_TRIGGER', false)).toBe('CONFIRM_LINK');
     expect(resolvePaymentMode('CONFIRM_LINK', false)).toBe('CONFIRM_LINK');
     expect(resolvePaymentMode(null, true)).toBe('CONFIRM_LINK');
@@ -428,7 +428,7 @@ describe('대표번호 + 키워드 라우팅', () => {
     });
   });
 
-  it('키워드로 크리에이터를 식별하고 키워드는 메시지에서 제거된다', async () => {
+  it('키워드로 가맹점를 식별하고 키워드는 메시지에서 제거된다', async () => {
     await seedRegisteredDonor(fx.donorPhone);
     const res = await inbound(moPayload({ to: '15889000', text: 'MJP3QP7 응원합니다' }));
 

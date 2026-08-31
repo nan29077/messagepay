@@ -17,7 +17,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 const SCRIPTS = [
   ['round5', '스튜디오 셸·내비게이션'],
-  ['round6', '후원샵 · PC PIN 후원 전 구간'],
+  ['round6', '결제 페이지 · PC PIN 결제 전 구간'],
   ['round7', '문의 채널 · 관리자 문의 · 보안'],
   ['round8', '정산 탭 · 원천징수 · 금칙어'],
   ['round9', '민감자료 권한 · 지급대행 · 관리자 권한'],

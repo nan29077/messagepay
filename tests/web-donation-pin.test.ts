@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * 후원샵 PC 웹 후원 — PIN 인증 흐름.
+ * 결제 페이지 PC 웹 결제 — PIN 인증 흐름.
  *
  *   금액·메시지 → 번호 입력(인증번호 없음) → PIN 링크 문자 → PIN 입력 → 콜백 → 결제
  *
  * 이 파일이 지키는 것
  *  1) 번호 입력만으로는 절대 출금되지 않는다.
  *  2) 결제수단이 등록된 번호에만 PIN 링크가 나간다(미등록은 가입 안내).
- *  3) 상태 조회는 HttpOnly 쿠키에 담긴 후원만 볼 수 있다.
+ *  3) 상태 조회는 HttpOnly 쿠키에 담긴 결제만 볼 수 있다.
  *  4) 유효시간이 지나면 자동 취소되고, 그 뒤 콜백으로도 결제되지 않는다.
  *
  * 서버 액션은 next/headers 의 쿠키 저장소를 사용하므로 테스트용 메모리 저장소로 대체한다.
@@ -72,7 +72,7 @@ function donateForm(phone: string, overrides: Record<string, string> = {}) {
   });
 }
 
-describe('후원샵 웹 후원 — PIN 인증 흐름', () => {
+describe('결제 페이지 웹 결제 — PIN 인증 흐름', () => {
   beforeEach(async () => {
     await resetDb();
     cookieJar.clear();
@@ -107,7 +107,7 @@ describe('후원샵 웹 후원 — PIN 인증 흐름', () => {
     expect(mt.phoneHash).toBe(phoneHash(phone));
     expect(mt.bodyMasked).toContain('[보안링크]');
 
-    // 후원은 PIN 대기 상태이고 결제 트랜잭션은 없다.
+    // 결제은 PIN 대기 상태이고 결제 트랜잭션은 없다.
     const donation = await prisma.donation.findFirstOrThrow();
     expect(donation.channel).toBe('WEB');
     expect(donation.status).toBe('PENDING_PIN');
@@ -182,18 +182,18 @@ describe('후원샵 웹 후원 — PIN 인증 흐름', () => {
     // 담으면 남의 번호를 적어 넣은 사람이 그 번호의 가입 링크를 그대로 가져간다.
     expect(JSON.stringify(state)).not.toContain('/r/');
 
-    // 후원도 인증 세션도 만들지 않는다.
+    // 결제도 인증 세션도 만들지 않는다.
     expect(await prisma.donation.count()).toBe(0);
     expect(await prisma.paymentPinSession.count()).toBe(0);
     expect(await prisma.paymentTransaction.count()).toBe(0);
 
     const mt = await prisma.mtOutboundMessage.findFirstOrThrow({ where: { templateCode: 'REGISTER_GUIDE' } });
     expect(mt.status).toBe('SENT');
-    // 가입 화면이 찾을 수 있도록 후원자 프로필만 만들어 둔다.
+    // 가입 화면이 찾을 수 있도록 이용자 프로필만 만들어 둔다.
     expect(await prisma.donorProfile.count({ where: { phoneHash: phoneHash(unregistered) } })).toBe(1);
   });
 
-  it('[5] 쿠키가 없으면 남의 후원 상태를 볼 수 없다', async () => {
+  it('[5] 쿠키가 없으면 남의 결제 상태를 볼 수 없다', async () => {
     const phone = nextPhone();
     await seedRegisteredDonor(phone);
     await startWebPinDonation(initial, donateForm(phone));
@@ -207,7 +207,7 @@ describe('후원샵 웹 후원 — PIN 인증 흐름', () => {
     expect(polled.transactionNo).toBeUndefined();
   });
 
-  it('[6] 같은 멱등키로 두 번 눌러도 후원과 PIN 링크는 하나만 만들어진다', async () => {
+  it('[6] 같은 멱등키로 두 번 눌러도 결제과 PIN 링크는 하나만 만들어진다', async () => {
     const phone = nextPhone();
     await seedRegisteredDonor(phone);
     const form = donateForm(phone);
@@ -239,7 +239,7 @@ describe('후원샵 웹 후원 — PIN 인증 흐름', () => {
     expect(blocked.ok).toBe(false);
     expect(blocked.step).toBe('phone');
     expect(blocked.message).toContain('너무 잦습니다');
-    // 4번째 요청은 후원도 문자도 만들지 않는다.
+    // 4번째 요청은 결제도 문자도 만들지 않는다.
     expect(await prisma.donation.count()).toBe(3);
     expect(await prisma.mtOutboundMessage.count({ where: { templateCode: 'PIN_REQUEST' } })).toBe(3);
   });

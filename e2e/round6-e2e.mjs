@@ -1,8 +1,8 @@
 /**
- * 6차 E2E — 후원샵(/c/[code]) 화면 분기 + PC 웹 후원 PIN 인증 전 구간.
+ * 6차 E2E — 결제 페이지(/c/[code]) 화면 분기 + PC 웹 결제 PIN 인증 전 구간.
  *
- * PC 는 화면에서 바로 후원(금액·메시지 → 번호 → PIN 링크 문자 → PIN 입력 → 완료),
- * 모바일은 전용 후원 번호로 문자를 보내는 흐름이다. 두 갈래가 각각 살아있는지 본다.
+ * PC 는 화면에서 바로 결제(금액·메시지 → 번호 → PIN 링크 문자 → PIN 입력 → 완료),
+ * 모바일은 전용 결제 수신번호로 문자를 보내는 흐름이다. 두 갈래가 각각 살아있는지 본다.
  */
 import {
   launch, createReporter, bodyText, missingOf, findPinLink, gotoReady,
@@ -10,7 +10,7 @@ import {
 } from './_helpers.mjs';
 
 await assertServerUp();
-const r = createReporter('6차 — 후원샵 · PC PIN 후원 전 구간');
+const r = createReporter('6차 — 결제 페이지 · PC PIN 결제 전 구간');
 const b = await launch();
 const SHOP = `${BASE}/c/${SEED.creator1Code}`;
 
@@ -21,18 +21,18 @@ try {
   await gotoReady(pc, SHOP);
   const pcText = await bodyText(pc);
 
-  r.ok('PC: 크리에이터 이름이 보인다', pcText.includes(SEED.creator1Name));
-  r.ok('PC: 후원 패널 제목', pcText.includes(`${SEED.creator1Name} 님에게 후원하기`));
+  r.ok('PC: 가맹점 이름이 보인다', pcText.includes(SEED.creator1Name));
+  r.ok('PC: 결제 패널 제목', pcText.includes(`${SEED.creator1Name} 님에게 결제하기`));
   r.ok(
     'PC: 기본 배너가 적용된다',
     (await pc.locator('header img[src*="/banners/munjapay-live-banner-"]').count()) > 0,
   );
   r.ok('PC: 모의 결제 안내가 보인다', pcText.includes('현재 모의(mock) 결제 상태입니다'));
-  r.ok('PC: 최근 후원 섹션', pcText.includes('최근 후원'));
+  r.ok('PC: 최근 결제 섹션', pcText.includes('최근 결제'));
   r.ok('PC: 이용 한도 안내', pcText.includes('이용 한도 안내'));
   r.ok('PC: 신고·문의 링크', (await pc.locator('a[href="/support"]').count()) > 0);
 
-  // PC 전용 "후원 방법" 4단계 (모바일과 문구가 다르다)
+  // PC 전용 "결제 방법" 4단계 (모바일과 문구가 다르다)
   {
     const miss = missingOf(pcText, [
       '금액과 응원 메시지를 고릅니다',
@@ -40,30 +40,30 @@ try {
       'PIN 을 입력하면 결제됩니다',
       '유튜브와 방송에 표시됩니다',
     ]);
-    r.ok('PC: 후원 방법 4단계(웹 기준)', miss.length === 0, miss.join(','));
+    r.ok('PC: 결제 방법 4단계(웹 기준)', miss.length === 0, miss.join(','));
   }
   r.ok('PC: 문자 기준 안내는 노출되지 않는다', !pcText.includes('첫 문자를 보내면 오는 안내'));
-  r.ok('PC: 모바일 전용 번호 카드가 없다', !pcText.includes('전용 후원 번호'));
+  r.ok('PC: 모바일 전용 번호 카드가 없다', !pcText.includes('전용 결제 수신번호'));
 
   // ── 1단계: 금액·메시지
-  const startBtn = pc.locator('div.hidden.sm\\:block button:has-text("문자후원하기")');
-  r.ok('PC: 후원 시작 버튼이 1개만 보인다', (await startBtn.count()) === 1);
+  const startBtn = pc.locator('div.hidden.sm\\:block button:has-text("문자결제하기")');
+  r.ok('PC: 결제 시작 버튼이 1개만 보인다', (await startBtn.count()) === 1);
   await startBtn.click();
   await pc.waitForSelector('text=1. 금액·메시지', { timeout: 20_000 }).catch(() => {});
   await pc.waitForTimeout(300);
   const composeText = await bodyText(pc);
   {
-    const miss = missingOf(composeText, ['1. 금액·메시지', '2. 번호 입력', '3. PIN 입력', '4. 후원 완료']);
+    const miss = missingOf(composeText, ['1. 금액·메시지', '2. 번호 입력', '3. PIN 입력', '4. 결제 완료']);
     r.ok('PC: 4단계 진행 표시가 나온다', miss.length === 0, miss.join(','));
   }
-  r.ok('PC: 후원 금액 단계', composeText.includes('후원 금액'));
-  r.ok('PC: 후원 메시지 단계', composeText.includes('후원 메시지'));
+  r.ok('PC: 결제 금액 단계', composeText.includes('결제 금액'));
+  r.ok('PC: 결제 메모 단계', composeText.includes('결제 메모'));
   r.ok('PC: 직접입력 칩', (await pc.locator('button:has-text("직접입력")').count()) > 0);
   r.ok('PC: 메시지 입력창(200자)', (await pc.locator('textarea[maxlength="200"]').count()) > 0);
 
-  await pc.locator('textarea[maxlength="200"]').fill('E2E 자동 검증 후원입니다');
+  await pc.locator('textarea[maxlength="200"]').fill('E2E 자동 검증 결제입니다');
   await pc.waitForTimeout(200);
-  const cta = pc.locator('button:has-text("후원 진행 (번호 입력)")');
+  const cta = pc.locator('button:has-text("결제 진행 (번호 입력)")');
   r.ok('PC: 금액·메시지를 채우면 다음 버튼이 활성화된다', (await cta.count()) > 0 && (await cta.isEnabled()));
 
   // ── 2단계: 번호 입력
@@ -99,11 +99,11 @@ try {
     r.ok('PIN 화면: 결제 PIN 인증 제목', pinText.includes('결제 PIN 인증'));
     r.ok('PIN 화면: 모의 화면 고지', pinText.includes('[MOCK] 실제 결제사 화면이 아닙니다'));
     r.ok('PIN 화면: 입력 시 출금된다는 고지', pinText.includes('PIN 입력 시 출금됩니다'));
-    r.ok('PIN 화면: 크리에이터·메시지 확인', pinText.includes(SEED.creator1Name) && pinText.includes('E2E 자동 검증 후원입니다'));
+    r.ok('PIN 화면: 가맹점·메시지 확인', pinText.includes(SEED.creator1Name) && pinText.includes('E2E 자동 검증 결제입니다'));
 
     const pinInput = pinPage.locator('input[placeholder="000000"]');
     r.ok('PIN 화면: 6자리 입력칸', (await pinInput.count()) > 0);
-    const submit = pinPage.locator('button:has-text("PIN 입력하고 후원하기")');
+    const submit = pinPage.locator('button:has-text("PIN 입력하고 결제하기")');
     r.ok('PIN 미입력 상태에서는 제출이 막힌다', await submit.isDisabled());
 
     await pinInput.fill('123456');
@@ -112,7 +112,7 @@ try {
     await submit.click();
     await pinPage.waitForTimeout(3000);
     const doneText = await bodyText(pinPage);
-    r.ok('PIN 화면: 후원 완료로 바뀐다', doneText.includes('후원이 완료되었습니다'), doneText.slice(0, 160));
+    r.ok('PIN 화면: 결제 완료로 바뀐다', doneText.includes('결제가 완료되었습니다'), doneText.slice(0, 160));
     r.ok('PIN 화면: 거래번호가 표시된다', doneText.includes('거래번호'));
 
     // 같은 링크 재사용 차단
@@ -120,17 +120,17 @@ try {
     r.ok('PIN 링크는 1회용이다', (await bodyText(pinPage)).includes('이미 처리된 인증입니다'));
     await pinPage.close();
 
-    // ── 4단계: 후원샵 화면이 폴링으로 완료를 감지한다
+    // ── 4단계: 결제 페이지 화면이 폴링으로 완료를 감지한다
     await pc.waitForTimeout(6000);
     const finalText = await bodyText(pc);
-    r.ok('PC: 후원샵이 완료 상태로 전환된다', finalText.includes('후원이 완료되었습니다'), finalText.slice(0, 160));
+    r.ok('PC: 결제 페이지이 완료 상태로 전환된다', finalText.includes('결제가 완료되었습니다'), finalText.slice(0, 160));
     r.ok('PC: 거래번호가 표시된다', finalText.includes('거래번호'));
-    r.ok('PC: 한 번 더 후원하기 버튼', (await pc.locator('button:has-text("한 번 더 후원하기")').count()) > 0);
+    r.ok('PC: 한 번 더 결제하기 버튼', (await pc.locator('button:has-text("한 번 더 결제하기")').count()) > 0);
 
-    // 결제 완료 건이 최근 후원 목록에 올라온다
+    // 결제 완료 건이 최근 결제 목록에 올라온다
     const fresh = await ctx.newPage();
     await gotoReady(fresh, SHOP);
-    r.ok('결제 완료 후원이 최근 후원에 노출된다', (await bodyText(fresh)).includes('E2E 자동 검증 후원입니다'));
+    r.ok('결제 완료 결제이 최근 결제에 노출된다', (await bodyText(fresh)).includes('E2E 자동 검증 결제입니다'));
     await fresh.close();
   }
 
@@ -142,7 +142,7 @@ try {
   await gotoReady(m, SHOP);
   const mText = await bodyText(m);
 
-  r.ok('모바일: 전용 후원 번호 카드', mText.includes(`${SEED.creator1Name} 전용 후원 번호`));
+  r.ok('모바일: 전용 결제 수신번호 카드', mText.includes(`${SEED.creator1Name} 전용 결제 수신번호`));
   {
     // 화면은 0505-1001-001 처럼 끊어 보여 주고 DB 에는 하이픈 없이 저장한다.
     // 서식이 바뀌어도 깨지지 않게 숫자만 남겨 비교한다.
@@ -151,8 +151,8 @@ try {
   }
   r.ok('모바일: 번호 복사 버튼', (await m.locator('button:has-text("번호 복사")').count()) > 0);
   r.ok('모바일: sms 링크로 문자 앱을 연다', (await m.locator(`a[href^="sms:"]`).count()) > 0);
-  r.ok('모바일: 하단 고정 후원 바', (await m.locator('div.fixed.inset-x-0.bottom-0').count()) > 0);
-  r.ok('모바일: 첫 문자 안내', mText.includes('처음 보내는 문자는 후원되지 않습니다'));
+  r.ok('모바일: 하단 고정 결제 바', (await m.locator('div.fixed.inset-x-0.bottom-0').count()) > 0);
+  r.ok('모바일: 첫 문자 안내', mText.includes('처음 보내는 문자는 결제되지 않습니다'));
   {
     const miss = missingOf(mText, [
       '계좌를 1회 등록합니다',
@@ -160,20 +160,20 @@ try {
       'PIN 을 입력하면 결제됩니다',
       '방송에 표시됩니다',
     ]);
-    r.ok('모바일: 후원 방법 4단계(문자 기준)', miss.length === 0, miss.join(','));
+    r.ok('모바일: 결제 방법 4단계(문자 기준)', miss.length === 0, miss.join(','));
   }
-  r.ok('모바일: PC 후원 패널은 숨는다', !mText.includes(`${SEED.creator1Name} 님에게 후원하기`));
+  r.ok('모바일: PC 결제 패널은 숨는다', !mText.includes(`${SEED.creator1Name} 님에게 결제하기`));
   await mctx.close();
 
-  // ══════════════ 미등록 후원자 → 등록 화면 (방송 닉네임 입력) ══════════════
+  // ══════════════ 미등록 이용자 → 등록 화면 (방송 닉네임 입력) ══════════════
   {
     const rctx = await b.newContext(desktop);
     const rp = await rctx.newPage();
     await gotoReady(rp, SHOP);
-    await rp.locator('div.hidden.sm\\:block button:has-text("문자후원하기")').click();
+    await rp.locator('div.hidden.sm\\:block button:has-text("문자결제하기")').click();
     await rp.waitForSelector('text=1. 금액·메시지', { timeout: 20_000 }).catch(() => {});
-    await rp.locator('textarea[maxlength="200"]').fill('첫 후원 시도입니다');
-    await rp.locator('button:has-text("후원 진행 (번호 입력)")').click();
+    await rp.locator('textarea[maxlength="200"]').fill('첫 결제 시도입니다');
+    await rp.locator('button:has-text("결제 진행 (번호 입력)")').click();
     await rp.waitForSelector('input[name=phone]', { timeout: 20_000 }).catch(() => {});
 
     // 시드에 없는 번호 → 등록 안내 문자가 나간다
@@ -213,14 +213,14 @@ try {
       r.ok('미입력 시 끝 4자리 안내', regText.includes('번호 끝 4자리(4321)'), regText.slice(0, 240));
       r.ok('방송 표시 미리보기', regText.includes('방송·유튜브 채팅에 이렇게 표시됩니다'));
       // 방송에서 실제로 불리는 이름과 같아야 한다(자동 생성 이름은 끝 4자리로 불린다).
-      r.ok('기본 이름 미리보기가 방송 표기와 같다', regText.includes('4321님이 3,000원을 후원하셨습니다'));
-      r.ok('미리보기에 후원자 접두사가 붙지 않는다', !regText.includes('후원자4321님이'));
+      r.ok('기본 이름 미리보기가 방송 표기와 같다', regText.includes('4321님이 3,000원을 결제하셨습니다'));
+      r.ok('미리보기에 이용자 접두사가 붙지 않는다', !regText.includes('이용자4321님이'));
       r.ok('나중에 바꿀 수 있다는 안내', regText.includes('마이페이지에서 언제든지 바꿀 수 있습니다'));
 
       // 입력하면 미리보기가 즉시 바뀐다
       await nickInput.fill('밤톨이');
       await reg.waitForTimeout(400);
-      r.ok('닉네임을 넣으면 미리보기가 바뀐다', (await bodyText(reg)).includes('밤톨이님이 3,000원을 후원하셨습니다'));
+      r.ok('닉네임을 넣으면 미리보기가 바뀐다', (await bodyText(reg)).includes('밤톨이님이 3,000원을 결제하셨습니다'));
 
       // 길이 제한(2~10자)
       await nickInput.fill('가'.repeat(11));
@@ -239,7 +239,7 @@ try {
   const nctx = await b.newContext(desktop);
   const n = await nctx.newPage();
   await gotoReady(n, `${BASE}/c/MJP-XXXX`);
-  r.ok('없는 코드는 안내 화면을 보여준다', (await bodyText(n)).includes('크리에이터를 찾을 수 없습니다'));
+  r.ok('없는 코드는 안내 화면을 보여준다', (await bodyText(n)).includes('가맹점을 찾을 수 없습니다'));
   await nctx.close();
 } catch (e) {
   r.ok('스크립트가 끝까지 실행된다', false, String(e?.message ?? e).slice(0, 200));

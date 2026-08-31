@@ -98,9 +98,9 @@ describe('로그 마스킹', () => {
   });
 });
 
-// ───────────────────── 4. 수수료가 후원금을 넘는 경우 ─────────────────────
+// ───────────────────── 4. 수수료가 결제 금액을 넘는 경우 ─────────────────────
 
-describe('수수료 계산은 후원금을 넘지 않는다', () => {
+describe('수수료 계산은 결제 금액을 넘지 않는다', () => {
   it('요율을 잘못 넣어도 화면 금액과 원장이 어긋나지 않는다', () => {
     // 0.095 를 0.95 로 잘못 찍은 상황. 예전에는 net 만 0 으로 보정하고
     // pgFee·platformFee 는 보정 전 값이 그대로 원장에 들어가 잔액이 음수가 됐다.
@@ -169,7 +169,7 @@ describe('결과 미확인 결제의 수동 대사', () => {
     const ok = results.filter((r) => r.status === 'fulfilled');
     expect(ok).toHaveLength(1);
 
-    // 되돌림이 두 번 돌면 집계가 실제보다 더 깎여, 그만큼 한도를 넘겨 후원할 수 있게 된다.
+    // 되돌림이 두 번 돌면 집계가 실제보다 더 깎여, 그만큼 한도를 넘겨 결제할 수 있게 된다.
     const after = await prisma.donationCounter.findUniqueOrThrow({ where: key });
     expect(after.count).toBe(before.count - 1);
     expect(after.amount).toBe(before.amount - donation.amount);

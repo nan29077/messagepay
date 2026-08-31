@@ -27,8 +27,8 @@ try {
   {
     const opts = await g.locator('select[name=category] option').allInnerTexts();
     const miss = missingOf(opts.join('|'), [
-      '후원 취소 · 환불', '계좌 등록 · 자동출금 동의', '결제 오류 · 중복 결제',
-      '방송 노출 · 메시지 표시', '부적절한 이용 신고', '크리에이터 가입 · 정산', '기타 문의',
+      '결제 취소 · 환불', '계좌 등록 · 자동출금 동의', '결제 오류 · 중복 결제',
+      '방송 노출 · 메시지 표시', '부적절한 이용 신고', '가맹점 가입 · 정산', '기타 문의',
     ]);
     r.ok('문의 유형 7종', miss.length === 0, miss.join(','));
   }
@@ -60,7 +60,7 @@ try {
   r.ok('접수번호가 발급된다', doneText.includes('접수번호'));
   r.ok(
     '없는 거래번호는 연결 실패를 안내한다',
-    doneText.includes('해당하는 후원 내역을 찾지 못해'),
+    doneText.includes('해당하는 결제 내역을 찾지 못해'),
   );
   const ticket = (doneText.match(/접수번호\s*\n?\s*([0-9A-Za-z]{20,})/) ?? [])[1] ?? null;
   r.ok('접수번호 값을 읽을 수 있다', Boolean(ticket), ticket ?? doneText.slice(0, 120));

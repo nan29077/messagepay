@@ -43,7 +43,7 @@ describe('수수료 부가세 계산', () => {
     expect(fees.platformFeeVat).toBe(30n); // 300 x 10%
     expect(fees.platformFee).toBe(330n); // 총 차감
     expect(fees.vat).toBe(30n);
-    expect(fees.net).toBe(2_670n); // 크리에이터 정산금
+    expect(fees.net).toBe(2_670n); // 가맹점 정산금
   });
 
   it('부가세 포함(vatIncluded=true)이면 요율만큼만 차감한다', () => {
@@ -80,13 +80,13 @@ describe('수수료 부가세 계산', () => {
   });
 });
 
-describe('부가세가 실제 후원·정산에 반영된다', () => {
+describe('부가세가 실제 결제·정산에 반영된다', () => {
   beforeEach(async () => {
     await resetDb();
     fx = await seedBasics({ paymentMode: 'DIRECT_TRIGGER' });
   });
 
-  it('부가세 별도 정책이면 후원 1건의 정산금과 원장 잔액이 2,670원이 된다', async () => {
+  it('부가세 별도 정책이면 결제 1건의 정산금과 원장 잔액이 2,670원이 된다', async () => {
     await setGlobalFee({ pg: '0', platform: '0.10', vatIncluded: false });
     await seedRegisteredDonor(fx.donorPhone);
 
@@ -122,7 +122,7 @@ describe('부가세가 실제 후원·정산에 반영된다', () => {
   });
 });
 
-describe('크리에이터 감사 문자 커스터마이즈', () => {
+describe('가맹점 감사 문자 커스터마이즈', () => {
   beforeEach(async () => {
     await resetDb();
     fx = await seedBasics({ paymentMode: 'DIRECT_TRIGGER' });
@@ -132,14 +132,14 @@ describe('크리에이터 감사 문자 커스터마이즈', () => {
     await seedRegisteredDonor(fx.donorPhone);
     await inbound(moPayload({ to: fx.moNumber, text: '화이팅' }));
 
-    const success = readMockOutbox(10).find((m) => m.text.includes('후원되었습니다'));
-    expect(success?.text).toContain('누적 후원');
+    const success = readMockOutbox(10).find((m) => m.text.includes('충전되었습니다'));
+    expect(success?.text).toContain('누적 결제');
   });
 
   it('설정한 본문의 치환자가 실제 값으로 바뀌어 발송된다', async () => {
     await prisma.creatorProfile.update({
       where: { id: fx.creatorId },
-      data: { thanksMtMessage: '{후원자}님 고마워요! {금액} 잘 받았습니다. 남겨주신 말: {메시지}' },
+      data: { thanksMtMessage: '{이용자}님 고마워요! {금액} 잘 받았습니다. 남겨주신 말: {메시지}' },
     });
     await seedRegisteredDonor(fx.donorPhone);
     await inbound(moPayload({ to: fx.moNumber, text: '오늘도 화이팅' }));
@@ -147,12 +147,12 @@ describe('크리에이터 감사 문자 커스터마이즈', () => {
     const success = readMockOutbox(10).find((m) => m.text.includes('고마워요'));
     expect(success).toBeDefined();
     expect(success!.text).toBe(
-      '[문자페이] 테스트후원자님 고마워요! 3,000원 잘 받았습니다. 남겨주신 말: 오늘도 화이팅',
+      '[문자페이] 테스트이용자님 고마워요! 3,000원 잘 받았습니다. 남겨주신 말: 오늘도 화이팅',
     );
     // 발신 주체 표기는 설정과 무관하게 항상 붙는다.
     expect(success!.text.startsWith('[문자페이] ')).toBe(true);
     // 기본 문구는 더 이상 쓰이지 않는다.
-    expect(success!.text).not.toContain('누적 후원');
+    expect(success!.text).not.toContain('누적 결제');
   });
 
   it('치환값에 정규식 특수문자가 있어도 본문이 깨지지 않는다', () => {
@@ -163,7 +163,7 @@ describe('크리에이터 감사 문자 커스터마이즈', () => {
       amount: 3_000n,
       message: `${dollar}1`,
       cumulative: 3_000n,
-      custom: '{후원자} / {메시지}',
+      custom: '{이용자} / {메시지}',
     });
     expect(out.text).toBe(`[문자페이] ${dollar}&test / ${dollar}1`);
   });
@@ -177,7 +177,7 @@ describe('크리에이터 감사 문자 커스터마이즈', () => {
       cumulative: 3_000n,
       custom: '   ',
     });
-    expect(out.text).toContain('누적 후원');
+    expect(out.text).toContain('누적 결제');
   });
 });
 
@@ -187,7 +187,7 @@ describe('카드 빌링키 구조', () => {
     fx = await seedBasics({ paymentMode: 'DIRECT_TRIGGER' });
   });
 
-  it('카드로 등록하면 카드 빌링키가 저장되고 이후 후원 흐름은 계좌와 동일하게 동작한다', async () => {
+  it('카드로 등록하면 카드 빌링키가 저장되고 이후 결제 흐름은 계좌와 동일하게 동작한다', async () => {
     // (1) 최초 문자 -> 등록 안내 링크 발송 (결제수단 종류와 무관하게 같은 경로)
     const first = await inbound(moPayload({ to: fx.moNumber }));
     expect(first.result).toBe('UNREGISTERED_DONOR');
@@ -216,14 +216,14 @@ describe('카드 빌링키 구조', () => {
     // 카드번호 원문은 저장하지 않는다.
     expect(JSON.stringify(token)).not.toContain('4111111111119876');
 
-    // (3) 등록 후 문자는 결제수단 종류와 무관하게 후원으로 접수·결제된다.
-    const second = await inbound(moPayload({ to: fx.moNumber, text: '카드로 후원합니다' }));
+    // (3) 등록 후 문자는 결제수단 종류와 무관하게 결제으로 접수·결제된다.
+    const second = await inbound(moPayload({ to: fx.moNumber, text: '카드로 결제합니다' }));
     expect(second.result).toBe('ROUTED');
     const donation = await prisma.donation.findFirstOrThrow({ where: { id: second.donationId } });
     expect(donation.paidAt).not.toBeNull();
 
     // (4) 감사 문자도 동일하게 발송된다.
-    expect(readMockOutbox(10).some((m) => m.text.includes('후원되었습니다'))).toBe(true);
+    expect(readMockOutbox(10).some((m) => m.text.includes('충전되었습니다'))).toBe(true);
   });
 
   it('계좌로 등록하면 method 는 ACCOUNT 로 남는다 (기본값 유지)', async () => {

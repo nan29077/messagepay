@@ -9,8 +9,8 @@ import { resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } fro
 /**
  * PIN 인증 결제 흐름.
  *
- *   MO 수신 → (빌키 있음) 후원 생성 → 결제사 PIN 링크 발급 → MT 발송
- *   → 후원자 PIN 입력 → 콜백 → 승인 → 정산 분개 → 방송
+ *   MO 수신 → (빌키 있음) 결제 생성 → 결제사 PIN 링크 발급 → MT 발송
+ *   → 이용자 PIN 입력 → 콜백 → 승인 → 정산 분개 → 충전 반영
  *
  * 이 파일이 지키는 것
  *  1) MO 수신·PIN 링크 발송만으로는 절대 출금되지 않는다.
@@ -41,7 +41,7 @@ describe('PIN 인증 결제 흐름 (CONFIRM_LINK 기본 경로)', () => {
   });
 
   it('[1] 미등록 팬의 MO 는 결제되지 않고 등록 안내만 발송된다', async () => {
-    const res = await inbound(moPayload({ to: fx.moNumber, text: '첫 후원입니다' }));
+    const res = await inbound(moPayload({ to: fx.moNumber, text: '첫 결제입니다' }));
 
     expect(res.result).toBe('UNREGISTERED_DONOR');
     expect(await prisma.donation.count()).toBe(0);
@@ -49,7 +49,7 @@ describe('PIN 인증 결제 흐름 (CONFIRM_LINK 기본 경로)', () => {
     expect(await prisma.paymentTransaction.count()).toBe(0);
 
     const mt = readMockOutbox(1)[0];
-    expect(mt.text).toContain('최초 문자는 후원 처리되지 않았습니다');
+    expect(mt.text).toContain('최초 문자는 결제 처리되지 않았습니다');
     expect(await prisma.secureLink.count({ where: { purpose: 'REGISTER_ACCOUNT' } })).toBe(1);
   });
 
@@ -85,7 +85,7 @@ describe('PIN 인증 결제 흐름 (CONFIRM_LINK 기본 경로)', () => {
 
   it('[3] PIN 완료 콜백을 받아야 결제가 완료되고 정산 원장이 생긴다', async () => {
     await seedRegisteredDonor(fx.donorPhone);
-    const res = await inbound(moPayload({ to: fx.moNumber, text: '오늘 방송 최고예요' }));
+    const res = await inbound(moPayload({ to: fx.moNumber, text: '캐시 충전합니다' }));
     const session = await prisma.paymentPinSession.findFirstOrThrow();
 
     const done = await completePinAuthorization({ sessionId: session.sessionId });
@@ -112,7 +112,7 @@ describe('PIN 인증 결제 흐름 (CONFIRM_LINK 기본 경로)', () => {
     expect(after.callbackCount).toBe(1);
 
     // 완료 안내 문자
-    expect(readMockOutbox(5).some((m) => m.text.includes('후원'))).toBe(true);
+    expect(readMockOutbox(5).some((m) => m.text.includes('결제'))).toBe(true);
   });
 
   it('[4] 콜백이 중복으로 와도 결제는 1회만 이루어진다', async () => {
@@ -212,7 +212,7 @@ describe('PIN 인증 결제 흐름 (CONFIRM_LINK 기본 경로)', () => {
     expect(readMockOutbox(3).some((m) => m.text.includes('완료되지 않았습니다'))).toBe(true);
   });
 
-  it('[10] 같은 후원으로 두 번 요청해도 PIN 링크는 한 장만 발급된다', async () => {
+  it('[10] 같은 결제으로 두 번 요청해도 PIN 링크는 한 장만 발급된다', async () => {
     await seedRegisteredDonor(fx.donorPhone);
     const res = await inbound(moPayload({ to: fx.moNumber }));
 
@@ -222,7 +222,7 @@ describe('PIN 인증 결제 흐름 (CONFIRM_LINK 기본 경로)', () => {
     expect(await prisma.mtOutboundMessage.count({ where: { templateCode: 'PIN_REQUEST' } })).toBe(1);
   });
 
-  it('[11] 한도를 넘긴 후원은 PIN 링크 자체가 발급되지 않는다', async () => {
+  it('[11] 한도를 넘긴 결제은 PIN 링크 자체가 발급되지 않는다', async () => {
     const donor = await seedRegisteredDonor(fx.donorPhone);
     await prisma.donationLimitPolicy.updateMany({ where: { scope: 'GLOBAL' }, data: { donorDailyLimit: 1000n } });
 

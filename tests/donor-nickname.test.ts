@@ -16,18 +16,18 @@ import {
 import { validateDonorName } from '@/server/services/donor-name';
 
 /**
- * 후원자 방송 닉네임.
- *  - 설정 전에는 번호 끝 4자리로 만든 기본 이름(후원자5678)을 쓴다.
- *  - 설정하면 그 이름이 후원 시점에 박제된다(나중에 바꿔도 과거 내역은 그대로).
+ * 이용자 표시 이름.
+ *  - 설정 전에는 번호 끝 4자리로 만든 기본 이름(이용자5678)을 쓴다.
+ *  - 설정하면 그 이름이 결제 시점에 박제된다(나중에 바꿔도 과거 내역은 그대로).
  */
 
 let fx: Fixture;
 const inbound = (p: Record<string, unknown>) => handleMoInbound(mockMoAdapter.parse(p));
 
-describe('방송에 실제로 불리는 이름', () => {
+describe('결제 내역에 실제로 남는 이름', () => {
   it('자동 생성된 기본 이름은 끝 4자리로만 불린다', () => {
-    // "후원자5678님이 3,000원을 후원하셨습니다" 는 읽을 때 어색하다.
-    expect(broadcastDonorName('후원자5678')).toBe('5678');
+    // "이용자5678님이 3,000원을 결제하셨습니다" 는 읽을 때 어색하다.
+    expect(broadcastDonorName('이용자5678')).toBe('5678');
   });
 
   it('직접 정한 닉네임은 그대로 부른다', () => {
@@ -42,46 +42,46 @@ describe('방송에 실제로 불리는 이름', () => {
   });
 
   it('끝 4자리를 못 얻으면 원래 값을 그대로 둔다', () => {
-    expect(broadcastDonorName('후원자')).toBe('후원자');
+    expect(broadcastDonorName('이용자')).toBe('이용자');
     expect(broadcastDonorName('')).toBe('');
   });
 
   it('닉네임 설정 화면 미리보기와 실제 송출이 같은 규칙을 쓴다', () => {
-    // 규칙이 서버에만 있으면 화면에서 약속한 이름과 방송에 뜨는 이름이 어긋난다.
-    // (실제로 그랬다 — 화면은 "후원자5678", 방송은 "5678")
+    // 규칙이 서버에만 있으면 화면에서 약속한 이름과 실제 기록이 어긋난다.
+    // (실제로 그랬다 — 화면은 "이용자5678", 기록은 "5678")
     const saved = defaultDonorName('010-1234-5678');
     expect(broadcastDonorName(saved)).toBe('5678');
   });
 });
 
 describe('기본 닉네임 (번호 끝 4자리)', () => {
-  it('번호에서 끝 4자리를 뽑아 후원자5678 형태로 만든다', () => {
-    expect(defaultDonorName('010-1234-5678')).toBe('후원자5678');
-    expect(defaultDonorName('01012345678')).toBe('후원자5678');
-    expect(defaultDonorName('+821012345678')).toBe('후원자5678');
+  it('번호에서 끝 4자리를 뽑아 이용자5678 형태로 만든다', () => {
+    expect(defaultDonorName('010-1234-5678')).toBe('이용자5678');
+    expect(defaultDonorName('01012345678')).toBe('이용자5678');
+    expect(defaultDonorName('+821012345678')).toBe('이용자5678');
   });
 
   it('마스킹된 번호에서도 끝 4자리를 그대로 뽑는다', () => {
-    // 웹 후원 경로는 phoneMasked(010-****-5678) 만 들고 있다
-    expect(defaultDonorName('010-****-5678')).toBe('후원자5678');
+    // 웹 결제 경로는 phoneMasked(010-****-5678) 만 들고 있다
+    expect(defaultDonorName('010-****-5678')).toBe('이용자5678');
   });
 
   it('번호가 너무 짧으면 접두사만 돌려준다', () => {
-    expect(defaultDonorName('123')).toBe('후원자');
-    expect(defaultDonorName('')).toBe('후원자');
+    expect(defaultDonorName('123')).toBe('이용자');
+    expect(defaultDonorName('')).toBe('이용자');
   });
 
   it('닉네임이 있으면 닉네임을, 없으면 기본 이름을 쓴다', () => {
     expect(donorDisplayName('밤톨이', '010-1234-5678')).toBe('밤톨이');
-    expect(donorDisplayName(null, '010-1234-5678')).toBe('후원자5678');
-    expect(donorDisplayName('   ', '010-1234-5678')).toBe('후원자5678');
+    expect(donorDisplayName(null, '010-1234-5678')).toBe('이용자5678');
+    expect(donorDisplayName('   ', '010-1234-5678')).toBe('이용자5678');
   });
 
   it('자동 생성된 이름인지 구분한다', () => {
-    expect(isDefaultDonorName('후원자5678')).toBe(true);
-    expect(isDefaultDonorName('후원자')).toBe(true);
+    expect(isDefaultDonorName('이용자5678')).toBe(true);
+    expect(isDefaultDonorName('이용자')).toBe(true);
     expect(isDefaultDonorName('밤톨이')).toBe(false);
-    expect(isDefaultDonorName('후원자밤톨')).toBe(false);
+    expect(isDefaultDonorName('이용자밤톨')).toBe(false);
   });
 });
 
@@ -155,7 +155,7 @@ describe('닉네임 금칙어 (서버 검증)', () => {
     expect((await validateDonorName('관찰어짱')).ok).toBe(true);
   });
 
-  it('크리에이터 개인 금칙어는 닉네임에 적용하지 않는다', async () => {
+  it('가맹점 개인 금칙어는 닉네임에 적용하지 않는다', async () => {
     // 닉네임은 특정 채널 소유가 아니므로 전역 기준만 본다
     await prisma.bannedWord.create({
       data: { id: newId(), scope: 'CREATOR', creatorId: fx.creatorId, word: '경쟁사', action: 'BLOCK', active: true },
@@ -170,24 +170,24 @@ describe('닉네임 금칙어 (서버 검증)', () => {
   });
 });
 
-describe('후원 표시 이름 반영', () => {
+describe('결제 표시 이름 반영', () => {
   beforeEach(async () => {
     await resetDb();
     fx = await seedBasics({ paymentMode: 'DIRECT_TRIGGER' });
     await seedRegisteredDonor(fx.donorPhone);
   });
 
-  it('닉네임이 없으면 후원에 기본 이름이 박힌다', async () => {
+  it('닉네임이 없으면 결제에 기본 이름이 박힌다', async () => {
     await prisma.donorProfile.updateMany({ data: { displayName: null } });
     await inbound(moPayload({ to: fx.moNumber, text: '응원합니다' }));
 
     const donation = await prisma.donation.findFirstOrThrow();
     expect(donation.displayName).toBe(defaultDonorName(fx.donorPhone));
-    // 번호 앞자리가 방송에 나가지 않아야 한다
+    // 번호 앞자리가 노출되지 않아야 한다
     expect(donation.displayName).not.toContain('010');
   });
 
-  it('닉네임을 정하면 그 이름이 후원에 박힌다', async () => {
+  it('닉네임을 정하면 그 이름이 결제에 박힌다', async () => {
     await prisma.donorProfile.updateMany({ data: { displayName: '밤톨이' } });
     await inbound(moPayload({ to: fx.moNumber, text: '응원합니다' }));
 
@@ -195,12 +195,12 @@ describe('후원 표시 이름 반영', () => {
     expect(donation.displayName).toBe('밤톨이');
   });
 
-  it('닉네임을 바꿔도 과거 후원 내역은 그대로 남는다 (스냅샷)', async () => {
+  it('닉네임을 바꿔도 과거 결제 내역은 그대로 남는다 (스냅샷)', async () => {
     await prisma.donorProfile.updateMany({ data: { displayName: '밤톨이' } });
-    await inbound(moPayload({ to: fx.moNumber, text: '첫 후원' }));
+    await inbound(moPayload({ to: fx.moNumber, text: '첫 결제' }));
 
     await prisma.donorProfile.updateMany({ data: { displayName: '겨울밤' } });
-    await inbound(moPayload({ to: fx.moNumber, text: '두 번째 후원' }));
+    await inbound(moPayload({ to: fx.moNumber, text: '두 번째 결제' }));
 
     const rows = await prisma.donation.findMany({ orderBy: { createdAt: 'asc' } });
     expect(rows.length).toBe(2);

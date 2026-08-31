@@ -3,7 +3,7 @@
  *  - 유튜브 채널 연결(mock OAuth) → 라이브 조회 → 연결 해제 → 재연결
  *  - 오버레이 URL 발급/재발급, 알림 꾸미기(효과·테마·TTS) 저장
  *  - 스트림 키 발급
- *  - 후원 설정(후원금·감사문자·후원페이지) 저장, 프로필 저장
+ *  - 결제 설정(결제 금액·감사문자·결제 페이지) 저장, 프로필 저장
  */
 import {
   launch, createReporter, bodyText, missingOf, gotoReady, loginCreator,
@@ -106,7 +106,7 @@ try {
   await p.waitForTimeout(500);
   const detail = await bodyText(p);
   {
-    const miss = missingOf(detail, ['오버레이 표시', '후원금 표시', '메시지 표시', '익명 처리', '화면 위치', '표시 시간 (ms)', '최대 글자 수']);
+    const miss = missingOf(detail, ['오버레이 표시', '결제 금액 표시', '메시지 표시', '익명 처리', '화면 위치', '표시 시간 (ms)', '최대 글자 수']);
     r.ok('세부 표시 설정 항목', miss.length === 0, miss.join(','));
   }
   await p.selectOption('select[name=position]', 'TOP_RIGHT');
@@ -136,31 +136,31 @@ try {
     r.ok('자체 방송 기능이 없으면 스트림 키 UI 도 남아있지 않다', (await p.locator('button:has-text("스트림 키")').count()) === 0);
   }
 
-  // ══════════════ 4. 후원 설정 ══════════════
+  // ══════════════ 4. 결제 설정 ══════════════
   await gotoReady(p, `${BASE}/studio/settings`);
   const set = await bodyText(p);
   {
-    const miss = missingOf(set, ['후원금', '감사문자', '결제 모드', '문자번호', '후원페이지']);
-    r.ok('후원 설정 탭 5종', miss.length === 0, miss.join(','));
+    const miss = missingOf(set, ['결제 금액', '감사문자', '결제 모드', '문자번호', '결제 페이지']);
+    r.ok('결제 설정 탭 5종', miss.length === 0, miss.join(','));
   }
-  r.ok('문자 1건당 후원금 입력칸', (await p.locator('input[name=donationAmount]').count()) > 0);
+  r.ok('문자 1건당 결제 금액 입력칸', (await p.locator('input[name=donationAmount]').count()) > 0);
   await p.fill('input[name=donationAmount]', '4000');
-  await p.locator('button:has-text("후원금 저장")').click();
+  await p.locator('button:has-text("결제 금액 저장")').click();
   await p.waitForTimeout(3500);
-  r.ok('후원금이 저장된다', (await p.inputValue('input[name=donationAmount]')) === '4000' || (await bodyText(p)).includes('4,000원'));
+  r.ok('결제 금액이 저장된다', (await p.inputValue('input[name=donationAmount]')) === '4000' || (await bodyText(p)).includes('4,000원'));
 
   await gotoReady(p, `${BASE}/studio/settings?tab=thanks`);
   const th = await bodyText(p);
   r.ok('감사문자 탭', th.includes('감사 문자 내용 설정'));
   r.ok('치환자 안내', th.includes('사용할 수 있는 치환자'));
-  await p.fill('textarea[name=thanksMtMessage]', '{후원자}님 고맙습니다! {금액} 잘 받았습니다.');
+  await p.fill('textarea[name=thanksMtMessage]', '{이용자}님 고맙습니다! {금액} 잘 받았습니다.');
   await p.locator('button:has-text("감사 문자 저장")').click();
   await p.waitForTimeout(3500);
   r.ok('감사 문자가 저장된다', (await bodyText(p)).includes('고맙습니다'));
 
   await gotoReady(p, `${BASE}/studio/settings?tab=payment`);
   const pay = await bodyText(p);
-  r.ok('결제 모드 탭은 읽기 전용', pay.includes('읽기 전용') && pay.includes('크리에이터가 변경할 수 없습니다'));
+  r.ok('결제 모드 탭은 읽기 전용', pay.includes('읽기 전용') && pay.includes('가맹점이 변경할 수 없습니다'));
 
   await gotoReady(p, `${BASE}/studio/settings?tab=number`);
   const num = await bodyText(p);
@@ -169,16 +169,16 @@ try {
 
   await gotoReady(p, `${BASE}/studio/settings?tab=page`);
   const pg = await bodyText(p);
-  r.ok('후원페이지 탭', pg.includes('후원페이지 꾸미기'));
+  r.ok('결제 페이지 탭', pg.includes('결제 페이지 꾸미기'));
   r.ok('배너 프리셋 선택', (await p.locator('input[name=bannerPreset]').count()) >= 5);
   r.ok('라이브 플랫폼 선택', (await p.locator('input[name=livePlatform]').count()) >= 3);
   await p.fill('textarea[name=description]', 'E2E 소개 문구입니다.');
-  await p.locator('button:has-text("후원페이지 설정 저장")').click();
+  await p.locator('button:has-text("결제 페이지 설정 저장")').click();
   await p.waitForTimeout(3500);
   {
     // textarea 값은 innerText 에 안 잡히므로 저장 안내와 입력값으로 확인한다.
     const saved = await bodyText(p);
-    r.ok('후원페이지 설정이 저장된다', saved.includes('후원샵 설정을 저장했습니다'), saved.slice(-160));
+    r.ok('결제 페이지 설정이 저장된다', saved.includes('결제 페이지 설정을 저장했습니다'), saved.slice(-160));
     r.ok('저장한 소개 문구가 유지된다', (await p.inputValue('textarea[name=description]')) === 'E2E 소개 문구입니다.');
   }
 
@@ -186,19 +186,19 @@ try {
   await gotoReady(p, `${BASE}/studio/profile`);
   const pr = await bodyText(p);
   r.ok('프로필 화면', pr.includes('채널 상태') && pr.includes('프로필 수정'));
-  r.ok('크리에이터 코드가 보인다', pr.includes(SEED.creator1Code));
+  r.ok('가맹점 코드가 보인다', pr.includes(SEED.creator1Code));
   r.ok('표시명 입력칸', (await p.locator('input[name=displayName]').count()) > 0);
   await p.fill('input[name=channelName]', 'E2E 채널');
   await p.locator('button:has-text("프로필 저장")').click();
   await p.waitForTimeout(3500);
   r.ok('프로필이 저장된다', (await p.inputValue('input[name=channelName]')) === 'E2E 채널');
 
-  // ══════════════ 6. 후원샵 반영 확인 ══════════════
+  // ══════════════ 6. 결제 페이지 반영 확인 ══════════════
   const shop = await ctx.newPage();
   await gotoReady(shop, `${BASE}/c/${SEED.creator1Code}`);
   const sh = await bodyText(shop);
-  r.ok('후원샵에 채널명이 반영된다', sh.includes('E2E 채널'));
-  r.ok('후원샵에 소개 문구가 반영된다', sh.includes('E2E 소개 문구입니다.'));
+  r.ok('결제 페이지에 채널명이 반영된다', sh.includes('E2E 채널'));
+  r.ok('결제 페이지에 소개 문구가 반영된다', sh.includes('E2E 소개 문구입니다.'));
   await shop.close();
 
   await ctx.close();

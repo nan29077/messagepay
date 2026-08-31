@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * PC 웹(후원샵) 전화번호 인증 서버 액션 검증.
+ * PC 웹(결제 페이지) 전화번호 인증 서버 액션 검증.
  *
  *  - 인증 세션(Redis)에 전화번호 원문이 남지 않는다.
  *  - 미가입자에게 가입 링크를 발급할 때 팝업 URL 과 MT 문자를 함께 내보낸다.
@@ -59,7 +59,7 @@ async function readCodeSession(ticket: string) {
   return JSON.parse(raw!) as { ph: string; pm: string; pn: string; ch: string; at: number };
 }
 
-describe('후원샵 웹 인증 — 세션 전화번호 보호', () => {
+describe('결제 페이지 웹 인증 — 세션 전화번호 보호', () => {
   beforeEach(async () => {
     await resetDb();
     cookieJar.clear();
@@ -93,13 +93,13 @@ describe('후원샵 웹 인증 — 세션 전화번호 보호', () => {
     expect(verified.ok).toBe(false);
     expect(verified.step).toBe('phone');
     expect(verified.registerUrl).toBeUndefined();
-    // 링크도 후원자 프로필도 만들지 않는다.
+    // 링크도 이용자 프로필도 만들지 않는다.
     expect(await prisma.secureLink.count()).toBe(0);
     expect(await prisma.donorProfile.count()).toBe(0);
   });
 });
 
-describe('후원샵 웹 인증 — 미가입자 가입 안내', () => {
+describe('결제 페이지 웹 인증 — 미가입자 가입 안내', () => {
   beforeEach(async () => {
     await resetDb();
     cookieJar.clear();
@@ -134,7 +134,7 @@ describe('후원샵 웹 인증 — 미가입자 가입 안내', () => {
     expect(outbox!.to).toBe(normalizePhone(WEB_PHONE));
     expect(outbox!.text).toContain(verified.registerUrl!);
 
-    // 가입 화면이 찾을 수 있도록 후원자 프로필이 만들어지고, 전화번호는 암호화 저장된다.
+    // 가입 화면이 찾을 수 있도록 이용자 프로필이 만들어지고, 전화번호는 암호화 저장된다.
     const donor = await prisma.donorProfile.findUniqueOrThrow({ where: { phoneHash: phoneHash(WEB_PHONE) } });
     expect(decrypt(donor.phoneEnc)).toBe(WEB_PHONE);
     expect(donor.phoneMasked).toBe('010-****-6666');

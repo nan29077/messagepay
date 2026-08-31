@@ -6,7 +6,7 @@ import { handleMoInbound, loadBannedWords } from '@/server/services/donation-flo
 import { mockMoAdapter } from '@/server/adapters/mo';
 import { filterContent } from '@/server/services/content-filter';
 
-/** 크리에이터 금칙어·차단 기능 검수 */
+/** 가맹점 금칙어·차단 기능 검수 */
 
 let fx: Fixture;
 const inbound = (p: Record<string, unknown>) => handleMoInbound(mockMoAdapter.parse(p));
@@ -30,8 +30,8 @@ async function addWord(word: string, action: 'BLOCK' | 'MASK' | 'FLAG', creatorI
   });
 }
 
-describe('크리에이터 금칙어', () => {
-  it('BLOCK 단어가 든 문자는 후원으로 접수되지 않고 결제도 일어나지 않는다', async () => {
+describe('가맹점 금칙어', () => {
+  it('BLOCK 단어가 든 문자는 결제으로 접수되지 않고 결제도 일어나지 않는다', async () => {
     await addWord('검수차단어', 'BLOCK', fx.creatorId);
 
     const res = await inbound(moPayload({ to: fx.moNumber, text: '검수차단어 포함된 응원' }));
@@ -43,13 +43,13 @@ describe('크리에이터 금칙어', () => {
   it('MASK 단어는 별표로 가려서 노출하고 원문은 암호화 보관한다', async () => {
     await addWord('검수마스킹어', 'MASK', fx.creatorId);
 
-    const res = await inbound(moPayload({ to: fx.moNumber, text: '검수마스킹어 오늘 방송 좋아요' }));
+    const res = await inbound(moPayload({ to: fx.moNumber, text: '검수마스킹어 캐시 충전합니다' }));
     expect(res.status).not.toBe('CONTENT_BLOCKED');
 
     const d = await prisma.donation.findUniqueOrThrow({ where: { id: res.donationId! } });
     expect(d.message).not.toContain('검수마스킹어');
     expect(d.message).toContain('******');
-    expect(d.message).toContain('오늘 방송 좋아요');
+    expect(d.message).toContain('캐시 충전합니다');
     // 분쟁 대응용 원문은 암호화해 보관한다
     expect(d.messageRawEnc).toBeTruthy();
   });
@@ -70,11 +70,11 @@ describe('크리에이터 금칙어', () => {
     expect(res.status).not.toBe('CONTENT_BLOCKED');
   });
 
-  it('내 금칙어는 다른 크리에이터에게 적용되지 않는다 (스코프 격리)', async () => {
+  it('내 금칙어는 다른 가맹점에게 적용되지 않는다 (스코프 격리)', async () => {
     await addWord('내단어만', 'BLOCK', fx.creatorId);
 
     const otherUser = await prisma.user.create({
-      data: { id: newId(), email: `other-${newId()}@test.kr`, name: '다른크리에이터', role: 'CREATOR' },
+      data: { id: newId(), email: `other-${newId()}@test.kr`, name: '다른가맹점', role: 'CREATOR' },
     });
     const other = await prisma.creatorProfile.create({
       data: { id: newId(), userId: otherUser.id, displayName: '다른채널', code: `MJP-${newId().slice(-4)}`, status: 'APPROVED' },
@@ -113,31 +113,31 @@ describe('크리에이터 금칙어', () => {
   });
 });
 
-describe('후원자 차단', () => {
-  it('차단한 후원자의 문자는 접수되지 않는다', async () => {
+describe('이용자 차단', () => {
+  it('차단한 이용자의 문자는 접수되지 않는다', async () => {
     const donor = await prisma.donorProfile.findFirstOrThrow();
     await prisma.blockedDonor.create({
       data: { id: newId(), creatorId: fx.creatorId, donorId: donor.id, reason: '검수' },
     });
 
-    const res = await inbound(moPayload({ to: fx.moNumber, text: '차단된 후원자 메시지' }));
+    const res = await inbound(moPayload({ to: fx.moNumber, text: '차단된 이용자 메시지' }));
     expect(res.status).toBe('LIMIT_BLOCKED');
     expect(await prisma.paymentTransaction.count()).toBe(0);
   });
 
-  it('후원자가 건 차단은 크리에이터 차단과 분리되어 있다', async () => {
+  it('이용자가 건 차단은 가맹점 차단과 분리되어 있다', async () => {
     const donor = await prisma.donorProfile.findFirstOrThrow();
-    // 후원자 -> 크리에이터 방향 차단 (내 정보 > 차단 관리)
+    // 이용자 -> 가맹점 방향 차단 (내 정보 > 차단 관리)
     await prisma.donorCreatorLink.create({
       data: { id: newId(), donorId: donor.id, creatorId: fx.creatorId, donorBlockedAt: new Date() },
     });
 
-    const res = await inbound(moPayload({ to: fx.moNumber, text: '후원자가 차단한 크리에이터' }));
+    const res = await inbound(moPayload({ to: fx.moNumber, text: '이용자가 차단한 가맹점' }));
     expect(res.status).toBe('LIMIT_BLOCKED');
     expect(await prisma.paymentTransaction.count()).toBe(0);
 
-    // 크리에이터가 차단했다가 해제해도(blocked_donor 행 생성 후 삭제)
-    // 후원자가 건 차단은 그대로 남아야 한다. 예전에는 한 컬럼을 공유해 함께 풀렸다.
+    // 가맹점가 차단했다가 해제해도(blocked_donor 행 생성 후 삭제)
+    // 이용자가 건 차단은 그대로 남아야 한다. 예전에는 한 컬럼을 공유해 함께 풀렸다.
     await prisma.blockedDonor.create({
       data: { id: newId(), creatorId: fx.creatorId, donorId: donor.id, reason: '검수' },
     });

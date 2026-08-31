@@ -68,11 +68,11 @@ try {
     r.ok('정산 상태 타일 4종', miss.length === 0, miss.join(','));
   }
   {
-    const miss = missingOf(s, ['크리에이터별 정산 요약', '잔액', '보류', '정산 가능']);
-    r.ok('크리에이터별 요약 표', miss.length === 0, miss.join(','));
+    const miss = missingOf(s, ['가맹점별 정산 요약', '잔액', '보류', '정산 가능']);
+    r.ok('가맹점별 요약 표', miss.length === 0, miss.join(','));
   }
   r.ok('요청 상태 필터', (await p.locator('select[name=status]').count()) > 0);
-  r.ok('크리에이터 필터', (await p.locator('select[name=creatorId]').count()) > 0);
+  r.ok('가맹점 필터', (await p.locator('select[name=creatorId]').count()) > 0);
   r.ok('정산 월 필터', (await p.locator('input[name=key]').count()) > 0);
 
   // 일괄 처리 버튼과 비활성 상태

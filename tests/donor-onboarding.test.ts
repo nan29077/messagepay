@@ -66,7 +66,7 @@ describe('전화번호별 내통장결제 가입 상태', () => {
     const donor = await prisma.donorProfile.findFirstOrThrow();
     expect(donor.onboardingStatus).toBe('REGISTERED');
 
-    const paid = await inbound(moPayload({ to: fx.moNumber, messageId: 'MO-ONBOARD-PAID', text: '가입 후 후원' }));
+    const paid = await inbound(moPayload({ to: fx.moNumber, messageId: 'MO-ONBOARD-PAID', text: '가입 후 결제' }));
     const donation = await prisma.donation.findUniqueOrThrow({ where: { id: paid.donationId } });
     expect(donation.paidAt).not.toBeNull();
     expect(await prisma.paymentTransaction.count({ where: { donationId: donation.id, status: 'APPROVED' } })).toBe(1);
@@ -75,9 +75,9 @@ describe('전화번호별 내통장결제 가입 상태', () => {
     const success = await prisma.mtOutboundMessage.findFirstOrThrow({
       where: { donationId: donation.id, templateCode: 'DONATION_SUCCESS', status: 'SENT' },
     });
-    // 닉네임을 정하지 않은 후원자는 번호 끝 4자리로 만든 기본 이름으로 표시된다.
+    // 닉네임을 정하지 않은 이용자는 번호 끝 4자리로 만든 기본 이름으로 표시된다.
     // (예전에는 마스킹 번호 010-****-5678 을 그대로 썼다)
-    expect(success.bodyMasked).toContain('후원자5678님, 테스트크리에이터 크리에이터에게 3,000원이 후원되었습니다. 감사합니다.');
+    expect(success.bodyMasked).toContain('이용자5678님, 테스트가맹점 가맹점에 3,000원이 충전되었습니다. 감사합니다.');
     expect(success.bodyMasked).not.toContain('010-');
   });
 

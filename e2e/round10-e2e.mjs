@@ -1,7 +1,7 @@
 /**
  * 10차 E2E — 알림 버튼 / 방송 닉네임 / 영업일 5일 정산주기 표시 / 공휴일 관리 / 오버레이 파이프라인.
  *
- * "크리에이터가 정산을 요청하면 최고관리자 알림함에 실제로 꽂히는가" 를
+ * "가맹점이 정산을 요청하면 최고관리자 알림함에 실제로 꽂히는가" 를
  * 화면 클릭만으로 끝까지 확인한다.
  */
 import {
@@ -67,7 +67,7 @@ try {
     await ctx.close();
   }
 
-  // ══════════════ 1-2. 방송 닉네임 (마이페이지 + 후원샵 안내) ══════════════
+  // ══════════════ 1-2. 방송 닉네임 (마이페이지 + 결제 페이지 안내) ══════════════
   {
     const ctx = await b.newContext(desktop);
     const p = await ctx.newPage();
@@ -79,12 +79,12 @@ try {
     r.ok('닉네임 안내 문구', acc.includes('방송 오버레이·유튜브 채팅에 표시되는 이름'));
     r.ok('닉네임 입력칸', (await p.locator('input[name=nickname]').count()) > 0);
     r.ok('방송 표시 미리보기', acc.includes('방송·유튜브 채팅에 이렇게 표시됩니다'));
-    r.ok('과거 후원은 그대로 남는다는 안내', acc.includes('이미 접수된 후원은 그때 표시된 이름이 그대로 남습니다'));
+    r.ok('과거 결제는 그대로 남는다는 안내', acc.includes('이미 접수된 결제는 그때 표시된 이름이 그대로 남습니다'));
 
     // 설정 전에는 번호 끝 4자리 기본 이름이 보인다
     r.ok('설정 전에는 끝 4자리 안내가 나온다', acc.includes('번호 끝 4자리(5678)'), acc.slice(0, 200));
-    // 시드 후원자는 닉네임을 이미 정해 뒀으므로 미리보기에는 그 이름이 그대로 나온다.
-    r.ok('저장된 닉네임이 미리보기에 나온다', acc.includes('테스트후원자님이 3,000원을 후원하셨습니다'), acc.slice(0, 200));
+    // 시드 이용자는 닉네임을 이미 정해 뒀으므로 미리보기에는 그 이름이 그대로 나온다.
+    r.ok('저장된 닉네임이 미리보기에 나온다', acc.includes('테스트이용자님이 3,000원을 결제하셨습니다'), acc.slice(0, 200));
 
     // 실제로 저장해 본다
     const NICK = 'E2E밤톨이';
@@ -101,10 +101,10 @@ try {
     await p.waitForTimeout(300);
     r.ok('10자 초과는 화면에서 막힌다', (await bodyText(p)).includes('10자 이내'));
 
-    // 후원샵 안내 배너
+    // 결제 페이지 안내 배너
     await gotoReady(p, `${BASE}/c/${SEED.creator1Code}`);
     const shop = await bodyText(p);
-    r.ok('후원샵에 닉네임 안내가 뜬다', shop.includes(`방송에 ${NICK} 님으로 표시됩니다`), shop.slice(0, 200));
+    r.ok('결제 페이지에 닉네임 안내가 뜬다', shop.includes(`방송에 ${NICK} 님으로 표시됩니다`), shop.slice(0, 200));
     r.ok('닉네임 변경 링크', (await p.locator('a[href="/my/account#nickname"]').count()) > 0);
 
     // 비로그인 방문자에게는 안내하지 않는다
@@ -130,28 +130,28 @@ try {
   const ov = await bodyText(c);
   {
     const miss = missingOf(ov, [
-      '정산은 후원일로부터',
+      '정산은 결제일로부터',
       '영업일 5일 후',
       '토요일·일요일과 공휴일',
       '연휴가 끼면 그만큼 정산일이 뒤로 밀립니다',
-      '오늘 후원되면',
-      '금·토·일 후원분',
+      '오늘 결제되면',
+      '금·토·일 결제분',
     ]);
     r.ok('정산 주기 안내가 정산 현황 상단에 있다', miss.length === 0, miss.join(','));
   }
-  r.ok('예시(8월 3일 후원 → 8월 10일 정산)가 안내된다', ov.includes('8월 3일(월) 후원 → 8월 10일(월) 정산'));
+  r.ok('예시(8월 3일 결제 → 8월 10일 정산)가 안내된다', ov.includes('8월 3일(월) 결제 → 8월 10일(월) 정산'));
   r.ok('금·토·일은 다음 주 금요일 정산이라고 안내한다', ov.includes('다음 주 금요일에 정산됩니다'));
-  r.ok('후원일 → 정산일이 실제 날짜로 계산돼 표시된다', /\d+월 \d+일 \(.\) 정산/.test(ov), ov.slice(0, 120));
+  r.ok('결제일 → 정산일이 실제 날짜로 계산돼 표시된다', /\d+월 \d+일 \(.\) 정산/.test(ov), ov.slice(0, 120));
   {
-    const miss = missingOf(ov, ['후원 (결제 완료)', '정산 예정', '지급 완료', '공휴일 (영업일 제외)']);
-    r.ok('캘린더 범례가 후원·정산을 구분한다', miss.length === 0, miss.join(','));
+    const miss = missingOf(ov, ['결제 (결제 완료)', '정산 예정', '지급 완료', '공휴일 (영업일 제외)']);
+    r.ok('캘린더 범례가 결제·정산을 구분한다', miss.length === 0, miss.join(','));
   }
   {
     const miss = missingOf(ov, ['일', '월', '화', '수', '목', '금', '토']);
     r.ok('캘린더 요일 머리글', miss.length === 0, miss.join(','));
   }
   r.ok('캘린더 이전/다음 달 이동', (await c.locator('a[aria-label="이전 달"], a[aria-label="다음 달"]').count()) >= 2);
-  r.ok('후원 건수가 날짜별로 찍힌다', /후원 \d+건/.test(ov), '시드 후원이 이번 달에 없으면 비어 있을 수 있음');
+  r.ok('결제 건수가 날짜별로 찍힌다', /결제 \d+건/.test(ov), '시드 결제이 이번 달에 없으면 비어 있을 수 있음');
   r.ok('정산 예정일이 날짜 아래 표시된다', ov.includes('→') && ov.includes('정산'));
 
   // ══════════════ 3. 정산 요청 → 최고관리자 알림 ══════════════
@@ -258,12 +258,12 @@ try {
   r.ok('발급 상태 표시', ot.includes('발급 상태'));
   r.ok('현재 연결 수 표시', ot.includes('현재 연결'));
   r.ok('브라우저 소스 URL 표시칸', (await o.locator('input[readonly]').count()) > 0);
-  r.ok('테스트 후원 버튼', (await o.locator('button:has-text("테스트 후원 보내기")').count()) > 0);
+  r.ok('테스트 결제 버튼', (await o.locator('button:has-text("테스트 결제 보내기")').count()) > 0);
 
   const previewHref = await o.locator('a:has-text("새 탭에서 미리보기")').first().getAttribute('href');
   r.ok('미리보기 링크가 있다', Boolean(previewHref), previewHref ?? '');
   const creatorId = (previewHref ?? '').match(/\/overlay\/([A-Za-z0-9]+)/)?.[1] ?? null;
-  r.ok('오버레이 주소에서 크리에이터 ID 를 얻는다', Boolean(creatorId), creatorId ?? '');
+  r.ok('오버레이 주소에서 가맹점 ID 를 얻는다', Boolean(creatorId), creatorId ?? '');
 
   if (creatorId) {
     const ov2 = await octx.newPage();
@@ -272,17 +272,17 @@ try {
     const dbg = await bodyText(ov2);
     r.ok('오버레이 화면이 SSE 로 연결된다', dbg.includes('연결됨'), dbg.slice(0, 120));
 
-    // 테스트 후원 발사 → 오버레이에 배너가 뜬다
-    await o.locator('button:has-text("테스트 후원 보내기")').click();
+    // 테스트 결제 발사 → 오버레이에 배너가 뜬다
+    await o.locator('button:has-text("테스트 결제 보내기")').click();
     await ov2.waitForTimeout(4000);
     const shown = await bodyText(ov2);
-    r.ok('테스트 후원이 오버레이에 표시된다', shown.includes('테스트 후원자') && shown.includes('후원하셨습니다'), shown.slice(0, 160));
+    r.ok('테스트 결제이 오버레이에 표시된다', shown.includes('테스트 이용자') && shown.includes('결제하셨습니다'), shown.slice(0, 160));
     r.ok('금액이 표시된다', shown.includes('3,000원'));
     r.ok('테스트 배지가 붙는다', shown.includes('테스트'));
     r.ok('메시지가 표시된다', shown.includes('오늘 방송 재미있어요'));
     r.ok('오버레이 브랜드 표기', shown.includes('MUNJAPAY'));
 
-    r.ok('스튜디오에 테스트 후원 안내가 뜬다', (await bodyText(o)).includes('실제 결제와 정산에는 반영되지 않습니다'));
+    r.ok('스튜디오에 테스트 결제 안내가 뜬다', (await bodyText(o)).includes('실제 결제와 정산에는 반영되지 않습니다'));
 
     // 토큰 없이 접근하면 막힌다
     const bad = await octx.newPage();

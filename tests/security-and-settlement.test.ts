@@ -85,7 +85,7 @@ describe('속도 제한 카운터', () => {
 
     // 1건째: 소진 O
     expect((await checkLimits({ ...args })).ok).toBe(true);
-    // 같은 건의 재검사: 소진 X (여기서 카운터가 올라가면 다음 정상 후원이 막힌다)
+    // 같은 건의 재검사: 소진 X (여기서 카운터가 올라가면 다음 정상 결제이 막힌다)
     expect((await checkLimits({ ...args, consumeVelocity: false })).ok).toBe(true);
     expect((await checkLimits({ ...args, consumeVelocity: false })).ok).toBe(true);
 
@@ -120,7 +120,7 @@ describe('한도 집계 예약', () => {
     expect(res.status).toBe('PAYMENT_FAILED');
 
     const counters = await prisma.donationCounter.findMany();
-    // 예약분이 되돌아오지 않으면 실패한 후원이 그날 한도를 계속 잡아먹는다.
+    // 예약분이 되돌아오지 않으면 실패한 결제이 그날 한도를 계속 잡아먹는다.
     expect(counters.every((c) => c.count === 0 && c.amount === 0n)).toBe(true);
   });
 });
@@ -192,7 +192,7 @@ describe('인증번호 난수', () => {
     expect(codes.size).toBeGreaterThan(1800);
   });
 
-  it('크리에이터 코드 알파벳에 혼동 문자가 섞이지 않는다', () => {
+  it('가맹점 코드 알파벳에 혼동 문자가 섞이지 않는다', () => {
     const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     for (let i = 0; i < 500; i += 1) {
       const s = randomCodeString(alphabet, 4);
