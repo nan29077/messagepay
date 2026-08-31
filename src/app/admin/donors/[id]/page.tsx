@@ -110,7 +110,7 @@ export default async function AdminDonorDetailPage({ params }: { params: Promise
     <>
       <PageHeader
         title={`이용자 ${donor.phoneMasked}`}
-        description="결제·결제·동의·이상거래 내역을 한 화면에서 확인합니다."
+        description="결제·동의·이상거래 내역을 한 화면에서 확인합니다."
         action={
           <Link href="/admin/donors" className="rounded-lg border border-ink-200 px-3 py-1.5 text-[12px] font-semibold text-ink-700">
             목록으로

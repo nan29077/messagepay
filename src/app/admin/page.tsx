@@ -148,7 +148,7 @@ export default async function AdminDashboardPage() {
           </div>
         </section>
         <section>
-          <SectionTitle title="결제·결제" description="금액은 결제가 승인된 건만 집계합니다. 환불 완료 건은 제외됩니다." />
+          <SectionTitle title="결제 현황" description="금액은 결제가 승인된 건만 집계합니다. 환불 완료 건은 제외됩니다." />
           <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
             <StatTile
               label="오늘 결제 완료"
@@ -178,7 +178,7 @@ export default async function AdminDashboardPage() {
         ) : (
           <>
         <section>
-          <SectionTitle title="결제·결제" description="금액은 결제가 승인된 건만 집계합니다. 환불 완료 건은 제외됩니다." />
+          <SectionTitle title="결제 현황" description="금액은 결제가 승인된 건만 집계합니다. 환불 완료 건은 제외됩니다." />
           <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
             <StatTile
               label="오늘 결제 완료"

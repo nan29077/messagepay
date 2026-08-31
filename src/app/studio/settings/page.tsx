@@ -146,7 +146,7 @@ export default async function StudioSettingsPage({
         {activeTab === 'thanks' ? <section>
           <SectionTitle
             title="감사 문자 내용 설정"
-            description="결제 결제가 완료됐을 때 이용자에게 발송되는 문자 본문입니다."
+            description="결제가 완료됐을 때 이용자에게 발송되는 문자 본문입니다."
           />
           <Card>
             <ActionForm action={updateThanksMessageAction} submitLabel="감사 문자 저장">
