@@ -3,6 +3,7 @@ import { newId, newOrderNo, newTransactionNo } from '@/lib/id';
 import { decrypt, encrypt, maskPhone, normalizePhone, phoneHash as hashPhone } from '@/lib/crypto';
 import { donorDisplayName } from '@/lib/donor-name';
 import { logger } from '@/lib/logger';
+import { getChargeReflectAdapter } from '@/server/adapters/charge-reflect';
 import { env, allowLegacyConfirmLink } from '@/lib/env';
 import type { MoInbound } from '@/server/adapters/mo';
 import { getMtAdapter, decideMessageType } from '@/server/adapters/mt';
@@ -1129,8 +1130,9 @@ export async function executePayment(donationId: string): Promise<PaymentOutcome
     donation.creatorId,
   );
 
-  // TODO(4단계): 결제 성공 이후 가맹 서비스에 충전을 반영하는 연동이 들어갈 자리다.
-  // 반영 실패가 결제 결과를 뒤집으면 안 된다(절대 규칙 3). 어댑터 실패는 삼키고 별도 재시도로 처리한다.
+  // 가맹 서비스에 충전을 반영한다. 이용자의 휴대폰 번호로 회원을 찾는다.
+  // 반영 실패가 결제 결과를 뒤집으면 안 된다(절대 규칙 3). 실패는 상태로만 남긴다.
+  await reflectCharge(donationId);
 
   return { ok: true, status: 'PAYMENT_SUCCESS', message: '결제가 완료되었습니다.' };
 }
@@ -1147,6 +1149,67 @@ async function sendMtForDonor(donorId: string, template: TemplateOutput, donatio
   if (!donor) return false;
   const phone = decrypt(donor.phoneEnc);
   return sendMt({ phone, template, donationId, creatorId });
+}
+
+/**
+ * 승인된 결제를 가맹 서비스에 충전으로 반영한다.
+ *
+ * 결제는 이미 끝난 사실이므로 여기서 예외가 새어 나가면 안 된다.
+ * 실패는 donation.reflectStatus 에 남겨 관리자가 확인·재시도하게 한다.
+ */
+export async function reflectCharge(donationId: string): Promise<void> {
+  try {
+    const donation = await prisma.donation.findUnique({
+      where: { id: donationId },
+      select: {
+        id: true,
+        transactionNo: true,
+        amount: true,
+        reflectStatus: true,
+        creator: { select: { code: true } },
+        donor: { select: { phoneEnc: true } },
+      },
+    });
+    if (!donation) return;
+    // 이미 반영된 건은 다시 보내지 않는다(중복 적립 방지).
+    if (donation.reflectStatus === 'SENT') return;
+    if (!donation.donor) {
+      await prisma.donation.update({
+        where: { id: donationId },
+        data: { reflectStatus: 'SKIPPED', reflectNote: '이용자 정보 없음' },
+      });
+      return;
+    }
+
+    const adapter = getChargeReflectAdapter();
+    const result = await adapter.reflect({
+      chargeId: donation.id,
+      transactionNo: donation.transactionNo,
+      merchantCode: donation.creator.code,
+      phone: decrypt(donation.donor.phoneEnc),
+      amount: donation.amount,
+    });
+
+    await prisma.donation.update({
+      where: { id: donationId },
+      data: {
+        reflectStatus: result.ok ? 'SENT' : 'FAILED',
+        reflectNote: result.ok ? result.referenceNo ?? null : `${result.code ?? 'ERROR'}: ${result.message}`,
+        reflectedAt: result.ok ? new Date() : null,
+      },
+    });
+  } catch (error) {
+    logger.error('충전 반영 실패 (결제는 정상 완료)', {
+      donationId,
+      message: (error as Error).message,
+    });
+    await prisma.donation
+      .update({
+        where: { id: donationId },
+        data: { reflectStatus: 'FAILED', reflectNote: '반영 요청 중 오류' },
+      })
+      .catch(() => undefined);
+  }
 }
 
 export { sendMt, sendMtForDonor, setStatus };

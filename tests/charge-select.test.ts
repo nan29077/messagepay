@@ -226,4 +226,41 @@ describe('충전 금액 선택', () => {
     expect(res.status).toBe('LIMIT_BLOCKED');
     expect(await prisma.secureLink.count({ where: { purpose: 'SELECT_AMOUNT' } })).toBe(0);
   });
+
+  it('[13] 결제가 승인되면 가맹 서비스에 충전 반영을 요청한다 (휴대폰 번호로 매칭)', async () => {
+    const res = await inbound(moPayload({ to: fx.moNumber }));
+    const token = lastSelectAmountToken()!;
+    const product = await prisma.chargeProduct.findFirstOrThrow({ where: { amount: 3000n } });
+    await confirmChargeAmount({ token, productId: product.id });
+
+    const session = await prisma.paymentPinSession.findFirstOrThrow();
+    await completePinAuthorization({ sessionId: session.sessionId });
+
+    const paid = await prisma.donation.findUniqueOrThrow({ where: { id: res.donationId! } });
+    expect(paid.reflectStatus).toBe('SENT');
+    expect(paid.reflectedAt).not.toBeNull();
+    expect(paid.reflectNote).toContain('MOCKREF');
+  });
+
+  it('[14] 가맹 서비스에서 회원을 찾지 못해도 결제·정산은 그대로 유지된다', async () => {
+    // mock 규칙: 번호가 0000 으로 끝나면 회원 조회 실패
+    const donorPhone = '01099990000';
+    await seedRegisteredDonor(donorPhone);
+
+    const res = await inbound(moPayload({ to: fx.moNumber, from: donorPhone }));
+    const token = lastSelectAmountToken()!;
+    const product = await prisma.chargeProduct.findFirstOrThrow({ where: { amount: 3000n } });
+    await confirmChargeAmount({ token, productId: product.id });
+
+    const session = await prisma.paymentPinSession.findFirstOrThrow({ where: { donationId: res.donationId! } });
+    const done = await completePinAuthorization({ sessionId: session.sessionId });
+    expect(done.ok).toBe(true);
+
+    const paid = await prisma.donation.findUniqueOrThrow({ where: { id: res.donationId! } });
+    // 결제는 성공이고 정산 분개도 남는다. 반영만 실패로 표시된다.
+    expect(paid.paidAt).not.toBeNull();
+    expect(paid.reflectStatus).toBe('FAILED');
+    expect(paid.reflectNote).toContain('NOT_FOUND');
+    expect(await prisma.settlementLedger.count({ where: { donationId: paid.id } })).toBeGreaterThan(0);
+  });
 });

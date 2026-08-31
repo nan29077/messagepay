@@ -101,6 +101,19 @@ export default async function StudioDonationDetailPage({ params }: { params: Pro
             </div>
             <div className="mt-2">
               <DataRow label="MT 안내" value={<Badge tone={deliveryStatusLabel[donation.mtStatus].tone}>{deliveryStatusLabel[donation.mtStatus].text}</Badge>} />
+              <DataRow
+                label="충전 반영"
+                value={
+                  <span className="inline-flex items-center gap-1.5">
+                    <Badge tone={deliveryStatusLabel[donation.reflectStatus].tone}>
+                      {deliveryStatusLabel[donation.reflectStatus].text}
+                    </Badge>
+                    {donation.reflectNote ? (
+                      <span className="text-[12px] text-ink-400">{donation.reflectNote}</span>
+                    ) : null}
+                  </span>
+                }
+              />
             </div>
           </Card>
         </div>

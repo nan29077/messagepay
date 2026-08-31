@@ -168,6 +168,13 @@ export const env = {
     },
   },
 
+  /** 충전 반영(가맹 서비스 포인트 적립) 연동 */
+  chargeReflect: {
+    provider: str('CHARGE_REFLECT_PROVIDER', 'mock') as ProviderMode,
+    apiBase: str('CHARGE_REFLECT_API_BASE'),
+    apiKey: str('CHARGE_REFLECT_API_KEY'),
+  },
+
   storage: {
     bucket: str('S3_BUCKET'),
     publicBase: str('S3_PUBLIC_BASE'),

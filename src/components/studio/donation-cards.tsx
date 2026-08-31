@@ -36,7 +36,7 @@ export interface DonationCardItem {
   /** 마스킹된 이용자 전화번호. 웹 결제 등으로 이용자 정보가 없으면 null */
   phoneMasked: string | null;
   /** 전달 상태를 함께 보여줄 때만 넘긴다 (대시보드에서는 생략) */
-  delivery?: { mt: DeliveryStatus } | null;
+  delivery?: { mt: DeliveryStatus; reflect?: DeliveryStatus } | null;
   refundStatus?: RefundStatus | null;
 }
 
@@ -102,6 +102,7 @@ export function DonationCard({ item }: { item: DonationCardItem }) {
       {item.delivery ? (
         <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-ink-100 pt-3">
           <DeliveryChip label="MT" status={item.delivery.mt} />
+          {item.delivery.reflect ? <DeliveryChip label="충전" status={item.delivery.reflect} /> : null}
           {refund ? (
             <span className="inline-flex items-center gap-1 rounded-md bg-danger-50 px-2 py-0.5 text-[11px] font-semibold text-danger-500">
               <Undo2 size={12} strokeWidth={1.8} />

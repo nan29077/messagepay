@@ -83,6 +83,7 @@ export default async function StudioDonationsPage({
         amount: true,
         status: true,
         mtStatus: true,
+        reflectStatus: true,
         donor: { select: { phoneMasked: true } },
         refunds: { orderBy: { requestedAt: 'desc' }, take: 1, select: { status: true } },
       },
@@ -180,7 +181,7 @@ export default async function StudioDonationsPage({
               channel: d.channel,
               // 마스킹된 값만 내려온다. 원문 전화번호는 가맹점에 제공하지 않는다.
               phoneMasked: d.donor?.phoneMasked ?? null,
-              delivery: { mt: d.mtStatus },
+              delivery: { mt: d.mtStatus, reflect: d.reflectStatus },
               refundStatus: d.refunds[0]?.status ?? null,
             }))}
           />
@@ -197,6 +198,7 @@ export default async function StudioDonationsPage({
                 <Th className="text-right">결제 금액</Th>
                 <Th>결제 상태</Th>
                 <Th>MT 안내</Th>
+                <Th>충전 반영</Th>
                 <Th>환불</Th>
               </tr>
             </thead>
@@ -204,6 +206,7 @@ export default async function StudioDonationsPage({
               {rows.map((d) => {
                 const st = donationStatusLabel[d.status];
                 const mt = deliveryStatusLabel[d.mtStatus];
+                const rf = deliveryStatusLabel[d.reflectStatus];
                 const refund = d.refunds[0] ? refundStatusLabel[d.refunds[0].status] : null;
                 return (
                   <tr key={d.id} className="hover:bg-ink-50">
@@ -234,6 +237,9 @@ export default async function StudioDonationsPage({
                     </Td>
                     <Td>
                       <Badge tone={mt.tone}>{mt.text}</Badge>
+                    </Td>
+                    <Td>
+                      <Badge tone={rf.tone}>{rf.text}</Badge>
                     </Td>
                     <Td>{refund ? <Badge tone={refund.tone}>{refund.text}</Badge> : <span className="text-ink-300">-</span>}</Td>
                   </tr>

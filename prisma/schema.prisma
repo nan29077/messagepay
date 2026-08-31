@@ -769,9 +769,14 @@ model Donation {
   netAmount   BigInt @default(0) @map("net_amount")
 
   mtStatus      DeliveryStatus @default(PENDING) @map("mt_status")
+  /// 가맹 서비스 충전 반영 상태. 결제 성공과 별개로 움직인다.
+  reflectStatus DeliveryStatus @default(PENDING) @map("reflect_status")
+  /// 반영 실패 사유(코드). 관리자 수동 처리 근거로 남긴다.
+  reflectNote   String?        @map("reflect_note")
 
   receivedAt    DateTime  @default(now()) @map("received_at") @db.Timestamptz(3)
   paidAt        DateTime? @map("paid_at") @db.Timestamptz(3)
+  reflectedAt   DateTime? @map("reflected_at") @db.Timestamptz(3)
   refundedAt    DateTime? @map("refunded_at") @db.Timestamptz(3)
   settledAt     DateTime? @map("settled_at") @db.Timestamptz(3)
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
