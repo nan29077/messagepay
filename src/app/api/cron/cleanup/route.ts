@@ -4,7 +4,7 @@ import { safeEqual } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
 import { kv } from '@/server/redis';
 import { expireStalePinSessions } from '@/server/services/pin-authorization';
-import { expireStaleConfirmations } from '@/server/services/charge-confirm';
+import { expireStaleConfirmations, expireStaleAmountSelections } from '@/server/services/charge-confirm';
 import { purgeExpiredIdempotencyKeys } from '@/server/services/idempotency';
 import { purgeExpiredResetTokens } from '@/server/services/password-reset';
 
@@ -22,6 +22,7 @@ export const dynamic = 'force-dynamic';
  *  1) expireStalePinSessions      — PIN 을 입력하지 않아 TTL 이 지난 결제를 자동 취소한다.
  *                                   (결제사 콜백이 오지 않은 PENDING_PIN 건의 보정 경로이기도 하다)
  *  2) expireStaleConfirmations    — 구 확인 링크(CONFIRM_LINK) 만료 건을 자동 취소한다.
+ *  2-1) expireStaleAmountSelections — 금액선택 링크(SELECT_AMOUNT) 만료 건을 자동 취소한다.
  *  3) purgeExpiredIdempotencyKeys — 만료된 멱등키를 지운다.
  *  4) purgeExpiredResetTokens     — 만료된 비밀번호 재설정 토큰을 지운다.
  *
@@ -75,7 +76,17 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, message: '인증되지 않은 요청입니다.' }, { status: 401 });
   }
 
-  const locked = await kv.setnx(LOCK_KEY, String(Date.now()), LOCK_TTL_SEC).catch(() => true);
+  // 잠금을 못 잡으면 돌리지 않는다(겹쳐 돌면 같은 건에 상태 로그가 중복으로 쌓인다).
+  let locked: boolean;
+  try {
+    locked = await kv.setnx(LOCK_KEY, String(Date.now()), LOCK_TTL_SEC);
+  } catch (e) {
+    logger.error('정리 배치 잠금 획득 실패 — 실행하지 않습니다', { message: (e as Error).message });
+    return NextResponse.json(
+      { ok: false, message: '실행 잠금을 확인할 수 없어 배치를 건너뛰었습니다.' },
+      { status: 503 },
+    );
+  }
   if (!locked) {
     return NextResponse.json({ ok: true, skipped: true, message: '이전 실행이 아직 진행 중입니다.' });
   }
@@ -84,17 +95,23 @@ export async function GET(req: Request) {
   try {
     const pinSessions = await step('만료 PIN 인증 취소', () => expireStalePinSessions());
     const confirmations = await step('만료 확인 링크 취소', () => expireStaleConfirmations());
+    const amountSelections = await step('만료 금액선택 링크 취소', () => expireStaleAmountSelections());
     const idempotencyKeys = await step('만료 멱등키 삭제', () => purgeExpiredIdempotencyKeys());
     const resetTokens = await step('만료 재설정 토큰 삭제', () => purgeExpiredResetTokens());
 
-    const steps = { pinSessions, confirmations, idempotencyKeys, resetTokens };
+    const steps = { pinSessions, confirmations, amountSelections, idempotencyKeys, resetTokens };
     const allOk = Object.values(steps).every((s) => s.ok);
-    return NextResponse.json({
-      ok: allOk,
-      at: new Date().toISOString(),
-      latencyMs: Date.now() - started,
-      steps,
-    });
+    // 본문의 ok:false 만으로는 스케줄러·알람이 실패를 알아채지 못한다.
+    // 한 단계라도 실패하면 상태 코드로도 드러낸다(EventBridge/CloudWatch 가 본문을 보지 않는다).
+    return NextResponse.json(
+      {
+        ok: allOk,
+        at: new Date().toISOString(),
+        latencyMs: Date.now() - started,
+        steps,
+      },
+      { status: allOk ? 200 : 500 },
+    );
   } finally {
     await kv.del(LOCK_KEY).catch(() => undefined);
   }

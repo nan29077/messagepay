@@ -1,3 +1,4 @@
+import { maskBusinessNo } from '@/components/admin/mask';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { PageHeader } from '@/components/layout/console-shell';
@@ -93,7 +94,7 @@ export default async function AdminMerchantDetailPage({ params }: { params: Prom
               />
               <DataRow label="담당자" value={`${merchant.user.name ?? '-'} / ${merchant.user.email ?? '-'}`} />
               <DataRow label="연락처" value={merchant.user.phoneMasked ?? '-'} />
-              <DataRow label="사업자번호" value={merchant.businessNo ?? '미등록'} />
+              <DataRow label="사업자번호" value={maskBusinessNo(merchant.businessNo)} />
               <DataRow
                 label="충전 상품"
                 value={

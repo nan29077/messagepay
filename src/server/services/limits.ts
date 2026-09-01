@@ -118,6 +118,7 @@ export type LimitDenyCode =
   | 'COOLDOWN'
   | 'LOCKED'
   | 'BLOCKED'
+  | 'ACCOUNT_SUSPENDED'
   | 'NEW_DONOR_FIRST_DAY';
 
 export interface LimitCheckResult {
@@ -129,7 +130,7 @@ export interface LimitCheckResult {
 }
 
 export interface LimitCheckInput {
-  payer: Pick<PayerProfile, 'id' | 'dailyLimit' | 'monthlyLimit' | 'lockedUntil' | 'blockedAt' | 'firstSeenAt'>;
+  payer: Pick<PayerProfile, 'id' | 'userId' | 'dailyLimit' | 'monthlyLimit' | 'lockedUntil' | 'blockedAt' | 'firstSeenAt'>;
   merchantId: string;
   amount: bigint;
   now?: Date;
@@ -190,6 +191,17 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
 
   if (input.blockedByMerchant) return deny('BLOCKED', '가맹점이 차단한 이용자입니다.');
   if (input.payer.blockedAt) return deny('BLOCKED', '이용이 제한된 이용자입니다.');
+  // 회원 계정 제재(User.status)는 웹 로그인만 막을 뿐 문자결제를 막지 못했다.
+  // 관리자가 /admin/users 에서 정지시킨 계정이 문자로는 계속 결제할 수 있으면 제재가 아니다.
+  if (input.payer.userId) {
+    const linkedUser = await db.user.findUnique({
+      where: { id: input.payer.userId },
+      select: { status: true, deletedAt: true },
+    });
+    if (linkedUser && (linkedUser.deletedAt || linkedUser.status !== 'ACTIVE')) {
+      return deny('ACCOUNT_SUSPENDED', '이용이 제한된 계정입니다. 고객센터로 문의해 주세요.');
+    }
+  }
   // 이용자가 /my/blocks 에서 직접 건 차단(payerMerchantLink.payerBlockedAt). 결제 경로 전부에서 막아야 한다.
   // 가맹점이 건 차단은 blockedByMerchant(blocked_payer) 로 따로 들어온다.
   const link = await db.payerMerchantLink.findUnique({
@@ -345,17 +357,43 @@ export async function rollbackCounters(
     { merchantId, periodType: 'MONTH', periodKey: monthKey },
   ];
   for (const t of targets) {
-    await client.chargeCounter.updateMany({
-      where: { payerId, merchantId: t.merchantId, periodType: t.periodType, periodKey: t.periodKey },
-      data: { count: { decrement: 1 }, amount: { decrement: amount } },
-    });
+    // decrement 만 쓰면 하한이 없어 카운터가 음수까지 내려간다.
+    // (한 결제를 두 번 되돌리거나, 예약과 다른 기간 키로 되돌리면 바로 그렇게 된다)
+    // 음수 카운터는 그 이용자의 한도를 사실상 늘려 주므로 0 에서 막는다.
+    await client.$executeRaw`
+      UPDATE "charge_counter"
+         SET "count" = GREATEST("count" - 1, 0),
+             "amount" = GREATEST("amount" - ${amount}, 0)
+       WHERE "payer_id" = ${payerId}
+         AND "merchant_id" = ${t.merchantId}
+         AND "period_type" = ${t.periodType}
+         AND "period_key" = ${t.periodKey}
+    `;
   }
 }
 
+/**
+ * 실패 카운터가 살아 있는 기간. 이 시간이 지난 뒤의 첫 실패는 1 부터 다시 센다.
+ *
+ * 감쇠가 없으면 몇 달 간격으로 난 잔액부족 3건이 합산되어 1년 잠금이 걸린다.
+ * "연속 실패" 를 잡는 장치이므로 시간이 지나면 풀려야 한다.
+ */
+const FAILURE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 export async function registerFailure(payerId: string, threshold: number) {
+  const before = await prisma.payerProfile.findUnique({
+    where: { id: payerId },
+    select: { failCount: true, lastFailedAt: true },
+  });
+  const stale =
+    !before?.lastFailedAt || Date.now() - before.lastFailedAt.getTime() > FAILURE_WINDOW_MS;
+
   const payer = await prisma.payerProfile.update({
     where: { id: payerId },
-    data: { failCount: { increment: 1 } },
+    // 마지막 실패로부터 창(window)이 지났으면 누적을 버리고 1 부터 다시 센다.
+    data: stale
+      ? { failCount: 1, lastFailedAt: new Date() }
+      : { failCount: { increment: 1 }, lastFailedAt: new Date() },
   });
   if (payer.failCount >= threshold) {
     await prisma.payerProfile.update({
@@ -369,5 +407,5 @@ export async function registerFailure(payerId: string, threshold: number) {
 }
 
 export async function clearFailures(payerId: string) {
-  await prisma.payerProfile.update({ where: { id: payerId }, data: { failCount: 0 } });
+  await prisma.payerProfile.update({ where: { id: payerId }, data: { failCount: 0, lastFailedAt: null } });
 }

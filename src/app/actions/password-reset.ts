@@ -90,7 +90,8 @@ export async function confirmPasswordResetAction(
 
   // 토큰 대입 공격 방지. 토큰 자체가 32바이트 난수지만 입구도 함께 조인다.
   const ip = await clientIpFromHeaders();
-  const limited = await consumeRateLimit('pwreset:confirm', ip, 20, 600);
+  // 재설정 토큰 대입을 막는 유일한 제한이다. 저장소 장애 때 열어 두면 안 된다.
+  const limited = await consumeRateLimit('pwreset:confirm', ip, 20, 600, { failClosed: true });
   if (!limited.ok) {
     return { ok: false, message: '시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.' };
   }

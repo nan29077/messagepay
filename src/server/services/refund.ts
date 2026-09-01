@@ -155,7 +155,16 @@ export async function approveRefund(refundId: string, adminUserId?: string) {
   });
 
   if (refund.charge.payerId && refund.charge.paidAt) {
-    await rollbackCounters(refund.charge.payerId, refund.charge.merchantId, refund.amount, refund.charge.paidAt);
+    // 한도 집계는 결제를 "예약" 한 시각(paymentTransaction.requestedAt)으로 키가 잡힌다.
+    // charge.paidAt 은 결과 미확인 건을 관리자가 나중에 확정하면 그 시점으로 덮이므로,
+    // 그 값으로 되돌리면 다른 달 카운터에서 빼게 된다.
+    const approvedTxn = await prisma.paymentTransaction.findFirst({
+      where: { chargeId: refund.chargeId, status: 'APPROVED' },
+      orderBy: { requestedAt: 'asc' },
+      select: { requestedAt: true },
+    });
+    const counterBasis = approvedTxn?.requestedAt ?? refund.charge.paidAt;
+    await rollbackCounters(refund.charge.payerId, refund.charge.merchantId, refund.amount, counterBasis);
     await prisma.payerMerchantLink.updateMany({
       where: { payerId: refund.charge.payerId, merchantId: refund.charge.merchantId },
       data: { totalAmount: { decrement: refund.amount }, totalCount: { decrement: 1 } },

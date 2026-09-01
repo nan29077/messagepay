@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
 import { newId } from '../src/lib/id';
-import { encrypt, phoneHash, maskPhone, generateToken, tokenHash, maskSecret } from '../src/lib/crypto';
+import { encrypt, phoneHash, maskPhone, maskSecret } from '../src/lib/crypto';
 import { SEED_VERSION, SEED_VERSION_KEY } from './seed-version.mjs';
 import { SEED_TERMS, TERMS_VERSION, TERMS_EFFECTIVE_FROM } from './terms-content';
 

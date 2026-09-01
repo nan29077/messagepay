@@ -1,6 +1,7 @@
+import { formatKst } from '@/lib/datetime';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { MessageSquareText, Video } from 'lucide-react';
+import { MessageSquareText } from 'lucide-react';
 import { Badge, Card, CardTitle, DataRow, Field, Input, Notice, SectionTitle, Textarea, cx } from '@/components/ui';
 import { DEFAULT_BANNERS, defaultBannerFor } from '@/lib/banners';
 import { PageHeader } from '@/components/layout/console-shell';
@@ -556,7 +557,7 @@ export default async function StudioSettingsPage({
                       </div>
                       <p className="mt-1 font-mono text-[12px] text-ink-500">{k.prefix}…</p>
                       <p className="mt-0.5 text-[11.5px] text-ink-400">
-                        마지막 사용 {k.lastUsedAt ? k.lastUsedAt.toLocaleString('ko-KR') : '없음'}
+                        마지막 사용 {k.lastUsedAt ? formatKst(k.lastUsedAt) : '없음'}
                       </p>
                       {!k.revokedAt ? (
                         <div className="mt-2">

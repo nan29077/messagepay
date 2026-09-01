@@ -2,8 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
 import { inboundAndPay, resetDb, seedBasics, seedRegisteredPayer, moPayload, type Fixture } from './helpers';
-import { handleMoInbound, loadBannedWords } from '@/server/services/charge-flow';
-import { mockMoAdapter } from '@/server/adapters/mo';
+import { loadBannedWords } from '@/server/services/charge-flow';
 import { filterContent } from '@/server/services/content-filter';
 
 /** 가맹점 금칙어·차단 기능 검수 */

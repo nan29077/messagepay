@@ -2,8 +2,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
 import { setChargeAmount, inboundAndPay, resetDb, seedBasics, seedRegisteredPayer, moPayload, type Fixture } from './helpers';
-import { handleMoInbound } from '@/server/services/charge-flow';
-import { mockMoAdapter } from '@/server/adapters/mo';
 import { resolvePolicy, checkLimits, FALLBACK_POLICY } from '@/server/services/limits';
 import { resolveFeePolicy, resolveRefundFeeReturn, postRefundSettlement, getSettlementSummary, computeFees } from '@/server/services/settlement';
 import { generateNumericCode, randomCodeString } from '@/lib/crypto';

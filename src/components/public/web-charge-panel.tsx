@@ -214,6 +214,7 @@ export function WebChargePanel({
                       value={customAmount}
                       onChange={(e) => setCustomAmount(e.target.value.replace(/[^\d]/g, ''))}
                       placeholder={`${minAmount} ~ ${maxAmount}`}
+                      aria-label="직접 입력 결제 금액"
                       className={cx(inputClass, 'w-44 text-right font-bold tabular-nums')}
                     />
                     <span className="text-[14px] font-bold text-ink-700">원</span>
@@ -263,7 +264,16 @@ export function WebChargePanel({
                   수 있습니다.
                 </p>
                 <div className="flex gap-2">
-                  <input name="phone" inputMode="tel" placeholder="010-1234-5678" required className={cx(inputClass, 'flex-1')} />
+                  <input
+                    name="phone"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    aria-label="휴대전화 번호"
+                    placeholder="010-1234-5678"
+                    required
+                    className={cx(inputClass, 'flex-1')}
+                  />
                   <button
                     type="submit"
                     disabled={sendPending}
@@ -297,6 +307,8 @@ export function WebChargePanel({
                 <input
                   name="code"
                   inputMode="numeric"
+                  autoComplete="one-time-code"
+                  aria-label="문자로 받은 인증번호 6자리"
                   maxLength={6}
                   placeholder="123456"
                   required

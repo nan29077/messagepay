@@ -3,6 +3,7 @@ import { newId } from '@/lib/id';
 import { logger } from '@/lib/logger';
 import { calculateFees, postChargeSettlement } from './settlement';
 import { rollbackCounters } from './limits';
+import { restoreStock } from './charge-flow';
 import { sendMtForPayer, setStatus } from './charge-flow';
 import * as tpl from './mt-templates';
 
@@ -71,6 +72,8 @@ export async function reconcileUnknownPayment(
       displayName: true,
       merchantId: true,
       payerId: true,
+      productId: true,
+      quantity: true,
       merchant: { select: { displayName: true, thanksMtMessage: true } },
     },
   });
@@ -99,6 +102,8 @@ type ChargeRow = {
   displayName: string;
   merchantId: string;
   payerId: string | null;
+  productId: string | null;
+  quantity: number;
   merchant: { displayName: string; thanksMtMessage: string | null };
 };
 
@@ -252,6 +257,11 @@ async function confirmCanceled(txn: TxnRow, charge: ChargeRow, memo: string): Pr
   if (claimed.count === 0) throw new Error(ALREADY_HANDLED);
 
   await setStatus(charge.id, 'PAYMENT_FAILED', `관리자 수동 취소: ${memo}`, 'admin');
+
+  // 결제 판정 때 선점한 재고도 함께 돌려놓는다.
+  // 승인 실패 경로(charge-flow)와 환불 경로는 모두 복구하는데 이 경로만 빠져 있었다.
+  // 빠뜨리면 결과 미확인 건을 취소로 확정할 때마다 팔 수 있는 물건이 영구히 줄어든다.
+  await restoreStock(charge.productId, charge.quantity);
 
   // 출금이 없었으므로 결제 판정 때 잡아 둔 한도 예약을 되돌린다.
   if (charge.payerId) {

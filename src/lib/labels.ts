@@ -42,14 +42,27 @@ export const chargeStatusLabel: Record<ChargeStatus, { text: string; tone: Tone 
   PENDING_PAYMENT: { text: '결제요청', tone: 'brand' },
   PAYMENT_SUCCESS: { text: '결제성공', tone: 'success' },
   PAYMENT_FAILED: { text: '결제실패', tone: 'danger' },
-  BROADCAST_PENDING: { text: '송출대기', tone: 'brand' },
-  BROADCASTED: { text: '송출완료', tone: 'success' },
-  PARTIAL_DELIVERY_FAILED: { text: '일부 송출실패', tone: 'warning' },
+  // 아래 세 상태는 도네이도(방송 송출) 시절의 잔재다. 지금은 어떤 코드도 이 상태를
+  // 결제 건에 기록하지 않는다. enum 에는 남아 있으므로 라벨은 두되, 화면 필터에는 노출하지 않는다
+  // (SELECTABLE_CHARGE_STATUSES 참고). 용어도 "충전 반영" 기준으로 고쳐 둔다.
+  BROADCAST_PENDING: { text: '반영대기(미사용)', tone: 'neutral' },
+  BROADCASTED: { text: '반영완료(미사용)', tone: 'neutral' },
+  PARTIAL_DELIVERY_FAILED: { text: '일부 반영실패(미사용)', tone: 'neutral' },
   REFUND_REQUESTED: { text: '환불요청', tone: 'warning' },
   REFUNDED: { text: '환불완료', tone: 'danger' },
   SETTLEMENT_PENDING: { text: '정산대기', tone: 'success' },
   SETTLED: { text: '정산완료', tone: 'success' },
 };
+
+/**
+ * 화면의 상태 필터에 노출할 결제 상태.
+ *
+ * chargeStatusLabel 을 그대로 뿌리면 코드가 한 번도 기록하지 않는 상태까지 드롭다운에 뜬다.
+ * 가맹점이 그걸 고르면 항상 0건이라 "내 충전이 반영 안 됐나" 로 오해한다.
+ */
+export const SELECTABLE_CHARGE_STATUSES = (Object.keys(chargeStatusLabel) as ChargeStatus[]).filter(
+  (s) => s !== 'BROADCAST_PENDING' && s !== 'BROADCASTED' && s !== 'PARTIAL_DELIVERY_FAILED' && s !== 'PENDING_CONFIRM',
+);
 
 export const deliveryStatusLabel: Record<DeliveryStatus, { text: string; tone: Tone }> = {
   PENDING: { text: '대기', tone: 'neutral' },

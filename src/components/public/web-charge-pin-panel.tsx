@@ -260,6 +260,7 @@ export function WebChargePinPanel({
                       value={customAmount}
                       onChange={(e) => setCustomAmount(e.target.value.replace(/[^\d]/g, ''))}
                       placeholder={`${minAmount} ~ ${maxAmount}`}
+                      aria-label="직접 입력 결제 금액"
                       className={cx(inputClass, 'w-44 text-right font-bold tabular-nums')}
                     />
                     <span className="text-[14px] font-bold text-ink-700">원</span>
@@ -330,7 +331,10 @@ export function WebChargePinPanel({
                 </p>
                 <input
                   name="phone"
+                  type="tel"
                   inputMode="tel"
+                  autoComplete="tel"
+                  aria-label="결제수단을 등록한 휴대전화 번호"
                   placeholder="010-1234-5678"
                   required
                   className={inputClass}
@@ -339,7 +343,12 @@ export function WebChargePinPanel({
                   <Send size={17} strokeWidth={1.8} />
                   {startPending ? 'PIN 링크 발송 중...' : 'PIN 입력 링크 문자로 받기'}
                 </button>
-                {view.message && !view.ok ? <Notice tone="warning">{view.message}</Notice> : null}
+                {view.message && !view.ok ? (
+                  // 버튼을 누른 뒤 오류가 조용히 렌더되면 스크린리더에는 아무 일도 없는 것으로 들린다.
+                  <div role="alert" aria-live="assertive">
+                    <Notice tone="warning">{view.message}</Notice>
+                  </div>
+                ) : null}
               </form>
               <p className="text-center text-[11.5px] leading-relaxed text-ink-400">
                 이 단계에서는 출금되지 않습니다. 문자로 받은 링크에서 PIN 을 입력해야 결제가 완료됩니다.

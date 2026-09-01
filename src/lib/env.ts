@@ -244,6 +244,22 @@ export function assertProductionSafety(): string[] {
   // 비어 있으면 PIN 완료 콜백이 전건 거절되어 결제가 영원히 완료되지 않는다.
   if (!env.payment.pinCallbackSecret) problems.push('PAYMENT_PIN_CALLBACK_SECRET 이 비어 있습니다.');
   if (env.payment.provider === 'mock') problems.push('PAYMENT_PROVIDER 가 mock 입니다.');
+  // SAFE_MODE 기본값이 true 라, 운영 배포에서 이 값을 빠뜨리면 결제·문자 어댑터가
+  // 조용히 mock 으로 바뀐다. 아무에게도 청구하지 않고 "결제 완료" 문자가 나가고,
+  // 며칠 뒤 자동 정산이 실재하지 않는 결제에 대해 가맹점에 실제 이체를 한다.
+  if (env.safety.safeMode) {
+    problems.push('운영에서는 SAFE_MODE=false 여야 합니다. (true 이면 결제·문자가 mock 으로 대체됩니다)');
+  }
+  if (env.payout.provider === 'mock') {
+    problems.push('PAYOUT_PROVIDER 가 mock 입니다. mock 지급대행은 이체 없이 정산을 완료 처리합니다.');
+  }
+  // 되돌림용 스위치들은 운영에서 열려 있으면 안 된다.
+  if (allowLegacyWebInstantPay()) {
+    problems.push('운영에서는 ALLOW_LEGACY_WEB_INSTANT_PAY=false 여야 합니다.');
+  }
+  if (!env.redisUrl) {
+    problems.push('REDIS_URL 이 비어 있습니다. (속도 제한·재전송 방어·배치 잠금이 동작하지 않습니다)');
+  }
   if (!env.baseUrl.startsWith('https://')) problems.push('운영에서는 APP_BASE_URL 이 https 여야 합니다.');
   // 로컬 디스크 저장은 다중 인스턴스에서 이미지가 안 보이고 재배포 때 사라진다.
   if ((process.env.STORAGE_DRIVER ?? 'local').toLowerCase() !== 's3') {

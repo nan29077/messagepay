@@ -45,9 +45,12 @@ export interface PayoutAdapter {
 }
 
 const mockResults = new Map<string, PayoutResult>();
+/** 조회로도 결과를 확정할 수 없는 요청(계좌번호 끝 8888). */
+const unresolvableRequests = new Set<string>();
 
 export function resetMockPayoutState() {
   mockResults.clear();
+  unresolvableRequests.clear();
 }
 
 export const mockPayoutAdapter: PayoutAdapter = {
@@ -64,6 +67,11 @@ export const mockPayoutAdapter: PayoutAdapter = {
       result = { ok: false, code: 'ACCOUNT_INVALID', message: '[MOCK] 계좌번호가 올바르지 않습니다.', mock: true };
     } else if (req.accountNo.endsWith('9999')) {
       result = { ok: false, code: 'TIMEOUT', message: '[MOCK] 응답을 받지 못했습니다.', unknown: true, mock: true };
+    } else if (req.accountNo.endsWith('8888')) {
+      // 이체 결과를 못 받았고, 조회로도 확정되지 않는 경우.
+      // 실제 지급대행은 이체 직후 조회에서 전파 지연으로 NOT_FOUND/PENDING 을 흔히 준다.
+      // 이 분기가 없으면 "실패로 확정" 경로를 어떤 테스트도 밟지 못한다.
+      result = { ok: false, code: 'TIMEOUT', message: '[MOCK] 응답을 받지 못했습니다.', unknown: true, mock: true };
     } else {
       result = {
         ok: true,
@@ -74,6 +82,7 @@ export const mockPayoutAdapter: PayoutAdapter = {
     }
 
     mockResults.set(req.requestId, result);
+    if (req.accountNo.endsWith('8888')) unresolvableRequests.add(req.requestId);
     logger.warn('[MOCK] 지급대행 이체 — 실제 이체가 아닙니다.', {
       requestId: req.requestId,
       amount: req.amount.toString(),
@@ -88,6 +97,10 @@ export const mockPayoutAdapter: PayoutAdapter = {
       return { ok: false, code: 'NOT_FOUND', message: '[MOCK] 이체 요청을 찾을 수 없습니다.', mock: true };
     }
     if (seen.unknown) {
+      // 8888 계좌는 조회로도 확정되지 않는다(미확정 유지).
+      if (unresolvableRequests.has(requestId)) {
+        return { ok: false, code: 'PENDING', message: '[MOCK] 아직 처리 결과를 확인할 수 없습니다.', unknown: true, mock: true };
+      }
       const settled: PayoutResult = {
         ok: true,
         referenceNo: `MOCKPAY-${requestId.slice(-10)}`,
@@ -103,9 +116,15 @@ export const mockPayoutAdapter: PayoutAdapter = {
 
 export function getPayoutAdapter(): PayoutAdapter {
   if (env.payout.provider !== 'mock') {
-    logger.warn('지급대행 실연동 어댑터가 아직 없어 mock 으로 처리합니다.', {
+    // 실연동 어댑터가 없는데 mock 을 돌려주면, 이체가 0원인 채로 markSettlementPaid 가
+    // 원장에 지급 분개를 남긴다(append-only 라 반대분개 없이는 되돌릴 수도 없다).
+    // 구현되지 않은 연동은 성공으로 만들지 않는다 — 배치가 실패하고 알림이 뜨는 편이 낫다.
+    logger.error('지급대행 실연동 어댑터가 없습니다. 지급을 중단합니다.', {
       provider: env.payout.provider,
     });
+    throw new Error(
+      `지급대행 연동(${env.payout.provider})이 구현되지 않았습니다. PAYOUT_PROVIDER=mock 으로 두거나 실연동 어댑터를 붙여 주세요.`,
+    );
   }
   return mockPayoutAdapter;
 }

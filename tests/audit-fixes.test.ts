@@ -2,8 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
 import { setChargeAmount, inboundAndPay, resetDb, seedBasics, seedRegisteredPayer, moPayload, type Fixture } from './helpers';
-import { handleMoInbound, routeMerchant } from '@/server/services/charge-flow';
-import { mockMoAdapter } from '@/server/adapters/mo';
+import { routeMerchant } from '@/server/services/charge-flow';
 import {
   calculateWithholding,
   createSettlementRequest,

@@ -2,8 +2,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
 import { inboundAndPay, resetDb, seedBasics, seedRegisteredPayer, moPayload, type Fixture } from './helpers';
-import { handleMoInbound } from '@/server/services/charge-flow';
-import { mockMoAdapter } from '@/server/adapters/mo';
 import {
   defaultPayerName,
   payerDisplayName,

@@ -256,9 +256,12 @@ export function tplChargeFailed(merchantName: string, reason?: string): Template
 }
 
 export function tplAccountInactive(merchantName: string): TemplateOutput {
+  // 해지한 이용자에게 문자만으로 등록 링크를 자동 재발급하지는 않는다(의도된 정책).
+  // 대신 실제로 다시 등록할 수 있는 경로를 알려 준다. 예전 문구("이용 상태를 확인하거나
+  // 고객센터로 문의")는 다음에 무엇을 해야 하는지 알려 주지 않아 이용자가 막혔다.
   const text =
     `[메시지페이] ${merchantName} 가맹점 결제를 진행할 수 없습니다. ` +
-    '내통장결제 이용 상태를 확인하거나 고객센터로 문의해 주세요. 결제는 진행되지 않았습니다.';
+    '결제 페이지에서 휴대폰 번호 인증을 거쳐 계좌를 다시 등록해 주세요. 결제는 진행되지 않았습니다.';
   return { code: MT_TEMPLATE.ACCOUNT_INACTIVE, text, masked: text, vars: { 가맹점: merchantName } };
 }
 

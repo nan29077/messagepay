@@ -41,6 +41,28 @@ export function SupportWidget({
   hasThread?: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
+
+  // 키보드만 쓰는 이용자는 ESC 로 닫을 수 있어야 하고, 열릴 때 패널 안으로 포커스가 들어가야 한다.
+  const panelRef = React.useRef<HTMLDivElement>(null);
+  const restoreFocusTo = React.useRef<HTMLElement | null>(null);
+  React.useEffect(() => {
+    if (!open) {
+      restoreFocusTo.current?.focus?.();
+      restoreFocusTo.current = null;
+      return;
+    }
+    restoreFocusTo.current = document.activeElement as HTMLElement | null;
+    const target = panelRef.current?.querySelector<HTMLElement>(
+      'input, select, textarea, button, [href], [tabindex]:not([tabindex="-1"])',
+    );
+    target?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
   const [tab, setTab] = React.useState<'faq' | 'chat'>('faq');
   const [messages, setMessages] = React.useState<ThreadMessage[]>([]);
   const [status, setStatus] = React.useState<string | null>(null);
@@ -163,6 +185,7 @@ export function SupportWidget({
         >
           <div className="mx-auto flex w-full max-w-[824px] justify-end px-3 lg:px-0">
         <div
+          ref={panelRef}
           role="dialog"
           aria-label="고객 문의"
           className={cx(

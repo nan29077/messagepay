@@ -1,4 +1,4 @@
-import { prisma, withAdvisoryLock } from '@/server/db';
+import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
 import { env } from '@/lib/env';
 import { decrypt } from '@/lib/crypto';
@@ -65,6 +65,9 @@ export async function findDueCharges(
       merchantId,
       status: { in: PAID_STATUSES },
       settledAt: null,
+      // 이미 어떤 회차에 묶인 건은 그 회차가 책임진다. 실패한 회차라도 풀어 주면
+      // 배치가 같은 건을 새 회차로 다시 잡아 같은 돈이 두 번 나간다.
+      settlementRequestId: null,
       paidAt: { not: null },
     },
     orderBy: { paidAt: 'asc' },
@@ -94,6 +97,9 @@ export async function runMerchantPayout(
   now: Date = new Date(),
 ): Promise<{ status: 'PAID' | 'FAILED' | 'SKIPPED'; amount: bigint; reason?: string; requestId?: string }> {
   const dateKey = toDateKey(now);
+  // 지급대행 transfer() 를 호출했는지. 호출 이후의 실패는 "결과 미확인" 이므로
+  // 멱등키를 풀면 안 된다(다음 배치가 같은 돈을 다시 보낸다).
+  let transferAttempted = false;
 
   try {
     const merchant = await prisma.merchantProfile.findUnique({
@@ -119,7 +125,9 @@ export async function runMerchantPayout(
     const included: string[] = [];
     for (const c of charges) {
       if (c.netAmount <= 0n) continue;
-      if (amount + c.netAmount > summary.available) break;
+      // 잔액을 넘는 건은 건너뛰고 다음 건을 본다. break 로 멈추면 앞의 큰 건 하나가
+      // 뒤의 작은 건 전부를 무기한 막는다(회차 구성은 아래에서 명시적으로 기록한다).
+      if (amount + c.netAmount > summary.available) continue;
       amount += c.netAmount;
       included.push(c.id);
     }
@@ -159,7 +167,21 @@ export async function runMerchantPayout(
       data: { status: 'APPROVED', auto: true, adminMemo: '자동 정산 배치' },
     });
 
+    // 이 회차가 어떤 결제 건을 지급하는지 못박는다. 나중에 목록을 다시 유도하면
+    // 그 사이 환불·신규 결제로 구성이 바뀌어 지급액과 정산 완료 건이 어긋난다.
+    await prisma.charge.updateMany({
+      where: { id: { in: included }, settlementRequestId: null },
+      data: { settlementRequestId: request.id },
+    });
+
     const adapter = getPayoutAdapter();
+    // 이체를 시도했다는 사실을 호출 **전에** 남긴다. 여기서 프로세스가 죽어도
+    // 회차가 "이체 시도함" 으로 남아야 다음 배치가 같은 돈을 다시 보내지 않는다.
+    await prisma.settlementRequest.update({
+      where: { id: request.id },
+      data: { payoutIssuedAt: new Date() },
+    });
+    transferAttempted = true;
     let result = await adapter.transfer({
       requestId: request.id,
       merchantName: merchant.displayName,
@@ -183,16 +205,27 @@ export async function runMerchantPayout(
           payoutFailReason: `${result.code ?? 'ERROR'}: ${result.message}`,
         },
       });
+      // 멱등키를 지우지 않는다. 지우면 다음 실행이 같은 결제 건으로 **새 회차**를 만들고,
+      // 지급대행의 멱등키는 requestId 라 새 회차 = 새 이체가 되어 같은 돈이 두 번 나간다.
+      // 재시도는 retryPayout(이 회차 그대로 조회 → 필요할 때만 재이체)으로만 한다.
       await prisma.idempotencyKey
-        .delete({ where: { scope_key: { scope: 'payout', key: `${merchantId}:${dateKey}` } } })
+        .update({
+          where: { scope_key: { scope: 'payout', key: `${merchantId}:${dateKey}` } },
+          data: { status: 'FAILED', resourceId: request.id },
+        })
         .catch(() => undefined);
+      await notifySuperAdmins({
+        title: '자동 정산 지급 실패',
+        body: `${merchant.displayName} 가맹점의 ${dateKey} 지급이 실패했습니다. 관리자 화면에서 재시도해 주세요. (${result.message})`,
+        linkUrl: '/admin/settlements',
+      });
       return { status: 'FAILED', amount, reason: result.message, requestId: request.id };
     }
 
     // 지급 완료: 원장 분개 + 회차 확정 + 포함된 결제 건에 정산 시각 기록
     await markSettlementPaid(request.id, undefined, result.referenceNo);
     await prisma.charge.updateMany({
-      where: { id: { in: included }, settledAt: null },
+      where: { settlementRequestId: request.id, settledAt: null },
       data: { settledAt: now, status: 'SETTLED' },
     });
     await prisma.idempotencyKey
@@ -204,10 +237,27 @@ export async function runMerchantPayout(
 
     return { status: 'PAID', amount, requestId: request.id };
   } catch (error) {
-    logger.error('자동 정산 실패', { merchantId, message: (error as Error).message });
-    await prisma.idempotencyKey
-      .delete({ where: { scope_key: { scope: 'payout', key: `${merchantId}:${dateKey}` } } })
-      .catch(() => undefined);
+    logger.error('자동 정산 실패', { merchantId, transferAttempted, message: (error as Error).message });
+    if (transferAttempted) {
+      // 이체를 이미 호출했다. 결과를 모르므로 멱등키를 남겨 다음 배치가 다시 보내지 못하게 한다.
+      // 사람이 대행사 원장과 대조한 뒤 관리자 화면에서 재시도한다.
+      await prisma.idempotencyKey
+        .update({
+          where: { scope_key: { scope: 'payout', key: `${merchantId}:${dateKey}` } },
+          data: { status: 'FAILED' },
+        })
+        .catch(() => undefined);
+      await notifySuperAdmins({
+        title: '자동 정산 중단 — 이체 결과 확인 필요',
+        body: `${merchantId} 가맹점의 ${dateKey} 지급이 이체 호출 이후에 중단되었습니다. 대행사 원장과 대조해 주세요.`,
+        linkUrl: '/admin/settlements',
+      });
+    } else {
+      // 이체 전에 끝났다. 아무 것도 나가지 않았으므로 키를 풀어 다음 실행이 정상 처리하게 한다.
+      await prisma.idempotencyKey
+        .delete({ where: { scope_key: { scope: 'payout', key: `${merchantId}:${dateKey}` } } })
+        .catch(() => undefined);
+    }
     return { status: 'FAILED', amount: 0n, reason: (error as Error).message };
   }
 }
@@ -335,25 +385,13 @@ export async function retryPayout(
   }
 
   await markSettlementPaid(requestId, undefined, result.referenceNo);
-  // 이 회차에 묶였던 결제 건에도 정산 시각을 남긴다.
-  // (지급 실패 시에는 settledAt 을 채우지 않으므로, 아직 미정산으로 남아 있다)
-  //
-  // 기준은 회차의 amount(수수료 차감 후 정산액 합계)다. payoutAmount 는 원천징수까지 뺀
-  // 실제 이체액이라 이 값으로 세면 마지막 결제 건이 미정산으로 남아 다음 회차에 다시 잡힌다.
-  const { charges } = await findDueCharges(request.merchantId, now);
-  let remaining = request.amount;
-  const ids: string[] = [];
-  for (const c of charges) {
-    if (remaining <= 0n) break;
-    ids.push(c.id);
-    remaining -= c.netAmount;
-  }
-  if (ids.length > 0) {
-    await prisma.charge.updateMany({
-      where: { id: { in: ids }, settledAt: null },
-      data: { settledAt: now, status: 'SETTLED' },
-    });
-  }
+  // 이 회차에 묶인 결제 건만 정산 완료로 확정한다.
+  // 목록을 다시 유도하면(그때그때 지급액만큼 오래된 순으로 세면) 실패~재시도 사이에
+  // 환불·신규 결제로 구성이 바뀌어 지급액보다 많은 건이 잠기거나 적게 잠긴다.
+  await prisma.charge.updateMany({
+    where: { settlementRequestId: requestId, settledAt: null },
+    data: { settledAt: now, status: 'SETTLED' },
+  });
   return { ok: true, message: '지급을 완료했습니다.' };
 }
 

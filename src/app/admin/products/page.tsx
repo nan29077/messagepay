@@ -21,12 +21,6 @@ export const dynamic = 'force-dynamic';
  * 통합 관리자가 원문을 봐야 하는 경우는 분쟁 처리라, 결제 상세에서 건별로 확인한다.
  */
 
-const SHIPMENT_LABEL: Record<ShipmentStatus, { text: string; tone: 'brand' | 'success' | 'warning' | 'neutral' }> = {
-  PREPARING: { text: '배송 준비', tone: 'warning' },
-  SHIPPED: { text: '발송 완료', tone: 'brand' },
-  DELIVERED: { text: '배송 완료', tone: 'success' },
-  CANCELED: { text: '배송 취소', tone: 'neutral' },
-};
 
 /** 이 시간을 넘도록 발송되지 않은 주문은 지연으로 본다. */
 const DELAY_HOURS = 72;
@@ -47,6 +41,8 @@ export default async function AdminProductsPage({
     ...(kind ? { kind } : {}),
   };
 
+  // 서버 컴포넌트(async RSC)라 요청마다 한 번 실행된다. 클라이언트 렌더 순수성 규칙의 대상이 아니다.
+  // eslint-disable-next-line react-hooks/purity -- RSC: 요청 시각 기준으로 지연 배송을 집계한다
   const delayCut = new Date(Date.now() - DELAY_HOURS * 3_600_000);
 
   const [merchants, total, products, soldByProduct, shipmentCounts, delayed, lowStock] = await Promise.all([

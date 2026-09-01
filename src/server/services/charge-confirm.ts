@@ -103,6 +103,31 @@ async function expireConfirmationByToken(token: string) {
   await setStatus(link.chargeId, 'PAYMENT_FAILED', '확인 시간 초과로 자동 취소');
 }
 
+/**
+ * 만료된 금액선택 대기 건 정리 (배치)
+ *
+ * SELECT_AMOUNT 링크가 만료되면 화면은 "결제는 진행되지 않았습니다" 라고 확정적으로 말하는데,
+ * 결제 건은 PENDING_AMOUNT(금액 0원)로 영원히 남아 있었다. 구 확인링크 경로는 같은 상황에서
+ * 그 자리에서 PAYMENT_FAILED 로 확정한다 — 두 경로가 같은 사건을 다르게 해석하면 안 된다.
+ */
+export async function expireStaleAmountSelections(now = new Date()) {
+  const stale = await prisma.secureLink.findMany({
+    where: { purpose: 'SELECT_AMOUNT', usedAt: null, expiresAt: { lt: now }, chargeId: { not: null } },
+    select: { chargeId: true },
+    take: 500,
+  });
+  let count = 0;
+  for (const s of stale) {
+    if (!s.chargeId) continue;
+    const d = await prisma.charge.findUnique({ where: { id: s.chargeId }, select: { status: true } });
+    if (d?.status !== 'PENDING_AMOUNT') continue;
+    // setStatus 를 거쳐야 ChargeStatusLog 감사 이력이 남는다
+    await setStatus(s.chargeId, 'PAYMENT_FAILED', '금액 선택 시간 초과로 자동 취소');
+    count += 1;
+  }
+  return count;
+}
+
 /** 만료된 확인 대기 건 정리 (배치) */
 export async function expireStaleConfirmations(now = new Date()) {
   const stale = await prisma.secureLink.findMany({

@@ -53,9 +53,10 @@ export default async function StudioModerationPage() {
       <PageHeader title="금칙어 · 차단" description="결제 내역과 문자에 노출되는 문자 내용과 이용자를 직접 관리합니다." />
 
       <div className="space-y-5">
-        <Notice tone="neutral" title="필터는 결제 처리 전에 적용됩니다">
-          전역 금칙어가 먼저 적용되고, 그 뒤에 내 금칙어가 적용됩니다. 차단(BLOCK)으로 지정한 단어가 포함된 문자는
-          결제로 접수되지 않으며, 마스킹(MASK)은 해당 부분만 별표로 가려 표시합니다.
+        <Notice tone="neutral" title="금칙어는 결제를 막지 않고 기록만 가립니다">
+          전역 금칙어가 먼저 적용되고, 그 뒤에 내 금칙어가 적용됩니다. 마스킹(MASK)은 해당 부분만 별표로 가려
+          표시하고, 표시(FLAG)는 기록만 남깁니다. <strong className="font-bold">어느 쪽이든 결제는 그대로 접수됩니다.</strong>
+          지난 정책으로 남아 있는 차단(BLOCK) 규칙도 지금은 마스킹으로 동작합니다.
         </Notice>
 
         <section>
@@ -85,11 +86,11 @@ export default async function StudioModerationPage() {
               <InlineActionForm
                 action={addDefaultBannedWordsAction}
                 submitLabel="기본 비속어 세트 추가"
-                confirmMessage="자주 쓰이는 비속어를 마스킹으로 한 번에 추가합니다. 이후 개별로 차단으로 바꿀 수 있습니다."
+                confirmMessage="자주 쓰이는 비속어를 마스킹으로 한 번에 추가합니다."
                 fields={{}}
               />
               <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-400">
-                처음이라면 기본 세트로 시작한 뒤, 필요한 단어만 차단으로 조정하는 것을 권장합니다.
+                처음이라면 기본 세트로 시작한 뒤, 필요한 단어만 추가하거나 처리 방식을 조정하는 것을 권장합니다.
               </p>
             </div>
           </Card>

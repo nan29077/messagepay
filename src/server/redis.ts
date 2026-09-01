@@ -64,24 +64,52 @@ class MemoryStore implements KvStore {
  * 개발 환경에서 Redis 가 떠 있지 않아도 앱이 죽지 않도록,
  * 명령 실패 시 인메모리 스토어로 자동 강등한다(운영에서는 폴백 금지).
  */
+/** 폴백으로 내려간 뒤 Redis 를 다시 시도하기까지의 시간. */
+const FALLBACK_RETRY_MS = 30_000;
+
 class RedisStore implements KvStore {
   private fallback: MemoryStore | null = null;
+  private fallbackUntil = 0;
 
   constructor(private client: Redis) {}
 
-  private degrade(e: unknown): MemoryStore {
-    if (!env.allowInMemoryFallback) throw e;
-    if (!this.fallback) {
-      logger.warn('Redis 명령 실패. 인메모리 폴백으로 전환합니다(개발 전용).', {
-        message: (e as Error)?.message,
-      });
-      this.fallback = new MemoryStore();
+  /**
+   * 지금 폴백을 써야 하는지.
+   *
+   * 한 번 강등되면 영원히 인메모리로 도는 구조였다. Redis 가 복구돼도 프로세스를
+   * 재시작하기 전까지 속도 제한·재전송 방어·배치 잠금이 인스턴스별로 쪼개진 채 남는다.
+   * 일정 시간이 지나면 다시 Redis 를 시도한다.
+   */
+  private useFallback(): MemoryStore | null {
+    if (!this.fallback) return null;
+    if (Date.now() >= this.fallbackUntil) {
+      logger.info('Redis 재시도 — 인메모리 폴백을 해제합니다.');
+      this.fallback = null;
+      return null;
     }
     return this.fallback;
   }
 
+  /** 현재 인메모리 폴백으로 동작 중인지(헬스체크에서 노출한다). */
+  isDegraded(): boolean {
+    return Boolean(this.fallback) && Date.now() < this.fallbackUntil;
+  }
+
+  private degrade(e: unknown): MemoryStore {
+    if (!env.allowInMemoryFallback) throw e;
+    if (!this.fallback) {
+      logger.error('Redis 명령 실패. 인메모리 폴백으로 전환합니다(개발 전용).', {
+        message: (e as Error)?.message,
+      });
+      this.fallback = new MemoryStore();
+    }
+    this.fallbackUntil = Date.now() + FALLBACK_RETRY_MS;
+    return this.fallback;
+  }
+
   async get(key: string) {
-    if (this.fallback) return this.fallback.get(key);
+    const fb = this.useFallback();
+    if (fb) return fb.get(key);
     try {
       return await this.client.get(key);
     } catch (e) {
@@ -90,7 +118,8 @@ class RedisStore implements KvStore {
   }
 
   async set(key: string, value: string, ttlSec?: number) {
-    if (this.fallback) return this.fallback.set(key, value, ttlSec);
+    const fb = this.useFallback();
+    if (fb) return fb.set(key, value, ttlSec);
     try {
       if (ttlSec) await this.client.set(key, value, 'EX', ttlSec);
       else await this.client.set(key, value);
@@ -100,7 +129,8 @@ class RedisStore implements KvStore {
   }
 
   async incr(key: string, ttlSec?: number) {
-    if (this.fallback) return this.fallback.incr(key, ttlSec);
+    const fb = this.useFallback();
+    if (fb) return fb.incr(key, ttlSec);
     try {
       const n = await this.client.incr(key);
       if (n === 1 && ttlSec) await this.client.expire(key, ttlSec);
@@ -111,7 +141,8 @@ class RedisStore implements KvStore {
   }
 
   async del(key: string) {
-    if (this.fallback) return this.fallback.del(key);
+    const fb = this.useFallback();
+    if (fb) return fb.del(key);
     try {
       await this.client.del(key);
     } catch (e) {
@@ -120,7 +151,8 @@ class RedisStore implements KvStore {
   }
 
   async setnx(key: string, value: string, ttlSec: number) {
-    if (this.fallback) return this.fallback.setnx(key, value, ttlSec);
+    const fb = this.useFallback();
+    if (fb) return fb.setnx(key, value, ttlSec);
     try {
       const r = await this.client.set(key, value, 'EX', ttlSec, 'NX');
       return r === 'OK';

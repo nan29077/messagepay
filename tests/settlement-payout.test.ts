@@ -2,8 +2,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
 import { inboundAndPay, resetDb, seedBasics, seedRegisteredPayer, moPayload, type Fixture } from './helpers';
-import { handleMoInbound } from '@/server/services/charge-flow';
-import { mockMoAdapter } from '@/server/adapters/mo';
 import {
   createSettlementRequest,
   markSettlementPaid,
@@ -62,8 +60,14 @@ describe('주민등록번호 유틸', () => {
     expect(normalizeResident('901010-1234567')).toBe('9010101234567');
     expect(normalizeResident('9010101234')).toBeNull();
     expect(maskResident('9010101234567')).toBe('901010-1******');
-    // 유효한 체크섬 예시
-    expect(isValidResident('9010101234567')).toBe(false); // 임의값 → 대개 실패
+    // 체크섬이 맞는 값은 통과해야 한다.
+    // 음성 단언만 있으면 isValidResident 가 return false 로 퇴화해도 통과해서,
+    // 모든 가맹점의 원천징수용 주민번호 등록이 조용히 막히는 회귀를 못 잡는다.
+    expect(isValidResident('9010101234560')).toBe(true);
+    expect(isValidResident('0001013000008')).toBe(true);
+    // 체크섬이 틀리면 거절한다.
+    expect(isValidResident('9010101234567')).toBe(false);
+    expect(isValidResident('9010101234561')).toBe(false);
   });
 });
 

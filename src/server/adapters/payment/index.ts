@@ -124,13 +124,15 @@ export interface PaymentAdapter {
 //   ...999 → 승인 실패
 //   ...888 → 타임아웃 (이후 inquire 로 APPROVED 확정)
 //   ...777 → 타임아웃 (이후 inquire 로 FAILED 확정)
+//   ...666 → 타임아웃 + inquire 도 실패 (결과 미확인 = UNKNOWN 경로)
 //   ...555 → PIN 링크 발급 실패 (승인 단계까지 가지 않는다)
+//   ...444 → 승인은 되지만 취소(환불)가 실패 (환불 경로의 PG 취소 실패)
 //   그 외   → PIN 링크 발급 성공 / 승인 성공
 // PIN 을 끝까지 입력하지 않는 시나리오는 콜백을 호출하지 않는 것으로 재현한다.
 // ---------------------------------------------------------------------------
 
 const approvedOrders = new Map<string, { tid: string; amount: bigint; at: Date; canceled?: boolean }>();
-const timeoutOrders = new Map<string, 'APPROVED' | 'FAILED'>();
+const timeoutOrders = new Map<string, 'APPROVED' | 'FAILED' | 'UNKNOWN'>();
 let mockPinSeq = 0;
 
 export function resetMockPaymentState() {
@@ -226,10 +228,11 @@ export const mockPaymentAdapter: PaymentAdapter = {
     if (tail === 999) {
       return { ok: false, code: 'M0001', message: '잔액 부족 또는 출금 불가 계좌입니다.' };
     }
-    if (tail === 888 || tail === 777) {
-      timeoutOrders.set(req.orderNo, tail === 888 ? 'APPROVED' : 'FAILED');
-      if (tail === 888) {
-        // 실제로는 승인되었으나 응답만 유실된 상황을 재현
+    if (tail === 888 || tail === 777 || tail === 666) {
+      timeoutOrders.set(req.orderNo, tail === 888 ? 'APPROVED' : tail === 777 ? 'FAILED' : 'UNKNOWN');
+      if (tail === 888 || tail === 666) {
+        // 실제로는 승인되었으나 응답만 유실된 상황을 재현.
+        // 666 은 조회까지 실패해 "출금 여부를 모르는" 상태로 남는다(가장 위험한 경우다).
         approvedOrders.set(req.orderNo, { tid: `MOCKTID-${req.orderNo}`, amount: req.amount, at: new Date() });
       }
       throw new MockPaymentTimeout(req.orderNo);
@@ -247,6 +250,10 @@ export const mockPaymentAdapter: PaymentAdapter = {
 
   async inquire(orderNo) {
     const forced = timeoutOrders.get(orderNo);
+    if (forced === 'UNKNOWN') {
+      // 조회 자체가 실패한다. 상위 흐름은 결과를 단정하지 말고 UNKNOWN 으로 남겨야 한다.
+      return { ok: false, code: 'M0999', message: '[MOCK] 거래결과조회에 실패했습니다.' };
+    }
     if (forced === 'FAILED') return { ok: true, data: { status: 'FAILED' } };
     const rec = approvedOrders.get(orderNo);
     if (!rec) return { ok: true, data: { status: 'NOT_FOUND' } };
@@ -257,6 +264,11 @@ export const mockPaymentAdapter: PaymentAdapter = {
   async cancel({ orderNo }) {
     const rec = approvedOrders.get(orderNo);
     if (!rec) return { ok: false, code: 'M0404', message: '취소할 거래를 찾을 수 없습니다.' };
+    // 결제사가 취소를 거절하는 경우. 이 분기가 없으면 "PG 는 취소를 거절했는데
+    // 원장에는 환불 반대분개가 쌓이는" 회귀를 테스트가 잡지 못한다.
+    if (Number(rec.amount % 1000n) === 444) {
+      return { ok: false, code: 'M0444', message: '[MOCK] 취소할 수 없는 거래입니다.' };
+    }
     rec.canceled = true;
     return { ok: true, data: { canceledAt: new Date() } };
   },

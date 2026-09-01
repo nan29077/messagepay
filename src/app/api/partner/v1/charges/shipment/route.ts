@@ -51,31 +51,41 @@ export async function POST(req: Request) {
     return jsonError(400, 'INVALID_STATUS', `status 는 ${STATUSES.join(' / ')} 중 하나여야 합니다.`);
   }
 
-  const carrier = body.carrier == null ? null : String(body.carrier).slice(0, 30).trim() || null;
+  // 본문에 없는 필드는 "지우라는 뜻" 이 아니라 "건드리지 말라는 뜻" 이다.
+  // 예전에는 없으면 null 로 덮어써서, 상태만 바꾸는 호출 한 번에 송장번호·택배사와
+  // 이용자가 남긴 배송 요청 메모까지 사라졌다(주석의 "멱등" 계약과도 어긋났다).
+  const carrier = body.carrier === undefined ? undefined : body.carrier === null ? null : String(body.carrier).slice(0, 30).trim() || null;
   const trackingNo =
-    body.trackingNo == null ? null : String(body.trackingNo).replace(/[^0-9A-Za-z-]/g, '').slice(0, 40) || null;
-  const memo = body.memo == null ? null : String(body.memo).slice(0, 100) || null;
-
-  if (status === 'SHIPPED' && (!carrier || !trackingNo)) {
-    return jsonError(400, 'TRACKING_REQUIRED', '발송(SHIPPED) 처리에는 carrier 와 trackingNo 가 필요합니다.');
-  }
+    body.trackingNo === undefined
+      ? undefined
+      : body.trackingNo === null
+        ? null
+        : String(body.trackingNo).replace(/[^0-9A-Za-z-]/g, '').slice(0, 40) || null;
+  const memo = body.memo === undefined ? undefined : body.memo === null ? null : String(body.memo).slice(0, 100) || null;
 
   // 본인 가맹점의 결제 완료 실물 주문인지 확인한다.
   const charge = await prisma.charge.findFirst({
     where: { transactionNo, merchantId: auth.merchantId, status: { in: PAID_STATUSES } },
-    select: { id: true, shipment: { select: { shippedAt: true } } },
+    select: { id: true, shipment: { select: { shippedAt: true, deliveredAt: true, carrier: true, trackingNo: true } } },
   });
   if (!charge) return jsonError(404, 'NOT_FOUND', '해당 거래번호의 결제 완료 주문을 찾을 수 없습니다.');
   if (!charge.shipment) return jsonError(400, 'NOT_PHYSICAL', '배송 정보가 없는 주문입니다(실물 상품이 아닙니다).');
+
+  // 발송 처리에 필요한 값은 이번 요청 또는 이미 저장된 값 중 하나로 채워져 있어야 한다.
+  const effectiveCarrier = carrier === undefined ? charge.shipment.carrier : carrier;
+  const effectiveTrackingNo = trackingNo === undefined ? charge.shipment.trackingNo : trackingNo;
+  if (status === 'SHIPPED' && (!effectiveCarrier || !effectiveTrackingNo)) {
+    return jsonError(400, 'TRACKING_REQUIRED', '발송(SHIPPED) 처리에는 carrier 와 trackingNo 가 필요합니다.');
+  }
 
   const now = new Date();
   await prisma.chargeShipment.update({
     where: { chargeId: charge.id },
     data: {
       status: status as Status,
-      carrier,
-      trackingNo,
-      memo,
+      ...(carrier === undefined ? {} : { carrier }),
+      ...(trackingNo === undefined ? {} : { trackingNo }),
+      ...(memo === undefined ? {} : { memo }),
       // 발송 시각은 처음 발송으로 바꾼 때만 기록한다(수정할 때마다 갱신하면 배송 지연을 못 본다).
       shippedAt:
         status === 'SHIPPED'
@@ -83,9 +93,16 @@ export async function POST(req: Request) {
           : status === 'PREPARING'
             ? null
             : charge.shipment.shippedAt,
-      deliveredAt: status === 'DELIVERED' ? now : null,
+      // 배송 완료 시각도 최초 1회만 기록한다. 같은 상태로 다시 보내도 값이 바뀌지 않아야
+      // 주석이 약속한 "같은 값을 다시 보내도 결과가 같다(멱등)" 가 성립한다.
+      deliveredAt:
+        status === 'DELIVERED'
+          ? charge.shipment.deliveredAt ?? now
+          : status === 'PREPARING'
+            ? null
+            : charge.shipment.deliveredAt,
     },
   });
 
-  return jsonOk({ transactionNo, status, carrier, trackingNo });
+  return jsonOk({ transactionNo, status, carrier: effectiveCarrier, trackingNo: effectiveTrackingNo });
 }

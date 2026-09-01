@@ -46,7 +46,19 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, message: '인증되지 않은 요청입니다.' }, { status: 401 });
   }
 
-  const locked = await kv.setnx(LOCK_KEY, String(Date.now()), LOCK_TTL_SEC).catch(() => true);
+  // 돈이 나가는 배치다. 잠금을 못 잡으면 돌리지 않는다.
+  // Redis 오류를 "잠금 획득"으로 바꾸면(예전 .catch(() => true)) 겹쳐 도는 것을 막는
+  // 유일한 장치가 장애 때 정확히 사라진다.
+  let locked: boolean;
+  try {
+    locked = await kv.setnx(LOCK_KEY, String(Date.now()), LOCK_TTL_SEC);
+  } catch (e) {
+    logger.error('자동 정산 배치 잠금 획득 실패 — 실행하지 않습니다', { message: (e as Error).message });
+    return NextResponse.json(
+      { ok: false, message: '실행 잠금을 확인할 수 없어 배치를 건너뛰었습니다.' },
+      { status: 503 },
+    );
+  }
   if (!locked) {
     return NextResponse.json({ ok: true, skipped: true, message: '이전 실행이 아직 진행 중입니다.' });
   }

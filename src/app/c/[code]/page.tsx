@@ -89,7 +89,10 @@ async function findMerchant(rawCode: string) {
       user: { select: { avatarIndex: true } },
       moRoutes: { where: { status: 'ASSIGNED' }, orderBy: { assignedAt: 'desc' } },
       chargeProducts: {
-        where: { active: true, archivedAt: null },
+        // PC 결제 패널은 금액 칩만 그리고 createWebCharge 도 amount 만 받는다.
+        // 실물 상품을 여기 노출하면 배송지·배송비 없이 결제되어 보낼 주소가 없는 주문이 생긴다.
+        // 실물 주문은 문자로 받은 /r/[token] 흐름(배송지 입력 포함)에서만 받는다.
+        where: { active: true, archivedAt: null, kind: 'DIGITAL' },
         orderBy: [{ sortOrder: 'asc' }, { amount: 'asc' }],
         select: { id: true, name: true, amount: true },
       },
@@ -448,7 +451,7 @@ export default async function MerchantChargePage({ params }: Params) {
                   <div className="flex items-center justify-between gap-3">
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-100 text-[11px] font-black text-brand-800">
-                        {(d.anonymous ? '익' : (d.displayName || '후')).slice(0, 1)}
+                        {(d.anonymous ? '익' : (d.displayName || '이')).slice(0, 1)}
                       </span>
                       <span className="truncate text-[13px] font-bold text-ink-900">
                         {d.anonymous ? '익명' : maskDisplayName(d.displayName)}

@@ -88,7 +88,10 @@ export default async function StudioSettlementPage({
       select: { paidAt: true, amount: true, netAmount: true },
     }),
     prisma.settlementRequest.findMany({
-      where: { merchantId, paidAt: { gte: range.start, lt: range.end } },
+      // markSettlementPayoutFailed 는 status 만 바꾸고 paidAt 은 지우지 않는다.
+      // status 를 안 걸면 이체가 반송돼 환입된 회차가 캘린더에 "지급완료" 로 남고,
+      // 같은 금액이 "지급 예정" 에도 다시 잡혀 이중으로 보인다.
+      where: { merchantId, status: 'PAID', paidAt: { gte: range.start, lt: range.end } },
       select: { paidAt: true, payoutAmount: true },
     }),
     // 아직 지급되지 않은 결제의 지급 예정일별 집계 (자동 지급 안내용)

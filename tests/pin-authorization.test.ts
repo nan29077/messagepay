@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/server/db';
-import { mockMoAdapter } from '@/server/adapters/mo';
 import { readMockOutbox } from '@/server/adapters/mt';
-import { handleMoInbound, resolveConfirmChannel, startPinAuthorization } from '@/server/services/charge-flow';
+import { resolveConfirmChannel, startPinAuthorization } from '@/server/services/charge-flow';
 import { completePinAuthorization, expireStalePinSessions } from '@/server/services/pin-authorization';
 import { setChargeAmount, inboundAndSelect, resetDb, seedBasics, seedRegisteredPayer, moPayload, type Fixture } from './helpers';
 
@@ -146,7 +145,11 @@ describe('PIN 인증 결제 흐름 (CONFIRM_LINK 기본 경로)', () => {
       completePinAuthorization({ sessionId: session.sessionId }),
     ]);
 
-    expect([a.code, b.code]).toContain('OK');
+    // 하나만 OK, 나머지는 DUPLICATE 여야 한다.
+    // toContain('OK') 만 보면 둘 다 OK 여도 통과해서 선점 가드가 사라진 회귀를 못 잡는다.
+    const codes = [a.code, b.code];
+    expect(codes.filter((c) => c === 'OK')).toHaveLength(1);
+    expect(codes.filter((c) => c === 'DUPLICATE')).toHaveLength(1);
     expect(await prisma.paymentTransaction.count({ where: { status: 'APPROVED' } })).toBe(1);
     expect(await prisma.settlementLedger.count({ where: { chargeId: res.chargeId } })).toBe(3);
   });

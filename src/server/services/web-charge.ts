@@ -57,7 +57,8 @@ export interface WebChargeResult {
 
 export async function createWebCharge(input: WebChargeInput): Promise<WebChargeResult> {
   const merchant = await prisma.merchantProfile.findFirst({
-    where: { id: input.merchantId, status: 'APPROVED' },
+    // 가맹점주 계정이 정지·탈퇴되면 결제 페이지가 닫힌다(/c/[code]). 이 경로도 같은 기준을 쓴다.
+    where: { id: input.merchantId, status: 'APPROVED', user: { status: 'ACTIVE', deletedAt: null } },
   });
   if (!merchant) return { ok: false, message: '결제할 수 없는 가맹점입니다.' };
 

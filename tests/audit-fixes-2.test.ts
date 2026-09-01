@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/server/db';
 import { inboundAndPay, resetDb, seedBasics, seedRegisteredPayer, moPayload, type Fixture } from './helpers';
-import { handleMoInbound } from '@/server/services/charge-flow';
-import { mockMoAdapter } from '@/server/adapters/mo';
 import { bannedNeedle, containsBannedWord, filterContent } from '@/server/services/content-filter';
 import { scrubText } from '@/lib/logger';
 import { computeFees } from '@/server/services/settlement';

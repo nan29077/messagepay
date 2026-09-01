@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/server/db';
-import { mockMoAdapter } from '@/server/adapters/mo';
 import { readMockOutbox } from '@/server/adapters/mt';
-import { handleMoInbound } from '@/server/services/charge-flow';
 import { completeRegistration, revokePaymentMethod, startRegistration } from '@/server/services/payer-registration';
 import { generateToken, tokenHash } from '@/lib/crypto';
 import { inboundAndPay, moPayload, resetDb, seedBasics, seedRegisteredPayer, type Fixture } from './helpers';

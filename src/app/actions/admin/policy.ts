@@ -48,6 +48,10 @@ function readLimitFields(fd: FormData) {
 
 export async function saveLimitPolicy(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
+    // 한도 정책은 결제 금액·속도·잠금을 전부 정한다. 수수료 정책·정산 처리와 같은 기준으로 막는다.
+    if (admin.adminPermission === 'SUPPORT') {
+      throw new Error('한도 정책 변경은 운영/재무 권한에서만 가능합니다.');
+    }
     const id = optText(fd, 'id');
     const values = readLimitFields(fd);
     const active = bool(fd, 'active');
@@ -118,6 +122,9 @@ export async function saveLimitPolicy(_prev: AdminActionState, fd: FormData): Pr
 
 export async function toggleLimitPolicy(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
+    if (admin.adminPermission === 'SUPPORT') {
+      throw new Error('한도 정책 변경은 운영/재무 권한에서만 가능합니다.');
+    }
     const id = requiredId(fd, 'id', '한도 정책');
     const before = await prisma.chargeLimitPolicy.findUnique({
       where: { id },

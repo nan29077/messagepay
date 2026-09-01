@@ -16,6 +16,17 @@ export function bankLabel(bankName?: string | null, tail4?: string | null): stri
   return `${bankName ?? '은행미상'} ****${tail4 ?? '****'}`;
 }
 
+/**
+ * 사업자등록번호 마스킹. 개인사업자의 등록번호는 개인정보에 해당하므로
+ * 화면에는 앞 3자리와 끝 2자리만 남긴다. (예: 123-45-67890 -> 123-**-***90)
+ */
+export function maskBusinessNo(value?: string | null): string {
+  if (!value) return '미등록';
+  const digits = value.replace(/\D/g, '');
+  if (digits.length !== 10) return '***';
+  return `${digits.slice(0, 3)}-**-***${digits.slice(8)}`;
+}
+
 /** 사업자/제휴 식별자처럼 길이가 긴 값은 앞뒤만 남긴다. */
 export function shortId(value?: string | null, head = 6, tail = 4): string {
   if (!value) return '-';

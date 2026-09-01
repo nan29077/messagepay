@@ -242,16 +242,25 @@ export async function routeMerchant(receivedNumber: string, content: string) {
 
 async function getOrCreatePayer(phone: string) {
   const ph = hashPhone(phone);
-  return prisma.payerProfile.upsert({
-    where: { phoneHash: ph },
-    update: {},
-    create: {
-      id: newId(),
-      phoneHash: ph,
-      phoneEnc: encrypt(normalizePhone(phone)),
-      phoneMasked: maskPhone(phone),
-    },
-  });
+  // upsert 는 이 형태에서 원자적이지 않다(조회 → 없으면 INSERT). 같은 새 번호로 MO 가
+  // 동시에 들어오면 두 요청이 모두 "행 없음" 을 보고 INSERT 해 유니크 위반이 난다.
+  // 먼저 조회하고, 생성이 유니크 위반으로 실패하면 이긴 쪽이 만든 행을 다시 읽는다.
+  const existing = await prisma.payerProfile.findUnique({ where: { phoneHash: ph } });
+  if (existing) return existing;
+
+  try {
+    return await prisma.payerProfile.create({
+      data: {
+        id: newId(),
+        phoneHash: ph,
+        phoneEnc: encrypt(normalizePhone(phone)),
+        phoneMasked: maskPhone(phone),
+      },
+    });
+  } catch (error) {
+    if ((error as { code?: string }).code !== 'P2002') throw error;
+    return prisma.payerProfile.findUniqueOrThrow({ where: { phoneHash: ph } });
+  }
 }
 
 /** 같은 전화번호의 동시 MO 중 한 요청만 최초 가입 안내 발송권을 얻는다. */
@@ -408,6 +417,21 @@ async function processMoRow(
   }
 
   const merchant = routed.merchant;
+  // 가맹점주 계정이 정지·탈퇴됐으면 결제를 받지 않는다.
+  // 공개 결제 페이지(/c/[code])는 이미 user.status 를 확인하는데 문자 경로만 빠져 있으면,
+  // 관리자가 계정을 제재해도 문자결제로 계속 돈이 쌓인다.
+  const merchantUser = await prisma.user.findUnique({
+    where: { id: merchant.userId },
+    select: { status: true, deletedAt: true },
+  });
+  if (!merchantUser || merchantUser.deletedAt || merchantUser.status !== 'ACTIVE') {
+    await prisma.moInboundMessage.update({
+      where: { id: moRow.id },
+      data: { result: 'BLOCKED', resultDetail: '가맹점 계정 정지', processedAt: new Date() },
+    });
+    await sendMt({ phone: inbound.fromNumber, template: tpl.tplUnknownRoute() });
+    return { result: 'BLOCKED', moMessageId: moRow.id, message: '이용할 수 없는 가맹점입니다.' };
+  }
   if (merchant.status !== 'APPROVED') {
     await prisma.moInboundMessage.update({
       where: { id: moRow.id },
@@ -716,7 +740,11 @@ export async function startPinAuthorization(
       status: charge.status,
       message:
         existing.status === 'PENDING'
-          ? '이미 발송된 PIN 입력 링크가 있습니다. 받으신 문자에서 진행해 주세요.'
+          ? // notify:false 로 시작한 흐름(금액 선택 화면)에서는 이 결제로 문자를 보낸 적이 없다.
+            // "받으신 문자에서 진행하세요" 라고 하면 오지 않을 문자를 기다리게 된다.
+            notify
+            ? '이미 발송된 PIN 입력 링크가 있습니다. 받으신 문자에서 진행해 주세요.'
+            : '이미 진행 중인 결제가 있습니다. 잠시 후 다시 시도하거나, 가맹점 번호로 문자를 다시 보내 주세요.'
           : '이미 처리된 결제입니다.',
       sessionId: existing.sessionId,
       expiresAt: existing.expiresAt,
@@ -782,7 +810,9 @@ export async function startPinAuthorization(
     return {
       ok: Boolean(now),
       status: 'PENDING_PIN',
-      message: '이미 발송된 PIN 입력 링크가 있습니다. 받으신 문자에서 진행해 주세요.',
+      message: notify
+        ? '이미 발송된 PIN 입력 링크가 있습니다. 받으신 문자에서 진행해 주세요.'
+        : '이미 진행 중인 결제가 있습니다. 잠시 후 다시 시도하거나, 가맹점 번호로 문자를 다시 보내 주세요.',
       sessionId: now?.sessionId,
       expiresAt: now?.expiresAt,
       mock: now?.mock,
@@ -934,6 +964,10 @@ export async function executePayment(chargeId: string): Promise<PaymentOutcome> 
           orderNo: newOrderNo(),
           provider: env.payment.provider,
           amount: charge.amount,
+          // 한도 집계를 되돌릴 때 이 값을 기준 시각으로 쓴다(환불·대사 경로 포함).
+          // DB 기본값(now())에 맡기면 예약에 쓴 reservedAt 과 KST 날짜가 갈릴 수 있고,
+          // 그러면 A월에 잡은 한도를 B월에서 빼게 된다.
+          requestedAt: reservedAt,
         },
       }));
 
@@ -1112,52 +1146,82 @@ export async function executePayment(chargeId: string): Promise<PaymentOutcome> 
   // "결제는 성공인데 원장에는 없는" 상태가 되고, 앞쪽 조기 return 가드가
   // 재시도를 '이미 완료'로 되돌려 보내 가맹점이 그 금액을 영영 못 받는다.
   const fees = await calculateFees(charge.merchantId, charge.amount);
-  await prisma.$transaction(async (tx) => {
-    await tx.paymentTransaction.update({
-      where: { id: txn.id },
-      data: { status: 'APPROVED', providerTid: approved!.providerTid, approvedAt: approved!.approvedAt },
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.paymentTransaction.update({
+        where: { id: txn.id },
+        data: { status: 'APPROVED', providerTid: approved!.providerTid, approvedAt: approved!.approvedAt },
+      });
+      await tx.charge.update({
+        where: { id: chargeId },
+        data: {
+          status: 'SETTLEMENT_PENDING',
+          statusReason: '정산 대기',
+          paidAt: approved!.approvedAt,
+          pgFee: fees.pgFee,
+          platformFee: fees.platformFee,
+          feeVat: fees.vat,
+          netAmount: fees.net,
+        },
+      });
+      await tx.chargeStatusLog.createMany({
+        data: [
+          { id: newId(), chargeId, fromStatus: 'PENDING_PAYMENT', toStatus: 'PAYMENT_SUCCESS', actor: 'system' },
+          { id: newId(), chargeId, fromStatus: 'PAYMENT_SUCCESS', toStatus: 'SETTLEMENT_PENDING', reason: '정산 대기', actor: 'system' },
+        ],
+      });
+      await tx.payerMerchantLink.upsert({
+        where: { payerId_merchantId: { payerId: charge.payerId!, merchantId: charge.merchantId } },
+        create: {
+          id: newId(), payerId: charge.payerId!, merchantId: charge.merchantId,
+          consentedAt: new Date(), totalAmount: charge.amount, totalCount: 1, lastDonatedAt: approved!.approvedAt,
+        },
+        update: {
+          totalAmount: { increment: charge.amount },
+          totalCount: { increment: 1 },
+          lastDonatedAt: approved!.approvedAt,
+        },
+      });
+      await postChargeSettlement(
+        {
+          merchantId: charge.merchantId,
+          chargeId,
+          amount: charge.amount,
+          fees,
+          occurredAt: approved!.approvedAt,
+        },
+        tx,
+      );
+    }, { maxWait: 5_000, timeout: 15_000 });
+  } catch (error) {
+    // 출금은 이미 끝났다. 여기서 그냥 던지면 거래가 REQUESTED 로 남는데,
+    // 수동 대사는 UNKNOWN·TIMEOUT 만 받으므로 자동으로도 사람 손으로도 회수할 수 없게 된다.
+    // 결과를 모르는 상태로 표시해 관리자 대사 큐에 올린다.
+    logger.error('승인 후 정산 기록 실패 — 대사 필요', {
+      chargeId,
+      transactionId: txn.id,
+      providerTid: approved!.providerTid,
+      message: (error as Error).message,
     });
-    await tx.charge.update({
-      where: { id: chargeId },
-      data: {
-        status: 'SETTLEMENT_PENDING',
-        statusReason: '정산 대기',
-        paidAt: approved!.approvedAt,
-        pgFee: fees.pgFee,
-        platformFee: fees.platformFee,
-        feeVat: fees.vat,
-        netAmount: fees.net,
-      },
-    });
-    await tx.chargeStatusLog.createMany({
-      data: [
-        { id: newId(), chargeId, fromStatus: 'PENDING_PAYMENT', toStatus: 'PAYMENT_SUCCESS', actor: 'system' },
-        { id: newId(), chargeId, fromStatus: 'PAYMENT_SUCCESS', toStatus: 'SETTLEMENT_PENDING', reason: '정산 대기', actor: 'system' },
-      ],
-    });
-    await tx.payerMerchantLink.upsert({
-      where: { payerId_merchantId: { payerId: charge.payerId!, merchantId: charge.merchantId } },
-      create: {
-        id: newId(), payerId: charge.payerId!, merchantId: charge.merchantId,
-        consentedAt: new Date(), totalAmount: charge.amount, totalCount: 1, lastDonatedAt: approved!.approvedAt,
-      },
-      update: {
-        totalAmount: { increment: charge.amount },
-        totalCount: { increment: 1 },
-        lastDonatedAt: approved!.approvedAt,
-      },
-    });
-    await postChargeSettlement(
-      {
-        merchantId: charge.merchantId,
-        chargeId,
-        amount: charge.amount,
-        fees,
-        occurredAt: approved!.approvedAt,
-      },
-      tx,
-    );
-  });
+    await prisma.paymentTransaction
+      .update({
+        where: { id: txn.id },
+        data: {
+          status: 'UNKNOWN',
+          providerTid: approved!.providerTid,
+          approvedAt: approved!.approvedAt,
+          resultCode: 'SETTLEMENT_WRITE_FAILED',
+          resultMessage: `승인은 되었으나 정산 기록에 실패했습니다: ${(error as Error).message}`.slice(0, 500),
+        },
+      })
+      .catch(() => undefined);
+    await raiseUnknownPaymentAlert(chargeId, txn.id, txn.orderNo, charge.amount);
+    return {
+      ok: false,
+      status: 'PENDING_PAYMENT',
+      message: '결제 결과를 확인하는 중입니다. 확인되는 대로 문자로 안내드립니다.',
+    };
+  }
 
   // 집계는 결제 판정 트랜잭션에서 이미 반영(예약)했다. 여기서 다시 더하면 두 번 세어진다.
   await clearFailures(charge.payerId!);
@@ -1198,7 +1262,7 @@ export async function executePayment(chargeId: string): Promise<PaymentOutcome> 
  * 무제한(stock=null) 상품은 아무 것도 하지 않는다.
  * 실패해도 예외를 밖으로 내보내지 않는다 — 여기서 throw 하면 실패 처리 자체가 멈춘다.
  */
-async function restoreStock(productId: string | null, quantity: number): Promise<void> {
+export async function restoreStock(productId: string | null, quantity: number): Promise<void> {
   if (!productId || quantity <= 0) return;
   try {
     await prisma.chargeProduct.updateMany({

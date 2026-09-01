@@ -1,5 +1,4 @@
 import Image from 'next/image';
-import Link from 'next/link';
 import {
   ArrowRight, BadgeCheck, BookOpen, Building2, Cable, Check, ChevronRight,
   CircleDollarSign, Clock3, Coins, Gamepad2, Gauge, Headphones, KeyRound,

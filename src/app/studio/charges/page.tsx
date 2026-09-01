@@ -10,7 +10,7 @@ import { requireMerchant } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { formatNumber, formatWon } from '@/lib/money';
 import { formatKst, kstStartOfDay } from '@/lib/datetime';
-import { deliveryStatusLabel, chargeStatusLabel, refundStatusLabel } from '@/lib/labels';
+import { deliveryStatusLabel, chargeStatusLabel, refundStatusLabel, SELECTABLE_CHARGE_STATUSES } from '@/lib/labels';
 import type { ChargeStatus, Prisma } from '@/generated/prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -24,7 +24,8 @@ const PERIODS = [
   { value: 'all', label: '전체' },
 ] as const;
 
-const STATUS_VALUES = Object.keys(chargeStatusLabel) as ChargeStatus[];
+// 코드가 한 번도 기록하지 않는 상태(구 방송 송출 잔재 등)는 필터에서 뺀다.
+const STATUS_VALUES = SELECTABLE_CHARGE_STATUSES;
 
 /** 포인트 지급 처리 상태 필터 */
 const POINT_FILTERS = [

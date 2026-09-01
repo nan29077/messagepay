@@ -21,6 +21,11 @@ const PHONE_RE = /^050[0-9]{7,10}$/;
 
 export async function createMoNumber(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
+    // MO 수신번호는 어느 가맹점이 결제를 받을지 정하는 라우팅 설정이다.
+    // 상담 등급이 바꿀 수 있으면 자기 가맹점에 번호를 붙이거나 정상 가맹점 번호를 회수할 수 있다.
+    if (admin.adminPermission === 'SUPPORT') {
+      throw new Error('MO 번호 관리는 운영/재무 권한에서만 가능합니다.');
+    }
     const phoneNumber = text(fd, 'phoneNumber').replace(/[^0-9]/g, '');
     if (!PHONE_RE.test(phoneNumber)) throw new Error('수신번호는 050 으로 시작하는 숫자 10~13자리로 입력해 주세요. (예: 05051001001)');
 
@@ -71,6 +76,11 @@ export async function createMoNumber(_prev: AdminActionState, fd: FormData): Pro
 
 export async function assignMoNumber(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
+    // MO 수신번호는 어느 가맹점이 결제를 받을지 정하는 라우팅 설정이다.
+    // 상담 등급이 바꿀 수 있으면 자기 가맹점에 번호를 붙이거나 정상 가맹점 번호를 회수할 수 있다.
+    if (admin.adminPermission === 'SUPPORT') {
+      throw new Error('MO 번호 관리는 운영/재무 권한에서만 가능합니다.');
+    }
     const id = requiredId(fd, 'id', 'MO 번호');
     if (!optText(fd, 'merchantId')) throw new Error('배정할 가맹점을 선택해 주세요.');
     const merchantId = requiredId(fd, 'merchantId', '가맹점');
@@ -107,6 +117,11 @@ export async function assignMoNumber(_prev: AdminActionState, fd: FormData): Pro
 
 export async function changeMoNumberStatus(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
+    // MO 수신번호는 어느 가맹점이 결제를 받을지 정하는 라우팅 설정이다.
+    // 상담 등급이 바꿀 수 있으면 자기 가맹점에 번호를 붙이거나 정상 가맹점 번호를 회수할 수 있다.
+    if (admin.adminPermission === 'SUPPORT') {
+      throw new Error('MO 번호 관리는 운영/재무 권한에서만 가능합니다.');
+    }
     const id = requiredId(fd, 'id', 'MO 번호');
     const status = enumValue(fd, 'status', ['AVAILABLE', 'RESERVED', 'RECLAIMED', 'DISABLED'] as const, '상태');
 
@@ -209,6 +224,11 @@ export async function approveRefundAction(_prev: AdminActionState, fd: FormData)
 
 export async function rejectRefundAction(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
+    // 승인(approveRefundAction)과 같은 기준으로 막는다. 거절만 열어 두면
+    // 피해자가 올린 환불 요청을 상담 등급이 임의로 닫을 수 있다.
+    if (admin.adminPermission === 'SUPPORT') {
+      throw new Error('환불 처리는 운영/재무 권한에서만 가능합니다.');
+    }
     const refundId = requiredId(fd, 'refundId', '환불 요청');
     const memo = optText(fd, 'memo');
     if (!memo || memo.length < 2) throw new Error('거절 사유를 2자 이상 입력해 주세요.');
@@ -267,6 +287,11 @@ export async function createAdminRefund(_prev: AdminActionState, fd: FormData): 
 
 export async function resolveRiskDetection(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
+    // 이상거래를 '해결됨' 으로 닫으면 관리자 화면에서 사라진다.
+    // 모니터링을 끄는 행위이므로 운영/재무 권한으로 제한한다.
+    if (admin.adminPermission === 'SUPPORT') {
+      throw new Error('이상거래 처리는 운영/재무 권한에서만 가능합니다.');
+    }
     const riskId = requiredId(fd, 'riskId', '탐지 건');
     const before = await prisma.riskDetection.findUnique({
       where: { id: riskId },

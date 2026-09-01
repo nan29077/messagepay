@@ -6,12 +6,9 @@ import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { requireMerchant } from '@/server/auth';
 import { newId } from '@/lib/id';
-import { env } from '@/lib/env';
-import { accountTail4, decrypt, encrypt, generateToken, isValidResident, maskName, maskResident, maskSecret, normalizeResident, tokenHash } from '@/lib/crypto';
+import { accountTail4, encrypt, isValidResident, maskName, maskResident, normalizeResident } from '@/lib/crypto';
 import { resolvePolicy } from '@/server/services/limits';
-import { createSettlementRequest } from '@/server/services/settlement';
 import { issueMerchantApiKey } from '@/server/services/partner-auth';
-import { notifySuperAdmins } from '@/server/services/notifications';
 import { formatWon } from '@/lib/money';
 import { loadBannedWords } from '@/server/services/charge-flow';
 import { THANKS_MT_MAX_LENGTH, THANKS_MT_VARIABLES, MO_GUIDE_MAX_LENGTH, MO_GUIDE_VARIABLES } from '@/server/services/mt-templates';
@@ -380,7 +377,10 @@ async function parseProductForm(
   }
 
   const description = text(formData, 'description').slice(0, 300) || null;
-  const imageUrl = text(formData, 'imageUrl').slice(0, 500) || null;
+  // 상품 이미지 주소도 프로필·배너와 같은 기준으로 검증한다.
+  // 무검증으로 저장하면 결제 화면의 <img src> 가 제3자 도메인을 가리키게 되어
+  // 그 화면을 여는 모든 이용자의 IP·UA 가 새어 나가고, javascript: 같은 스킴도 그대로 남는다.
+  const imageUrl = safeImageUrl(text(formData, 'imageUrl').slice(0, 500), '상품 이미지 주소');
   const sortOrderRaw = Number.parseInt(text(formData, 'sortOrder') || '0', 10);
   const sortOrder = Number.isFinite(sortOrderRaw) ? Math.max(0, Math.min(999, sortOrderRaw)) : 0;
 
@@ -731,12 +731,8 @@ export async function updateThanksMessageAction(
     // 이용자에게 발송되는 문구이므로 결제 메시지와 같은 금칙어 기준을 적용한다.
     const rules = await loadBannedWords(merchantId);
     const filtered = filterContent(raw, { bannedWords: rules, maxLength: THANKS_MT_MAX_LENGTH });
-    if (filtered.action === 'BLOCK') {
-      return {
-        ok: false,
-        message: `운영정책에 어긋나는 표현이 있어 저장할 수 없습니다.${filtered.reasons.length ? ` (${filtered.reasons.join(', ')})` : ''}`,
-      };
-    }
+    // loadBannedWords 가 BLOCK 규칙을 MASK 로 내려 주므로 filtered.action 은 BLOCK 이 될 수 없다.
+    // (예전에 있던 BLOCK 분기는 도달할 수 없는 코드라 제거했다)
     if (filtered.containsPersonalInfo) {
       return { ok: false, message: '전화번호·계좌번호 등 개인정보는 감사 문자에 넣을 수 없습니다.' };
     }
@@ -796,12 +792,7 @@ export async function updateMoGuideMessageAction(
 
     const rules = await loadBannedWords(merchantId);
     const filtered = filterContent(raw, { bannedWords: rules, maxLength: MO_GUIDE_MAX_LENGTH });
-    if (filtered.action === 'BLOCK') {
-      return {
-        ok: false,
-        message: `운영정책에 어긋나는 표현이 있어 저장할 수 없습니다.${filtered.reasons.length ? ` (${filtered.reasons.join(', ')})` : ''}`,
-      };
-    }
+    // 위와 같은 이유로 BLOCK 은 도달 불가하다.
     if (filtered.containsPersonalInfo) {
       return { ok: false, message: '전화번호·계좌번호 등 개인정보는 안내 문자에 넣을 수 없습니다.' };
     }
@@ -925,12 +916,11 @@ export async function testBannedWordsAction(
     const rules = await loadBannedWords(merchantId);
     const result = filterContent(sample, { bannedWords: rules, maxLength: 200 });
 
+    // 금칙어는 결제를 막지 않는다. '차단됨' 은 나올 수 없는 결과라 표시하지 않는다.
     const verdict =
-      result.action === 'BLOCK'
-        ? '차단됨 (이 문장은 결제로 접수되지 않습니다)'
-        : result.action === 'MASK'
-          ? '마스킹 적용됨 (일부가 가려집니다)'
-          : '통과 (그대로 노출됩니다)';
+      result.action === 'MASK'
+        ? '마스킹 적용됨 (일부가 가려집니다. 결제는 그대로 접수됩니다)'
+        : '통과 (그대로 노출됩니다)';
 
     return {
       ok: true,
@@ -1048,6 +1038,23 @@ export async function saveSettlementAccountAction(
 // ===========================================================================
 // 프로필
 // ===========================================================================
+
+/**
+ * 이미지 주소 검증(폼 파서용).
+ * http(s) 절대주소 또는 사이트 내 경로(/로 시작)만 허용한다.
+ */
+export function safeImageUrl(value: string, label: string): string | null {
+  const v = value.trim();
+  if (!v) return null;
+  if (v.startsWith('/') && !v.startsWith('//')) return v;
+  try {
+    const u = new URL(v);
+    if (u.protocol === 'http:' || u.protocol === 'https:') return u.toString();
+  } catch {
+    // 아래에서 공통 오류로 처리한다.
+  }
+  throw new Error(`${label}는 http(s) 주소 또는 / 로 시작하는 경로여야 합니다.`);
+}
 
 /** http(s) 주소 또는 사이트 내 경로(/로 시작)를 허용하는 이미지 주소 검증 */
 const imageUrlSchema = z.union([
@@ -1235,7 +1242,7 @@ export async function updateShipmentAction(
     // 남의 가맹점 주문을 건드릴 수 없도록 merchantId 를 조건에 함께 건다.
     const current = await prisma.chargeShipment.findFirst({
       where: { chargeId, merchantId },
-      select: { id: true, status: true, shippedAt: true },
+      select: { id: true, status: true, shippedAt: true, deliveredAt: true },
     });
     if (!current) return { ok: false, message: '주문을 찾을 수 없습니다.' };
 
@@ -1256,7 +1263,14 @@ export async function updateShipmentAction(
         memo: text(formData, 'memo').slice(0, 100) || null,
         // 발송 시각은 처음 발송으로 바꾼 때만 기록한다(수정할 때마다 갱신하면 배송 지연을 못 본다).
         shippedAt: status === 'SHIPPED' ? current.shippedAt ?? now : status === 'PREPARING' ? null : current.shippedAt,
-        deliveredAt: status === 'DELIVERED' ? now : null,
+        // 배송 완료 시각도 최초 1회만 기록한다. 메모·송장번호만 고치려고 다시 저장할 때마다
+        // 갱신되면 실제 배송 완료일이 사라져 배송 지연 통계와 분쟁 대응 근거가 어긋난다.
+        deliveredAt:
+          status === 'DELIVERED'
+            ? current.deliveredAt ?? now
+            : status === 'PREPARING'
+              ? null
+              : current.deliveredAt,
       },
     });
 

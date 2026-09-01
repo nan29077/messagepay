@@ -83,7 +83,12 @@ export async function startRegistration(input: {
   if (!loaded.ok) throw new Error(loaded.reason);
   const { ctx } = loaded;
 
-  const requiredTerms = await prisma.termsVersion.findMany({ where: { active: true, required: true } });
+  // 시행일이 아직 오지 않은 약관은 화면의 동의 목록에도 뜨지 않는다(app/r/[token]/page.tsx).
+  // 여기서만 시행일을 무시하면, 시행일이 미래인 필수 약관을 등록하는 순간
+  // 화면에 뜨지도 않는 항목을 요구해 신규 가입이 통째로 막힌다.
+  const requiredTerms = await prisma.termsVersion.findMany({
+    where: { active: true, required: true, effectiveFrom: { lte: new Date() } },
+  });
   const agreedTypes = new Set(input.consents.filter((c) => c.agreed).map((c) => c.type));
   const missing = requiredTerms.filter((t) => !agreedTypes.has(t.type));
   if (missing.length > 0) {

@@ -2,7 +2,9 @@ import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
 import { encrypt, phoneHash, maskPhone, maskSecret } from '@/lib/crypto';
 import { resetMockPaymentState } from '@/server/adapters/payment';
-import { clearMockOutbox, readMockOutbox } from '@/server/adapters/mt';
+import { resetMockPayoutState } from '@/server/adapters/payout';
+import { clearMockOutbox, readMockOutbox, setMockMtFailure } from '@/server/adapters/mt';
+import { clearMtTemplateOverrideCache } from '@/server/services/mt-templates';
 
 /** 테스트마다 DB 를 비운다. 순서는 FK 역순. */
 export async function resetDb() {
@@ -16,15 +18,28 @@ export async function resetDb() {
     'merchant_mo_number', 'merchant_code', 'banned_word', 'charge_limit_policy', 'merchant_profile',
     'admin_profile', 'user_session', 'app_user', 'terms_version', 'idempotency_key',
     'content_post', 'banner', 'system_setting',
+    // FK 가 없어 CASCADE 로 지워지지 않는 테이블들. 빠뜨리면 테스트 간에 살아남아
+    // 실행 순서에 따라 결과가 달라진다. (public_holiday 는 마이그레이션이 넣는 기준 데이터라 제외)
+    'mt_message_template', 'support_message', 'support_inquiry',
   ];
   // 정산 원장은 append-only 트리거로 DELETE 가 막혀 있으므로 트리거를 잠시 끈다.
+  // 중간에 실패해도 트리거는 반드시 다시 켠다. 꺼진 채로 남으면 이후 테스트에서
+  // 원장 보호가 사라진 상태로 돌아 append-only 검증이 무의미해진다.
   await prisma.$executeRawUnsafe('ALTER TABLE settlement_ledger DISABLE TRIGGER settlement_ledger_append_only');
-  await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${tables.map((t) => `"${t}"`).join(', ')} CASCADE`);
-  await prisma.$executeRawUnsafe('ALTER TABLE settlement_ledger ENABLE TRIGGER settlement_ledger_append_only');
+  try {
+    await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${tables.map((t) => `"${t}"`).join(', ')} CASCADE`);
+  } finally {
+    await prisma.$executeRawUnsafe('ALTER TABLE settlement_ledger ENABLE TRIGGER settlement_ledger_append_only');
+  }
 
   testChargeAmount = null;
   resetMockPaymentState();
+  resetMockPayoutState();
   clearMockOutbox();
+  setMockMtFailure(null);
+  // mt_message_template 을 비웠으므로 프로세스 캐시도 함께 버린다.
+  // 남겨 두면 앞 테스트가 저장한 커스텀 본문이 TTL 동안 계속 적용된다.
+  clearMtTemplateOverrideCache();
 }
 
 export interface Fixture {

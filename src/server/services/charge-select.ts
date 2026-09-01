@@ -390,9 +390,14 @@ export async function confirmChargeAmount(input: {
   });
 
   // 문자를 한 번 더 보내지 않고, 이 화면에서 결제사 PIN 입력으로 그대로 넘어간다.
+  // 여기까지 오면 1회용 링크는 이미 소진됐다(위 consumeSecureLink).
+  // PIN 발급이 실패하면 같은 링크로는 다시 시도할 수 없으므로,
+  // 이용자가 다음에 무엇을 해야 하는지 반드시 알려 준다.
   const pin = await startPinAuthorization(charge.id, { notify: false });
   if (!pin.ok || !pin.pinUrl) {
-    return { ok: false, message: pin.message };
+    const guide = '이 링크는 1회용이라 다시 쓸 수 없습니다. 가맹점 번호로 문자를 다시 보내 주세요.';
+    const base = pin.message ?? 'PIN 인증창을 생성하지 못했습니다.';
+    return { ok: false, message: base.includes('문자를 다시') ? base : `${base} ${guide}` };
   }
 
   return {

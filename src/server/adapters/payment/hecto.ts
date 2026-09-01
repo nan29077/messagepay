@@ -205,6 +205,29 @@ function failure(json: HectoResponse, fallback: string): ProviderResult<never> {
   };
 }
 
+/**
+ * 승인 응답이 "확정 실패" 인지 "결과 불확실" 인지 가른다.
+ *
+ * 5xx·502/504 같은 게이트웨이 오류는 승인이 원장에 올라간 뒤 응답만 유실된 경우일 수 있다.
+ * 이걸 확정 실패로 처리하면 이용자 통장에서는 돈이 빠졌는데 결제는 FAILED 로 닫히고
+ * 관리자 대사 큐(UNKNOWN·TIMEOUT)에도 잡히지 않아 회수 경로가 사라진다.
+ */
+function isIndeterminate(status: number, json: HectoResponse): boolean {
+  if (status >= 500) return true;
+  if (status === 408 || status === 429) return true;
+  // 본문을 파싱하지 못해 결과 코드 자체가 없는 경우도 판단 불가로 본다.
+  return json.outRsltCd == null && json.outStatCd == null;
+}
+
+function indeterminate(json: HectoResponse, status: number): ProviderResult<never> {
+  return {
+    ok: false,
+    code: 'UNKNOWN',
+    message: `결제 결과를 확인하지 못했습니다. (HTTP ${status}) ${String(json.outRsltMsg ?? '')}`.trim(),
+    raw: json as Record<string, unknown>,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // 어댑터
 // ---------------------------------------------------------------------------
@@ -389,7 +412,11 @@ export const hectoPaymentAdapter: PaymentAdapter = {
       }),
     });
 
-    if (!isSuccess(res.json)) return failure(res.json, '결제 승인에 실패했습니다.');
+    if (!isSuccess(res.json)) {
+      // HTTP 상태를 버리고 본문 코드만 보면 "승인은 됐는데 응답만 깨진" 건이 확정 실패가 된다.
+      if (isIndeterminate(res.status, res.json)) return indeterminate(res.json, res.status);
+      return failure(res.json, '결제 승인에 실패했습니다.');
+    }
 
     return {
       ok: true,

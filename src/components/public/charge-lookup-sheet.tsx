@@ -76,6 +76,24 @@ export function ChargeLookupSheet({ open, onClose }: { open: boolean; onClose: (
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
+  // 열릴 때 대화상자 안으로 포커스를 옮긴다.
+  // 옮기지 않으면 키보드·스크린리더 이용자는 배경 페이지를 계속 훑게 되어
+  // 시트 안 입력칸에 닿기 전에 뒤 페이지 링크를 먼저 지나간다.
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+  const restoreFocusTo = React.useRef<HTMLElement | null>(null);
+  React.useEffect(() => {
+    if (!open) {
+      restoreFocusTo.current?.focus?.();
+      restoreFocusTo.current = null;
+      return;
+    }
+    restoreFocusTo.current = document.activeElement as HTMLElement | null;
+    const target = dialogRef.current?.querySelector<HTMLElement>(
+      'input, select, textarea, button, [href], [tabindex]:not([tabindex="-1"])',
+    );
+    target?.focus();
+  }, [open]);
+
   return (
     <div
       className={cx('fixed inset-0 z-50', open ? '' : 'pointer-events-none invisible')}
@@ -94,6 +112,7 @@ export function ChargeLookupSheet({ open, onClose }: { open: boolean; onClose: (
 
       {/* 시트 */}
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="결제내역 확인"

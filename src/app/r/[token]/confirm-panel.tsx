@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { CircleCheck, CircleX, Clock, ShieldCheck } from 'lucide-react';
-import { Button, Card, DataRow, Field, Input, Notice } from '@/components/ui';
+import { Button, Card, DataRow, Input, Notice } from '@/components/ui';
 import { confirmChargeAction, updatePayerNicknameAction, type ConfirmActionResult } from '@/app/actions/confirm';
 import { checkPayerName, PAYER_NAME_MAX, isDefaultPayerName } from '@/lib/payer-name';
 import { SNS_PLATFORMS, type SnsPlatform, SnsPlatformSelector } from '@/components/shared/sns-platform-selector';
@@ -70,7 +70,7 @@ export function ConfirmPanel({
     startTransition(async () => {
       // 닉네임 입력값이 있으면 먼저 저장
       if (payerId && nickname.trim()) {
-        const res = await updatePayerNicknameAction(payerId, nickname.trim(), snsPlatform || undefined);
+        const res = await updatePayerNicknameAction(token, nickname.trim(), snsPlatform || undefined);
         if (!res.ok) {
           setNicknameError(res.message ?? '닉네임 저장에 실패했습니다.');
           submitted.current = false;

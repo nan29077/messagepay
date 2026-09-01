@@ -121,7 +121,14 @@ export async function authenticatePartner(
 
   // 분당 요청 제한 (키 단위)
   const minuteBucket = Math.floor(now.getTime() / 60_000);
-  const used = await kv.incr(`partner:rate:${key.id}:${minuteBucket}`, 90).catch(() => 0);
+  let used: number;
+  try {
+    used = await kv.incr(`partner:rate:${key.id}:${minuteBucket}`, 90);
+  } catch (e) {
+    // 예전에는 .catch(() => 0) 으로 통과시켰다. 저장소가 죽으면 제한이 통째로 사라진다.
+    logger.error('파트너 API 속도 제한 저장소 오류 — 요청을 거절합니다', { message: (e as Error).message });
+    return fail(503, 'RATE_LIMIT_UNAVAILABLE', '요청 처리가 일시적으로 지연되고 있습니다. 잠시 후 다시 시도해 주세요.');
+  }
   if (used > RATE_LIMIT_PER_MIN) {
     return fail(429, 'RATE_LIMITED', `분당 요청 한도(${RATE_LIMIT_PER_MIN}회)를 초과했습니다.`);
   }
@@ -152,7 +159,15 @@ export async function authenticatePartner(
 
     // 같은 서명 재사용(재전송) 차단. 쓰기 요청에만 적용한다.
     if (writeMethod) {
-      const fresh = await kv.setnx(`partner:nonce:${key.id}:${sig}`, '1', SIGNATURE_SKEW_SEC * 2).catch(() => true);
+      let fresh: boolean;
+      try {
+        fresh = await kv.setnx(`partner:nonce:${key.id}:${sig}`, '1', SIGNATURE_SKEW_SEC * 2);
+      } catch (e) {
+        // 예전에는 .catch(() => true) 로 "새 서명" 취급했다. 저장소 장애 중에는
+        // 재전송 방어가 통째로 사라져 같은 서명을 반복 실행할 수 있었다.
+        logger.error('파트너 API 재전송 방어 저장소 오류 — 요청을 거절합니다', { message: (e as Error).message });
+        return fail(503, 'REPLAY_GUARD_UNAVAILABLE', '요청 처리가 일시적으로 지연되고 있습니다. 잠시 후 다시 시도해 주세요.');
+      }
       if (!fresh) return fail(409, 'REPLAYED', '이미 처리된 요청입니다(서명 재사용).');
     }
   }

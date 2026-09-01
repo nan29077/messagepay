@@ -1,5 +1,6 @@
 import { headers } from 'next/headers';
 import { kv } from '@/server/redis';
+import { logger } from '@/lib/logger';
 
 /**
  * IP 단위 속도 제한 공용 유틸.
@@ -9,18 +10,31 @@ import { kv } from '@/server/redis';
  *  - 비밀번호 재설정 요청       : 메일 폭탄 · 계정 존재 여부 탐색 방지
  *
  * 규칙
- *  - 프록시가 붙인 주소를 알 수 없으면(로컬 직접 접속 등) 제한을 걸지 않는다.
+ *  - 프록시가 붙인 주소를 알 수 없으면 공용 버킷 하나로 묶어 센다(헤더를 빼는 것으로 우회할 수 없게).
  *    모든 클라이언트가 한 버킷을 공유해 서로를 잠그는 쪽이 더 위험하다.
  *  - 카운터는 Redis(없으면 인메모리)를 쓴다. 다중 인스턴스에서는 Redis 가 필요하다.
  *  - 실패해도 예외를 밖으로 던지지 않는다. 속도 제한 저장소 장애가 가입 자체를 막으면 안 된다.
  */
 
-/** 신뢰 프록시가 붙인 마지막 홉의 주소만 사용한다. 헤더가 없으면 null. */
+/**
+ * 앞단 프록시 개수. X-Forwarded-For 는 클라이언트가 임의로 붙일 수 있으므로
+ * "우리가 신뢰하는 프록시가 덧붙인 홉" 만 세어 그 앞의 값을 클라이언트 주소로 본다.
+ *
+ * ALB 한 대면 1(기본), CloudFront+ALB 처럼 2단이면 2 로 둔다.
+ * 값이 실제 구성보다 크면 헤더 위조로 제한을 우회할 수 있다.
+ */
+const TRUSTED_PROXY_HOPS = Math.max(1, Number(process.env.TRUSTED_PROXY_HOPS ?? '1') || 1);
+
+/** 신뢰 프록시가 붙인 홉의 주소만 사용한다. 헤더가 없으면 null. */
 export function clientIpFrom(get: (name: string) => string | null): string | null {
   const xff = get('x-forwarded-for');
   if (xff) {
     const hops = xff.split(',').map((s) => s.trim()).filter(Boolean);
-    return hops[hops.length - 1] ?? null;
+    if (hops.length === 0) return null;
+    // 뒤에서 TRUSTED_PROXY_HOPS 번째가 우리가 믿을 수 있는 마지막 값이다.
+    // 그보다 앞쪽은 클라이언트가 임의로 채워 넣을 수 있다.
+    const idx = Math.max(0, hops.length - TRUSTED_PROXY_HOPS);
+    return hops[idx] ?? null;
   }
   return get('x-real-ip') ?? get('cf-connecting-ip');
 }
@@ -43,20 +57,29 @@ export interface RateLimitResult {
 
 /**
  * 카운터를 1 증가시키고 상한을 넘었는지 판정한다.
- * key 가 비어 있으면(주소를 알 수 없으면) 항상 통과시킨다.
+ *
+ * 주소를 알 수 없으면 공용 버킷 하나로 묶는다. 예전처럼 무조건 통과시키면
+ * 헤더를 아예 보내지 않는 것만으로 모든 IP 제한을 우회할 수 있다.
+ *
+ * 저장소 장애 시 동작은 호출부가 정한다(failClosed).
+ * - 기본(false): 통과시킨다. 저장소 장애가 일반 이용을 막지 않는다.
+ * - true: 거절한다. 자격증명·토큰을 지키는 제한(로그인, 비밀번호 재설정 확인 등)은
+ *   제한이 사라진 채로 열어 두는 것보다 잠시 막는 편이 낫다.
  */
 export async function consumeRateLimit(
   scope: string,
   key: string | null | undefined,
   max: number,
   windowSec: number,
+  options: { failClosed?: boolean } = {},
 ): Promise<RateLimitResult> {
-  if (!key) return { ok: true, count: 0 };
+  const bucket = key || 'unknown';
   try {
-    const count = await kv.incr(`rl:${scope}:${key}`, windowSec);
+    const count = await kv.incr(`rl:${scope}:${bucket}`, windowSec);
     return { ok: count <= max, count };
-  } catch {
-    return { ok: true, count: 0 };
+  } catch (e) {
+    logger.error('속도 제한 저장소 오류', { scope, failClosed: Boolean(options.failClosed), message: (e as Error).message });
+    return { ok: !options.failClosed, count: 0 };
   }
 }
 
@@ -65,7 +88,8 @@ export async function consumeIpRateLimit(
   scope: string,
   max: number,
   windowSec: number,
+  options: { failClosed?: boolean } = {},
 ): Promise<RateLimitResult> {
   const ip = await clientIpFromHeaders();
-  return consumeRateLimit(scope, ip, max, windowSec);
+  return consumeRateLimit(scope, ip, max, windowSec, options);
 }

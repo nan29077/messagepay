@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/server/db';
-import { mockMoAdapter } from '@/server/adapters/mo';
 import { readMockOutbox } from '@/server/adapters/mt';
-import { handleMoInbound } from '@/server/services/charge-flow';
 import { startRegistration, completeRegistration } from '@/server/services/payer-registration';
 import { computeFees, getSettlementSummary } from '@/server/services/settlement';
 import { tplChargeSuccess, tplRegisterGuide } from '@/server/services/mt-templates';

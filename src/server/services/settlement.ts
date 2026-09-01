@@ -443,7 +443,9 @@ export async function getSettlementSummary(
   const balance = grouped.reduce((acc, g) => acc + (g._sum.amount ?? 0n), 0n);
 
   const pendingAgg = await client.settlementRequest.aggregate({
-    where: { merchantId, status: { in: ['REQUESTED', 'REVIEWING', 'APPROVED'] } },
+    // PAYOUT_FAILED 도 보류로 센다. 재시도로 되살아날 수 있는 회차라 그 금액을
+    // 가용 잔액으로 되돌리면 같은 돈이 다른 회차로 또 나간다.
+    where: { merchantId, status: { in: ['REQUESTED', 'REVIEWING', 'APPROVED', 'PAYOUT_FAILED'] } },
     _sum: { amount: true },
   });
   const pending = pendingAgg._sum.amount ?? 0n;

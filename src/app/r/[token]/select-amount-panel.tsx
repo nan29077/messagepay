@@ -76,8 +76,10 @@ export function SelectAmountPanel({
   const firstSelectable = products.find((p) => p.payable && !p.soldOut) ?? products[0];
   const [productId, setProductId] = React.useState<string>(firstSelectable?.id ?? '');
   const [custom, setCustom] = React.useState('');
+  // 직접 입력을 받지 않는 가맹점인데 mode 를 custom 으로 시작하면,
+  // 금액 입력칸이 보이는데 서버는 항상 거절하는 화면이 된다.
   const [mode, setMode] = React.useState<'preset' | 'custom'>(
-    products.length > 0 ? 'preset' : 'custom',
+    products.length > 0 || !allowCustom ? 'preset' : 'custom',
   );
   const [qty, setQty] = React.useState(1);
   const [opts, setOpts] = React.useState<Record<string, string>>({});
@@ -99,10 +101,14 @@ export function SelectAmountPanel({
   const isPhysical = mode === 'preset' && selected?.kind === 'PHYSICAL';
 
   // 상품이 바뀌면 수량·옵션을 초기화한다. 이전 상품의 옵션이 남으면 서버 검증에서 막힌다.
-  React.useEffect(() => {
+  // 이펙트에서 setState 를 부르면 렌더가 두 번 도는 연쇄가 생기므로,
+  // "prop 이 바뀌면 렌더 중에 상태를 조정한다" 는 React 공식 패턴을 쓴다.
+  const [lastProductId, setLastProductId] = React.useState(productId);
+  if (lastProductId !== productId) {
+    setLastProductId(productId);
     setQty(1);
     setOpts({});
-  }, [productId]);
+  }
 
   const customAmount = React.useMemo(() => {
     const digits = custom.replace(/[^\d]/g, '');
@@ -145,6 +151,8 @@ export function SelectAmountPanel({
 
   const amountValid =
     preview.total !== null && preview.total >= min && preview.total <= max;
+  // 프리셋도 직접입력도 쓸 수 없는 상태(전 상품 품절·한도 초과 + 직접입력 불가)
+  const nothingSelectable = !allowCustom && !products.some((p) => p.payable && !p.soldOut);
   const valid =
     amountValid &&
     optionsFilled &&
@@ -158,6 +166,20 @@ export function SelectAmountPanel({
         <p className="mt-1 text-[12px] leading-relaxed text-ink-500">
           {merchantName} 에서 구매할 상품을 골라 주세요.
         </p>
+
+        {nothingSelectable ? (
+          // 한도 정책이 좁아지거나 전 상품이 품절이면 고를 수 있는 것이 하나도 없다.
+          // 안내가 없으면 이용자는 빈 화면과 영구 비활성 버튼만 보고 이유를 알 수 없다.
+          <div className="mt-3 rounded-2xl border border-warning-200 bg-warning-50 px-3.5 py-3">
+            <p className="text-[13px] font-bold text-ink-900">지금은 결제할 수 있는 상품이 없습니다</p>
+            <p className="mt-1 text-[12px] leading-relaxed text-ink-600">
+              {products.length === 0
+                ? '가맹점이 등록한 상품이 없거나, 결제 한도 범위에 맞는 상품이 없습니다.'
+                : '등록된 상품이 모두 품절이거나 결제 한도를 넘습니다.'}{' '}
+              결제는 진행되지 않았습니다. 가맹점에 문의하거나 잠시 후 다시 시도해 주세요.
+            </p>
+          </div>
+        ) : null}
 
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           {products.map((p) => {
@@ -321,7 +343,7 @@ export function SelectAmountPanel({
           ))}
 
           <div className="grid gap-2 sm:grid-cols-2">
-            <Text label="받는 분" value={addr.receiver} onChange={(v) => setAddr((a) => ({ ...a, receiver: v }))} placeholder="홍길동" maxLength={30} />
+            <Text label="받는 분" value={addr.receiver} onChange={(v) => setAddr((a) => ({ ...a, receiver: v }))} placeholder="홍길동" maxLength={30} autoComplete="name" />
             <Text
               label="연락처"
               value={addr.phone}
@@ -329,6 +351,8 @@ export function SelectAmountPanel({
               placeholder="01012345678"
               maxLength={13}
               inputMode="numeric"
+              type="tel"
+              autoComplete="tel"
             />
             <Text
               label="우편번호"
@@ -337,10 +361,11 @@ export function SelectAmountPanel({
               placeholder="06236"
               maxLength={5}
               inputMode="numeric"
+              autoComplete="postal-code"
             />
-            <Text label="상세주소" value={addr.address2} onChange={(v) => setAddr((a) => ({ ...a, address2: v }))} placeholder="101동 1001호" maxLength={60} />
+            <Text label="상세주소" value={addr.address2} onChange={(v) => setAddr((a) => ({ ...a, address2: v }))} placeholder="101동 1001호" maxLength={60} autoComplete="address-line2" />
           </div>
-          <Text label="주소" value={addr.address1} onChange={(v) => setAddr((a) => ({ ...a, address1: v }))} placeholder="서울특별시 강남구 테헤란로 1" maxLength={120} />
+          <Text label="주소" value={addr.address1} onChange={(v) => setAddr((a) => ({ ...a, address1: v }))} placeholder="서울특별시 강남구 테헤란로 1" maxLength={120} autoComplete="street-address" />
           <Text label="배송 메모 (선택)" value={addr.memo} onChange={(v) => setAddr((a) => ({ ...a, memo: v }))} placeholder="부재 시 경비실에 맡겨 주세요" maxLength={100} />
 
           <div className="rounded-xl bg-ink-50 px-3.5 py-2.5">
@@ -386,7 +411,11 @@ export function SelectAmountPanel({
       ) : null}
 
       {state.message && !state.ok ? (
-        <p className="text-[13px] font-semibold text-danger-500">{state.message}</p>
+        // 버튼은 화면 아래, 오류는 위쪽에 렌더된다. role=alert 이 없으면
+        // 스크린리더 이용자에게는 아무 일도 일어나지 않은 것으로 들린다.
+        <p role="alert" aria-live="assertive" className="text-[13px] font-semibold text-danger-500">
+          {state.message}
+        </p>
       ) : null}
 
       <form action={formAction}>
@@ -451,6 +480,8 @@ function Text({
   placeholder,
   maxLength,
   inputMode,
+  autoComplete,
+  type,
 }: {
   label: string;
   value: string;
@@ -458,6 +489,9 @@ function Text({
   placeholder?: string;
   maxLength?: number;
   inputMode?: 'numeric' | 'text';
+  /** 모바일 자동완성용. 배송지를 6칸 손으로 치게 만들면 그대로 이탈 지점이 된다. */
+  autoComplete?: string;
+  type?: 'text' | 'tel';
 }) {
   const id = React.useId();
   return (
@@ -467,11 +501,13 @@ function Text({
       </label>
       <input
         id={id}
+        type={type ?? 'text'}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         maxLength={maxLength}
         inputMode={inputMode}
+        autoComplete={autoComplete}
         className="mt-1 h-11 w-full rounded-xl border border-ink-200 px-3 text-[14px] outline-none focus:border-brand-400"
       />
     </div>

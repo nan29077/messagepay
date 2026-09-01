@@ -204,6 +204,9 @@ describe('자동 지급 실행', () => {
     await account(fx.merchantId);
     const result = await runMerchantPayout(fx.merchantId);
     expect(result.status).toBe('SKIPPED');
+    // 사유까지 확인한다. status 만 보면 "가맹점을 찾을 수 없음"·"계좌 미인증" 으로
+    // 스킵돼도 통과해서 정작 확인하려던 조건을 검증하지 못한다.
+    expect(result.reason).toContain('지급일이 도래한 결제 없음');
   });
 });
 

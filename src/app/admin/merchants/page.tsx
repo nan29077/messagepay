@@ -6,7 +6,7 @@ import { ActionForm, SelectActionForm } from '@/components/admin/action-form';
 import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
 import { updateMerchantStatus, applyGlobalAmountBounds } from '@/app/actions/admin/accounts';
 import { prisma } from '@/server/db';
-import { formatWon, formatNumber } from '@/lib/money';
+import { formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import { merchantStatusLabel } from '@/lib/labels';
 import type { Prisma } from '@/generated/prisma/client';

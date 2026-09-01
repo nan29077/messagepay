@@ -13,7 +13,8 @@ export const metadata: Metadata = {
 
 export default async function TermsPage() {
   const doc = await prisma.termsVersion.findFirst({
-    where: { type: 'TERMS_SERVICE', active: true },
+    // 시행일이 오지 않은 개정안을 현행 약관으로 보여주면 안 된다.
+    where: { type: 'TERMS_SERVICE', active: true, effectiveFrom: { lte: new Date() } },
     orderBy: { effectiveFrom: 'desc' },
   });
 

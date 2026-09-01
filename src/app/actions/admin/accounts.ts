@@ -28,6 +28,12 @@ export async function updateUserStatus(_prev: AdminActionState, fd: FormData): P
     });
     if (!before) throw new Error('회원을 찾을 수 없습니다.');
     if (before.id === admin.id) throw new Error('본인 계정의 상태는 변경할 수 없습니다.');
+    // 관리자 계정의 상태 변경은 SUPER_ADMIN 만 할 수 있다.
+    // 막지 않으면 하위 등급 관리자가 최고관리자를 전부 정지시킬 수 있고,
+    // 등급 복구 액션이 SUPER_ADMIN 전용이라 DB 를 직접 고치기 전에는 되돌릴 수 없다.
+    if (before.role === 'ADMIN' && admin.adminPermission !== 'SUPER_ADMIN') {
+      throw new Error('관리자 계정의 상태 변경은 SUPER_ADMIN 만 수행할 수 있습니다.');
+    }
     if (before.status === status) throw new Error('이미 해당 상태입니다.');
 
     await prisma.user.update({ where: { id: userId }, data: { status } });
@@ -67,6 +73,11 @@ export async function issueTemporaryPasswordAction(
 ): Promise<AdminActionState> {
   return run(async (admin) => {
     if (admin.adminPermission === 'READ_ONLY') throw new Error('읽기 전용 권한입니다.');
+    // 임시 비밀번호는 그 계정으로 그대로 로그인할 수 있는 값이다(응답에 원문이 1회 노출된다).
+    // 상담 등급까지 열어 두면 가맹점 계정을 탈취해 정산 요청·API 키 발급까지 할 수 있다.
+    if (admin.adminPermission === 'SUPPORT') {
+      throw new Error('임시 비밀번호 발급은 운영/재무 권한에서만 가능합니다.');
+    }
     const userId = requiredId(fd, 'userId', '회원');
 
     const target = await prisma.user.findUnique({
@@ -202,6 +213,11 @@ export async function updatePayerLimitsByAdmin(_prev: AdminActionState, fd: Form
 
 export async function updateMerchantStatus(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
+    // 가맹점 심사는 실제 소비자 결제를 받을 수 있게 하는 KYC 게이트다.
+    // 상담 등급이 통과시킬 수 있으면 자기 명의 가맹점을 스스로 승인할 수 있다.
+    if (admin.adminPermission === 'SUPPORT') {
+      throw new Error('가맹점 심사는 운영/재무 권한에서만 가능합니다.');
+    }
     const merchantId = requiredId(fd, 'merchantId', '가맹점');
     const status = enumValue(fd, 'status', ['PENDING', 'APPROVED', 'REJECTED', 'SUSPENDED'] as const, '심사 상태');
 
@@ -339,6 +355,12 @@ export async function applyGlobalAmountBounds(_prev: AdminActionState, fd: FormD
 
     const result = await prisma.$transaction(async (tx) => {
       const total = await tx.merchantProfile.count();
+      // 되돌릴 수 있어야 한다. updateMany 는 이전 값을 남기지 않으므로 먼저 스냅샷을 뜬다.
+      const before = await tx.merchantProfile.findMany({
+        select: { id: true, code: true, minAmount: true, maxAmount: true },
+        orderBy: { createdAt: 'asc' },
+        take: 500,
+      });
       await tx.merchantProfile.updateMany({ data: { minAmount, maxAmount } });
       const off = await tx.chargeProduct.updateMany({
         where: {
@@ -348,7 +370,7 @@ export async function applyGlobalAmountBounds(_prev: AdminActionState, fd: FormD
         },
         data: { active: false },
       });
-      return { total, clamped: off.count };
+      return { total, clamped: off.count, before };
     });
 
     await writeAudit({
@@ -356,6 +378,14 @@ export async function applyGlobalAmountBounds(_prev: AdminActionState, fd: FormD
       action: 'MERCHANT_AMOUNT_BOUNDS_APPLY_ALL',
       targetType: 'MerchantProfile',
       targetId: 'ALL',
+      before: {
+        merchants: result.before.map((m) => ({
+          code: m.code,
+          minAmount: m.minAmount.toString(),
+          maxAmount: m.maxAmount.toString(),
+        })),
+        truncated: result.total > result.before.length,
+      },
       after: { minAmount, maxAmount, appliedTo: result.total, deactivatedProducts: result.clamped },
     });
     revalidatePath('/admin/merchants');

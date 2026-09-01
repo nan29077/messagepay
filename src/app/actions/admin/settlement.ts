@@ -76,6 +76,13 @@ export async function updateSettlementRequestStatus(
             ? { status, rejectedAt: now, adminId: admin.id, adminMemo: memo ?? undefined }
             : { status, adminId: admin.id, adminMemo: memo ?? undefined };
       await prisma.settlementRequest.update({ where: { id: requestId }, data });
+      if (status === 'REJECTED') {
+        // 회차를 버렸으므로 묶여 있던 결제 건을 지급 대상 풀로 되돌린다.
+        await prisma.charge.updateMany({
+          where: { settlementRequestId: requestId, settledAt: null },
+          data: { settlementRequestId: null },
+        });
+      }
       if (status === 'APPROVED') await notifySettlement(before.merchantId, '정산 요청이 승인되었습니다', '지급대행을 통해 곧 지급됩니다.');
       if (status === 'REJECTED') await notifySettlement(before.merchantId, '정산 요청이 반려되었습니다', `사유: ${memo}`);
     }
@@ -153,11 +160,23 @@ export async function bulkUpdateSettlementAction(
             where: { id },
             data: { status: 'REJECTED', rejectedAt: now, adminId: admin.id, adminMemo: memo },
           });
+          // 회차를 버렸으므로 묶여 있던 결제 건을 지급 대상 풀로 되돌린다.
+          // (풀지 않으면 그 결제 건은 어떤 회차에도 잡히지 않아 영원히 미지급으로 남는다)
+          await prisma.charge.updateMany({
+            where: { settlementRequestId: id, settledAt: null },
+            data: { settlementRequestId: null },
+          });
           await notifySettlement(req.merchantId, '정산 요청이 반려되었습니다', `사유: ${memo}`);
           // 반려 건은 원천징수 신고 대상이 아니므로 주민등록번호를 즉시 파기한다.
           await purgeResidentIfNotFilable(id);
         } else {
-          // PAY: 승인 건만 지급 완료. 잠금·재검증은 markSettlementPaid 내부에서 처리.
+          // PAY: 승인 건만 지급 완료.
+          // markSettlementPaid 는 재시도를 위해 PAYOUT_FAILED 도 통과시키므로, 여기서 막지 않으면
+          // 이미 다른 회차로 재지급된 실패 회차를 함께 체크했을 때 원장이 이중 차감된다.
+          if (req.status !== 'APPROVED') {
+            errors.push(`${id.slice(-6)}: 지급 완료 불가 상태(${req.status})`);
+            continue;
+          }
           await markSettlementPaid(id, admin.id);
           await notifySettlement(req.merchantId, '정산 지급이 완료되었습니다', `${formatWon(req.payoutAmount)}이 지급 처리되었습니다.`);
         }
@@ -316,8 +335,11 @@ export async function createFeePolicy(_prev: AdminActionState, fd: FormData): Pr
     const vatIncluded = text(fd, 'vatIncluded') === 'on';
     // 지급일: 결제일 + N영업일. 전역 정책으로 일괄 지정하고 가맹점 정책으로 개별 조정한다.
     const settlementDaysRaw = Number(text(fd, 'settlementDays') || '5');
-    if (!Number.isInteger(settlementDaysRaw) || settlementDaysRaw < 0 || settlementDaysRaw > 60) {
-      throw new Error('지급일(영업일)은 0~60 사이의 정수로 입력해 주세요.');
+    // 0 을 허용하면 결제 당일이 그대로 지급일이 되고(addBusinessDays 는 count=0 이면 from 을 그대로 돌려준다),
+    // 그 날이 주말·공휴일이어도 다음 영업일로 밀리지 않아 "정산일은 영업일" 불변식이 깨진다.
+    // PG 로부터 정산받기 전에 플랫폼 자금으로 선지급하게 되므로 최소 1영업일을 강제한다.
+    if (!Number.isInteger(settlementDaysRaw) || settlementDaysRaw < 1 || settlementDaysRaw > 60) {
+      throw new Error('지급일(영업일)은 1~60 사이의 정수로 입력해 주세요.');
     }
     const settlementDays = settlementDaysRaw;
     const effectiveFrom = optDate(fd, 'effectiveFrom', '적용 시작일') ?? new Date();

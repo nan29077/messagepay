@@ -36,6 +36,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
     headers: {
       'Content-Type': MIME[ext] ?? 'application/octet-stream',
       'Cache-Control': 'public, max-age=31536000, immutable',
+      // 업로드 검사는 매직바이트만 보므로 'GIF89a' 로 시작하는 HTML 폴리글롯이 통과할 수 있다.
+      // 스니핑을 끄고 문서로 해석될 여지를 없앤다(세션 쿠키가 같은 origin 이다).
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; sandbox",
     },
   });
 }

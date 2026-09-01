@@ -37,7 +37,10 @@ export default async function LoginPage({
     sp.error === 'social_not_ready'
       ? `${providerLabel ?? '소셜'} 간편 로그인은 연동 준비 중입니다. 이메일로 로그인해 주세요.`
       : sp.error
-        ? (ERROR_MESSAGES[sp.error] ?? decodeURIComponent(sp.error))
+        ? // 화이트리스트 밖의 값을 그대로 렌더하면 공격자가 정품 도메인 위에 임의 문구를
+          // 띄울 수 있고(피싱), 깨진 퍼센트 인코딩은 decodeURIComponent 가 URIError 를 던져
+          // 로그인 페이지 렌더 자체가 죽는다.
+          (ERROR_MESSAGES[sp.error] ?? '로그인에 실패했습니다. 다시 시도해 주세요.')
         : null;
 
   // 테스트 로그인과 시드 계정 안내는 로컬 개발 환경에서만 노출한다.

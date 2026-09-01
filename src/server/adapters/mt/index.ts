@@ -51,11 +51,26 @@ export function clearMockOutbox() {
   outbox.length = 0;
 }
 
+/**
+ * mock MT 발송을 실패시킨다(테스트 전용).
+ *
+ * 실제 어댑터는 문자 사업자 장애·잔액 소진으로 실패할 수 있는데,
+ * mock 이 항상 성공하면 그 뒤 처리(가입 안내 발송권 반납, PIN 세션 닫고 결제 실패 확정)가
+ * 어떤 테스트도 밟지 않는 죽은 코드가 된다.
+ */
+let mockSendFailure: string | null = null;
+export function setMockMtFailure(message: string | null) {
+  mockSendFailure = message;
+}
+
 export const mockMtAdapter: MtAdapter = {
   info() {
     return { provider: 'mock', mode: 'mock', missingCredentials: [] };
   },
   async send(req) {
+    if (mockSendFailure) {
+      return { ok: false, code: 'MOCK_MT_FAIL', message: mockSendFailure };
+    }
     const id = `MTMOCK${Date.now()}${Math.floor(Math.random() * 1000)}`;
     outbox.push({ to: req.to, text: req.text, at: new Date(), id, template: req.templateCode });
     if (outbox.length > 500) outbox.splice(0, outbox.length - 500);
