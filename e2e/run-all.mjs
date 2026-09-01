@@ -15,25 +15,34 @@ import { BASE, assertServerUp } from './_helpers.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
+// 기본 실행 대상.
+// round10 / studio 는 삭제된 오버레이·유튜브 화면을 검증하는 구간이 남아 있어 기본에서 뺐다.
+// (스크립트는 지우지 않는다. 화면을 띄워 보며 구간별로 다시 쓴 뒤 되돌린다)
 const SCRIPTS = [
+  ['pg', '문자PG 전환 · 자동 정산 · 포인트 지급 · 연동 API'],
   ['round5', '스튜디오 셸·내비게이션'],
   ['round6', '결제 페이지 · PC PIN 결제 전 구간'],
   ['round7', '문의 채널 · 관리자 문의 · 보안'],
   ['round8', '정산 탭 · 원천징수 · 금칙어'],
   ['round9', '민감자료 권한 · 지급대행 · 관리자 권한'],
-  ['round10', '알림 · 정산주기 · 공휴일 · 오버레이'],
   ['gap', '기기별 안내 · 모의 고지 · 공개 페이지'],
-  ['studio', '유튜브 · 오버레이 · 스트림 · 설정'],
   ['admin', '관리자 전 화면 스모크 · 한도 정책'],
+];
+
+/** 기본 실행에서 빠졌지만 이름을 직접 주면 돌릴 수 있는 스크립트 */
+const LEGACY_SCRIPTS = [
+  ['round10', '알림 · 정산주기 · 공휴일 · 오버레이 (재작성 필요)'],
+  ['studio', '유튜브 · 오버레이 · 스트림 · 설정 (재작성 필요)'],
 ];
 
 const argv = process.argv.slice(2);
 const reseed = !argv.includes('--no-reseed');
 const only = argv.filter((a) => !a.startsWith('--'));
-const targets = only.length ? SCRIPTS.filter(([key]) => only.includes(key)) : SCRIPTS;
+const ALL = [...SCRIPTS, ...LEGACY_SCRIPTS];
+const targets = only.length ? ALL.filter(([key]) => only.includes(key)) : SCRIPTS;
 
 if (!targets.length) {
-  console.error(`실행할 스크립트가 없습니다. 사용 가능: ${SCRIPTS.map(([k]) => k).join(', ')}`);
+  console.error(`실행할 스크립트가 없습니다. 사용 가능: ${ALL.map(([k]) => k).join(', ')}`);
   process.exit(2);
 }
 

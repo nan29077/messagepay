@@ -12,7 +12,7 @@ import { resolvePolicy } from '@/server/services/limits';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '문자결제 이용방법 | 문자페이',
+  title: '문자결제 이용방법 | 메시지페이',
   description: '문자 한 통으로 충전하는 방법과 계좌 등록, 결제, 충전 반영 절차를 안내합니다.',
 };
 
@@ -52,7 +52,7 @@ export default async function HowItWorksPage() {
             icon={<CreditCard size={18} strokeWidth={1.7} />}
             title="안내 문자의 링크에서 계좌 등록"
             body="문자로 받은 1회용 보안 링크를 열어 본인 명의 계좌를 등록하고 이용 동의를 진행합니다. 등록 화면에서 결제 대상, 문자 1건당 결제 금액, 이용 한도, 취소·환불 조건을 모두 확인할 수 있습니다."
-            note="계좌번호 원문은 문자페이에 저장하지 않습니다. 은행명과 계좌 끝 4자리만 보관합니다."
+            note="계좌번호 원문은 메시지페이에 저장하지 않습니다. 은행명과 계좌 끝 4자리만 보관합니다."
           />
           <Step
             no={3}
@@ -107,9 +107,9 @@ export default async function HowItWorksPage() {
         <Card>
           <DataRow label="문자 1건당 기본 결제 금액" value={formatWon(policy.defaultAmount)} />
           <DataRow label="1건 허용 범위" value={`${formatWon(policy.minAmount)} ~ ${formatWon(policy.maxAmount)}`} />
-          <DataRow label="1일 최대" value={formatWon(policy.donorDailyLimit)} />
-          <DataRow label="1개월 최대" value={formatWon(policy.donorMonthlyLimit)} />
-          <DataRow label="가맹점 1명당 1일 최대" value={formatWon(policy.perCreatorDailyLimit)} />
+          <DataRow label="1일 최대" value={formatWon(policy.payerDailyLimit)} />
+          <DataRow label="1개월 최대" value={formatWon(policy.payerMonthlyLimit)} />
+          <DataRow label="가맹점 1명당 1일 최대" value={formatWon(policy.perMerchantDailyLimit)} />
           <DataRow
             label="연속 결제 제한"
             value={`${formatNumber(policy.velocityWindowSec)}초 내 ${formatNumber(policy.velocityMaxCount)}건`}
@@ -118,7 +118,7 @@ export default async function HowItWorksPage() {
             label="연속 결제 시 대기"
             value={`${formatNumber(policy.cooldownAfterCount)}건 이후 ${formatNumber(policy.cooldownSec)}초 대기`}
           />
-          <DataRow label="신규 이용자 첫날 한도" value={formatWon(policy.newDonorFirstDayLimit)} />
+          <DataRow label="신규 이용자 첫날 한도" value={formatWon(policy.newPayerFirstDayLimit)} />
           <DataRow label="결제 실패 누적" value={`${formatNumber(policy.failureLockThreshold)}회 시 자동 잠금`} />
         </Card>
         <p className="mt-2 flex gap-2 text-[12px] leading-relaxed text-ink-400">
@@ -161,7 +161,7 @@ export default async function HowItWorksPage() {
       <section className="mt-8">
         <SectionTitle title="미성년자 이용 제한" />
         <Notice tone="danger" title="만 19세 미만은 이용할 수 없습니다">
-          문자페이 문자결제는 만 19세 이상만 이용할 수 있습니다. 계좌 등록 시 연령 확인에 동의해야 하며, 명의자 동의
+          메시지페이 문자결제는 만 19세 이상만 이용할 수 있습니다. 계좌 등록 시 연령 확인에 동의해야 하며, 명의자 동의
           없이 이루어진 결제는 확인 즉시 이용이 정지되고 환불 절차가 진행됩니다. 가족 명의 휴대전화나 계좌를 무단으로
           사용하지 마세요.
         </Notice>

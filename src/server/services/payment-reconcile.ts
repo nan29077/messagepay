@@ -1,9 +1,9 @@
 import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
 import { logger } from '@/lib/logger';
-import { calculateFees, postDonationSettlement } from './settlement';
+import { calculateFees, postChargeSettlement } from './settlement';
 import { rollbackCounters } from './limits';
-import { sendMtForDonor, setStatus } from './donation-flow';
+import { sendMtForPayer, setStatus } from './charge-flow';
 import * as tpl from './mt-templates';
 
 /**
@@ -52,7 +52,7 @@ export async function reconcileUnknownPayment(
       providerTid: true,
       amount: true,
       requestedAt: true,
-      donationId: true,
+      chargeId: true,
     },
   });
   if (!txn) throw new Error('결제 거래를 찾을 수 없습니다.');
@@ -60,8 +60,8 @@ export async function reconcileUnknownPayment(
     throw new Error('결과 확인이 필요한(UNKNOWN·TIMEOUT) 결제만 수동으로 확정할 수 있습니다.');
   }
 
-  const donation = await prisma.donation.findUnique({
-    where: { id: txn.donationId },
+  const charge = await prisma.charge.findUnique({
+    where: { id: txn.chargeId },
     select: {
       id: true,
       status: true,
@@ -69,16 +69,16 @@ export async function reconcileUnknownPayment(
       amount: true,
       message: true,
       displayName: true,
-      creatorId: true,
-      donorId: true,
-      creator: { select: { displayName: true, thanksMtMessage: true } },
+      merchantId: true,
+      payerId: true,
+      merchant: { select: { displayName: true, thanksMtMessage: true } },
     },
   });
-  if (!donation) throw new Error('결제 거래를 찾을 수 없습니다.');
+  if (!charge) throw new Error('결제 거래를 찾을 수 없습니다.');
 
   return decision === 'APPROVE'
-    ? confirmApproved(txn, donation, memo)
-    : confirmCanceled(txn, donation, memo);
+    ? confirmApproved(txn, charge, memo)
+    : confirmCanceled(txn, charge, memo);
 }
 
 type TxnRow = {
@@ -87,32 +87,32 @@ type TxnRow = {
   providerTid: string | null;
   amount: bigint;
   requestedAt: Date;
-  donationId: string;
+  chargeId: string;
 };
 
-type DonationRow = {
+type ChargeRow = {
   id: string;
   status: string;
   transactionNo: string;
   amount: bigint;
   message: string;
   displayName: string;
-  creatorId: string;
-  donorId: string | null;
-  creator: { displayName: string; thanksMtMessage: string | null };
+  merchantId: string;
+  payerId: string | null;
+  merchant: { displayName: string; thanksMtMessage: string | null };
 };
 
 /**
  * 실제로 출금된 것으로 확인된 경우.
  * 승인 기록과 정산 원장 분개는 반드시 같은 트랜잭션이어야 한다(executePayment 와 동일).
  */
-async function confirmApproved(txn: TxnRow, donation: DonationRow, memo: string): Promise<ReconcileResult> {
-  if (donation.status !== 'PENDING_PAYMENT') {
-    throw new Error(`결제 상태가 결제 진행중(PENDING_PAYMENT)이 아닙니다. 현재 상태: ${donation.status}`);
+async function confirmApproved(txn: TxnRow, charge: ChargeRow, memo: string): Promise<ReconcileResult> {
+  if (charge.status !== 'PENDING_PAYMENT') {
+    throw new Error(`결제 상태가 결제 진행중(PENDING_PAYMENT)이 아닙니다. 현재 상태: ${charge.status}`);
   }
 
   const approvedAt = new Date();
-  const fees = await calculateFees(donation.creatorId, donation.amount);
+  const fees = await calculateFees(charge.merchantId, charge.amount);
 
   await prisma.$transaction(async (tx) => {
     // 조건부 갱신으로 이 건을 **선점**한다.
@@ -133,8 +133,8 @@ async function confirmApproved(txn: TxnRow, donation: DonationRow, memo: string)
     });
     if (claimedTxn.count === 0) throw new Error(ALREADY_HANDLED);
 
-    const claimedDonation = await tx.donation.updateMany({
-      where: { id: donation.id, status: 'PENDING_PAYMENT' },
+    const claimedCharge = await tx.charge.updateMany({
+      where: { id: charge.id, status: 'PENDING_PAYMENT' },
       data: {
         status: 'SETTLEMENT_PENDING',
         statusReason: '관리자 수동 확정 후 정산 대기',
@@ -145,12 +145,12 @@ async function confirmApproved(txn: TxnRow, donation: DonationRow, memo: string)
         netAmount: fees.net,
       },
     });
-    if (claimedDonation.count === 0) throw new Error(ALREADY_HANDLED);
-    await tx.donationStatusLog.createMany({
+    if (claimedCharge.count === 0) throw new Error(ALREADY_HANDLED);
+    await tx.chargeStatusLog.createMany({
       data: [
         {
           id: newId(),
-          donationId: donation.id,
+          chargeId: charge.id,
           fromStatus: 'PENDING_PAYMENT',
           toStatus: 'PAYMENT_SUCCESS',
           reason: `관리자 수동 확정: ${memo}`,
@@ -158,7 +158,7 @@ async function confirmApproved(txn: TxnRow, donation: DonationRow, memo: string)
         },
         {
           id: newId(),
-          donationId: donation.id,
+          chargeId: charge.id,
           fromStatus: 'PAYMENT_SUCCESS',
           toStatus: 'SETTLEMENT_PENDING',
           reason: '정산 대기',
@@ -166,30 +166,30 @@ async function confirmApproved(txn: TxnRow, donation: DonationRow, memo: string)
         },
       ],
     });
-    if (donation.donorId) {
-      await tx.donorCreatorLink.upsert({
-        where: { donorId_creatorId: { donorId: donation.donorId, creatorId: donation.creatorId } },
+    if (charge.payerId) {
+      await tx.payerMerchantLink.upsert({
+        where: { payerId_merchantId: { payerId: charge.payerId, merchantId: charge.merchantId } },
         create: {
           id: newId(),
-          donorId: donation.donorId,
-          creatorId: donation.creatorId,
+          payerId: charge.payerId,
+          merchantId: charge.merchantId,
           consentedAt: approvedAt,
-          totalAmount: donation.amount,
+          totalAmount: charge.amount,
           totalCount: 1,
           lastDonatedAt: approvedAt,
         },
         update: {
-          totalAmount: { increment: donation.amount },
+          totalAmount: { increment: charge.amount },
           totalCount: { increment: 1 },
           lastDonatedAt: approvedAt,
         },
       });
     }
-    await postDonationSettlement(
+    await postChargeSettlement(
       {
-        creatorId: donation.creatorId,
-        donationId: donation.id,
-        amount: donation.amount,
+        merchantId: charge.merchantId,
+        chargeId: charge.id,
+        amount: charge.amount,
         fees,
         occurredAt: approvedAt,
       },
@@ -198,43 +198,43 @@ async function confirmApproved(txn: TxnRow, donation: DonationRow, memo: string)
   });
 
   // 한도 집계는 결제 판정 시점에 이미 예약(반영)되어 있으므로 다시 더하지 않는다.
-  if (donation.donorId) {
-    const link = await prisma.donorCreatorLink.findUnique({
-      where: { donorId_creatorId: { donorId: donation.donorId, creatorId: donation.creatorId } },
+  if (charge.payerId) {
+    const link = await prisma.payerMerchantLink.findUnique({
+      where: { payerId_merchantId: { payerId: charge.payerId, merchantId: charge.merchantId } },
       select: { totalAmount: true },
     });
-    await sendMtForDonor(
-      donation.donorId,
-      tpl.tplDonationSuccess({
-        donorName: donation.displayName,
-        creatorName: donation.creator.displayName,
-        amount: donation.amount,
-        message: donation.message,
-        cumulative: link?.totalAmount ?? donation.amount,
-        custom: donation.creator.thanksMtMessage,
+    await sendMtForPayer(
+      charge.payerId,
+      tpl.tplChargeSuccess({
+        payerName: charge.displayName,
+        merchantName: charge.merchant.displayName,
+        amount: charge.amount,
+        message: charge.message,
+        cumulative: link?.totalAmount ?? charge.amount,
+        custom: charge.merchant.thanksMtMessage,
       }),
-      donation.id,
-      donation.creatorId,
+      charge.id,
+      charge.merchantId,
     );
   }
 
   logger.info('결과 미확인 결제를 승인으로 확정', {
-    donationId: donation.id,
+    chargeId: charge.id,
     transactionId: txn.id,
     orderNo: txn.orderNo,
   });
 
   return {
     ok: true,
-    message: `${donation.transactionNo} 건을 결제 승인으로 확정했습니다. 정산 원장에 분개가 추가되었습니다. 충전 반영은 다시 수행하지 않습니다.`,
-    transactionNo: donation.transactionNo,
+    message: `${charge.transactionNo} 건을 결제 승인으로 확정했습니다. 정산 원장에 분개가 추가되었습니다. 충전 반영은 다시 수행하지 않습니다.`,
+    transactionNo: charge.transactionNo,
   };
 }
 
 /** 출금이 없었던 것으로 확인된 경우. */
-async function confirmCanceled(txn: TxnRow, donation: DonationRow, memo: string): Promise<ReconcileResult> {
-  if (donation.status !== 'PENDING_PAYMENT') {
-    throw new Error(`결제 상태가 결제 진행중(PENDING_PAYMENT)이 아닙니다. 현재 상태: ${donation.status}`);
+async function confirmCanceled(txn: TxnRow, charge: ChargeRow, memo: string): Promise<ReconcileResult> {
+  if (charge.status !== 'PENDING_PAYMENT') {
+    throw new Error(`결제 상태가 결제 진행중(PENDING_PAYMENT)이 아닙니다. 현재 상태: ${charge.status}`);
   }
 
   // 승인 경로와 같은 이유로 선점한다.
@@ -251,28 +251,28 @@ async function confirmCanceled(txn: TxnRow, donation: DonationRow, memo: string)
   });
   if (claimed.count === 0) throw new Error(ALREADY_HANDLED);
 
-  await setStatus(donation.id, 'PAYMENT_FAILED', `관리자 수동 취소: ${memo}`, 'admin');
+  await setStatus(charge.id, 'PAYMENT_FAILED', `관리자 수동 취소: ${memo}`, 'admin');
 
   // 출금이 없었으므로 결제 판정 때 잡아 둔 한도 예약을 되돌린다.
-  if (donation.donorId) {
-    await rollbackCounters(donation.donorId, donation.creatorId, donation.amount, txn.requestedAt);
-    await sendMtForDonor(
-      donation.donorId,
-      tpl.tplDonationFailed(donation.creator.displayName, '결제가 완료되지 않아 취소되었습니다.'),
-      donation.id,
-      donation.creatorId,
+  if (charge.payerId) {
+    await rollbackCounters(charge.payerId, charge.merchantId, charge.amount, txn.requestedAt);
+    await sendMtForPayer(
+      charge.payerId,
+      tpl.tplChargeFailed(charge.merchant.displayName, '결제가 완료되지 않아 취소되었습니다.'),
+      charge.id,
+      charge.merchantId,
     );
   }
 
   logger.warn('결과 미확인 결제를 취소로 확정', {
-    donationId: donation.id,
+    chargeId: charge.id,
     transactionId: txn.id,
     orderNo: txn.orderNo,
   });
 
   return {
     ok: true,
-    message: `${donation.transactionNo} 건을 결제 취소로 확정했습니다. 출금이 없었던 건으로 처리되어 한도 집계도 되돌렸습니다.`,
-    transactionNo: donation.transactionNo,
+    message: `${charge.transactionNo} 건을 결제 취소로 확정했습니다. 출금이 없었던 건으로 처리되어 한도 집계도 되돌렸습니다.`,
+    transactionNo: charge.transactionNo,
   };
 }

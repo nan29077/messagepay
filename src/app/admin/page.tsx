@@ -8,7 +8,7 @@ import { PAID_DONATION_STATUSES } from '@/components/admin/constants';
 import { prisma } from '@/server/db';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst, kstStartOfDay, kstStartOfMonth } from '@/lib/datetime';
-import { donationStatusLabel } from '@/lib/labels';
+import { chargeStatusLabel } from '@/lib/labels';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,23 +28,23 @@ export default async function AdminDashboardPage() {
     openReports,
     openRisks,
     openInquiries,
-    recentDonations,
+    recentCharges,
   ] = await Promise.all([
-    prisma.donation.aggregate({
+    prisma.charge.aggregate({
       where: { status: { in: PAID_DONATION_STATUSES }, paidAt: { gte: todayStart } },
       _count: { _all: true },
       _sum: { amount: true },
     }),
-    prisma.donation.aggregate({
+    prisma.charge.aggregate({
       where: { status: { in: PAID_DONATION_STATUSES }, paidAt: { gte: monthStart } },
       _count: { _all: true },
       _sum: { amount: true },
     }),
-    prisma.donation.count({ where: { receivedAt: { gte: todayStart } } }),
+    prisma.charge.count({ where: { receivedAt: { gte: todayStart } } }),
     prisma.paymentTransaction.count({ where: { requestedAt: { gte: todayStart } } }),
     prisma.paymentTransaction.count({ where: { requestedAt: { gte: todayStart }, status: 'APPROVED' } }),
     prisma.moInboundMessage.count({ where: { receivedAt: { gte: todayStart }, result: 'UNREGISTERED_DONOR' } }),
-    prisma.donation.count({ where: { receivedAt: { gte: todayStart }, status: 'LIMIT_BLOCKED' } }),
+    prisma.charge.count({ where: { receivedAt: { gte: todayStart }, status: 'LIMIT_BLOCKED' } }),
     prisma.settlementRequest.aggregate({
       where: { status: { in: ['REQUESTED', 'REVIEWING'] } },
       _count: { _all: true },
@@ -53,7 +53,7 @@ export default async function AdminDashboardPage() {
     prisma.report.count({ where: { status: { in: ['OPEN', 'REVIEWING'] } } }),
     prisma.riskDetection.count({ where: { resolved: false } }),
     prisma.supportInquiry.count({ where: { status: 'OPEN' } }),
-    prisma.donation.findMany({
+    prisma.charge.findMany({
       orderBy: { receivedAt: 'desc' },
       take: 10,
       select: {
@@ -62,8 +62,8 @@ export default async function AdminDashboardPage() {
         amount: true,
         status: true,
         receivedAt: true,
-        creator: { select: { displayName: true } },
-        donor: { select: { phoneMasked: true } },
+        merchant: { select: { displayName: true } },
+        payer: { select: { phoneMasked: true } },
       },
     }),
   ]);
@@ -142,7 +142,7 @@ export default async function AdminDashboardPage() {
             <Link href="/admin/refunds">
               <StatTile label="환불 관리" value="바로가기" sub="요청 승인·거절 처리" />
             </Link>
-            <Link href="/admin/creators">
+            <Link href="/admin/merchants">
               <StatTile label="가맹점 심사" value="바로가기" sub="대기 건 확인" />
             </Link>
           </div>
@@ -258,7 +258,7 @@ export default async function AdminDashboardPage() {
             <Link href="/admin/refunds">
               <StatTile label="환불 관리" value="바로가기" sub="요청 승인·거절 처리" />
             </Link>
-            <Link href="/admin/creators">
+            <Link href="/admin/merchants">
               <StatTile label="가맹점 심사" value="바로가기" sub="대기 건 확인" />
             </Link>
           </div>
@@ -268,7 +268,7 @@ export default async function AdminDashboardPage() {
 
         <section>
           <SectionTitle title="최근 결제 10건" />
-          {recentDonations.length === 0 ? (
+          {recentCharges.length === 0 ? (
             <EmptyState
               title="아직 결제 내역이 없습니다"
               description="MO 시뮬레이터로 문자 수신부터 결제까지 전체 흐름을 검증할 수 있습니다."
@@ -291,13 +291,13 @@ export default async function AdminDashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {recentDonations.map((d) => {
-                  const label = donationStatusLabel[d.status];
+                {recentCharges.map((d) => {
+                  const label = chargeStatusLabel[d.status];
                   return (
                     <tr key={d.id}>
                       <Td className="font-mono text-[12px]">{d.transactionNo}</Td>
-                      <Td>{d.creator.displayName}</Td>
-                      <Td>{d.donor?.phoneMasked ?? '-'}</Td>
+                      <Td>{d.merchant.displayName}</Td>
+                      <Td>{d.payer?.phoneMasked ?? '-'}</Td>
                       <Td className="text-right tabular-nums">{formatWon(d.amount)}</Td>
                       <Td>
                         <Badge tone={label.tone}>{label.text}</Badge>

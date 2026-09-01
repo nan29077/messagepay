@@ -10,8 +10,8 @@ import { PageHeader } from '@/components/layout/console-shell';
 import { BannerStrip } from '@/components/public/banner-strip';
 import { PAID_STATUSES } from '@/components/studio/shared';
 import { OnboardingChecklist } from '@/components/studio/onboarding-checklist';
-import { DonationCardGrid } from '@/components/studio/donation-cards';
-import { requireCreator } from '@/server/auth';
+import { ChargeCardGrid } from '@/components/studio/charge-cards';
+import { requireMerchant } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { getSettlementSummary } from '@/server/services/settlement';
 import { formatNumber, formatWon } from '@/lib/money';
@@ -29,7 +29,7 @@ export const dynamic = 'force-dynamic';
  * 세부 관리 진입은 각 줄의 링크와 좌측 메뉴로 처리한다.
  */
 export default async function StudioDashboardPage() {
-  const { creatorId } = await requireCreator();
+  const { merchantId } = await requireMerchant();
   const todayStart = kstStartOfDay();
 
   const [
@@ -42,44 +42,44 @@ export default async function StudioDashboardPage() {
     moNumber,
     recent,
   ] = await Promise.all([
-    prisma.donation.aggregate({
-      where: { creatorId, receivedAt: { gte: todayStart }, status: { in: PAID_STATUSES } },
+    prisma.charge.aggregate({
+      where: { merchantId, receivedAt: { gte: todayStart }, status: { in: PAID_STATUSES } },
       _sum: { amount: true },
     }),
-    prisma.moInboundMessage.count({ where: { creatorId, receivedAt: { gte: todayStart } } }),
-    prisma.donation.count({
-      where: { creatorId, receivedAt: { gte: todayStart }, status: { in: PAID_STATUSES } },
+    prisma.moInboundMessage.count({ where: { merchantId, receivedAt: { gte: todayStart } } }),
+    prisma.charge.count({
+      where: { merchantId, receivedAt: { gte: todayStart }, status: { in: PAID_STATUSES } },
     }),
-    prisma.donation.count({
-      where: { creatorId, receivedAt: { gte: todayStart }, status: 'PAYMENT_FAILED' },
+    prisma.charge.count({
+      where: { merchantId, receivedAt: { gte: todayStart }, status: 'PAYMENT_FAILED' },
     }),
     prisma.settlementLedger.aggregate({
       where: {
-        creatorId,
+        merchantId,
         settlementKey: kstMonthKey(),
         entryType: { notIn: ['PAYOUT', 'PAYOUT_WITHHOLDING'] },
       },
       _sum: { amount: true },
     }),
-    getSettlementSummary(creatorId),
+    getSettlementSummary(merchantId),
     // 배정 중인 번호를 우선 보여 준다. 나중에 배정됐다 회수된 번호가 있어도 현재 번호가 가려지지 않게.
-    prisma.creatorMoNumber
+    prisma.merchantMoNumber
       .findFirst({
-        where: { creatorId, status: 'ASSIGNED' },
+        where: { merchantId, status: 'ASSIGNED' },
         orderBy: { assignedAt: 'desc' },
         select: { phoneNumber: true, keyword: true, mode: true, status: true },
       })
       .then(
         (assigned) =>
           assigned ??
-          prisma.creatorMoNumber.findFirst({
-            where: { creatorId },
+          prisma.merchantMoNumber.findFirst({
+            where: { merchantId },
             orderBy: { assignedAt: 'desc' },
             select: { phoneNumber: true, keyword: true, mode: true, status: true },
           }),
       ),
-    prisma.donation.findMany({
-      where: { creatorId },
+    prisma.charge.findMany({
+      where: { merchantId },
       orderBy: { receivedAt: 'desc' },
       take: 8,
       select: {
@@ -93,7 +93,7 @@ export default async function StudioDashboardPage() {
         receivedAt: true,
         anonymous: true,
         // 전화번호는 저장 시점에 마스킹된 값만 읽는다(원문/암호문은 화면으로 내리지 않는다).
-        donor: { select: { phoneMasked: true } },
+        payer: { select: { phoneMasked: true } },
       },
     }),
   ]);
@@ -120,7 +120,7 @@ export default async function StudioDashboardPage() {
         title="대시보드"
         description="오늘 들어온 문자결제와 연동 상태를 한눈에 확인합니다. (KST 기준)"
         action={
-          <LinkButton href="/studio/donations" variant="secondary" size="sm">
+          <LinkButton href="/studio/charges" variant="secondary" size="sm">
             결제 내역 전체 보기
           </LinkButton>
         }
@@ -130,7 +130,7 @@ export default async function StudioDashboardPage() {
         <BannerStrip position="CONSOLE_TOP" />
 
         {/* 0) 신규 가맹점 온보딩 체크리스트 — 모두 완료되면 스스로 사라진다 */}
-        <OnboardingChecklist creatorId={creatorId} />
+        <OnboardingChecklist merchantId={merchantId} />
 
         {nextStep ? (
           <Link
@@ -237,7 +237,7 @@ export default async function StudioDashboardPage() {
               <Link href="/studio/messages" className="text-[12.5px] font-semibold text-ink-500 hover:underline">
                 문자 관리
               </Link>
-              <Link href="/studio/donations" className="text-[12.5px] font-semibold text-brand-700 hover:underline">
+              <Link href="/studio/charges" className="text-[12.5px] font-semibold text-brand-700 hover:underline">
                 전체 보기
               </Link>
             </span>
@@ -256,7 +256,7 @@ export default async function StudioDashboardPage() {
               />
             </Card>
           ) : (
-            <DonationCardGrid
+            <ChargeCardGrid
               dense
               items={recent.map((d) => ({
                 id: d.id,
@@ -268,7 +268,7 @@ export default async function StudioDashboardPage() {
                 amount: d.amount,
                 status: d.status,
                 channel: d.channel,
-                phoneMasked: d.donor?.phoneMasked ?? null,
+                phoneMasked: d.payer?.phoneMasked ?? null,
               }))}
             />
           )}

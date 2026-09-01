@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { prisma } from '@/server/db';
 import { writeAudit } from '@/server/auth';
 import { notifyUser } from '@/server/services/notifications';
-import { newId, newCreatorCode } from '@/lib/id';
+import { newId, newMerchantCode } from '@/lib/id';
 import { env } from '@/lib/env';
 import type { AdminActionState } from '@/components/admin/state';
 import { issueTemporaryPassword } from '@/server/services/password-reset';
@@ -104,44 +104,44 @@ export async function issueTemporaryPasswordAction(
 
 // =========================================================== 이용자
 
-export async function unlockDonor(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
+export async function unlockPayer(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
-    const donorId = requiredId(fd, 'donorId', '이용자');
-    const before = await prisma.donorProfile.findUnique({
-      where: { id: donorId },
+    const payerId = requiredId(fd, 'payerId', '이용자');
+    const before = await prisma.payerProfile.findUnique({
+      where: { id: payerId },
       select: { id: true, phoneMasked: true, failCount: true, lockedUntil: true },
     });
     if (!before) throw new Error('이용자를 찾을 수 없습니다.');
 
-    await prisma.donorProfile.update({
-      where: { id: donorId },
+    await prisma.payerProfile.update({
+      where: { id: payerId },
       data: { lockedUntil: null, failCount: 0 },
     });
     await writeAudit({
       adminUserId: admin.id,
-      action: 'DONOR_UNLOCK',
-      targetType: 'DonorProfile',
-      targetId: donorId,
+      action: 'PAYER_UNLOCK',
+      targetType: 'PayerProfile',
+      targetId: payerId,
       before: { lockedUntil: before.lockedUntil, failCount: before.failCount },
       after: { lockedUntil: null, failCount: 0 },
     });
-    revalidatePath('/admin/donors');
-    revalidatePath(`/admin/donors/${donorId}`);
+    revalidatePath('/admin/payers');
+    revalidatePath(`/admin/payers/${payerId}`);
     return `${before.phoneMasked} 이용자의 결제 실패 잠금을 해제했습니다.`;
   });
 }
 
-export async function setDonorBlock(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
+export async function setPayerBlock(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
-    const donorId = requiredId(fd, 'donorId', '이용자');
+    const payerId = requiredId(fd, 'payerId', '이용자');
     const next = enumValue(fd, 'next', ['BLOCK', 'UNBLOCK'] as const, '처리 구분');
     const reason = optText(fd, 'reason');
     if (next === 'BLOCK' && (!reason || reason.length < 2)) {
       throw new Error('이용 제한 사유를 2자 이상 입력해 주세요.');
     }
 
-    const before = await prisma.donorProfile.findUnique({
-      where: { id: donorId },
+    const before = await prisma.payerProfile.findUnique({
+      where: { id: payerId },
       select: { id: true, phoneMasked: true, blockedAt: true, blockedReason: true },
     });
     if (!before) throw new Error('이용자를 찾을 수 없습니다.');
@@ -151,62 +151,62 @@ export async function setDonorBlock(_prev: AdminActionState, fd: FormData): Prom
         ? { blockedAt: new Date(), blockedReason: reason }
         : { blockedAt: null, blockedReason: null };
 
-    await prisma.donorProfile.update({ where: { id: donorId }, data: after });
+    await prisma.payerProfile.update({ where: { id: payerId }, data: after });
     await writeAudit({
       adminUserId: admin.id,
-      action: next === 'BLOCK' ? 'DONOR_BLOCK' : 'DONOR_UNBLOCK',
-      targetType: 'DonorProfile',
-      targetId: donorId,
+      action: next === 'BLOCK' ? 'PAYER_BLOCK' : 'PAYER_UNBLOCK',
+      targetType: 'PayerProfile',
+      targetId: payerId,
       before: { blockedAt: before.blockedAt, blockedReason: before.blockedReason },
       after,
     });
-    revalidatePath('/admin/donors');
-    revalidatePath(`/admin/donors/${donorId}`);
+    revalidatePath('/admin/payers');
+    revalidatePath(`/admin/payers/${payerId}`);
     return next === 'BLOCK'
       ? `${before.phoneMasked} 이용자의 이용을 제한했습니다.`
       : `${before.phoneMasked} 이용자의 이용 제한을 해제했습니다.`;
   });
 }
 
-export async function updateDonorLimitsByAdmin(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
+export async function updatePayerLimitsByAdmin(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
-    const donorId = requiredId(fd, 'donorId', '이용자');
+    const payerId = requiredId(fd, 'payerId', '이용자');
     const dailyLimit = optMoney(fd, 'dailyLimit', '일일 한도');
     const monthlyLimit = optMoney(fd, 'monthlyLimit', '월간 한도');
     if (dailyLimit !== null && monthlyLimit !== null && dailyLimit > monthlyLimit) {
       throw new Error('일일 한도는 월간 한도보다 클 수 없습니다.');
     }
 
-    const before = await prisma.donorProfile.findUnique({
-      where: { id: donorId },
+    const before = await prisma.payerProfile.findUnique({
+      where: { id: payerId },
       select: { id: true, phoneMasked: true, dailyLimit: true, monthlyLimit: true },
     });
     if (!before) throw new Error('이용자를 찾을 수 없습니다.');
 
-    await prisma.donorProfile.update({ where: { id: donorId }, data: { dailyLimit, monthlyLimit } });
+    await prisma.payerProfile.update({ where: { id: payerId }, data: { dailyLimit, monthlyLimit } });
     await writeAudit({
       adminUserId: admin.id,
-      action: 'DONOR_LIMIT_UPDATE',
-      targetType: 'DonorProfile',
-      targetId: donorId,
+      action: 'PAYER_LIMIT_UPDATE',
+      targetType: 'PayerProfile',
+      targetId: payerId,
       before: { dailyLimit: before.dailyLimit, monthlyLimit: before.monthlyLimit },
       after: { dailyLimit, monthlyLimit },
     });
-    revalidatePath('/admin/donors');
-    revalidatePath(`/admin/donors/${donorId}`);
+    revalidatePath('/admin/payers');
+    revalidatePath(`/admin/payers/${payerId}`);
     return `${before.phoneMasked} 이용자의 개인 한도를 저장했습니다.`;
   });
 }
 
 // =========================================================== 가맹점 심사
 
-export async function updateCreatorStatus(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
+export async function updateMerchantStatus(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
-    const creatorId = requiredId(fd, 'creatorId', '가맹점');
+    const merchantId = requiredId(fd, 'merchantId', '가맹점');
     const status = enumValue(fd, 'status', ['PENDING', 'APPROVED', 'REJECTED', 'SUSPENDED'] as const, '심사 상태');
 
-    const before = await prisma.creatorProfile.findUnique({
-      where: { id: creatorId },
+    const before = await prisma.merchantProfile.findUnique({
+      where: { id: merchantId },
       select: { id: true, userId: true, displayName: true, status: true, approvedAt: true, suspendedAt: true },
     });
     if (before && before.status === status) throw new Error('이미 같은 심사 상태입니다.');
@@ -220,7 +220,7 @@ export async function updateCreatorStatus(_prev: AdminActionState, fd: FormData)
           ? { status, suspendedAt: now }
           : { status };
 
-    await prisma.creatorProfile.update({ where: { id: creatorId }, data });
+    await prisma.merchantProfile.update({ where: { id: merchantId }, data });
     await notifyUser({
       userId: before.userId,
       title: status === 'APPROVED' ? '가맹점 승인이 완료되었습니다' : '가맹점 심사 상태가 변경되었습니다',
@@ -232,23 +232,23 @@ export async function updateCreatorStatus(_prev: AdminActionState, fd: FormData)
     });
     await writeAudit({
       adminUserId: admin.id,
-      action: 'CREATOR_STATUS_UPDATE',
-      targetType: 'CreatorProfile',
-      targetId: creatorId,
+      action: 'MERCHANT_STATUS_UPDATE',
+      targetType: 'MerchantProfile',
+      targetId: merchantId,
       before: { status: before.status, approvedAt: before.approvedAt, suspendedAt: before.suspendedAt },
       after: data,
     });
-    revalidatePath('/admin/creators');
-    revalidatePath(`/admin/creators/${creatorId}`);
+    revalidatePath('/admin/merchants');
+    revalidatePath(`/admin/merchants/${merchantId}`);
     return status === 'APPROVED'
       ? `${before.displayName} 님을 승인했습니다. MO 번호 배정을 이어서 진행해 주세요.`
       : `${before.displayName} 님의 심사 상태를 변경했습니다.`;
   });
 }
 
-export async function updateCreatorPaymentMode(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
+export async function updateMerchantPaymentMode(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
-    const creatorId = requiredId(fd, 'creatorId', '가맹점');
+    const merchantId = requiredId(fd, 'merchantId', '가맹점');
     const raw = text(fd, 'paymentMode');
     if (!['', 'CONFIRM_LINK', 'DIRECT_TRIGGER'].includes(raw)) throw new Error('결제 모드 값이 올바르지 않습니다.');
     const paymentMode = raw === '' ? null : (raw as 'CONFIRM_LINK' | 'DIRECT_TRIGGER');
@@ -257,22 +257,22 @@ export async function updateCreatorPaymentMode(_prev: AdminActionState, fd: Form
       throw new Error('금융사 서면승인이 등록되지 않아 즉시형 결제를 활성화할 수 없습니다.');
     }
 
-    const before = await prisma.creatorProfile.findUnique({
-      where: { id: creatorId },
+    const before = await prisma.merchantProfile.findUnique({
+      where: { id: merchantId },
       select: { id: true, displayName: true, paymentMode: true },
     });
     if (!before) throw new Error('가맹점을 찾을 수 없습니다.');
 
-    await prisma.creatorProfile.update({ where: { id: creatorId }, data: { paymentMode } });
+    await prisma.merchantProfile.update({ where: { id: merchantId }, data: { paymentMode } });
     await writeAudit({
       adminUserId: admin.id,
-      action: 'CREATOR_PAYMENT_MODE_UPDATE',
-      targetType: 'CreatorProfile',
-      targetId: creatorId,
+      action: 'MERCHANT_PAYMENT_MODE_UPDATE',
+      targetType: 'MerchantProfile',
+      targetId: merchantId,
       before: { paymentMode: before.paymentMode },
       after: { paymentMode, allowDirectTrigger: env.safety.allowDirectTrigger },
     });
-    revalidatePath(`/admin/creators/${creatorId}`);
+    revalidatePath(`/admin/merchants/${merchantId}`);
     return `${before.displayName} 님의 결제 모드를 ${paymentMode ?? '전역 설정'} 으로 변경했습니다.`;
   });
 }
@@ -285,26 +285,26 @@ export async function updateCreatorPaymentMode(_prev: AdminActionState, fd: Form
  * 범위를 벗어난 충전 상품은 결제 시 AMOUNT_RANGE 로 전부 실패하므로 자동으로 비활성화한다.
  * 상품을 지우거나 금액을 임의로 바꾸지는 않는다(가맹점이 정한 가격이므로 판단을 대신하지 않는다).
  */
-export async function updateCreatorAmountBounds(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
+export async function updateMerchantAmountBounds(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
-    const creatorId = requiredId(fd, 'creatorId', '가맹점');
+    const merchantId = requiredId(fd, 'merchantId', '가맹점');
     const minAmount = money(fd, 'minAmount', '1건 최소 결제 금액', { min: 100n });
     const maxAmount = money(fd, 'maxAmount', '1건 최대 결제 금액', { min: 100n });
     if (minAmount > maxAmount) throw new Error('최소 금액이 최대 금액보다 클 수 없습니다.');
 
-    const before = await prisma.creatorProfile.findUnique({
-      where: { id: creatorId },
+    const before = await prisma.merchantProfile.findUnique({
+      where: { id: merchantId },
       select: { id: true, displayName: true, minAmount: true, maxAmount: true },
     });
     if (!before) throw new Error('가맹점을 찾을 수 없습니다.');
 
-    await prisma.creatorProfile.update({
-      where: { id: creatorId },
+    await prisma.merchantProfile.update({
+      where: { id: merchantId },
       data: { minAmount, maxAmount },
     });
     const deactivated = await prisma.chargeProduct.updateMany({
       where: {
-        creatorId,
+        merchantId,
         active: true,
         archivedAt: null,
         OR: [{ amount: { lt: minAmount } }, { amount: { gt: maxAmount } }],
@@ -313,14 +313,14 @@ export async function updateCreatorAmountBounds(_prev: AdminActionState, fd: For
     });
     await writeAudit({
       adminUserId: admin.id,
-      action: 'CREATOR_AMOUNT_BOUNDS_UPDATE',
-      targetType: 'CreatorProfile',
-      targetId: creatorId,
+      action: 'MERCHANT_AMOUNT_BOUNDS_UPDATE',
+      targetType: 'MerchantProfile',
+      targetId: merchantId,
       before: { minAmount: before.minAmount, maxAmount: before.maxAmount },
       after: { minAmount, maxAmount, deactivatedProducts: deactivated.count },
     });
-    revalidatePath(`/admin/creators/${creatorId}`);
-    revalidatePath('/admin/creators');
+    revalidatePath(`/admin/merchants/${merchantId}`);
+    revalidatePath('/admin/merchants');
     return deactivated.count > 0
       ? `${before.displayName} 님의 충전 금액 허용 범위를 변경했고, 범위를 벗어난 충전 상품 ${deactivated.count}개를 비활성화했습니다.`
       : `${before.displayName} 님의 충전 금액 허용 범위를 변경했습니다.`;
@@ -338,8 +338,8 @@ export async function applyGlobalAmountBounds(_prev: AdminActionState, fd: FormD
     if (minAmount > maxAmount) throw new Error('최소 금액이 최대 금액보다 클 수 없습니다.');
 
     const result = await prisma.$transaction(async (tx) => {
-      const total = await tx.creatorProfile.count();
-      await tx.creatorProfile.updateMany({ data: { minAmount, maxAmount } });
+      const total = await tx.merchantProfile.count();
+      await tx.merchantProfile.updateMany({ data: { minAmount, maxAmount } });
       const off = await tx.chargeProduct.updateMany({
         where: {
           active: true,
@@ -353,12 +353,12 @@ export async function applyGlobalAmountBounds(_prev: AdminActionState, fd: FormD
 
     await writeAudit({
       adminUserId: admin.id,
-      action: 'CREATOR_AMOUNT_BOUNDS_APPLY_ALL',
-      targetType: 'CreatorProfile',
+      action: 'MERCHANT_AMOUNT_BOUNDS_APPLY_ALL',
+      targetType: 'MerchantProfile',
       targetId: 'ALL',
       after: { minAmount, maxAmount, appliedTo: result.total, deactivatedProducts: result.clamped },
     });
-    revalidatePath('/admin/creators');
+    revalidatePath('/admin/merchants');
     revalidatePath('/studio/settings');
     return `가맹점 ${result.total}명 전체에 충전 금액 허용 범위 ${minAmount.toString()}원 ~ ${maxAmount.toString()}원을 적용했습니다.` +
       (result.clamped > 0 ? ` 범위를 벗어난 충전 상품 ${result.clamped}개를 비활성화했습니다.` : '');
@@ -382,11 +382,11 @@ export async function setSettlementAccountVerified(
     if (admin.adminPermission === 'SUPPORT') {
       throw new Error('정산 계좌 실명확인은 재무/운영 권한에서만 가능합니다.');
     }
-    const creatorId = requiredId(fd, 'creatorId', '가맹점');
+    const merchantId = requiredId(fd, 'merchantId', '가맹점');
     const verified = text(fd, 'verified') === 'true';
 
     const before = await prisma.settlementAccount.findUnique({
-      where: { creatorId },
+      where: { merchantId },
       select: { id: true, verified: true, verifiedAt: true, bankName: true, accountTail4: true, holderMasked: true },
     });
     if (!before) throw new Error('등록된 정산 계좌가 없습니다. 가맹점이 계좌를 먼저 등록해야 합니다.');
@@ -396,7 +396,7 @@ export async function setSettlementAccountVerified(
 
     const verifiedAt = verified ? new Date() : null;
     await prisma.settlementAccount.update({
-      where: { creatorId },
+      where: { merchantId },
       data: { verified, verifiedAt },
     });
 
@@ -415,7 +415,7 @@ export async function setSettlementAccountVerified(
       },
     });
 
-    revalidatePath(`/admin/creators/${creatorId}`);
+    revalidatePath(`/admin/merchants/${merchantId}`);
     revalidatePath('/admin/settlements');
     revalidatePath('/studio/settlement');
     return verified
@@ -428,21 +428,21 @@ export async function setSettlementAccountVerified(
 
 async function generateUniqueCode(): Promise<string> {
   for (let i = 0; i < 30; i += 1) {
-    const candidate = newCreatorCode();
+    const candidate = newMerchantCode();
     const [dupCode, dupProfile] = await Promise.all([
-      prisma.creatorCode.findUnique({ where: { code: candidate }, select: { id: true } }),
-      prisma.creatorProfile.findUnique({ where: { code: candidate }, select: { id: true } }),
+      prisma.merchantCode.findUnique({ where: { code: candidate }, select: { id: true } }),
+      prisma.merchantProfile.findUnique({ where: { code: candidate }, select: { id: true } }),
     ]);
     if (!dupCode && !dupProfile) return candidate;
   }
   throw new Error('사용 가능한 코드를 생성하지 못했습니다. 잠시 후 다시 시도해 주세요.');
 }
 
-export async function reissueCreatorCode(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
+export async function reissueMerchantCode(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
-    const creatorId = requiredId(fd, 'creatorId', '가맹점');
-    const before = await prisma.creatorProfile.findUnique({
-      where: { id: creatorId },
+    const merchantId = requiredId(fd, 'merchantId', '가맹점');
+    const before = await prisma.merchantProfile.findUnique({
+      where: { id: merchantId },
       select: { id: true, displayName: true, code: true },
     });
     if (!before) throw new Error('가맹점을 찾을 수 없습니다.');
@@ -451,26 +451,26 @@ export async function reissueCreatorCode(_prev: AdminActionState, fd: FormData):
     const now = new Date();
 
     await prisma.$transaction([
-      prisma.creatorCode.updateMany({
-        where: { creatorId, active: true },
+      prisma.merchantCode.updateMany({
+        where: { merchantId, active: true },
         data: { active: false, revokedAt: now },
       }),
-      prisma.creatorCode.create({
-        data: { id: newId(), creatorId, code: nextCode, active: true, issuedAt: now },
+      prisma.merchantCode.create({
+        data: { id: newId(), merchantId, code: nextCode, active: true, issuedAt: now },
       }),
-      prisma.creatorProfile.update({ where: { id: creatorId }, data: { code: nextCode } }),
+      prisma.merchantProfile.update({ where: { id: merchantId }, data: { code: nextCode } }),
     ]);
 
     await writeAudit({
       adminUserId: admin.id,
-      action: 'CREATOR_CODE_REISSUE',
-      targetType: 'CreatorProfile',
-      targetId: creatorId,
+      action: 'MERCHANT_CODE_REISSUE',
+      targetType: 'MerchantProfile',
+      targetId: merchantId,
       before: { code: before.code },
       after: { code: nextCode },
     });
     revalidatePath('/admin/codes');
-    revalidatePath(`/admin/creators/${creatorId}`);
+    revalidatePath(`/admin/merchants/${merchantId}`);
     return `${before.displayName} 님의 코드를 ${nextCode} 로 재발급했습니다. 기존 링크(/c/${before.code})는 더 이상 동작하지 않습니다.`;
   });
 }
@@ -541,7 +541,7 @@ export async function createAdminByEmail(_prev: AdminActionState, fd: FormData):
     });
     if (!user) throw new Error('해당 이메일로 가입된 계정이 없습니다. 먼저 일반 회원가입을 완료해 주세요.');
     if (user.adminProfile) throw new Error('이미 관리자로 등록된 계정입니다.');
-    if (user.role === 'CREATOR') {
+    if (user.role === 'MERCHANT') {
       throw new Error('가맹점 계정은 관리자를 겸할 수 없습니다. 별도 계정으로 등록해 주세요.');
     }
     if (user.status !== 'ACTIVE') throw new Error('활성 상태의 계정만 관리자로 등록할 수 있습니다.');

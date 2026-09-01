@@ -247,7 +247,7 @@ export default async function AdminSystemPage() {
               <CardTitle>캐시</CardTitle>
             </div>
             <p className="text-[13px] leading-relaxed text-ink-500">
-              한도·속도 제한 카운터는 캐시에 저장되고 DonationCounter 가 영속 원본입니다. 운영에서는 인메모리 폴백을
+              한도·속도 제한 카운터는 캐시에 저장되고 ChargeCounter 가 영속 원본입니다. 운영에서는 인메모리 폴백을
               금지해야 합니다.
             </p>
           </Card>

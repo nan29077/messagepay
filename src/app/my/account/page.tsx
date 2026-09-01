@@ -4,9 +4,9 @@ import { Card, CardTitle, Badge, Notice, DataRow, LinkButton, SectionTitle } fro
 import { RevokeForm } from '@/components/my/revoke-form';
 import { PhoneLinkForm } from '@/components/my/phone-link-form';
 import { NicknameForm } from '@/components/my/nickname-form';
-import { defaultDonorName } from '@/lib/donor-name';
+import { defaultPayerName } from '@/lib/payer-name';
 import { WithdrawForm } from '@/components/my/withdraw-form';
-import { requireDonorContext } from '@/components/my/donor';
+import { requirePayerContext } from '@/components/my/payer';
 import { prisma } from '@/server/db';
 import { formatKst } from '@/lib/datetime';
 import { paymentMethodKindLabel } from '@/lib/labels';
@@ -14,16 +14,16 @@ import { paymentMethodKindLabel } from '@/lib/labels';
 export const dynamic = 'force-dynamic';
 
 export default async function MyAccountPage() {
-  const { donorId } = await requireDonorContext('/my/account');
+  const { payerId } = await requirePayerContext('/my/account');
 
-  const donor = donorId
-    ? await prisma.donorProfile.findUnique({
-        where: { id: donorId },
+  const payer = payerId
+    ? await prisma.payerProfile.findUnique({
+        where: { id: payerId },
         select: { phoneMasked: true, displayName: true },
       })
     : null;
 
-  if (!donorId) {
+  if (!payerId) {
     return (
       <div className="space-y-5" id="phone-link">
         <Notice tone="brand" title="휴대폰 번호를 연결해 주세요">
@@ -36,7 +36,7 @@ export default async function MyAccountPage() {
   }
 
   const tokens = await prisma.paymentMethodToken.findMany({
-    where: { donorId },
+    where: { payerId },
     orderBy: { registeredAt: 'desc' },
     take: 10,
     select: {
@@ -70,7 +70,7 @@ export default async function MyAccountPage() {
           title="휴대폰 번호"
           description="문자결제의 이용자 식별 기준입니다. 번호를 변경하면 새 번호의 내역이 표시됩니다."
         />
-        <PhoneLinkForm linkedPhoneMasked={donor?.phoneMasked ?? null} />
+        <PhoneLinkForm linkedPhoneMasked={payer?.phoneMasked ?? null} />
       </section>
 
       {/*
@@ -84,8 +84,8 @@ export default async function MyAccountPage() {
           description="결제 내역과 가맹점 화면에 표시되는 이름입니다."
         />
         <NicknameForm
-          current={donor?.displayName ?? null}
-          defaultName={defaultDonorName(donor?.phoneMasked ?? '')}
+          current={payer?.displayName ?? null}
+          defaultName={defaultPayerName(payer?.phoneMasked ?? '')}
         />
       </section>
 

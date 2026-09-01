@@ -305,11 +305,7 @@ a {
     background: #071426;
   }
 
-  .public-mascot-scene.is-home img {
-    animation: mascot-world-drift 18s ease-in-out infinite alternate;
-  }
-
-  .public-mascot-scene.is-subpage img {
+  .public-mascot-scene .public-margin-backdrop {
     opacity: 0.94;
   }
 
@@ -329,9 +325,20 @@ a {
   50% { transform: translateY(-7px) scale(1.025); }
 }
 
-@keyframes mascot-world-drift {
-  0% { transform: translate3d(-0.35%, -0.2%, 0) scale(1.018); filter: saturate(0.96); }
-  100% { transform: translate3d(0.35%, 0.3%, 0) scale(1.035); filter: saturate(1.04); }
+.hero-mascot {
+  animation: messagepay-hero-mascot 4.6s ease-in-out infinite;
+}
+
+@keyframes messagepay-hero-mascot {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .public-mascot-scene img,
+  .hero-mascot {
+    animation: none !important;
+  }
 }
 
 .card {

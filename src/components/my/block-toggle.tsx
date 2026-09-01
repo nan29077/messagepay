@@ -3,13 +3,13 @@
 import * as React from 'react';
 import { Ban, Check } from 'lucide-react';
 import { Button, Notice } from '@/components/ui';
-import { toggleCreatorBlock, type DonorActionState } from '@/app/actions/donor';
+import { toggleMerchantBlock, type PayerActionState } from '@/app/actions/payer';
 
-const initial: DonorActionState = { ok: false };
+const initial: PayerActionState = { ok: false };
 
 /** 가맹점별 결제 차단 토글. 소유권 검증은 서버 액션에서 수행한다. */
 export function BlockToggle({ linkId, blocked }: { linkId: string; blocked: boolean }) {
-  const [state, formAction, pending] = React.useActionState(toggleCreatorBlock, initial);
+  const [state, formAction, pending] = React.useActionState(toggleMerchantBlock, initial);
 
   return (
     <form action={formAction} className="space-y-2">

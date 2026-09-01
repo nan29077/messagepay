@@ -8,7 +8,7 @@ export const SUPPORT_CATEGORIES = [
   { value: 'PAYMENT', label: '결제 오류 · 중복 결제' },
   { value: 'BROADCAST', label: '충전 반영 · 결제 내역 표시' },
   { value: 'ABUSE', label: '부적절한 이용 신고' },
-  { value: 'CREATOR', label: '가맹점 가입 · 정산' },
+  { value: 'MERCHANT', label: '가맹점 가입 · 정산' },
   { value: 'ETC', label: '기타 문의' },
 ] as const;
 

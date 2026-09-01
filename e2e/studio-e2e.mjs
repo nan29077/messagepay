@@ -6,7 +6,7 @@
  *  - 결제 설정(결제 금액·감사문자·결제 페이지) 저장, 프로필 저장
  */
 import {
-  launch, createReporter, bodyText, missingOf, gotoReady, loginCreator,
+  launch, createReporter, bodyText, missingOf, gotoReady, loginMerchant,
   BASE, SEED, desktop, assertServerUp,
 } from './_helpers.mjs';
 
@@ -18,7 +18,7 @@ try {
   const ctx = await b.newContext(desktop);
   const p = await ctx.newPage();
   p.on('dialog', (d) => d.accept());
-  await loginCreator(p);
+  await loginMerchant(p);
 
   // ══════════════ 1. 유튜브 채널 연결 ══════════════
   await gotoReady(p, `${BASE}/studio/youtube`);
@@ -143,11 +143,11 @@ try {
     const miss = missingOf(set, ['결제 금액', '감사문자', '결제 모드', '문자번호', '결제 페이지']);
     r.ok('결제 설정 탭 5종', miss.length === 0, miss.join(','));
   }
-  r.ok('문자 1건당 결제 금액 입력칸', (await p.locator('input[name=donationAmount]').count()) > 0);
-  await p.fill('input[name=donationAmount]', '4000');
+  r.ok('문자 1건당 결제 금액 입력칸', (await p.locator('input[name=chargeAmount]').count()) > 0);
+  await p.fill('input[name=chargeAmount]', '4000');
   await p.locator('button:has-text("결제 금액 저장")').click();
   await p.waitForTimeout(3500);
-  r.ok('결제 금액이 저장된다', (await p.inputValue('input[name=donationAmount]')) === '4000' || (await bodyText(p)).includes('4,000원'));
+  r.ok('결제 금액이 저장된다', (await p.inputValue('input[name=chargeAmount]')) === '4000' || (await bodyText(p)).includes('4,000원'));
 
   await gotoReady(p, `${BASE}/studio/settings?tab=thanks`);
   const th = await bodyText(p);
@@ -165,7 +165,7 @@ try {
   await gotoReady(p, `${BASE}/studio/settings?tab=number`);
   const num = await bodyText(p);
   r.ok('문자번호 탭에 수신번호가 보인다', num.includes('MO 수신번호'));
-  r.ok('배정된 번호가 표시된다', num.includes(SEED.creator1Mo) || num.includes('배정된 수신번호가 없습니다'));
+  r.ok('배정된 번호가 표시된다', num.includes(SEED.merchant1Mo) || num.includes('배정된 수신번호가 없습니다'));
 
   await gotoReady(p, `${BASE}/studio/settings?tab=page`);
   const pg = await bodyText(p);
@@ -186,7 +186,7 @@ try {
   await gotoReady(p, `${BASE}/studio/profile`);
   const pr = await bodyText(p);
   r.ok('프로필 화면', pr.includes('채널 상태') && pr.includes('프로필 수정'));
-  r.ok('가맹점 코드가 보인다', pr.includes(SEED.creator1Code));
+  r.ok('가맹점 코드가 보인다', pr.includes(SEED.merchant1Code));
   r.ok('표시명 입력칸', (await p.locator('input[name=displayName]').count()) > 0);
   await p.fill('input[name=channelName]', 'E2E 채널');
   await p.locator('button:has-text("프로필 저장")').click();
@@ -195,7 +195,7 @@ try {
 
   // ══════════════ 6. 결제 페이지 반영 확인 ══════════════
   const shop = await ctx.newPage();
-  await gotoReady(shop, `${BASE}/c/${SEED.creator1Code}`);
+  await gotoReady(shop, `${BASE}/c/${SEED.merchant1Code}`);
   const sh = await bodyText(shop);
   r.ok('결제 페이지에 채널명이 반영된다', sh.includes('E2E 채널'));
   r.ok('결제 페이지에 소개 문구가 반영된다', sh.includes('E2E 소개 문구입니다.'));

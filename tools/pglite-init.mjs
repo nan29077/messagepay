@@ -63,14 +63,14 @@ if (!client) {
 const { rows } = await client.query(
   "SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema='public'",
 );
-let creators = 0;
+let merchants = 0;
 let seedVersion = 0;
 if (rows[0].n > 0) {
   try {
-    const r = await client.query('SELECT count(*)::int AS n FROM creator_profile');
-    creators = r.rows[0].n;
+    const r = await client.query('SELECT count(*)::int AS n FROM merchant_profile');
+    merchants = r.rows[0].n;
   } catch {
-    creators = 0;
+    merchants = 0;
   }
   try {
     const r = await client.query('SELECT value FROM system_setting WHERE key = $1', [SEED_VERSION_KEY]);
@@ -90,7 +90,7 @@ if (rows[0].n === 0) {
   console.log('[준비] 처음 실행입니다.');
   console.log('[준비] 시드 데이터를 생성합니다.');
   runNode(tsxCli, ['prisma/seed.ts']);
-} else if (creators === 0) {
+} else if (merchants === 0) {
   console.log('[준비] 시드 데이터가 없어 다시 생성합니다.');
   runNode(tsxCli, ['prisma/seed.ts']);
 } else if (seedVersion < SEED_VERSION) {
@@ -99,5 +99,5 @@ if (rows[0].n === 0) {
   console.log(`[준비] 시드 데이터를 최신으로 보충합니다. (버전 ${seedVersion} → ${SEED_VERSION})`);
   runNode(tsxCli, ['prisma/seed.ts']);
 } else {
-  console.log(`[준비] 기존 미리보기 데이터를 사용합니다. (크리에이터 ${creators}명)`);
+  console.log(`[준비] 기존 미리보기 데이터를 사용합니다. (크리에이터 ${merchants}명)`);
 }

@@ -3,7 +3,7 @@ import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
 import { logger, scrub } from '@/lib/logger';
 import { getMoAdapter } from '@/server/adapters/mo';
-import { handleMoInbound } from '@/server/services/donation-flow';
+import { handleMoInbound } from '@/server/services/charge-flow';
 import { clientIpFromRequest } from '@/server/rate-limit';
 
 export const runtime = 'nodejs';

@@ -21,18 +21,18 @@ interface ChecklistItem {
   linkLabel: string;
 }
 
-export async function OnboardingChecklist({ creatorId }: { creatorId: string }) {
+export async function OnboardingChecklist({ merchantId }: { merchantId: string }) {
   const [profile, moNumber, account] = await Promise.all([
-    prisma.creatorProfile.findUnique({
-      where: { id: creatorId },
+    prisma.merchantProfile.findUnique({
+      where: { id: merchantId },
       select: { businessNo: true },
     }),
-    prisma.creatorMoNumber.findFirst({
-      where: { creatorId, status: 'ASSIGNED' },
+    prisma.merchantMoNumber.findFirst({
+      where: { merchantId, status: 'ASSIGNED' },
       select: { id: true },
     }),
     prisma.settlementAccount.findUnique({
-      where: { creatorId },
+      where: { merchantId },
       select: { verified: true },
     }),
   ]);

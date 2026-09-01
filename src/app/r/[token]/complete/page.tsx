@@ -20,7 +20,7 @@ import { CompleteRedirect } from '../complete-redirect';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '문자페이 계좌 등록 결과',
+  title: '메시지페이 계좌 등록 결과',
   robots: { index: false, follow: false },
 };
 
@@ -68,12 +68,12 @@ export default async function RegistrationCompletePage({
   const [link, owner] = await Promise.all([
     prisma.secureLink.findUnique({
       where: { tokenHash: tokenHash(token) },
-      // creatorId 는 완료 후 이동할 결제 페이지를 찾는 데 쓴다.
+      // merchantId 는 완료 후 이동할 결제 페이지를 찾는 데 쓴다.
       // (등록 건에 가맹점이 비어 있는 예전 데이터의 대비책)
-      select: { purpose: true, phoneHash: true, creatorId: true },
+      select: { purpose: true, phoneHash: true, merchantId: true },
     }),
     registration
-      ? prisma.donorProfile.findUnique({ where: { id: registration.donorId }, select: { phoneHash: true } })
+      ? prisma.payerProfile.findUnique({ where: { id: registration.payerId }, select: { phoneHash: true } })
       : Promise.resolve(null),
   ]);
   const owned = Boolean(
@@ -124,7 +124,7 @@ export default async function RegistrationCompletePage({
 
   if (ok) {
     const active = await prisma.paymentMethodToken.findFirst({
-      where: { donorId: registration.donorId, status: 'ACTIVE' },
+      where: { payerId: registration.payerId, status: 'ACTIVE' },
       orderBy: { registeredAt: 'desc' },
       select: { method: true, bankName: true, accountTail4: true, cardIssuer: true, cardTail4: true },
     });
@@ -157,18 +157,18 @@ export default async function RegistrationCompletePage({
   }
 
   // 어느 가맹점으로 돌아가야 하는지: 등록 건에 기록된 값을 우선하고, 없으면 링크에 기록된 값을 쓴다.
-  const creatorId = registration.creatorId ?? link?.creatorId ?? null;
+  const merchantId = registration.merchantId ?? link?.merchantId ?? null;
 
-  const creator = creatorId
-    ? await prisma.creatorProfile.findUnique({
-        where: { id: creatorId },
+  const merchant = merchantId
+    ? await prisma.merchantProfile.findUnique({
+        where: { id: merchantId },
         select: { code: true, displayName: true },
       })
     : null;
 
-  const moNumber = creatorId
-    ? await prisma.creatorMoNumber.findFirst({
-        where: { creatorId, status: 'ASSIGNED' },
+  const moNumber = merchantId
+    ? await prisma.merchantMoNumber.findFirst({
+        where: { merchantId, status: 'ASSIGNED' },
         select: { phoneNumber: true, keyword: true },
       })
     : null;
@@ -177,7 +177,7 @@ export default async function RegistrationCompletePage({
     <LinkShell>
       <div className="space-y-3">
         {/* 가입 완료 후에는 바로 문자를 보낼 수 있도록 가맹점 결제 페이지로 이동시킨다. */}
-        {creator ? <CompleteRedirect creatorCode={creator.code} creatorName={creator.displayName} /> : null}
+        {merchant ? <CompleteRedirect merchantCode={merchant.code} merchantName={merchant.displayName} /> : null}
 
         <Card>
           <div className="flex items-center gap-2 text-success-500">
@@ -201,7 +201,7 @@ export default async function RegistrationCompletePage({
                 </span>
               }
             />
-            {creator ? <DataRow label="결제 대상" value={creator.displayName} /> : null}
+            {merchant ? <DataRow label="결제 대상" value={merchant.displayName} /> : null}
             {moNumber ? (
               <DataRow
                 label="결제 수신번호"
@@ -216,8 +216,8 @@ export default async function RegistrationCompletePage({
           </div>
           <p className="mt-3 text-[12px] leading-relaxed text-ink-400">
             {resultMethod === 'CARD'
-              ? '카드번호 원문은 문자페이에 저장되지 않습니다. 카드사명과 끝 4자리만 보관합니다.'
-              : '계좌번호 원문은 문자페이에 저장되지 않습니다. 은행명과 끝 4자리만 보관합니다.'}
+              ? '카드번호 원문은 메시지페이에 저장되지 않습니다. 카드사명과 끝 4자리만 보관합니다.'
+              : '계좌번호 원문은 메시지페이에 저장되지 않습니다. 은행명과 끝 4자리만 보관합니다.'}
           </p>
         </Card>
 
@@ -237,10 +237,10 @@ export default async function RegistrationCompletePage({
           </a>
         ) : null}
 
-        {creator ? (
-          <LinkButton href={`/c/${creator.code}`} size="lg" variant="secondary">
+        {merchant ? (
+          <LinkButton href={`/c/${merchant.code}`} size="lg" variant="secondary">
             <MessageSquare size={17} strokeWidth={1.7} />
-            {creator.displayName} 결제 페이지 보기
+            {merchant.displayName} 결제 페이지 보기
           </LinkButton>
         ) : null}
 

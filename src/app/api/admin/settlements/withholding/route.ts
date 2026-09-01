@@ -77,7 +77,7 @@ export async function GET(req: Request) {
       id: true, amount: true, withholding: true, incomeTax: true, localTax: true, payoutAmount: true,
       paidAt: true, residentEnc: true, residentMasked: true, residentPurgedAt: true,
       withholdingFiledAt: true,
-      creator: { select: { displayName: true, code: true } },
+      merchant: { select: { displayName: true, code: true } },
     },
   });
 
@@ -108,8 +108,8 @@ export async function GET(req: Request) {
     lines.push(
       [
         r.paidAt ? new Date(r.paidAt.getTime() + 9 * 3600_000).toISOString().slice(0, 10) : '',
-        r.creator.displayName,
-        r.creator.code,
+        r.merchant.displayName,
+        r.merchant.code,
         r.amount.toString(),
         r.incomeTax.toString(),
         r.localTax.toString(),

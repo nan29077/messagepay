@@ -219,7 +219,7 @@ export const hectoPaymentAdapter: PaymentAdapter = {
    * 내통장결제 가입(계좌 인증 + 출금이체 동의) 결제창 URL 을 만든다.
    * 결제창 인증 유효시간은 10분이므로 expiresAt 을 그에 맞춘다.
    */
-  async createRegistrationSession({ donorRef, returnUrl, method = 'ACCOUNT' }): Promise<ProviderResult<RegistrationSession>> {
+  async createRegistrationSession({ payerRef, returnUrl, method = 'ACCOUNT' }): Promise<ProviderResult<RegistrationSession>> {
     assertConfigured();
 
     // 카드 빌링키는 결제창 경로·필드 규격이 내통장결제와 다르다.
@@ -233,7 +233,7 @@ export const hectoPaymentAdapter: PaymentAdapter = {
     const trTime = hectoTime(now);
     // 등록(빌키 발급) 단계는 실제 출금이 없으므로 금액 0 으로 요청한다.
     const trPricePlain = '0';
-    const ordNo = `REG${trDay}${trTime}${donorRef.slice(-8)}`;
+    const ordNo = `REG${trDay}${trTime}${payerRef.slice(-8)}`;
     const callbackUrl = env.payment.hectoCallbackUrl || returnUrl;
 
     const hash = authWindowHash({
@@ -329,16 +329,16 @@ export const hectoPaymentAdapter: PaymentAdapter = {
    *                교체 시 `mock: false` 로 바꾸는 것을 잊지 말 것.
    */
   async requestPinLink(
-    donationId: string,
+    chargeId: string,
     amount: bigint,
     _phone: string,
     method: PaymentMethodKind = 'ACCOUNT',
   ): Promise<ProviderResult<PinLinkSession>> {
     assertConfigured();
 
-    const sessionId = `HECTOPIN-MOCK-${donationId}`;
+    const sessionId = `HECTOPIN-MOCK-${chargeId}`;
     logger.warn('[MOCK] 헥토 PIN 인증창 발급 — 실제 결제사 연동이 아닙니다.', {
-      donationId,
+      chargeId,
       amount: amount.toString(),
       method,
       note: '연동규격서 수령 후 실제 API 로 교체해야 합니다.',

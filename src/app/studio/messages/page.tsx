@@ -3,13 +3,13 @@ import { Badge, Card, EmptyState, Notice, Table, Td, Th } from '@/components/ui'
 import { PageHeader } from '@/components/layout/console-shell';
 import { InlineActionForm } from '@/components/studio/action-form';
 import { PAID_STATUSES, one, type SearchParamsRecord } from '@/components/studio/shared';
-import { blockDonorAction } from '@/app/actions/studio';
+import { blockPayerAction } from '@/app/actions/studio';
 import { MoNumberPanel, type MoNumberView } from '@/components/studio/mo-number-panel';
-import { requireCreator } from '@/server/auth';
+import { requireMerchant } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { formatNumber, formatWon } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
-import { donationStatusLabel, moResultLabel, moNumberStatusLabel } from '@/lib/labels';
+import { chargeStatusLabel, moResultLabel, moNumberStatusLabel } from '@/lib/labels';
 import type { Prisma } from '@/generated/prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -30,15 +30,15 @@ type TabValue = (typeof TABS)[number]['value'];
 function tabWhere(tab: TabValue): Prisma.MoInboundMessageWhereInput {
   switch (tab) {
     case 'success':
-      return { donation: { status: { in: PAID_STATUSES } } };
+      return { charge: { status: { in: PAID_STATUSES } } };
     case 'failed':
-      return { donation: { status: 'PAYMENT_FAILED' } };
+      return { charge: { status: 'PAYMENT_FAILED' } };
     case 'unregistered':
-      return { OR: [{ result: 'UNREGISTERED_DONOR' }, { donation: { status: 'UNREGISTERED' } }] };
+      return { OR: [{ result: 'UNREGISTERED_DONOR' }, { charge: { status: 'UNREGISTERED' } }] };
     case 'blocked':
-      return { OR: [{ result: 'BLOCKED' }, { donation: { status: { in: ['LIMIT_BLOCKED', 'CONTENT_BLOCKED'] } } }] };
+      return { OR: [{ result: 'BLOCKED' }, { charge: { status: { in: ['LIMIT_BLOCKED', 'CONTENT_BLOCKED'] } } }] };
     case 'filtered':
-      return { OR: [{ donation: { status: 'CONTENT_BLOCKED' } }, { contentFiltered: { contains: '*' } }] };
+      return { OR: [{ charge: { status: 'CONTENT_BLOCKED' } }, { contentFiltered: { contains: '*' } }] };
     default:
       return {};
   }
@@ -49,15 +49,15 @@ export default async function StudioMessagesPage({
 }: {
   searchParams: Promise<SearchParamsRecord>;
 }) {
-  const { creatorId } = await requireCreator();
+  const { merchantId } = await requireMerchant();
   const sp = await searchParams;
 
   const raw = one(sp.tab) as TabValue;
   const tab: TabValue = TABS.some((t) => t.value === raw) ? raw : 'all';
 
-  const where: Prisma.MoInboundMessageWhereInput = { creatorId, ...tabWhere(tab) };
+  const where: Prisma.MoInboundMessageWhereInput = { merchantId, ...tabWhere(tab) };
 
-  const [total, rows, blockedRows, moNumbers, creator] = await Promise.all([
+  const [total, rows, blockedRows, moNumbers, merchant] = await Promise.all([
     prisma.moInboundMessage.count({ where }),
     prisma.moInboundMessage.findMany({
       where,
@@ -72,21 +72,21 @@ export default async function StudioMessagesPage({
         contentFiltered: true,
         result: true,
         resultDetail: true,
-        donation: {
-          select: { id: true, transactionNo: true, status: true, amount: true, donorId: true },
+        charge: {
+          select: { id: true, transactionNo: true, status: true, amount: true, payerId: true },
         },
       },
     }),
-    prisma.blockedDonor.findMany({ where: { creatorId }, select: { donorId: true } }),
-    prisma.creatorMoNumber.findMany({
-      where: { creatorId },
+    prisma.blockedPayer.findMany({ where: { merchantId }, select: { payerId: true } }),
+    prisma.merchantMoNumber.findMany({
+      where: { merchantId },
       orderBy: [{ status: 'asc' }, { assignedAt: 'desc' }],
       select: { id: true, phoneNumber: true, keyword: true, mode: true, status: true, assignedAt: true },
     }),
-    prisma.creatorProfile.findUnique({ where: { id: creatorId }, select: { displayName: true } }),
+    prisma.merchantProfile.findUnique({ where: { id: merchantId }, select: { displayName: true } }),
   ]);
 
-  const blockedSet = new Set(blockedRows.map((b) => b.donorId));
+  const blockedSet = new Set(blockedRows.map((b) => b.payerId));
 
   const numbers: MoNumberView[] = moNumbers.map((m) => ({
     id: m.id,
@@ -102,7 +102,7 @@ export default async function StudioMessagesPage({
   const primary = moNumbers.find((m) => m.status === 'ASSIGNED') ?? moNumbers[0] ?? null;
   const guideText = primary
     ? [
-        `${creator?.displayName ?? '가맹점'} 문자결제`,
+        `${merchant?.displayName ?? '가맹점'} 문자결제`,
         `${primary.phoneNumber} 으로 문자를 보내주세요.`,
         primary.keyword ? `문자 맨 앞에 ${primary.keyword} 를 붙여주세요.` : null,
         '문자를 보내면 충전 금액을 고를 수 있는 링크가 발송됩니다.',
@@ -164,10 +164,10 @@ export default async function StudioMessagesPage({
             <tbody>
               {rows.map((m) => {
                 const res = moResultLabel[m.result];
-                const donation = m.donation;
-                const ds = donation ? donationStatusLabel[donation.status] : null;
-                const donorId = donation?.donorId ?? null;
-                const isBlocked = donorId ? blockedSet.has(donorId) : false;
+                const charge = m.charge;
+                const ds = charge ? chargeStatusLabel[charge.status] : null;
+                const payerId = charge?.payerId ?? null;
+                const isBlocked = payerId ? blockedSet.has(payerId) : false;
                 return (
                   <tr key={m.id} className="hover:bg-ink-50">
                     <Td className="whitespace-nowrap tabular-nums">{formatKst(m.receivedAt, false)}</Td>
@@ -183,8 +183,8 @@ export default async function StudioMessagesPage({
                       ) : null}
                     </Td>
                     <Td>
-                      {donation && ds ? (
-                        <Link href={`/studio/donations/${donation.id}`} className="inline-block">
+                      {charge && ds ? (
+                        <Link href={`/studio/charges/${charge.id}`} className="inline-block">
                           <Badge tone={ds.tone}>{ds.text}</Badge>
                         </Link>
                       ) : (
@@ -192,19 +192,19 @@ export default async function StudioMessagesPage({
                       )}
                     </Td>
                     <Td className="whitespace-nowrap text-right tabular-nums">
-                      {donation ? formatWon(donation.amount) : '-'}
+                      {charge ? formatWon(charge.amount) : '-'}
                     </Td>
                     <Td>
-                      {donorId ? (
+                      {payerId ? (
                         isBlocked ? (
                           <Badge tone="danger">차단됨</Badge>
                         ) : (
                           <InlineActionForm
-                            action={blockDonorAction}
+                            action={blockPayerAction}
                             submitLabel="이용자 차단"
                             variant="danger"
                             confirmMessage="이 이용자를 차단하시겠습니까? 이후 문자는 결제로 접수되지 않습니다."
-                            fields={{ donorId, reason: '문자 관리 화면에서 차단' }}
+                            fields={{ payerId, reason: '문자 관리 화면에서 차단' }}
                           />
                         )
                       ) : (

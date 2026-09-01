@@ -38,7 +38,7 @@ export async function createMoNumber(_prev: AdminActionState, fd: FormData): Pro
     // 같은 번호에 전용/대표번호공유가 섞이면 라우팅이 전용으로 쏠려
     // 대표번호를 쓰던 가맹점들의 결제가 통째로 엉뚱한 사람에게 들어간다.
     // 번호 단위로 먼저 검사해 모드 혼재 자체를 막는다.
-    const siblings = await prisma.creatorMoNumber.findMany({
+    const siblings = await prisma.merchantMoNumber.findMany({
       where: { phoneNumber },
       select: { id: true, mode: true, keyword: true },
     });
@@ -54,13 +54,13 @@ export async function createMoNumber(_prev: AdminActionState, fd: FormData): Pro
       throw new Error('이미 등록된 번호/키워드 조합입니다.');
     }
 
-    const created = await prisma.creatorMoNumber.create({
+    const created = await prisma.merchantMoNumber.create({
       data: { id: newId(), phoneNumber, keyword: effectiveKeyword, mode, monthlyCost, memo, status: 'AVAILABLE' },
     });
     await writeAudit({
       adminUserId: admin.id,
       action: 'MO_NUMBER_CREATE',
-      targetType: 'CreatorMoNumber',
+      targetType: 'MerchantMoNumber',
       targetId: created.id,
       after: { phoneNumber, keyword: effectiveKeyword, mode, monthlyCost, status: 'AVAILABLE' },
     });
@@ -72,36 +72,36 @@ export async function createMoNumber(_prev: AdminActionState, fd: FormData): Pro
 export async function assignMoNumber(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
     const id = requiredId(fd, 'id', 'MO 번호');
-    if (!optText(fd, 'creatorId')) throw new Error('배정할 가맹점을 선택해 주세요.');
-    const creatorId = requiredId(fd, 'creatorId', '가맹점');
+    if (!optText(fd, 'merchantId')) throw new Error('배정할 가맹점을 선택해 주세요.');
+    const merchantId = requiredId(fd, 'merchantId', '가맹점');
 
-    const before = await prisma.creatorMoNumber.findUnique({ where: { id } });
+    const before = await prisma.merchantMoNumber.findUnique({ where: { id } });
     if (!before) throw new Error('MO 번호를 찾을 수 없습니다.');
     if (before.status === 'ASSIGNED') throw new Error('이미 배정된 번호입니다. 먼저 회수해 주세요.');
     if (before.status === 'DISABLED') throw new Error('사용 중지된 번호는 배정할 수 없습니다.');
 
-    const creator = await prisma.creatorProfile.findUnique({
-      where: { id: creatorId },
+    const merchant = await prisma.merchantProfile.findUnique({
+      where: { id: merchantId },
       select: { id: true, displayName: true, status: true },
     });
-    if (!creator) throw new Error('가맹점을 찾을 수 없습니다.');
-    if (creator.status !== 'APPROVED') throw new Error('승인된 가맹점에만 번호를 배정할 수 있습니다.');
+    if (!merchant) throw new Error('가맹점을 찾을 수 없습니다.');
+    if (merchant.status !== 'APPROVED') throw new Error('승인된 가맹점에만 번호를 배정할 수 있습니다.');
 
-    await prisma.creatorMoNumber.update({
+    await prisma.merchantMoNumber.update({
       where: { id },
-      data: { status: 'ASSIGNED', creatorId, assignedAt: new Date(), releasedAt: null },
+      data: { status: 'ASSIGNED', merchantId, assignedAt: new Date(), releasedAt: null },
     });
     await writeAudit({
       adminUserId: admin.id,
       action: 'MO_NUMBER_ASSIGN',
-      targetType: 'CreatorMoNumber',
+      targetType: 'MerchantMoNumber',
       targetId: id,
-      before: { status: before.status, creatorId: before.creatorId },
-      after: { status: 'ASSIGNED', creatorId },
+      before: { status: before.status, merchantId: before.merchantId },
+      after: { status: 'ASSIGNED', merchantId },
     });
     revalidatePath('/admin/mo-numbers');
-    revalidatePath(`/admin/creators/${creatorId}`);
-    return `${before.phoneNumber} 번호를 ${creator.displayName} 님에게 배정했습니다.`;
+    revalidatePath(`/admin/merchants/${merchantId}`);
+    return `${before.phoneNumber} 번호를 ${merchant.displayName} 님에게 배정했습니다.`;
   });
 }
 
@@ -110,23 +110,23 @@ export async function changeMoNumberStatus(_prev: AdminActionState, fd: FormData
     const id = requiredId(fd, 'id', 'MO 번호');
     const status = enumValue(fd, 'status', ['AVAILABLE', 'RESERVED', 'RECLAIMED', 'DISABLED'] as const, '상태');
 
-    const before = await prisma.creatorMoNumber.findUnique({ where: { id } });
+    const before = await prisma.merchantMoNumber.findUnique({ where: { id } });
     if (!before) throw new Error('MO 번호를 찾을 수 없습니다.');
 
     const data =
       status === 'RECLAIMED'
-        ? { status, creatorId: null, releasedAt: new Date() }
+        ? { status, merchantId: null, releasedAt: new Date() }
         : status === 'DISABLED'
-          ? { status, creatorId: null, releasedAt: new Date() }
+          ? { status, merchantId: null, releasedAt: new Date() }
           : { status };
 
-    await prisma.creatorMoNumber.update({ where: { id }, data });
+    await prisma.merchantMoNumber.update({ where: { id }, data });
     await writeAudit({
       adminUserId: admin.id,
       action: `MO_NUMBER_${status}`,
-      targetType: 'CreatorMoNumber',
+      targetType: 'MerchantMoNumber',
       targetId: id,
-      before: { status: before.status, creatorId: before.creatorId },
+      before: { status: before.status, merchantId: before.merchantId },
       after: data,
     });
     revalidatePath('/admin/mo-numbers');
@@ -159,7 +159,7 @@ export async function reconcilePaymentAction(_prev: AdminActionState, fd: FormDa
 
     const before = await prisma.paymentTransaction.findUnique({
       where: { id: transactionId },
-      select: { id: true, orderNo: true, status: true, donation: { select: { status: true } } },
+      select: { id: true, orderNo: true, status: true, charge: { select: { status: true } } },
     });
     if (!before) throw new Error('결제 거래를 찾을 수 없습니다.');
 
@@ -170,7 +170,7 @@ export async function reconcilePaymentAction(_prev: AdminActionState, fd: FormDa
       action: decision === 'APPROVE' ? 'PAYMENT_RECONCILE_APPROVE' : 'PAYMENT_RECONCILE_CANCEL',
       targetType: 'PaymentTransaction',
       targetId: transactionId,
-      before: { status: before.status, donationStatus: before.donation.status },
+      before: { status: before.status, chargeStatus: before.charge.status },
       after: { status: decision === 'APPROVE' ? 'APPROVED' : 'CANCELED', orderNo: before.orderNo, memo },
     });
     revalidatePath('/admin/payments');
@@ -188,7 +188,7 @@ export async function approveRefundAction(_prev: AdminActionState, fd: FormData)
 
     const before = await prisma.refund.findUnique({
       where: { id: refundId },
-      select: { id: true, status: true, amount: true, donationId: true },
+      select: { id: true, status: true, amount: true, chargeId: true },
     });
     if (!before) throw new Error('환불 요청을 찾을 수 없습니다.');
 
@@ -199,7 +199,7 @@ export async function approveRefundAction(_prev: AdminActionState, fd: FormData)
       targetType: 'Refund',
       targetId: refundId,
       before: { status: before.status },
-      after: { status: 'DONE', amount: before.amount, donationId: before.donationId },
+      after: { status: 'DONE', amount: before.amount, chargeId: before.chargeId },
     });
     revalidatePath('/admin/refunds');
     revalidatePath('/admin/settlements');
@@ -240,13 +240,13 @@ export async function createAdminRefund(_prev: AdminActionState, fd: FormData): 
     if (!keyword) throw new Error('거래번호를 입력해 주세요.');
     if (reason.length < 2) throw new Error('환불 사유를 2자 이상 입력해 주세요.');
 
-    const donation = await prisma.donation.findFirst({
+    const charge = await prisma.charge.findFirst({
       where: { OR: [{ transactionNo: keyword }, { id: keyword }] },
       select: { id: true, transactionNo: true, amount: true, status: true },
     });
-    if (!donation) throw new Error('해당 거래번호의 결제 건을 찾을 수 없습니다.');
+    if (!charge) throw new Error('해당 거래번호의 결제 건을 찾을 수 없습니다.');
 
-    const refund = await requestRefund({ donationId: donation.id, reason, requestedBy: admin.id });
+    const refund = await requestRefund({ chargeId: charge.id, reason, requestedBy: admin.id });
     await approveRefund(refund.id, admin.id);
 
     await writeAudit({
@@ -254,12 +254,12 @@ export async function createAdminRefund(_prev: AdminActionState, fd: FormData): 
       action: 'REFUND_ADMIN_DIRECT',
       targetType: 'Refund',
       targetId: refund.id,
-      before: { donationStatus: donation.status },
-      after: { transactionNo: donation.transactionNo, amount: donation.amount, reason },
+      before: { chargeStatus: charge.status },
+      after: { transactionNo: charge.transactionNo, amount: charge.amount, reason },
     });
     revalidatePath('/admin/refunds');
     revalidatePath('/admin/settlements');
-    return `${donation.transactionNo} 건을 환불 처리했습니다.`;
+    return `${charge.transactionNo} 건을 환불 처리했습니다.`;
   });
 }
 

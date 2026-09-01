@@ -8,7 +8,7 @@ import { prisma } from '@/server/db';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '전자금융거래 이용약관 | 문자페이',
+  title: '전자금융거래 이용약관 | 메시지페이',
   description: '전자금융거래의 이용조건, 거래내용 확인, 오류 정정 절차를 안내합니다.',
 };
 

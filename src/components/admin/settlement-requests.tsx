@@ -19,8 +19,8 @@ export interface SettlementRow {
   amount: string;
   withholding: string;
   payoutAmount: string;
-  creatorName: string;
-  creatorCode: string;
+  merchantName: string;
+  merchantCode: string;
   bank: string | null;
   accountTail4: string | null;
   holderMasked: string | null;
@@ -234,15 +234,15 @@ export function SettlementRequestsPanel({ rows }: { rows: SettlementRow[] }) {
                     type="checkbox"
                     checked={selected.has(r.id)}
                     onChange={() => toggle(r.id)}
-                    aria-label={`${r.creatorName} 선택`}
+                    aria-label={`${r.merchantName} 선택`}
                     className="h-4 w-4 accent-brand-400"
                   />
                 ) : null}
               </Td>
               <Td className="whitespace-nowrap">{r.requestedAt}</Td>
               <Td>
-                <span className="font-semibold text-brand-700">{r.creatorName}</span>
-                <span className="mt-0.5 block text-[11px] text-ink-400">{r.creatorCode}</span>
+                <span className="font-semibold text-brand-700">{r.merchantName}</span>
+                <span className="mt-0.5 block text-[11px] text-ink-400">{r.merchantCode}</span>
               </Td>
               <Td className="text-[12px]">
                 {r.bank ? (

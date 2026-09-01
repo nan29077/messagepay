@@ -10,7 +10,7 @@ import { GeneratedAvatar } from '@/components/profile/generated-avatar';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '마이페이지 | 문자페이',
+  title: '마이페이지 | 메시지페이',
   robots: { index: false, follow: false },
 };
 
@@ -18,7 +18,7 @@ export default async function MyLayout({ children }: { children: React.ReactNode
   const user = await getSessionUser();
   if (!user) redirect('/login?next=/my');
 
-  const donor = await prisma.donorProfile.findUnique({
+  const payer = await prisma.payerProfile.findUnique({
     where: { userId: user.id },
     select: { phoneMasked: true, registeredAt: true },
   });
@@ -32,7 +32,7 @@ export default async function MyLayout({ children }: { children: React.ReactNode
             {user.name ?? '이용자'} 님
           </h1>
           <p className="mt-0.5 truncate text-[12.5px] text-ink-400">
-            {donor?.phoneMasked ?? user.email ?? '휴대폰 번호 미연결'}
+            {payer?.phoneMasked ?? user.email ?? '휴대폰 번호 미연결'}
           </p>
         </div>
       </header>

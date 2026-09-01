@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
-import { setChargeAmount, inboundAndPay, resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
-import { handleMoInbound } from '@/server/services/donation-flow';
+import { setChargeAmount, inboundAndPay, resetDb, seedBasics, seedRegisteredPayer, moPayload, type Fixture } from './helpers';
+import { handleMoInbound } from '@/server/services/charge-flow';
 import { mockMoAdapter } from '@/server/adapters/mo';
 import { resolvePolicy, checkLimits, FALLBACK_POLICY } from '@/server/services/limits';
 import { resolveFeePolicy, resolveRefundFeeReturn, postRefundSettlement, getSettlementSummary, computeFees } from '@/server/services/settlement';
@@ -18,7 +18,7 @@ import { env } from '@/lib/env';
 let fx: Fixture;
 
 async function inbound(payload: Record<string, unknown>) {
-  return inboundAndPay(payload, fx.creatorId);
+  return inboundAndPay(payload, fx.merchantId);
 }
 
 beforeEach(async () => {
@@ -29,59 +29,59 @@ beforeEach(async () => {
 describe('정책 시행일(effectiveFrom / effectiveTo)', () => {
   it('시행일이 아직 오지 않은 한도 정책은 적용되지 않는다', async () => {
     // 기본 GLOBAL 정책(시행 중)의 값을 확인
-    const before = await resolvePolicy(fx.creatorId, null);
+    const before = await resolvePolicy(fx.merchantId, null);
     expect(before.maxAmount).not.toBe(1n);
 
-    // 내일부터 시행되는 CREATOR 정책을 등록해도 오늘은 적용되면 안 된다.
+    // 내일부터 시행되는 MERCHANT 정책을 등록해도 오늘은 적용되면 안 된다.
     const tomorrow = new Date(Date.now() + 86_400_000);
-    await prisma.donationLimitPolicy.create({
+    await prisma.chargeLimitPolicy.create({
       data: {
-        id: newId(), scope: 'CREATOR', creatorId: fx.creatorId,
+        id: newId(), scope: 'MERCHANT', merchantId: fx.merchantId,
         maxAmount: 1n, effectiveFrom: tomorrow,
       },
     });
 
-    const after = await resolvePolicy(fx.creatorId, null);
+    const after = await resolvePolicy(fx.merchantId, null);
     expect(after.maxAmount).toBe(before.maxAmount);
 
     // 시행일이 지난 시점으로 조회하면 새 정책이 적용된다.
-    const later = await resolvePolicy(fx.creatorId, null, new Date(Date.now() + 2 * 86_400_000));
+    const later = await resolvePolicy(fx.merchantId, null, new Date(Date.now() + 2 * 86_400_000));
     expect(later.maxAmount).toBe(1n);
   });
 
   it('종료된(effectiveTo 경과) 한도 정책은 적용되지 않는다', async () => {
-    await prisma.donationLimitPolicy.updateMany({
+    await prisma.chargeLimitPolicy.updateMany({
       where: { scope: 'GLOBAL' },
       data: { effectiveTo: new Date(Date.now() - 1000) },
     });
-    const p = await resolvePolicy(fx.creatorId, null);
+    const p = await resolvePolicy(fx.merchantId, null);
     // 유효한 정책이 하나도 없으면 안전한 기본값으로 떨어진다.
     expect(p.maxAmount).toBe(FALLBACK_POLICY.maxAmount);
   });
 
   it('시행 전 수수료 정책은 정산 계산에 쓰이지 않는다', async () => {
-    const current = await resolveFeePolicy(fx.creatorId);
+    const current = await resolveFeePolicy(fx.merchantId);
     expect(current?.platformFeeRate.toString()).toBe('0.15');
 
     await prisma.feePolicy.create({
       data: {
-        id: newId(), scope: 'CREATOR', creatorId: fx.creatorId,
+        id: newId(), scope: 'MERCHANT', merchantId: fx.merchantId,
         pgFeeRate: '0.5', platformFeeRate: '0.5',
         effectiveFrom: new Date(Date.now() + 86_400_000),
       },
     });
 
-    const stillCurrent = await resolveFeePolicy(fx.creatorId);
+    const stillCurrent = await resolveFeePolicy(fx.merchantId);
     expect(stillCurrent?.platformFeeRate.toString()).toBe('0.15');
   });
 });
 
 describe('속도 제한 카운터', () => {
   it('결제 직전 재검사는 속도 제한 카운터를 다시 소진하지 않는다', async () => {
-    const donor = await seedRegisteredDonor(fx.donorPhone);
-    await prisma.donationLimitPolicy.updateMany({ data: { velocityWindowSec: 3600, velocityMaxCount: 2 } });
+    const payer = await seedRegisteredPayer(fx.payerPhone);
+    await prisma.chargeLimitPolicy.updateMany({ data: { velocityWindowSec: 3600, velocityMaxCount: 2 } });
 
-    const args = { donor, creatorId: fx.creatorId, amount: 3000n };
+    const args = { payer, merchantId: fx.merchantId, amount: 3000n };
 
     // 1건째: 소진 O
     expect((await checkLimits({ ...args })).ok).toBe(true);
@@ -100,11 +100,11 @@ describe('속도 제한 카운터', () => {
 
 describe('한도 집계 예약', () => {
   it('결제 성공 건은 집계에 한 번만 반영된다', async () => {
-    await seedRegisteredDonor(fx.donorPhone);
+    await seedRegisteredPayer(fx.payerPhone);
     await inbound(moPayload({ to: fx.moNumber }));
 
-    const day = await prisma.donationCounter.findFirstOrThrow({
-      where: { creatorId: 'ALL', periodType: 'DAY' },
+    const day = await prisma.chargeCounter.findFirstOrThrow({
+      where: { merchantId: 'ALL', periodType: 'DAY' },
     });
     // 판정 트랜잭션에서 예약하고 승인 후 또 더하면 1건이 2건으로 세어진다.
     expect(day.count).toBe(1);
@@ -112,14 +112,14 @@ describe('한도 집계 예약', () => {
   });
 
   it('결제에 실패한 건은 집계에 남지 않는다', async () => {
-    await seedRegisteredDonor(fx.donorPhone);
+    await seedRegisteredPayer(fx.payerPhone);
     // mock 어댑터: 금액 끝 999 = 승인 거절
     setChargeAmount(2999n);
 
     const res = await inbound(moPayload({ to: fx.moNumber }));
     expect(res.status).toBe('PAYMENT_FAILED');
 
-    const counters = await prisma.donationCounter.findMany();
+    const counters = await prisma.chargeCounter.findMany();
     // 예약분이 되돌아오지 않으면 실패한 결제이 그날 한도를 계속 잡아먹는다.
     expect(counters.every((c) => c.count === 0 && c.amount === 0n)).toBe(true);
   });
@@ -127,12 +127,12 @@ describe('한도 집계 예약', () => {
 
 describe('환불 수수료 환입', () => {
   it('환불 시점에 수수료율이 바뀌어도 원 거래에 기록된 금액만큼만 환입한다', async () => {
-    await seedRegisteredDonor(fx.donorPhone);
+    await seedRegisteredPayer(fx.payerPhone);
     const res = await inbound(moPayload({ to: fx.moNumber }));
-    const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
-    expect(donation.paidAt).not.toBeNull();
+    const charge = await prisma.charge.findFirstOrThrow({ where: { id: res.chargeId } });
+    expect(charge.paidAt).not.toBeNull();
 
-    const posted = await prisma.settlementLedger.findMany({ where: { donationId: donation.id } });
+    const posted = await prisma.settlementLedger.findMany({ where: { chargeId: charge.id } });
     const platformFeePosted = -posted
       .filter((r) => r.entryType === 'PLATFORM_FEE')
       .reduce((a, r) => a + r.amount, 0n);
@@ -141,40 +141,40 @@ describe('환불 수수료 환입', () => {
     // 결제 이후 플랫폼 수수료율을 50% 로 인상 (신규 거래에만 적용되어야 한다)
     await prisma.feePolicy.updateMany({ where: { scope: 'GLOBAL' }, data: { platformFeeRate: '0.5' } });
 
-    const calc = await resolveRefundFeeReturn(donation.id, donation.amount);
+    const calc = await resolveRefundFeeReturn(charge.id, charge.amount);
     expect(calc.platformFeeReturn).toBe(platformFeePosted);
   });
 
   it('부분 환불을 반복해도 총 환입액이 원 차감액을 넘지 않는다', async () => {
-    await seedRegisteredDonor(fx.donorPhone);
+    await seedRegisteredPayer(fx.payerPhone);
     const res = await inbound(moPayload({ to: fx.moNumber }));
-    const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
+    const charge = await prisma.charge.findFirstOrThrow({ where: { id: res.chargeId } });
 
-    const posted = await prisma.settlementLedger.findMany({ where: { donationId: donation.id } });
+    const posted = await prisma.settlementLedger.findMany({ where: { chargeId: charge.id } });
     const platformFeePosted = -posted
       .filter((r) => r.entryType === 'PLATFORM_FEE')
       .reduce((a, r) => a + r.amount, 0n);
 
-    const half = donation.amount / 2n;
+    const half = charge.amount / 2n;
     // postRefundSettlement 는 원 거래 분개로 환입액을 산출하므로 fees 값 자체는 쓰이지 않는다.
-    const fees = computeFees(donation.amount, { pgFeeRate: '0', platformFeeRate: '0', vatIncluded: true });
+    const fees = computeFees(charge.amount, { pgFeeRate: '0', platformFeeRate: '0', vatIncluded: true });
 
     await postRefundSettlement({
-      creatorId: fx.creatorId, donationId: donation.id, refundId: newId(), amount: half, fees,
+      merchantId: fx.merchantId, chargeId: charge.id, refundId: newId(), amount: half, fees,
     });
     await postRefundSettlement({
-      creatorId: fx.creatorId, donationId: donation.id, refundId: newId(),
-      amount: donation.amount - half, fees,
+      merchantId: fx.merchantId, chargeId: charge.id, refundId: newId(),
+      amount: charge.amount - half, fees,
     });
 
-    const returned = (await prisma.settlementLedger.findMany({ where: { donationId: donation.id } }))
+    const returned = (await prisma.settlementLedger.findMany({ where: { chargeId: charge.id } }))
       .filter((r) => r.entryType === 'REFUND_FEE_RETURN')
       .reduce((a, r) => a + r.amount, 0n);
 
     expect(returned).toBe(platformFeePosted);
 
     // 전액 환불 + 수수료 환입이면 이 거래의 정산 기여분은 PG 수수료만큼만 남는다(음수).
-    const summary = await getSettlementSummary(fx.creatorId);
+    const summary = await getSettlementSummary(fx.merchantId);
     const pgFeePosted = -posted.filter((r) => r.entryType === 'PG_FEE').reduce((a, r) => a + r.amount, 0n);
     expect(summary.balance).toBe(-pgFeePosted);
   });

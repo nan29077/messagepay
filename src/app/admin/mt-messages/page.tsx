@@ -43,7 +43,7 @@ export default async function AdminMtMessagesPage({
         id: true, phoneMasked: true, fromNumber: true, messageType: true, templateCode: true,
         bodyMasked: true, status: true, providerCode: true, providerMessageId: true,
         resultCode: true, resultMessage: true, attempts: true, sentAt: true, createdAt: true,
-        donation: { select: { transactionNo: true } },
+        charge: { select: { transactionNo: true } },
       },
     }),
     prisma.mtOutboundMessage.groupBy({ by: ['status'], _count: { _all: true } }),
@@ -125,7 +125,7 @@ export default async function AdminMtMessagesPage({
                     {m.resultMessage ? <span className="block text-[11px] text-ink-400">{m.resultMessage}</span> : null}
                   </Td>
                   <Td className="max-w-[280px] break-words whitespace-pre-wrap">{maskLinkTokens(m.bodyMasked)}</Td>
-                  <Td className="font-mono text-[12px]">{m.donation?.transactionNo ?? '-'}</Td>
+                  <Td className="font-mono text-[12px]">{m.charge?.transactionNo ?? '-'}</Td>
                 </tr>
               ))}
             </tbody>

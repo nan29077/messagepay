@@ -5,7 +5,7 @@
  *  - 모바일 햄버거 열고 닫기
  *  - 정산 계좌는 별도 메뉴가 아니라 정산 관리 안의 탭으로 통합됐는지
  */
-import { launch, createReporter, loginCreator, bodyText, textOf, missingOf, BASE, desktop, mobile, assertServerUp } from './_helpers.mjs';
+import { launch, createReporter, loginMerchant, bodyText, textOf, missingOf, BASE, desktop, mobile, assertServerUp } from './_helpers.mjs';
 
 await assertServerUp();
 const r = createReporter('5차 — 스튜디오 셸·내비게이션');
@@ -14,7 +14,7 @@ const b = await launch();
 const GROUPS = ['현황', '방송', '운영', '정산', '계정'];
 const MENUS = [
   ['대시보드', '/studio', '가맹점 관리자'],
-  ['결제 내역', '/studio/donations', '결제 내역'],
+  ['결제 내역', '/studio/charges', '결제 내역'],
   ['문자 관리', '/studio/messages', null],
   ['유튜브 채널 연결', '/studio/youtube', '유튜브 채널 연결'],
   ['방송·오버레이', '/studio/overlay', '방송·오버레이'],
@@ -28,7 +28,7 @@ const MENUS = [
 try {
   const ctx = await b.newContext(desktop);
   const page = await ctx.newPage();
-  await loginCreator(page);
+  await loginMerchant(page);
 
   // ── 1. 사이드바 구조
   const nav = await textOf(page, 'aside');
@@ -80,7 +80,7 @@ try {
   // ── 5. 모바일 햄버거
   const mctx = await b.newContext(mobile);
   const m = await mctx.newPage();
-  await loginCreator(m);
+  await loginMerchant(m);
   const burger = m.locator('button[aria-label="메뉴"]');
   r.ok('모바일: 햄버거 버튼이 보인다', await burger.isVisible());
   r.ok('모바일: 기본은 닫힘(aria-expanded=false)', (await burger.getAttribute('aria-expanded')) === 'false');

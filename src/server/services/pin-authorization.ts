@@ -1,13 +1,13 @@
 import { prisma } from '@/server/db';
 import { logger } from '@/lib/logger';
-import { executePayment, setStatus } from './donation-flow';
-import type { DonationStatus } from '@/generated/prisma/enums';
+import { executePayment, setStatus } from './charge-flow';
+import type { ChargeStatus } from '@/generated/prisma/enums';
 
 /**
  * PIN 인증 완료 처리 / 만료 정리.
  *
  * 흐름상 위치
- *   MO 수신 → 결제 생성 → (donation-flow) startPinAuthorization → 이용자 PIN 입력
+ *   MO 수신 → 결제 생성 → (charge-flow) startPinAuthorization → 이용자 PIN 입력
  *   → 결제사 콜백 → **이 파일** → executePayment → 결제 완료
  *
  * 절대 원칙
@@ -21,7 +21,7 @@ export interface PinCallbackInput {
   /** 결제사 인증 세션 ID. 있으면 이 값을 우선 사용한다. */
   sessionId?: string | null;
   /** 결제 거래 ID. Mock 수동 테스트에서는 이 값만으로도 처리할 수 있다. */
-  donationId?: string | null;
+  chargeId?: string | null;
   /** 결제사가 보낸 결과 코드/메시지 (감사 기록용) */
   resultCode?: string | null;
   resultMessage?: string | null;
@@ -40,8 +40,8 @@ export type PinCallbackCode =
 export interface PinCallbackResult {
   ok: boolean;
   code: PinCallbackCode;
-  donationId?: string;
-  status?: DonationStatus;
+  chargeId?: string;
+  status?: ChargeStatus;
   message: string;
 }
 
@@ -49,8 +49,8 @@ async function findSession(input: PinCallbackInput) {
   if (input.sessionId) {
     return prisma.paymentPinSession.findUnique({ where: { sessionId: input.sessionId } });
   }
-  if (input.donationId) {
-    return prisma.paymentPinSession.findUnique({ where: { donationId: input.donationId } });
+  if (input.chargeId) {
+    return prisma.paymentPinSession.findUnique({ where: { chargeId: input.chargeId } });
   }
   return null;
 }
@@ -66,11 +66,11 @@ export async function completePinAuthorization(input: PinCallbackInput): Promise
     return { ok: false, code: 'NOT_FOUND', message: '인증 세션을 찾을 수 없습니다.' };
   }
 
-  const donation = await prisma.donation.findUnique({
-    where: { id: session.donationId },
+  const charge = await prisma.charge.findUnique({
+    where: { id: session.chargeId },
     select: { id: true, status: true },
   });
-  if (!donation) {
+  if (!charge) {
     return { ok: false, code: 'NOT_FOUND', message: '결제 거래를 찾을 수 없습니다.' };
   }
 
@@ -82,7 +82,7 @@ export async function completePinAuthorization(input: PinCallbackInput): Promise
       data: { callbackCount: { increment: 1 }, lastCallbackAt: new Date() },
     });
     logger.info('PIN 콜백 재수신 — 결제는 재실행하지 않습니다.', {
-      donationId: session.donationId,
+      chargeId: session.chargeId,
       sessionStatus: session.status,
     });
 
@@ -90,8 +90,8 @@ export async function completePinAuthorization(input: PinCallbackInput): Promise
       return {
         ok: false,
         code: 'EXPIRED',
-        donationId: session.donationId,
-        status: donation.status,
+        chargeId: session.chargeId,
+        status: charge.status,
         message: 'PIN 입력 시간이 지나 결제가 취소되었습니다. 결제는 진행되지 않았습니다.',
       };
     }
@@ -99,16 +99,16 @@ export async function completePinAuthorization(input: PinCallbackInput): Promise
       return {
         ok: false,
         code: 'INVALID_STATE',
-        donationId: session.donationId,
-        status: donation.status,
+        chargeId: session.chargeId,
+        status: charge.status,
         message: '진행할 수 없는 인증 요청입니다. 결제는 진행되지 않았습니다.',
       };
     }
     return {
       ok: true,
       code: 'DUPLICATE',
-      donationId: session.donationId,
-      status: donation.status,
+      chargeId: session.chargeId,
+      status: charge.status,
       message: '이미 처리된 인증입니다. 결제는 한 번만 이루어집니다.',
     };
   }
@@ -124,20 +124,20 @@ export async function completePinAuthorization(input: PinCallbackInput): Promise
         resultNote: '유효시간 경과 후 도착한 콜백',
       },
     });
-    if (donation.status === 'PENDING_PIN') {
-      await setStatus(session.donationId, 'PAYMENT_FAILED', 'PIN 입력 시간 초과로 자동 취소');
+    if (charge.status === 'PENDING_PIN') {
+      await setStatus(session.chargeId, 'PAYMENT_FAILED', 'PIN 입력 시간 초과로 자동 취소');
     }
     return {
       ok: false,
       code: 'EXPIRED',
-      donationId: session.donationId,
+      chargeId: session.chargeId,
       status: 'PAYMENT_FAILED',
       message: 'PIN 입력 시간이 지나 결제가 취소되었습니다. 결제는 진행되지 않았습니다.',
     };
   }
 
   // (3) 결제 상태 확인 — PIN 대기 상태가 아니면 승인하지 않는다.
-  if (donation.status !== 'PENDING_PIN') {
+  if (charge.status !== 'PENDING_PIN') {
     await prisma.paymentPinSession.update({
       where: { id: session.id },
       data: { callbackCount: { increment: 1 }, lastCallbackAt: new Date() },
@@ -145,8 +145,8 @@ export async function completePinAuthorization(input: PinCallbackInput): Promise
     return {
       ok: false,
       code: 'INVALID_STATE',
-      donationId: session.donationId,
-      status: donation.status,
+      chargeId: session.chargeId,
+      status: charge.status,
       message: '결제를 진행할 수 없는 상태의 결제입니다.',
     };
   }
@@ -167,14 +167,14 @@ export async function completePinAuthorization(input: PinCallbackInput): Promise
     return {
       ok: true,
       code: 'DUPLICATE',
-      donationId: session.donationId,
-      status: donation.status,
+      chargeId: session.chargeId,
+      status: charge.status,
       message: '이미 처리된 인증입니다. 결제는 한 번만 이루어집니다.',
     };
   }
 
   // (5) 승인. 한도 재검사·멱등·정산 분개는 모두 executePayment 안에서 처리된다.
-  const paid = await executePayment(session.donationId);
+  const paid = await executePayment(session.chargeId);
 
   if (!paid.ok) {
     await prisma.paymentPinSession.update({
@@ -184,7 +184,7 @@ export async function completePinAuthorization(input: PinCallbackInput): Promise
     return {
       ok: false,
       code: 'PAYMENT_FAILED',
-      donationId: session.donationId,
+      chargeId: session.chargeId,
       status: paid.status,
       message: paid.message,
     };
@@ -193,7 +193,7 @@ export async function completePinAuthorization(input: PinCallbackInput): Promise
   return {
     ok: true,
     code: 'OK',
-    donationId: session.donationId,
+    chargeId: session.chargeId,
     status: paid.status,
     message: paid.message,
   };
@@ -217,11 +217,11 @@ export async function failPinAuthorization(
     return { ok: false, code: 'NOT_FOUND', message: '인증 세션을 찾을 수 없습니다.' };
   }
 
-  const donation = await prisma.donation.findUnique({
-    where: { id: session.donationId },
+  const charge = await prisma.charge.findUnique({
+    where: { id: session.chargeId },
     select: { id: true, status: true },
   });
-  if (!donation) {
+  if (!charge) {
     return { ok: false, code: 'NOT_FOUND', message: '결제 거래를 찾을 수 없습니다.' };
   }
 
@@ -233,14 +233,14 @@ export async function failPinAuthorization(
       data: { callbackCount: { increment: 1 }, lastCallbackAt: new Date() },
     });
     logger.warn('이미 종료된 인증 세션에 실패 통지가 도착했습니다.', {
-      donationId: session.donationId,
+      chargeId: session.chargeId,
       sessionStatus: session.status,
     });
     return {
       ok: false,
       code: 'INVALID_STATE',
-      donationId: session.donationId,
-      status: donation.status,
+      chargeId: session.chargeId,
+      status: charge.status,
       message: '이미 처리된 인증 요청입니다.',
     };
   }
@@ -258,22 +258,22 @@ export async function failPinAuthorization(
     return {
       ok: false,
       code: 'DUPLICATE',
-      donationId: session.donationId,
-      status: donation.status,
+      chargeId: session.chargeId,
+      status: charge.status,
       message: '이미 처리된 인증입니다.',
     };
   }
 
-  if (donation.status === 'PENDING_PIN') {
-    // setStatus 를 거쳐야 DonationStatusLog 감사 이력이 남는다
-    await setStatus(session.donationId, 'PAYMENT_FAILED', `PIN 인증 실패: ${note}`.slice(0, 500));
+  if (charge.status === 'PENDING_PIN') {
+    // setStatus 를 거쳐야 ChargeStatusLog 감사 이력이 남는다
+    await setStatus(session.chargeId, 'PAYMENT_FAILED', `PIN 인증 실패: ${note}`.slice(0, 500));
   }
 
-  logger.warn('PIN 인증 실패 통지', { donationId: session.donationId, note });
+  logger.warn('PIN 인증 실패 통지', { chargeId: session.chargeId, note });
   return {
     ok: false,
     code: 'AUTH_FAILED',
-    donationId: session.donationId,
+    chargeId: session.chargeId,
     status: 'PAYMENT_FAILED',
     message: 'PIN 인증에 실패했습니다. 결제는 진행되지 않았습니다.',
   };
@@ -287,9 +287,9 @@ export async function failPinAuthorization(
  *
  * @returns 이 호출이 실제로 만료 처리했으면 true
  */
-export async function expirePinSessionIfStale(donationId: string, now = new Date()): Promise<boolean> {
+export async function expirePinSessionIfStale(chargeId: string, now = new Date()): Promise<boolean> {
   const session = await prisma.paymentPinSession.findUnique({
-    where: { donationId },
+    where: { chargeId },
     select: { id: true, status: true, expiresAt: true },
   });
   if (!session || session.status !== 'PENDING' || session.expiresAt.getTime() >= now.getTime()) return false;
@@ -300,11 +300,11 @@ export async function expirePinSessionIfStale(donationId: string, now = new Date
   });
   if (claimed.count !== 1) return false;
 
-  const d = await prisma.donation.findUnique({ where: { id: donationId }, select: { status: true } });
+  const d = await prisma.charge.findUnique({ where: { id: chargeId }, select: { status: true } });
   // 이미 결제로 넘어간 건(PENDING_PAYMENT 이후)은 건드리지 않는다.
   if (d?.status !== 'PENDING_PIN') return false;
-  // setStatus 를 거쳐야 DonationStatusLog 감사 이력이 남는다
-  await setStatus(donationId, 'PAYMENT_FAILED', 'PIN 입력 시간 초과로 자동 취소');
+  // setStatus 를 거쳐야 ChargeStatusLog 감사 이력이 남는다
+  await setStatus(chargeId, 'PAYMENT_FAILED', 'PIN 입력 시간 초과로 자동 취소');
   return true;
 }
 
@@ -318,12 +318,12 @@ export async function expirePinSessionIfStale(donationId: string, now = new Date
 export async function expireStalePinSessions(now = new Date()): Promise<number> {
   const stale = await prisma.paymentPinSession.findMany({
     where: { status: 'PENDING', expiresAt: { lt: now } },
-    select: { donationId: true },
+    select: { chargeId: true },
   });
 
   let count = 0;
   for (const s of stale) {
-    if (await expirePinSessionIfStale(s.donationId, now)) count += 1;
+    if (await expirePinSessionIfStale(s.chargeId, now)) count += 1;
   }
   return count;
 }

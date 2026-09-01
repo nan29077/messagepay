@@ -14,8 +14,8 @@ export const MT_TEMPLATE = {
   CONFIRM_PAYMENT: 'CONFIRM_PAYMENT',
   SELECT_AMOUNT: 'SELECT_AMOUNT',
   PIN_REQUEST: 'PIN_REQUEST',
-  DONATION_SUCCESS: 'DONATION_SUCCESS',
-  DONATION_FAILED: 'DONATION_FAILED',
+  CHARGE_SUCCESS: 'CHARGE_SUCCESS',
+  CHARGE_FAILED: 'CHARGE_FAILED',
   ACCOUNT_INACTIVE: 'ACCOUNT_INACTIVE',
   LIMIT_BLOCKED: 'LIMIT_BLOCKED',
   CONTENT_BLOCKED: 'CONTENT_BLOCKED',
@@ -61,7 +61,7 @@ function maskLink(text: string): string {
  * 카드는 아직 실 연동 전이라 현재 호출부는 모두 기본값(ACCOUNT)을 쓴다.
  */
 export function tplRegisterGuide(
-  creatorName: string,
+  merchantName: string,
   link: string,
   method: 'ACCOUNT' | 'CARD' = 'ACCOUNT',
 ): TemplateOutput {
@@ -69,23 +69,63 @@ export function tplRegisterGuide(
   // 등록 화면에서 표시 이름도 정할 수 있다는 것을 미리 알려 입력률을 높인다.
   // (선택 항목이라 안내가 없으면 대부분 그냥 지나친다)
   const text = withLink(
-    `[문자페이] ${creatorName} 가맹점 문자결제를 이용하려면 ${what}과 이용 동의가 필요합니다. 최초 문자는 결제 처리되지 않았습니다. 등록 화면에서 결제 내역에 표시될 이름도 정할 수 있습니다. 등록:`,
+    `[메시지페이] ${merchantName} 가맹점 문자결제를 이용하려면 ${what}과 이용 동의가 필요합니다. 최초 문자는 결제 처리되지 않았습니다. 등록 화면에서 결제 내역에 표시될 이름도 정할 수 있습니다. 등록:`,
     link,
   );
   return { code: MT_TEMPLATE.REGISTER_GUIDE, text, masked: maskLink(text) };
 }
 
-export function tplSelectAmount(creatorName: string, link: string, ttlMin: number): TemplateOutput {
-  const text = withLink(
-    `[문자페이] ${creatorName} 충전을 진행합니다. 아직 결제되지 않았습니다. 아래 링크에서 충전 금액을 고르고 PIN 을 입력해 주세요. (유효시간 ${ttlMin}분) `,
-    link,
-  );
+/** MO 안내 문자 본문 최대 길이. LMS(2,000byte) 안에 링크까지 확실히 들어가는 보수적인 값. */
+export const MO_GUIDE_MAX_LENGTH = 160;
+
+/** MO 안내 문자에서 쓸 수 있는 치환자. 설정 화면 안내와 검증에 함께 쓴다. */
+export const MO_GUIDE_VARIABLES = [
+  { token: '{가맹점}', label: '가맹점 이름' },
+  { token: '{상품목록}', label: '판매 중인 상품 이름 (최대 4개)' },
+  { token: '{유효시간}', label: '링크 유효시간(분)' },
+] as const;
+
+export interface MoGuideInput {
+  merchantName: string;
+  link: string;
+  ttlMin: number;
+  /** 판매 중인 상품 이름 몇 개. 비어 있으면 {상품목록} 치환자는 지워진다. */
+  productNames?: string[];
+  /** 가맹점이 설정한 안내 문구. 비어 있으면 기본 문구를 쓴다. */
+  custom?: string | null;
+}
+
+const MO_GUIDE_TOKEN_RE = /\{(가맹점|상품목록|유효시간)\}/g;
+
+/**
+ * MO 를 받았을 때 보내는 **안내 문자**.
+ *
+ * 결제 감사 문자와는 다른 문자다. 이 문자에는 상품 선택·결제 링크가 붙고,
+ * 아직 출금이 일어나지 않았다는 점을 반드시 알려야 한다(오인 결제 민원의 대부분이 여기서 난다).
+ * 그래서 가맹점이 본문을 바꿔도 "아직 결제되지 않았습니다" 고지와 링크는 시스템이 붙인다.
+ */
+export function tplSelectAmount(input: MoGuideInput): TemplateOutput {
+  const list = (input.productNames ?? []).slice(0, 4).join(' · ');
+  const custom = input.custom ? sanitizeLine(input.custom) : '';
+  const body = custom
+    ? sanitizeLine(
+        custom.replace(MO_GUIDE_TOKEN_RE, (_m, key: string) =>
+          key === '가맹점' ? input.merchantName : key === '상품목록' ? list : String(input.ttlMin),
+        ),
+      )
+    : `${input.merchantName} 결제를 진행합니다.${list ? ` (${list})` : ''} 아래 링크에서 상품과 금액을 고르고 PIN 을 입력해 주세요. (유효시간 ${input.ttlMin}분)`;
+
+  // 고지는 가맹점이 지울 수 없다. 본문에 이미 들어 있으면 두 번 붙이지 않는다.
+  const notice = body.includes('아직 결제되지 않았습니다') ? '' : ' 아직 결제되지 않았습니다.';
+  // 가맹점이 본문을 비워 둔 것과 같은 상태(치환 결과가 빈 문자열)면 최소 문구를 쓴다.
+  const head = body || `${input.merchantName} 결제를 진행합니다.`;
+  const text = withLink(`[메시지페이] ${head}${notice}`, input.link);
   return { code: MT_TEMPLATE.SELECT_AMOUNT, text, masked: maskLink(text) };
 }
 
-export function tplConfirmPayment(creatorName: string, amount: bigint, link: string, ttlMin: number): TemplateOutput {
+export function tplConfirmPayment(merchantName: string, amount: bigint, link: string, ttlMin: number): TemplateOutput {
   const text = withLink(
-    `[문자페이] ${creatorName} 가맹점에 ${formatNumber(amount)}원을 충전하시려면 아래 링크에서 확인해 주세요. ${ttlMin}분 내 미확인 시 자동 취소됩니다. 확인:`,
+    `[메시지페이] ${merchantName} 가맹점에 ${formatNumber(amount)}원을 충전하시려면 아래 링크에서 확인해 주세요. ${ttlMin}분 내 미확인 시 자동 취소됩니다. 확인:`,
     link,
   );
   return { code: MT_TEMPLATE.CONFIRM_PAYMENT, text, masked: maskLink(text) };
@@ -101,7 +141,7 @@ export function tplConfirmPayment(creatorName: string, amount: bigint, link: str
  *             (계약 전 연동을 실제 결제로 오인하지 않게 하기 위한 표시다)
  */
 export function tplPinRequest(input: {
-  creatorName: string;
+  merchantName: string;
   amount: bigint;
   pinUrl: string;
   ttlMin: number;
@@ -109,7 +149,7 @@ export function tplPinRequest(input: {
 }): TemplateOutput {
   const tag = input.mock ? ' [MOCK]' : '';
   const text = withLink(
-    `[문자페이]${tag} ${input.creatorName} 가맹점에 ${formatNumber(input.amount)}원 결제를 진행합니다. ` +
+    `[메시지페이]${tag} ${input.merchantName} 가맹점에 ${formatNumber(input.amount)}원 결제를 진행합니다. ` +
       `아직 결제되지 않았습니다. 결제 PIN 입력 링크: `,
     `${input.pinUrl} (유효시간: ${input.ttlMin}분)`,
   );
@@ -120,9 +160,9 @@ export function tplPinRequest(input: {
 // 결제 감사 문자 (가맹점 커스터마이즈)
 // ---------------------------------------------------------------------------
 
-export interface DonationSuccessInput {
-  donorName: string;
-  creatorName: string;
+export interface ChargeSuccessInput {
+  payerName: string;
+  merchantName: string;
   amount: bigint;
   message: string;
   cumulative: bigint;
@@ -142,9 +182,9 @@ export const THANKS_MT_VARIABLES = [
   { token: '{누적}', label: '누적 충전 금액' },
 ] as const;
 
-const THANKS_VALUES: Record<string, (i: DonationSuccessInput) => string> = {
-  '이용자': (i) => i.donorName,
-  '가맹점': (i) => i.creatorName,
+const THANKS_VALUES: Record<string, (i: ChargeSuccessInput) => string> = {
+  '이용자': (i) => i.payerName,
+  '가맹점': (i) => i.merchantName,
   '금액': (i) => `${formatNumber(i.amount)}원`,
   '메시지': (i) => i.message,
   '누적': (i) => `${formatNumber(i.cumulative)}원`,
@@ -163,14 +203,14 @@ function sanitizeLine(v: string): string {
  * 치환값에 `$&` 같은 문자가 들어와도 그대로 남도록 함수형 치환을 쓴다.
  * (문자열 치환을 쓰면 이용자 이름이나 메시지에 `$` 가 있을 때 본문이 깨진다)
  */
-export function renderThanksMessage(template: string, input: DonationSuccessInput): string {
+export function renderThanksMessage(template: string, input: ChargeSuccessInput): string {
   return sanitizeLine(template.replace(THANKS_TOKEN_RE, (_m, key: string) => THANKS_VALUES[key](input)));
 }
 
 /** 감사 문자 기본 문구 (가맹점 설정이 없을 때) */
-export function defaultThanksMessage(input: DonationSuccessInput): string {
+export function defaultThanksMessage(input: ChargeSuccessInput): string {
   return (
-    `${input.donorName}님, ${input.creatorName} 가맹점에 ${formatNumber(input.amount)}원이 충전되었습니다. 이용해 주셔서 감사합니다. ` +
+    `${input.payerName}님, ${input.merchantName} 가맹점에 ${formatNumber(input.amount)}원이 충전되었습니다. 이용해 주셔서 감사합니다. ` +
     `메시지: "${input.message}" 누적 충전: ${formatNumber(input.cumulative)}원`
   );
 }
@@ -179,14 +219,14 @@ export function defaultThanksMessage(input: DonationSuccessInput): string {
  * 결제 성공 감사 문자.
  *
  * 가맹점이 스튜디오에서 본문을 설정했으면 그 문구를 쓰고, 없으면 기본 문구를 쓴다.
- * 발신 주체 표기(`[문자페이]`)는 어떤 경우에도 앞에 붙인다.
+ * 발신 주체 표기(`[메시지페이]`)는 어떤 경우에도 앞에 붙인다.
  */
-export function tplDonationSuccess(input: DonationSuccessInput): TemplateOutput {
+export function tplChargeSuccess(input: ChargeSuccessInput): TemplateOutput {
   const custom = input.custom ? sanitizeLine(input.custom) : '';
   const body = custom ? renderThanksMessage(custom, input) : defaultThanksMessage(input);
-  const text = `[문자페이] ${body || defaultThanksMessage(input)}`;
+  const text = `[메시지페이] ${body || defaultThanksMessage(input)}`;
   return {
-    code: MT_TEMPLATE.DONATION_SUCCESS,
+    code: MT_TEMPLATE.CHARGE_SUCCESS,
     text,
     masked: maskLink(text),
     // 가맹점이 직접 설정한 문구가 있으면 그 문구가 우선이다.
@@ -194,8 +234,8 @@ export function tplDonationSuccess(input: DonationSuccessInput): TemplateOutput 
     vars: custom
       ? undefined
       : {
-          이용자: input.donorName,
-          가맹점: input.creatorName,
+          이용자: input.payerName,
+          가맹점: input.merchantName,
           금액: `${formatNumber(input.amount)}원`,
           메시지: input.message,
           누적: `${formatNumber(input.cumulative)}원`,
@@ -203,48 +243,48 @@ export function tplDonationSuccess(input: DonationSuccessInput): TemplateOutput 
   };
 }
 
-export function tplDonationFailed(creatorName: string, reason?: string): TemplateOutput {
+export function tplChargeFailed(merchantName: string, reason?: string): TemplateOutput {
   const text =
-    `[문자페이] ${creatorName} 가맹점 결제가 완료되지 않았습니다. ` +
+    `[메시지페이] ${merchantName} 가맹점 결제가 완료되지 않았습니다. ` +
     `${reason ? `사유: ${reason} ` : ''}계좌 상태 또는 이용 한도를 확인해 주세요. 결제되지 않은 요청은 충전으로 반영되지 않습니다.`;
   return {
-    code: MT_TEMPLATE.DONATION_FAILED,
+    code: MT_TEMPLATE.CHARGE_FAILED,
     text,
     masked: text,
-    vars: { 가맹점: creatorName, 사유: reason ?? '' },
+    vars: { 가맹점: merchantName, 사유: reason ?? '' },
   };
 }
 
-export function tplAccountInactive(creatorName: string): TemplateOutput {
+export function tplAccountInactive(merchantName: string): TemplateOutput {
   const text =
-    `[문자페이] ${creatorName} 가맹점 결제를 진행할 수 없습니다. ` +
+    `[메시지페이] ${merchantName} 가맹점 결제를 진행할 수 없습니다. ` +
     '내통장결제 이용 상태를 확인하거나 고객센터로 문의해 주세요. 결제는 진행되지 않았습니다.';
-  return { code: MT_TEMPLATE.ACCOUNT_INACTIVE, text, masked: text, vars: { 가맹점: creatorName } };
+  return { code: MT_TEMPLATE.ACCOUNT_INACTIVE, text, masked: text, vars: { 가맹점: merchantName } };
 }
 
-export function tplLimitBlocked(creatorName: string, reason: string): TemplateOutput {
-  const text = `[문자페이] ${creatorName} 가맹점 결제가 제한되었습니다. 사유: ${reason} 결제는 진행되지 않았습니다.`;
-  return { code: MT_TEMPLATE.LIMIT_BLOCKED, text, masked: text, vars: { 가맹점: creatorName, 사유: reason } };
+export function tplLimitBlocked(merchantName: string, reason: string): TemplateOutput {
+  const text = `[메시지페이] ${merchantName} 가맹점 결제가 제한되었습니다. 사유: ${reason} 결제는 진행되지 않았습니다.`;
+  return { code: MT_TEMPLATE.LIMIT_BLOCKED, text, masked: text, vars: { 가맹점: merchantName, 사유: reason } };
 }
 
-export function tplContentBlocked(creatorName: string): TemplateOutput {
-  const text = `[문자페이] ${creatorName} 가맹점에 보낸 메시지가 운영정책에 따라 차단되었습니다. 결제는 진행되지 않았습니다.`;
-  return { code: MT_TEMPLATE.CONTENT_BLOCKED, text, masked: text, vars: { 가맹점: creatorName } };
+export function tplContentBlocked(merchantName: string): TemplateOutput {
+  const text = `[메시지페이] ${merchantName} 가맹점에 보낸 메시지가 운영정책에 따라 차단되었습니다. 결제는 진행되지 않았습니다.`;
+  return { code: MT_TEMPLATE.CONTENT_BLOCKED, text, masked: text, vars: { 가맹점: merchantName } };
 }
 
-export function tplRefundDone(creatorName: string, amount: bigint): TemplateOutput {
-  const text = `[문자페이] ${creatorName} 가맹점 결제 ${formatNumber(amount)}원이 취소되어 환불 처리되었습니다.`;
+export function tplRefundDone(merchantName: string, amount: bigint): TemplateOutput {
+  const text = `[메시지페이] ${merchantName} 가맹점 결제 ${formatNumber(amount)}원이 취소되어 환불 처리되었습니다.`;
   return {
     code: MT_TEMPLATE.REFUND_DONE,
     text,
     masked: text,
-    vars: { 가맹점: creatorName, 금액: `${formatNumber(amount)}원` },
+    vars: { 가맹점: merchantName, 금액: `${formatNumber(amount)}원` },
   };
 }
 
 export function tplUnknownRoute(): TemplateOutput {
   const text =
-    '[문자페이] 결제 대상 가맹점을 찾을 수 없습니다. 가맹 서비스 화면에 안내된 번호와 코드를 다시 확인해 주세요. 결제는 진행되지 않았습니다.';
+    '[메시지페이] 결제 대상 가맹점을 찾을 수 없습니다. 가맹 서비스 화면에 안내된 번호와 코드를 다시 확인해 주세요. 결제는 진행되지 않았습니다.';
   return { code: MT_TEMPLATE.UNKNOWN_ROUTE, text, masked: text, vars: {} };
 }
 
@@ -254,7 +294,7 @@ export function tplUnknownRoute(): TemplateOutput {
 
 /**
  * 인증번호 유효시간(분).
- * 각 액션(donation-lookup / phone-link / web-donation)의 TTL_SEC(300초)와 같은 값이어야 한다.
+ * 각 액션(charge-lookup / phone-link / web-charge)의 TTL_SEC(300초)와 같은 값이어야 한다.
  * 문자에 안내한 시간과 실제 만료 시간이 어긋나면 이용자가 유효한 코드를 버리게 된다.
  */
 export const VERIFY_CODE_TTL_MIN = 5;
@@ -265,7 +305,7 @@ function maskVerifyCode(text: string, code: string): string {
 }
 
 function verifyTemplate(code: MtTemplateCode, purpose: string, verifyCode: string): TemplateOutput {
-  const text = `[문자페이] ${purpose} 인증번호는 ${verifyCode} 입니다. ${VERIFY_CODE_TTL_MIN}분 안에 입력해 주세요.`;
+  const text = `[메시지페이] ${purpose} 인증번호는 ${verifyCode} 입니다. ${VERIFY_CODE_TTL_MIN}분 안에 입력해 주세요.`;
   return {
     code,
     text,
@@ -310,8 +350,8 @@ export interface MtTemplateMeta {
 }
 
 const V = {
-  donor: { token: '{이용자}', label: '이용자 이름' },
-  creator: { token: '{가맹점}', label: '가맹점 이름' },
+  payer: { token: '{이용자}', label: '이용자 이름' },
+  merchant: { token: '{가맹점}', label: '가맹점 이름' },
   amount: { token: '{금액}', label: '결제 금액 (예: 10,000원)' },
   message: { token: '{메시지}', label: '이용자가 보낸 메시지' },
   cumulative: { token: '{누적}', label: '누적 충전 금액' },
@@ -327,7 +367,7 @@ export const MT_TEMPLATE_META: Record<MtTemplateCode, MtTemplateMeta> = {
     editable: false,
     defaultBody:
       '{가맹점} 가맹점 문자결제를 이용하려면 계좌 등록과 이용 동의가 필요합니다. 최초 문자는 결제 처리되지 않았습니다. 등록: [보안링크]',
-    variables: [V.creator],
+    variables: [V.merchant],
   },
   [MT_TEMPLATE.SELECT_AMOUNT]: {
     label: '충전 금액 선택 링크',
@@ -335,14 +375,14 @@ export const MT_TEMPLATE_META: Record<MtTemplateCode, MtTemplateMeta> = {
     editable: false,
     defaultBody:
       '{가맹점} 충전을 진행합니다. 아직 결제되지 않았습니다. 아래 링크에서 충전 금액을 고르고 PIN 을 입력해 주세요. [보안링크]',
-    variables: [V.creator],
+    variables: [V.merchant],
   },
   [MT_TEMPLATE.CONFIRM_PAYMENT]: {
     label: '결제 확인 링크',
     description: '결제 진행 여부를 확인받는 링크를 보냅니다.',
     editable: false,
     defaultBody: '{가맹점} 가맹점에 {금액}을 충전하시려면 아래 링크에서 확인해 주세요. 확인: [보안링크]',
-    variables: [V.creator, V.amount],
+    variables: [V.merchant, V.amount],
   },
   [MT_TEMPLATE.PIN_REQUEST]: {
     label: '결제 PIN 입력 요청',
@@ -350,24 +390,24 @@ export const MT_TEMPLATE_META: Record<MtTemplateCode, MtTemplateMeta> = {
     editable: false,
     defaultBody:
       '{가맹점} 가맹점에 {금액} 결제를 진행합니다. 아직 결제되지 않았습니다. 결제 PIN 입력 링크: [보안링크]',
-    variables: [V.creator, V.amount],
+    variables: [V.merchant, V.amount],
   },
-  [MT_TEMPLATE.DONATION_SUCCESS]: {
+  [MT_TEMPLATE.CHARGE_SUCCESS]: {
     label: '결제 완료 감사 문자',
     description:
       '결제가 완료되었을 때 이용자에게 보냅니다. 가맹점이 스튜디오에서 직접 문구를 설정한 경우에는 그 문구가 우선합니다.',
     editable: true,
     defaultBody:
       '{이용자}님, {가맹점} 가맹점에 {금액}이 충전되었습니다. 이용해 주셔서 감사합니다. 메시지: "{메시지}" 누적 충전: {누적}',
-    variables: [V.donor, V.creator, V.amount, V.message, V.cumulative],
+    variables: [V.payer, V.merchant, V.amount, V.message, V.cumulative],
   },
-  [MT_TEMPLATE.DONATION_FAILED]: {
+  [MT_TEMPLATE.CHARGE_FAILED]: {
     label: '결제 실패 안내',
     description: '결제가 완료되지 않았을 때 보냅니다.',
     editable: true,
     defaultBody:
       '{가맹점} 가맹점 결제가 완료되지 않았습니다. 사유: {사유} 계좌 상태 또는 이용 한도를 확인해 주세요. 결제되지 않은 요청은 충전으로 반영되지 않습니다.',
-    variables: [V.creator, V.reason],
+    variables: [V.merchant, V.reason],
   },
   [MT_TEMPLATE.ACCOUNT_INACTIVE]: {
     label: '결제수단 이용 불가 안내',
@@ -375,28 +415,28 @@ export const MT_TEMPLATE_META: Record<MtTemplateCode, MtTemplateMeta> = {
     editable: true,
     defaultBody:
       '{가맹점} 가맹점 결제를 진행할 수 없습니다. 내통장결제 이용 상태를 확인하거나 고객센터로 문의해 주세요. 결제는 진행되지 않았습니다.',
-    variables: [V.creator],
+    variables: [V.merchant],
   },
   [MT_TEMPLATE.LIMIT_BLOCKED]: {
     label: '한도 초과 안내',
     description: '일일/월간 한도나 이상거래 탐지로 결제가 막혔을 때 보냅니다.',
     editable: true,
     defaultBody: '{가맹점} 가맹점 결제가 제한되었습니다. 사유: {사유} 결제는 진행되지 않았습니다.',
-    variables: [V.creator, V.reason],
+    variables: [V.merchant, V.reason],
   },
   [MT_TEMPLATE.CONTENT_BLOCKED]: {
     label: '금칙어 차단 안내',
     description: '메시지가 운영정책(금칙어)에 걸렸을 때 보냅니다.',
     editable: true,
     defaultBody: '{가맹점} 가맹점에 보낸 메시지가 운영정책에 따라 차단되었습니다. 결제는 진행되지 않았습니다.',
-    variables: [V.creator],
+    variables: [V.merchant],
   },
   [MT_TEMPLATE.REFUND_DONE]: {
     label: '환불 완료 안내',
     description: '결제가 취소되어 환불 처리되었을 때 보냅니다.',
     editable: true,
     defaultBody: '{가맹점} 가맹점 결제 {금액}이 취소되어 환불 처리되었습니다.',
-    variables: [V.creator, V.amount],
+    variables: [V.merchant, V.amount],
   },
   [MT_TEMPLATE.UNKNOWN_ROUTE]: {
     label: '수신 대상 없음 안내',
@@ -435,7 +475,7 @@ export const MT_TEMPLATE_CODES = Object.keys(MT_TEMPLATE_META) as MtTemplateCode
 /** 관리자 커스텀 본문 최대 길이. LMS(2,000byte) 안에 확실히 들어가는 보수적인 값. */
 export const MT_TEMPLATE_BODY_MAX_LENGTH = 400;
 
-const SENDER_TAG = '[문자페이]';
+const SENDER_TAG = '[메시지페이]';
 
 /** 발신 주체 표기는 어떤 커스텀 본문에서도 빠지지 않게 강제한다. */
 function ensureSenderTag(text: string): string {

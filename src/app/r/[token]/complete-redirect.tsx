@@ -14,17 +14,17 @@ import { ArrowRight, CircleCheck } from 'lucide-react';
  *  - 자동 이동이 막힌 환경(스크립트 차단 등)을 위해 아래 링크를 항상 함께 노출한다.
  */
 export function CompleteRedirect({
-  creatorCode,
-  creatorName,
+  merchantCode,
+  merchantName,
   seconds = 3,
 }: {
-  creatorCode: string;
-  creatorName: string;
+  merchantCode: string;
+  merchantName: string;
   seconds?: number;
 }) {
   const router = useRouter();
   const [left, setLeft] = React.useState(seconds);
-  const href = `/c/${creatorCode}`;
+  const href = `/c/${merchantCode}`;
 
   React.useEffect(() => {
     const tick = setInterval(() => setLeft((v) => (v > 0 ? v - 1 : 0)), 1000);
@@ -43,8 +43,8 @@ export function CompleteRedirect({
       </p>
       <p className="mt-1 text-[12.5px] leading-relaxed text-ink-700">
         {left > 0
-          ? `${left}초 후 ${creatorName} 문자 발송 페이지로 이동합니다.`
-          : `${creatorName} 문자 발송 페이지로 이동하는 중입니다.`}
+          ? `${left}초 후 ${merchantName} 문자 발송 페이지로 이동합니다.`
+          : `${merchantName} 문자 발송 페이지로 이동하는 중입니다.`}
       </p>
       <button
         type="button"

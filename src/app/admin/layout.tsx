@@ -6,7 +6,7 @@ import { requireAdmin, type SessionUser } from '@/server/auth';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '통합 관리자 | 문자페이',
+  title: '통합 관리자 | 메시지페이',
   robots: { index: false, follow: false },
 };
 
@@ -22,8 +22,8 @@ const groups: NavGroup[] = [
     title: '회원·가맹점',
     items: [
       { href: '/admin/users', label: '회원', icon: 'users' },
-      { href: '/admin/donors', label: '이용자', icon: 'donors' },
-      { href: '/admin/creators', label: '가맹점 심사', icon: 'creators' },
+      { href: '/admin/payers', label: '이용자', icon: 'payers' },
+      { href: '/admin/merchants', label: '가맹점 심사', icon: 'merchants' },
       { href: '/admin/codes', label: '가맹점 코드', icon: 'codes' },
       { href: '/admin/mo-numbers', label: 'MO 번호', icon: 'numbers' },
     ],
@@ -35,6 +35,7 @@ const groups: NavGroup[] = [
       { href: '/admin/mt-messages', label: 'MT 발송', icon: 'send' },
       { href: '/admin/mt-templates', label: 'MT 메시지 관리', icon: 'templates' },
       { href: '/admin/payments', label: '결제', icon: 'payments' },
+      { href: '/admin/products', label: '상품·주문', icon: 'products' },
       { href: '/admin/refunds', label: '환불', icon: 'refunds' },
       { href: '/admin/risk', label: '한도·이상거래', icon: 'risk' },
     ],
@@ -94,7 +95,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <ConsoleShell
-      title="문자페이 통합 관리자"
+      title="메시지페이 통합 관리자"
       groups={visibleGroups}
       user={{
         id: admin.id,

@@ -72,7 +72,7 @@ try {
     r.ok('가맹점별 요약 표', miss.length === 0, miss.join(','));
   }
   r.ok('요청 상태 필터', (await p.locator('select[name=status]').count()) > 0);
-  r.ok('가맹점 필터', (await p.locator('select[name=creatorId]').count()) > 0);
+  r.ok('가맹점 필터', (await p.locator('select[name=merchantId]').count()) > 0);
   r.ok('정산 월 필터', (await p.locator('input[name=key]').count()) > 0);
 
   // 일괄 처리 버튼과 비활성 상태

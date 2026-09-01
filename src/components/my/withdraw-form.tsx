@@ -3,9 +3,9 @@
 import * as React from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { Button, Card, Input, Notice } from '@/components/ui';
-import { withdrawAccount, type DonorActionState } from '@/app/actions/donor';
+import { withdrawAccount, type PayerActionState } from '@/app/actions/payer';
 
-const initial: DonorActionState = { ok: false };
+const initial: PayerActionState = { ok: false };
 
 /**
  * 회원 탈퇴.

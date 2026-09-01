@@ -12,7 +12,7 @@ import type { LedgerEntryType } from '@/generated/prisma/enums';
  * 규칙
  *  - settlement_ledger 는 APPEND ONLY. UPDATE/DELETE 하지 않는다.
  *  - 정정이 필요하면 반대 부호 분개를 추가한다.
- *  - 결제 거래 원장 / 결제 거래 원장 / 정산 원장은 분리하되 donation_id 로 추적한다.
+ *  - 결제 거래 원장 / 결제 거래 원장 / 정산 원장은 분리하되 charge_id 로 추적한다.
  *  - 정산 가능 금액 = 원장 합계 - 보류(미정산 요청 중) - 이미 지급
  */
 
@@ -193,22 +193,22 @@ export function feeRatesOf(policy: FeeRates | null | undefined): FeeRates {
   };
 }
 
-export async function resolveFeePolicy(creatorId: string, now: Date = new Date()) {
+export async function resolveFeePolicy(merchantId: string, now: Date = new Date()) {
   const rows = await prisma.feePolicy.findMany({
     // 시행일 전/종료 후 정책은 적용하지 않는다. (예약 수수료가 즉시 반영돼 정산액이 틀어지는 것을 막는다)
     where: {
       active: true,
       effectiveFrom: { lte: now },
-      OR: [{ scope: 'GLOBAL' }, { scope: 'CREATOR', creatorId }],
+      OR: [{ scope: 'GLOBAL' }, { scope: 'MERCHANT', merchantId }],
       AND: [{ OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] }],
     },
     orderBy: { effectiveFrom: 'desc' },
   });
-  return rows.find((r) => r.scope === 'CREATOR') ?? rows.find((r) => r.scope === 'GLOBAL') ?? null;
+  return rows.find((r) => r.scope === 'MERCHANT') ?? rows.find((r) => r.scope === 'GLOBAL') ?? null;
 }
 
-export async function calculateFees(creatorId: string, amount: bigint): Promise<FeeBreakdown> {
-  const policy = await resolveFeePolicy(creatorId);
+export async function calculateFees(merchantId: string, amount: bigint): Promise<FeeBreakdown> {
+  const policy = await resolveFeePolicy(merchantId);
   return computeFees(
     amount,
     feeRatesOf(
@@ -225,10 +225,10 @@ export async function calculateFees(creatorId: string, amount: bigint): Promise<
 }
 
 export interface LedgerInput {
-  creatorId: string;
+  merchantId: string;
   entryType: LedgerEntryType;
   amount: bigint;
-  donationId?: string | null;
+  chargeId?: string | null;
   refundId?: string | null;
   requestId?: string | null;
   memo?: string;
@@ -245,10 +245,10 @@ export async function appendLedger(entries: LedgerInput[], client: LedgerClient 
       const at = e.occurredAt ?? new Date();
       return {
         id: newId(),
-        creatorId: e.creatorId,
+        merchantId: e.merchantId,
         entryType: e.entryType,
         amount: e.amount,
-        donationId: e.donationId ?? null,
+        chargeId: e.chargeId ?? null,
         refundId: e.refundId ?? null,
         requestId: e.requestId ?? null,
         memo: e.memo ?? null,
@@ -276,10 +276,10 @@ function feeMemo(label: string, rate: string, vat: bigint): string {
  * 재시도로도 복구되지 않아 가맹점이 그 금액을 영영 받지 못한다.
  * 재시도·중복 호출에도 분개가 두 번 쌓이지 않도록 이미 기록된 결제는 건너뛴다.
  */
-export async function postDonationSettlement(
+export async function postChargeSettlement(
   input: {
-    creatorId: string;
-    donationId: string;
+    merchantId: string;
+    chargeId: string;
     amount: bigint;
     fees: FeeBreakdown;
     occurredAt?: Date;
@@ -287,7 +287,7 @@ export async function postDonationSettlement(
   client: LedgerClient = prisma,
 ) {
   const already = await client.settlementLedger.findFirst({
-    where: { donationId: input.donationId, entryType: 'DONATION_GROSS' },
+    where: { chargeId: input.chargeId, entryType: 'CHARGE_GROSS' },
     select: { id: true },
   });
   if (already) return;
@@ -295,17 +295,17 @@ export async function postDonationSettlement(
   await appendLedger(
     [
       {
-        creatorId: input.creatorId, entryType: 'DONATION_GROSS', amount: input.fees.gross,
-        donationId: input.donationId, occurredAt: input.occurredAt, memo: '문자결제 결제 승인',
+        merchantId: input.merchantId, entryType: 'CHARGE_GROSS', amount: input.fees.gross,
+        chargeId: input.chargeId, occurredAt: input.occurredAt, memo: '문자결제 결제 승인',
       },
       {
-        creatorId: input.creatorId, entryType: 'PG_FEE', amount: -input.fees.pgFee,
-        donationId: input.donationId, occurredAt: input.occurredAt,
+        merchantId: input.merchantId, entryType: 'PG_FEE', amount: -input.fees.pgFee,
+        chargeId: input.chargeId, occurredAt: input.occurredAt,
         memo: feeMemo('결제수수료', input.fees.pgFeeRate, input.fees.pgFeeVat),
       },
       {
-        creatorId: input.creatorId, entryType: 'PLATFORM_FEE', amount: -input.fees.platformFee,
-        donationId: input.donationId, occurredAt: input.occurredAt,
+        merchantId: input.merchantId, entryType: 'PLATFORM_FEE', amount: -input.fees.platformFee,
+        chargeId: input.chargeId, occurredAt: input.occurredAt,
         memo: feeMemo('플랫폼수수료', input.fees.platformFeeRate, input.fees.platformFeeVat),
       },
     ],
@@ -323,18 +323,19 @@ export async function postDonationSettlement(
  * 이미 환입한 금액을 빼서 여러 번 부분 환불해도 총 환입액이 원 차감액을 넘지 않게 한다.
  */
 export async function resolveRefundFeeReturn(
-  donationId: string,
+  chargeId: string,
   refundAmount: bigint,
+  client: LedgerClient = prisma,
 ): Promise<{ platformFeeReturn: bigint; grossPosted: bigint; platformFeePosted: bigint }> {
-  const rows = await prisma.settlementLedger.findMany({
-    where: { donationId },
+  const rows = await client.settlementLedger.findMany({
+    where: { chargeId },
     select: { entryType: true, amount: true },
   });
 
   const sumOf = (t: LedgerEntryType) =>
     rows.filter((r) => r.entryType === t).reduce((acc, r) => acc + r.amount, 0n);
 
-  const grossPosted = sumOf('DONATION_GROSS');
+  const grossPosted = sumOf('CHARGE_GROSS');
   // 수수료는 음수로 기록되므로 부호를 뒤집어 "차감된 금액"으로 만든다.
   const platformFeePosted = -sumOf('PLATFORM_FEE');
   const alreadyReturned = sumOf('REFUND_FEE_RETURN');
@@ -365,8 +366,8 @@ export async function resolveRefundFeeReturn(
  */
 export async function postRefundSettlement(
   input: {
-    creatorId: string;
-    donationId: string;
+    merchantId: string;
+    chargeId: string;
     refundId: string;
     amount: bigint;
     fees: FeeBreakdown;
@@ -377,17 +378,17 @@ export async function postRefundSettlement(
 ) {
   const entries: LedgerInput[] = [
     {
-      creatorId: input.creatorId, entryType: 'REFUND', amount: -input.amount,
-      donationId: input.donationId, refundId: input.refundId, occurredAt: input.occurredAt, memo: '결제 환불',
+      merchantId: input.merchantId, entryType: 'REFUND', amount: -input.amount,
+      chargeId: input.chargeId, refundId: input.refundId, occurredAt: input.occurredAt, memo: '결제 환불',
     },
   ];
   if (input.returnPlatformFee !== false) {
     // 원 거래 분개에서 환입액을 산출한다. (환불 시점 요율로 재계산하면 원장이 틀어진다)
-    const { platformFeeReturn } = await resolveRefundFeeReturn(input.donationId, input.amount);
+    const { platformFeeReturn } = await resolveRefundFeeReturn(input.chargeId, input.amount, client);
     if (platformFeeReturn > 0n) {
       entries.push({
-        creatorId: input.creatorId, entryType: 'REFUND_FEE_RETURN', amount: platformFeeReturn,
-        donationId: input.donationId, refundId: input.refundId, occurredAt: input.occurredAt,
+        merchantId: input.merchantId, entryType: 'REFUND_FEE_RETURN', amount: platformFeeReturn,
+        chargeId: input.chargeId, refundId: input.refundId, occurredAt: input.occurredAt,
         memo: '환불에 따른 플랫폼수수료 환입',
       });
     }
@@ -421,18 +422,18 @@ type SummaryClient = Pick<typeof prisma, 'settlementLedger' | 'settlementRequest
  * 전역 prisma 로 읽으면 트랜잭션 밖 스냅샷을 보게 되어, 락을 잡은 의미가 사라진다.
  */
 export async function getSettlementSummary(
-  creatorId: string,
+  merchantId: string,
   client: SummaryClient = prisma,
 ): Promise<SettlementSummary> {
   const grouped = await client.settlementLedger.groupBy({
     by: ['entryType'],
-    where: { creatorId },
+    where: { merchantId },
     _sum: { amount: true },
   });
 
   const sum = (t: LedgerEntryType) => grouped.find((g) => g.entryType === t)?._sum.amount ?? 0n;
 
-  const totalGross = sum('DONATION_GROSS');
+  const totalGross = sum('CHARGE_GROSS');
   const totalPgFee = -sum('PG_FEE');
   const totalPlatformFee = -sum('PLATFORM_FEE');
   const totalRefund = -(sum('REFUND') + sum('REFUND_FEE_RETURN'));
@@ -442,7 +443,7 @@ export async function getSettlementSummary(
   const balance = grouped.reduce((acc, g) => acc + (g._sum.amount ?? 0n), 0n);
 
   const pendingAgg = await client.settlementRequest.aggregate({
-    where: { creatorId, status: { in: ['REQUESTED', 'REVIEWING', 'APPROVED'] } },
+    where: { merchantId, status: { in: ['REQUESTED', 'REVIEWING', 'APPROVED'] } },
     _sum: { amount: true },
   });
   const pending = pendingAgg._sum.amount ?? 0n;
@@ -468,7 +469,7 @@ export interface CreateSettlementInput {
 }
 
 export async function createSettlementRequest(
-  creatorId: string,
+  merchantId: string,
   amount: bigint,
   input: CreateSettlementInput = {},
 ) {
@@ -479,21 +480,35 @@ export async function createSettlementRequest(
   if (input.resident && !resident) throw new Error('주민등록번호 형식이 올바르지 않습니다.');
 
   return prisma.$transaction(async (tx) =>
-    withAdvisoryLock(tx, `settlement:creator:${creatorId}`, async () => {
+    withAdvisoryLock(tx, `settlement:merchant:${merchantId}`, async () => {
       // 잠금 획득 후 트랜잭션 안에서 읽어야 앞선 요청의 커밋 결과가 반영된 값을 본다
-      const summary = await getSettlementSummary(creatorId, tx);
+      const summary = await getSettlementSummary(merchantId, tx);
       if (amount > summary.available) throw new Error('정산 가능 금액을 초과했습니다.');
 
-      const account = await tx.settlementAccount.findUnique({ where: { creatorId } });
+      const account = await tx.settlementAccount.findUnique({ where: { merchantId } });
       if (!account || !account.verified) throw new Error('정산 계좌 인증이 완료되지 않았습니다.');
 
+      // 사업자등록번호가 있는 가맹점은 세금계산서 대상이라 원천징수하지 않는다.
+      // 개인(사업소득) 가맹점만 3.3% 를 뗀다.
+      const merchant = await tx.merchantProfile.findUnique({
+        where: { id: merchantId },
+        select: { businessNo: true },
+      });
+      const isBusiness = Boolean(merchant?.businessNo);
+
       // 사업소득 원천징수: 소득세 3%(10원절사) + 지방소득세 10%(10원절사), 소액부징수 적용.
-      const wh = calculateWithholding(amount);
+      const wh = isBusiness
+        ? { incomeTax: 0n, localTax: 0n, total: 0n, exempt: true }
+        : calculateWithholding(amount);
+
+      // 자동 정산은 가맹점이 요청하는 단계가 없다. 계좌에 미리 등록해 둔 신고용 번호를 회차로 복사한다.
+      const effectiveResident =
+        resident ?? (!isBusiness && account.residentEnc ? decrypt(account.residentEnc) : null);
 
       return tx.settlementRequest.create({
         data: {
           id: newId(),
-          creatorId,
+          merchantId,
           amount,
           withholding: wh.total,
           incomeTax: wh.incomeTax,
@@ -501,8 +516,8 @@ export async function createSettlementRequest(
           payoutAmount: amount - wh.total,
           memo: input.memo ?? null,
           // 주민등록번호는 암호화 저장하고 화면에는 마스킹만 노출한다.
-          residentEnc: resident ? encrypt(resident) : null,
-          residentMasked: resident ? maskResident(resident) : null,
+          residentEnc: effectiveResident ? encrypt(effectiveResident) : null,
+          residentMasked: effectiveResident ? maskResident(effectiveResident) : null,
         },
       });
     }),
@@ -522,10 +537,10 @@ export async function assertPayable(requestId: string): Promise<{ ok: true } | {
   if (!req) return { ok: false, reason: '정산 요청을 찾을 수 없습니다.' };
   if (req.status !== 'APPROVED') return { ok: false, reason: '승인(APPROVED) 상태가 아닙니다.' };
 
-  const account = await prisma.settlementAccount.findUnique({ where: { creatorId: req.creatorId } });
+  const account = await prisma.settlementAccount.findUnique({ where: { merchantId: req.merchantId } });
   if (!account || !account.verified) return { ok: false, reason: '정산 계좌 인증이 완료되지 않았습니다.' };
 
-  const summary = await getSettlementSummary(req.creatorId);
+  const summary = await getSettlementSummary(req.merchantId);
   if (req.amount > summary.balance) {
     return {
       ok: false,
@@ -551,7 +566,7 @@ export async function assertPayable(requestId: string): Promise<{ ok: true } | {
  */
 export async function markSettlementPaid(requestId: string, adminId?: string, payoutRef?: string) {
   return prisma.$transaction(async (tx) =>
-    withAdvisoryLock(tx, `settlement:creator:${await creatorIdOf(tx, requestId)}`, async () => {
+    withAdvisoryLock(tx, `settlement:merchant:${await merchantIdOf(tx, requestId)}`, async () => {
       const req = await tx.settlementRequest.findUnique({ where: { id: requestId } });
       if (!req) throw new Error('정산 요청을 찾을 수 없습니다.');
       if (req.status === 'PAID') return req;
@@ -563,10 +578,10 @@ export async function markSettlementPaid(requestId: string, adminId?: string, pa
 
       // 이체는 이미 끝난 뒤다. 이상이 있어도 분개는 반드시 남기고, 메모로 경고만 남긴다.
       const warnings: string[] = [];
-      const account = await tx.settlementAccount.findUnique({ where: { creatorId: req.creatorId } });
+      const account = await tx.settlementAccount.findUnique({ where: { merchantId: req.merchantId } });
       if (!account || !account.verified) warnings.push('계좌 인증 해제 상태에서 지급됨');
 
-      const summary = await getSettlementSummary(req.creatorId, tx);
+      const summary = await getSettlementSummary(req.merchantId, tx);
       if (req.amount > summary.balance) {
         warnings.push(
           `잔액 초과 지급 (요청 ${req.amount.toString()}원 / 잔액 ${summary.balance.toString()}원)`,
@@ -577,11 +592,11 @@ export async function markSettlementPaid(requestId: string, adminId?: string, pa
       await appendLedger(
         [
           {
-            creatorId: req.creatorId, entryType: 'PAYOUT', amount: -req.payoutAmount,
+            merchantId: req.merchantId, entryType: 'PAYOUT', amount: -req.payoutAmount,
             requestId: req.id, occurredAt: now, memo: '정산 지급',
           },
           {
-            creatorId: req.creatorId, entryType: 'PAYOUT_WITHHOLDING', amount: -req.withholding,
+            merchantId: req.merchantId, entryType: 'PAYOUT_WITHHOLDING', amount: -req.withholding,
             requestId: req.id, occurredAt: now, memo: '원천징수',
           },
         ],
@@ -590,7 +605,7 @@ export async function markSettlementPaid(requestId: string, adminId?: string, pa
 
       if (warnings.length > 0) {
         logger.error('정산 지급 완료 처리 중 이상 감지 — 확인 필요', {
-          requestId, creatorId: req.creatorId, warnings,
+          requestId, merchantId: req.merchantId, warnings,
         });
       }
 
@@ -610,16 +625,16 @@ export async function markSettlementPaid(requestId: string, adminId?: string, pa
 }
 
 /** 락 키로 쓸 가맹점 ID를 먼저 조회한다. */
-async function creatorIdOf(
+async function merchantIdOf(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
   requestId: string,
 ): Promise<string> {
   const row = await tx.settlementRequest.findUnique({
     where: { id: requestId },
-    select: { creatorId: true },
+    select: { merchantId: true },
   });
   if (!row) throw new Error('정산 요청을 찾을 수 없습니다.');
-  return row.creatorId;
+  return row.merchantId;
 }
 
 /**
@@ -665,7 +680,7 @@ export async function markPayoutFileIssued(
 export async function markSettlementPayoutFailed(requestId: string, reason: string, adminId?: string) {
   return prisma.$transaction(async (tx) =>
     // 지급 완료 처리와 같은 락(가맹점 단위)을 잡아야 서로 경합하지 않는다.
-    withAdvisoryLock(tx, `settlement:creator:${await creatorIdOf(tx, requestId)}`, async () => {
+    withAdvisoryLock(tx, `settlement:merchant:${await merchantIdOf(tx, requestId)}`, async () => {
       const req = await tx.settlementRequest.findUnique({ where: { id: requestId } });
       if (!req) throw new Error('정산 요청을 찾을 수 없습니다.');
       if (req.status === 'PAYOUT_FAILED') return req;
@@ -679,11 +694,11 @@ export async function markSettlementPayoutFailed(requestId: string, reason: stri
         await appendLedger(
           [
             {
-              creatorId: req.creatorId, entryType: 'PAYOUT', amount: req.payoutAmount,
+              merchantId: req.merchantId, entryType: 'PAYOUT', amount: req.payoutAmount,
               requestId: req.id, occurredAt: now, memo: `지급 실패 환입: ${reason}`.slice(0, 200),
             },
             {
-              creatorId: req.creatorId, entryType: 'PAYOUT_WITHHOLDING', amount: req.withholding,
+              merchantId: req.merchantId, entryType: 'PAYOUT_WITHHOLDING', amount: req.withholding,
               requestId: req.id, occurredAt: now, memo: '지급 실패 원천징수 환입',
             },
           ],
@@ -759,8 +774,8 @@ export async function purgeResidentIfNotFilable(requestId: string) {
 /** 지급대행 이체 파일 한 줄에 담기는 값. */
 export interface PayoutRow {
   requestId: string;
-  creatorName: string;
-  creatorCode: string;
+  merchantName: string;
+  merchantCode: string;
   bankCode: string;
   bankName: string;
   account: string;
@@ -780,7 +795,7 @@ export async function buildPayoutRows(requestIds: string[]): Promise<PayoutRow[]
     where: { id: { in: requestIds }, status: 'APPROVED' },
     select: {
       id: true, payoutAmount: true,
-      creator: {
+      merchant: {
         select: {
           displayName: true, code: true,
           settlementAccount: {
@@ -793,7 +808,7 @@ export async function buildPayoutRows(requestIds: string[]): Promise<PayoutRow[]
 
   const rows: PayoutRow[] = [];
   for (const r of reqs) {
-    const acc = r.creator.settlementAccount;
+    const acc = r.merchant.settlementAccount;
     if (!acc || !acc.verified) continue; // 미인증 계좌는 이체 대상에서 제외
     // 잔액까지 여기서 걸러낸다. 검증은 반드시 **이체 전** 에 끝나야 한다.
     // 이체가 끝난 뒤(markSettlementPaid) 막으면 이미 나간 돈이 원장에 안 남아 이중 지급이 된다.
@@ -804,14 +819,14 @@ export async function buildPayoutRows(requestIds: string[]): Promise<PayoutRow[]
     }
     rows.push({
       requestId: r.id,
-      creatorName: r.creator.displayName,
-      creatorCode: r.creator.code,
+      merchantName: r.merchant.displayName,
+      merchantCode: r.merchant.code,
       bankCode: acc.bankCode,
       bankName: acc.bankName,
       account: decrypt(acc.accountEnc),
       holder: decrypt(acc.holderNameEnc),
       amount: r.payoutAmount,
-      note: `문자페이 정산 ${r.creator.code}`,
+      note: `메시지페이 정산 ${r.merchant.code}`,
     });
   }
   return rows;

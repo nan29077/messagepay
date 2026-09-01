@@ -11,7 +11,7 @@ import { consumeIpRateLimit } from '@/server/rate-limit';
 /**
  * 이용자 회원가입.
  * - 회원가입은 선택 기능이다. 문자결제 자체는 계좌 등록만으로 이용할 수 있다.
- * - 여기서는 전화번호를 수집하지 않는다. 이용자 프로필(DonorProfile)은 MO 수신 시 생성된다.
+ * - 여기서는 전화번호를 수집하지 않는다. 이용자 프로필(PayerProfile)은 MO 수신 시 생성된다.
  */
 
 export interface SignupFormState {
@@ -45,7 +45,7 @@ const schema = z
     path: ['agreeTerms'],
   });
 
-export async function signupDonor(_prev: SignupFormState, formData: FormData): Promise<SignupFormState> {
+export async function signupPayer(_prev: SignupFormState, formData: FormData): Promise<SignupFormState> {
   const raw = {
     email: String(formData.get('email') ?? ''),
     name: String(formData.get('name') ?? ''),
@@ -80,7 +80,7 @@ export async function signupDonor(_prev: SignupFormState, formData: FormData): P
         id: newId(),
         email,
         name: parsed.data.name,
-        role: 'DONOR',
+        role: 'PAYER',
         passwordHash: await hashPassword(parsed.data.password),
       },
       select: { id: true },
@@ -115,8 +115,8 @@ export async function isTestLoginAllowed(): Promise<boolean> {
 
 const TEST_ACCOUNTS = {
   admin: { email: 'admin@munjapay.kr', label: '최고관리자', redirect: '/admin' },
-  creator: { email: 'creator1@munjapay.kr', label: '가맹점', redirect: '/studio' },
-  donor: { email: 'donor@munjapay.kr', label: '이용자', redirect: '/my' },
+  merchant: { email: 'merchant1@munjapay.kr', label: '가맹점', redirect: '/studio' },
+  payer: { email: 'payer@munjapay.kr', label: '이용자', redirect: '/my' },
 } as const;
 
 export type TestAccountKey = keyof typeof TEST_ACCOUNTS;

@@ -205,7 +205,9 @@ export function SupportWidget({
           {tab === 'faq' ? (
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               {faqs.length === 0 ? (
-                <p className="px-2 py-6 text-center text-[13px] text-ink-400">등록된 FAQ가 없습니다.</p>
+                <div className="rounded-xl bg-ink-50 px-3.5 py-4 text-[12.5px] leading-relaxed text-ink-600">
+                  MessagePay는 문자 한 통으로 결제와 포인트 충전을 연결하는 서비스입니다. 이용 문의와 도입 상담은 1:1 문의로 남겨주세요.
+                </div>
               ) : (
                 <div className="space-y-1.5">
                   {faqs.map((f) => {
@@ -260,7 +262,7 @@ export function SupportWidget({
               <div ref={listRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
                 {messages.length === 0 ? (
                   <div className="rounded-xl bg-ink-50 px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-600">
-                    안녕하세요, 문자페이입니다. 궁금한 점을 남겨주시면 순차적으로 답변해 드립니다.
+                    안녕하세요, 메시지페이입니다. 궁금한 점을 남겨주시면 순차적으로 답변해 드립니다.
                     {loggedIn ? '' : ' 비회원도 문의할 수 있으며, 답변은 이 창에서 확인할 수 있습니다.'}
                   </div>
                 ) : (
@@ -313,7 +315,7 @@ export function SupportWidget({
                     rows={2}
                     maxLength={1000}
                     required
-                    placeholder="문의 내용을 입력해 주세요"
+                    placeholder="결제·충전 이용 문의 또는 MessagePay 도입 상담 내용을 입력해 주세요"
                     className="min-h-[44px] flex-1 resize-none rounded-xl border border-ink-200 px-3 py-2.5 text-[13px] leading-relaxed outline-none focus:border-brand-400"
                   />
                   <div className="flex flex-col gap-1.5">

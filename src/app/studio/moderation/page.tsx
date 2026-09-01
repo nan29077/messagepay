@@ -5,11 +5,11 @@ import {
   createBannedWordAction,
   deleteBannedWordAction,
   toggleBannedWordAction,
-  unblockDonorAction,
+  unblockPayerAction,
   addDefaultBannedWordsAction,
 } from '@/app/actions/studio';
 import { FilterTester } from '@/components/studio/filter-tester';
-import { requireCreator } from '@/server/auth';
+import { requireMerchant } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { formatKst } from '@/lib/datetime';
 
@@ -22,11 +22,11 @@ const ACTION_LABEL: Record<string, { text: string; tone: 'neutral' | 'warning' |
 };
 
 export default async function StudioModerationPage() {
-  const { creatorId } = await requireCreator();
+  const { merchantId } = await requireMerchant();
 
   const [myWords, globalWords, blocked, blockHistory] = await Promise.all([
     prisma.bannedWord.findMany({
-      where: { creatorId, scope: 'CREATOR' },
+      where: { merchantId, scope: 'MERCHANT' },
       orderBy: { createdAt: 'desc' },
     }),
     prisma.bannedWord.findMany({
@@ -34,14 +34,14 @@ export default async function StudioModerationPage() {
       orderBy: { word: 'asc' },
       select: { id: true, word: true, action: true },
     }),
-    prisma.blockedDonor.findMany({
-      where: { creatorId },
+    prisma.blockedPayer.findMany({
+      where: { merchantId },
       orderBy: { createdAt: 'desc' },
-      include: { donor: { select: { id: true, phoneMasked: true, displayName: true } } },
+      include: { payer: { select: { id: true, phoneMasked: true, displayName: true } } },
     }),
     // 정책 변경 전에 금칙어로 접수 거부됐던 문자 (이력 확인용. 지금은 새로 생기지 않는다)
-    prisma.donation.findMany({
-      where: { creatorId, status: 'CONTENT_BLOCKED' },
+    prisma.charge.findMany({
+      where: { merchantId, status: 'CONTENT_BLOCKED' },
       orderBy: { receivedAt: 'desc' },
       take: 20,
       select: { id: true, displayName: true, message: true, statusReason: true, receivedAt: true },
@@ -185,16 +185,16 @@ export default async function StudioModerationPage() {
               <tbody>
                 {blocked.map((b) => (
                   <tr key={b.id}>
-                    <Td className="whitespace-nowrap tabular-nums">{b.donor.phoneMasked}</Td>
-                    <Td>{b.donor.displayName ?? '-'}</Td>
+                    <Td className="whitespace-nowrap tabular-nums">{b.payer.phoneMasked}</Td>
+                    <Td>{b.payer.displayName ?? '-'}</Td>
                     <Td>{b.reason ?? '-'}</Td>
                     <Td className="whitespace-nowrap tabular-nums">{formatKst(b.createdAt, false)}</Td>
                     <Td>
                       <InlineActionForm
-                        action={unblockDonorAction}
+                        action={unblockPayerAction}
                         submitLabel="차단 해제"
                         confirmMessage="이 이용자의 차단을 해제하시겠습니까?"
-                        fields={{ donorId: b.donor.id }}
+                        fields={{ payerId: b.payer.id }}
                       />
                     </Td>
                   </tr>

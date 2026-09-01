@@ -92,11 +92,11 @@ export function addBusinessDays(from: string, count: number, holidays: ReadonlyS
 
 /** 결제일 → 정산 예정일 */
 export function settlementDateFor(
-  donationDateKey: string,
+  chargeDateKey: string,
   holidays: ReadonlySet<string>,
   businessDays: number = SETTLEMENT_BUSINESS_DAYS,
 ): string {
-  return addBusinessDays(donationDateKey, businessDays, holidays);
+  return addBusinessDays(chargeDateKey, businessDays, holidays);
 }
 
 /** 'YYYY-MM-DD' → '8월 10일 (월)' 같은 짧은 한국어 표기 */

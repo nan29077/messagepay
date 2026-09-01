@@ -8,7 +8,8 @@ import { cx } from '@/components/ui';
 
 const slides = [
   {
-    image: '/assets/munjapay-banner-fast-v1.png',
+    image: '/assets/messagepay-banner-fast-v2.png',
+    mascotOverlay: false,
     eyebrow: 'FAST SMS PAYMENT',
     title: '문자 한 통으로,\n결제와 충전이 끝납니다',
     description: '앱을 찾거나 복잡한 메뉴를 거치지 않고, 문자를 보내고 확인하면 필요한 포인트가 바로 충전됩니다.',
@@ -17,6 +18,7 @@ const slides = [
   },
   {
     image: '/assets/munjapay-banner-secure-v1.png',
+    mascotOverlay: true,
     eyebrow: 'SAFE BY DESIGN',
     title: '확인하고 결제하니\n더 안심할 수 있습니다',
     description: '휴대폰 본인확인과 결제 전 최종 확인, 중복 결제 방지로 문자결제를 안전하게 보호합니다.',
@@ -25,10 +27,11 @@ const slides = [
   },
   {
     image: '/assets/munjapay-banner-business-v1.png',
+    mascotOverlay: true,
     eyebrow: 'BUILT FOR YOUR SERVICE',
-    title: '충전이 필요한 서비스에\n문자페이를 연결하세요',
+    title: '충전이 필요한 서비스에\n메시지페이를 연결하세요',
     description: '게임, 멤버십, 교육, 생활 서비스까지 반복 결제와 포인트 충전을 더 짧게 만듭니다.',
-    href: '/support',
+    href: '/support?intent=onboarding',
     cta: '서비스 도입 문의',
   },
 ];
@@ -54,7 +57,7 @@ export function HeroSlider() {
       className="hero-slider group relative isolate overflow-hidden rounded-[30px] bg-[#071426] shadow-[0_28px_80px_rgba(7,20,38,0.28)]"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
-      aria-label="문자페이 주요 서비스"
+      aria-label="메시지페이 주요 서비스"
     >
       {/* 이미지 영역.
           모바일: 원본 비율(3:2)에 맞춰 이미지가 잘리지 않게 보여주고, 텍스트는 이미지 아래에 배치한다.
@@ -70,6 +73,19 @@ export function HeroSlider() {
             aria-hidden={current !== index}
           >
             <Image src={slide.image} alt="" fill priority={index === 0} sizes="(min-width: 768px) 640px, 100vw" className="object-cover" />
+            {slide.mascotOverlay ? (
+              <Image
+                src="/assets/messagepay-mascot-v1.png"
+                alt=""
+                width={320}
+                height={320}
+                sizes="(min-width: 640px) 230px, 42vw"
+                className={cx(
+                  'hero-mascot absolute bottom-[-5%] right-[3%] z-[2] h-auto w-[36%] max-w-[230px] object-contain drop-shadow-[0_20px_30px_rgba(0,0,0,.3)]',
+                  index === 1 ? '-rotate-6' : 'rotate-6',
+                )}
+              />
+            ) : null}
             <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(7,20,38,0)_52%,rgba(7,20,38,.72)_86%,rgba(7,20,38,1)_100%)] sm:bg-[linear-gradient(90deg,rgba(7,20,38,.98)_0%,rgba(7,20,38,.8)_46%,rgba(7,20,38,.06)_100%)]" />
           </div>
         ))}

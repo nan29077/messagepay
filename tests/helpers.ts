@@ -10,10 +10,10 @@ export async function resetDb() {
     'admin_audit_log', 'webhook_log', 'consent_record', 'notification', 'report',
     'settlement_ledger', 'settlement_request', 'settlement_account', 'fee_policy',
     'payment_attempt', 'payment_transaction', 'refund',
-    'donation_status_log', 'secure_link', 'mt_outbound_message', 'donation',
-    'mo_inbound_message', 'donation_counter', 'risk_detection', 'blocked_donor',
-    'donor_creator_link', 'payment_method_token', 'payment_registration', 'donor_profile',
-    'creator_mo_number', 'creator_code', 'banned_word', 'donation_limit_policy', 'creator_profile',
+    'charge_status_log', 'secure_link', 'mt_outbound_message', 'charge',
+    'mo_inbound_message', 'charge_counter', 'risk_detection', 'blocked_payer',
+    'payer_merchant_link', 'payment_method_token', 'payment_registration', 'payer_profile',
+    'merchant_mo_number', 'merchant_code', 'banned_word', 'charge_limit_policy', 'merchant_profile',
     'admin_profile', 'user_session', 'app_user', 'terms_version', 'idempotency_key',
     'content_post', 'banner', 'system_setting',
   ];
@@ -28,15 +28,15 @@ export async function resetDb() {
 }
 
 export interface Fixture {
-  creatorId: string;
-  creatorUserId: string;
+  merchantId: string;
+  merchantUserId: string;
   moNumber: string;
-  donorPhone: string;
-  donorId?: string;
+  payerPhone: string;
+  payerId?: string;
 }
 
 export async function seedBasics(options: { paymentMode?: 'CONFIRM_LINK' | 'DIRECT_TRIGGER' } = {}) {
-  await prisma.donationLimitPolicy.create({ data: { id: newId(), scope: 'GLOBAL' } });
+  await prisma.chargeLimitPolicy.create({ data: { id: newId(), scope: 'GLOBAL' } });
   await prisma.feePolicy.create({
     data: { id: newId(), scope: 'GLOBAL', pgFeeRate: '0.018', platformFeeRate: '0.15' },
   });
@@ -51,9 +51,9 @@ export async function seedBasics(options: { paymentMode?: 'CONFIRM_LINK' | 'DIRE
   }
 
   const user = await prisma.user.create({
-    data: { id: newId(), email: `creator-${newId()}@test.kr`, name: '테스트가맹점', role: 'CREATOR' },
+    data: { id: newId(), email: `merchant-${newId()}@test.kr`, name: '테스트가맹점', role: 'MERCHANT' },
   });
-  const creator = await prisma.creatorProfile.create({
+  const merchant = await prisma.merchantProfile.create({
     data: {
       id: newId(), userId: user.id, code: `MJP-${newId().slice(-4)}`, displayName: '테스트가맹점',
       status: 'APPROVED',
@@ -62,30 +62,30 @@ export async function seedBasics(options: { paymentMode?: 'CONFIRM_LINK' | 'DIRE
   });
 
   const moNumber = '15881001';
-  await prisma.creatorMoNumber.create({
+  await prisma.merchantMoNumber.create({
     data: {
       id: newId(), phoneNumber: moNumber, mode: 'DEDICATED', status: 'ASSIGNED',
-      creatorId: creator.id, providerId: 'mock', assignedAt: new Date(),
+      merchantId: merchant.id, providerId: 'mock', assignedAt: new Date(),
     },
   });
 
   await prisma.settlementAccount.create({
     data: {
-      id: newId(), creatorId: creator.id, bankCode: '004', bankName: 'KB국민은행',
+      id: newId(), merchantId: merchant.id, bankCode: '004', bankName: 'KB국민은행',
       accountEnc: encrypt('11122233344455'), accountTail4: '4455',
       holderNameEnc: encrypt('테스트'), holderMasked: '테*트', verified: true, verifiedAt: new Date(),
     },
   });
 
   // 문자 결제는 금액을 고르는 단계를 거치므로 기본 충전 상품을 함께 만든다.
-  await seedChargeProducts(creator.id);
+  await seedChargeProducts(merchant.id);
 
-  return { creatorId: creator.id, creatorUserId: user.id, moNumber, donorPhone: '01012345678' } as Fixture;
+  return { merchantId: merchant.id, merchantUserId: user.id, moNumber, payerPhone: '01012345678' } as Fixture;
 }
 
 /** 계좌 등록이 완료된 이용자를 만든다. */
-export async function seedRegisteredDonor(phone = '01012345678') {
-  const donor = await prisma.donorProfile.create({
+export async function seedRegisteredPayer(phone = '01012345678') {
+  const payer = await prisma.payerProfile.create({
     data: {
       id: newId(), phoneHash: phoneHash(phone), phoneEnc: encrypt(phone),
       phoneMasked: maskPhone(phone), displayName: '테스트이용자',
@@ -95,12 +95,12 @@ export async function seedRegisteredDonor(phone = '01012345678') {
   });
   await prisma.paymentMethodToken.create({
     data: {
-      id: newId(), donorId: donor.id, provider: 'mock',
+      id: newId(), payerId: payer.id, provider: 'mock',
       billKeyEnc: encrypt('MOCKBILL-TEST-4455'), billKeyHint: maskSecret('MOCKBILL-TEST-4455'),
       bankCode: '004', bankName: 'KB국민은행', accountTail4: '4455',
     },
   });
-  return donor;
+  return payer;
 }
 
 let seq = 0;
@@ -125,12 +125,12 @@ export function moPayload(input: {
 /**
  * 시드 가맹점의 충전 상품. 문자 결제는 금액을 고르는 단계를 거치므로 테스트에도 상품이 필요하다.
  */
-export async function seedChargeProducts(creatorId: string, amounts: number[] = [3000, 10000]) {
+export async function seedChargeProducts(merchantId: string, amounts: number[] = [3000, 10000]) {
   for (const [i, amount] of amounts.entries()) {
     await prisma.chargeProduct.create({
       data: {
         id: newId(),
-        creatorId,
+        merchantId,
         name: `${amount.toLocaleString('ko-KR')} 포인트`,
         amount,
         sortOrder: i,
@@ -144,7 +144,9 @@ export async function seedChargeProducts(creatorId: string, amounts: number[] = 
  * 실제 이용자가 문자 속 링크를 누르는 것과 같은 경로를 테스트에서 재현하기 위한 헬퍼다.
  */
 export function lastSelectAmountToken(): string | null {
-  const mt = readMockOutbox(10).find((m) => m.text.includes('충전 금액을 고르고'));
+  // 본문 문구가 아니라 템플릿 코드로 찾는다.
+  // (가맹점이 안내 문구를 바꿀 수 있게 되면서 본문 매칭은 더 이상 믿을 수 없다)
+  const mt = readMockOutbox(10).find((m) => m.template === 'SELECT_AMOUNT');
   if (!mt) return null;
   const m = mt.text.match(/\/r\/([A-Za-z0-9_-]+)/);
   return m ? m[1] : null;
@@ -154,7 +156,7 @@ export function lastSelectAmountToken(): string | null {
  * 금액 선택까지 마쳐 결제(PIN 인증)까지 진행시킨다.
  * amount 를 주면 직접 입력, 주지 않으면 첫 번째 충전 상품을 고른다.
  */
-export async function selectChargeAmount(creatorId: string, amount?: bigint) {
+export async function selectChargeAmount(merchantId: string, amount?: bigint) {
   const { confirmChargeAmount } = await import('@/server/services/charge-select');
   const token = lastSelectAmountToken();
   if (!token) throw new Error('충전 금액 선택 링크를 찾지 못했습니다.');
@@ -162,7 +164,7 @@ export async function selectChargeAmount(creatorId: string, amount?: bigint) {
   if (amount != null) return confirmChargeAmount({ token, customAmount: amount });
 
   const product = await prisma.chargeProduct.findFirst({
-    where: { creatorId, active: true, archivedAt: null },
+    where: { merchantId, active: true, archivedAt: null },
     orderBy: [{ sortOrder: 'asc' }, { amount: 'asc' }],
   });
   if (!product) throw new Error('충전 상품이 없습니다.');
@@ -175,15 +177,15 @@ export async function selectChargeAmount(creatorId: string, amount?: bigint) {
  * 실제 흐름과 같다: MO 수신 → (PENDING_AMOUNT) 금액 선택 링크 → 이용자가 금액 선택 → PIN 인증 시작.
  * MO 만으로 끝나는 경우(미등록·라우팅 실패·중복)는 그대로 돌려준다.
  */
-export async function inboundAndSelect(payload: Record<string, unknown>, creatorId: string) {
-  const { handleMoInbound } = await import('@/server/services/donation-flow');
+export async function inboundAndSelect(payload: Record<string, unknown>, merchantId: string) {
+  const { handleMoInbound } = await import('@/server/services/charge-flow');
   const { mockMoAdapter } = await import('@/server/adapters/mo');
   const mo = await handleMoInbound(mockMoAdapter.parse(payload));
-  if (mo.status !== 'PENDING_AMOUNT' || !mo.donationId) return mo;
+  if (mo.status !== 'PENDING_AMOUNT' || !mo.chargeId) return mo;
 
-  const sel = await selectChargeAmount(creatorId, testChargeAmount ?? undefined);
-  const after = await prisma.donation.findUnique({
-    where: { id: mo.donationId },
+  const sel = await selectChargeAmount(merchantId, testChargeAmount ?? undefined);
+  const after = await prisma.charge.findUnique({
+    where: { id: mo.chargeId },
     select: { status: true },
   });
   return { ...mo, status: after?.status ?? mo.status, message: sel.message };
@@ -195,17 +197,17 @@ export async function inboundAndSelect(payload: Record<string, unknown>, creator
  * inboundAndSelect 로 금액을 고른 뒤, 이용자가 결제사 화면에서 PIN 을 입력한 것과 같은
  * 콜백을 넣어 승인까지 끝낸다. 결제 결과가 필요한 테스트에서 쓴다.
  */
-export async function inboundAndPay(payload: Record<string, unknown>, creatorId: string) {
-  const res = await inboundAndSelect(payload, creatorId);
-  if (res.status !== 'PENDING_PIN' || !res.donationId) return res;
+export async function inboundAndPay(payload: Record<string, unknown>, merchantId: string) {
+  const res = await inboundAndSelect(payload, merchantId);
+  if (res.status !== 'PENDING_PIN' || !res.chargeId) return res;
 
   const { completePinAuthorization } = await import('@/server/services/pin-authorization');
-  const session = await prisma.paymentPinSession.findUnique({ where: { donationId: res.donationId } });
+  const session = await prisma.paymentPinSession.findUnique({ where: { chargeId: res.chargeId } });
   if (!session) return res;
 
   const done = await completePinAuthorization({ sessionId: session.sessionId });
-  const after = await prisma.donation.findUnique({
-    where: { id: res.donationId },
+  const after = await prisma.charge.findUnique({
+    where: { id: res.chargeId },
     select: { status: true },
   });
   return { ...res, status: after?.status ?? res.status, message: done.message };

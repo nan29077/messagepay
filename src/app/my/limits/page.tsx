@@ -2,7 +2,7 @@ import Link from 'next/link';
 import {Gauge, ChevronLeft } from 'lucide-react';
 import { Card, CardTitle, EmptyState, Notice, DataRow, SectionTitle, StatTile } from '@/components/ui';
 import { LimitsForm } from '@/components/my/limits-form';
-import { requireDonorContext, NO_DONOR_TITLE, NO_DONOR_DESC } from '@/components/my/donor';
+import { requirePayerContext, NO_DONOR_TITLE, NO_DONOR_DESC } from '@/components/my/payer';
 import { prisma } from '@/server/db';
 import { resolvePolicy } from '@/server/services/limits';
 import { formatWon, formatNumber } from '@/lib/money';
@@ -13,34 +13,34 @@ export const dynamic = 'force-dynamic';
 const ALL = 'ALL';
 
 export default async function MyLimitsPage() {
-  const { donorId } = await requireDonorContext('/my/limits');
-  if (!donorId) return <EmptyState title={NO_DONOR_TITLE} description={NO_DONOR_DESC} />;
+  const { payerId } = await requirePayerContext('/my/limits');
+  if (!payerId) return <EmptyState title={NO_DONOR_TITLE} description={NO_DONOR_DESC} />;
 
-  const [donor, policy] = await Promise.all([
-    prisma.donorProfile.findUnique({
-      where: { id: donorId },
+  const [payer, policy] = await Promise.all([
+    prisma.payerProfile.findUnique({
+      where: { id: payerId },
       select: { dailyLimit: true, monthlyLimit: true },
     }),
-    resolvePolicy(null, donorId),
+    resolvePolicy(null, payerId),
   ]);
 
   const [dayCounter, monthCounter] = await Promise.all([
-    prisma.donationCounter.findUnique({
+    prisma.chargeCounter.findUnique({
       where: {
-        donorId_creatorId_periodType_periodKey: {
-          donorId,
-          creatorId: ALL,
+        payerId_merchantId_periodType_periodKey: {
+          payerId,
+          merchantId: ALL,
           periodType: 'DAY',
           periodKey: kstDateKey(),
         },
       },
       select: { amount: true, count: true },
     }),
-    prisma.donationCounter.findUnique({
+    prisma.chargeCounter.findUnique({
       where: {
-        donorId_creatorId_periodType_periodKey: {
-          donorId,
-          creatorId: ALL,
+        payerId_merchantId_periodType_periodKey: {
+          payerId,
+          merchantId: ALL,
           periodType: 'MONTH',
           periodKey: kstMonthKey(),
         },
@@ -49,8 +49,8 @@ export default async function MyLimitsPage() {
     }),
   ]);
 
-  const effectiveDaily = donor?.dailyLimit ?? policy.donorDailyLimit;
-  const effectiveMonthly = donor?.monthlyLimit ?? policy.donorMonthlyLimit;
+  const effectiveDaily = payer?.dailyLimit ?? policy.payerDailyLimit;
+  const effectiveMonthly = payer?.monthlyLimit ?? policy.payerMonthlyLimit;
 
   return (
     <div className="space-y-5">
@@ -79,25 +79,25 @@ export default async function MyLimitsPage() {
       </div>
 
       <Notice tone="brand" title="한도는 낮추는 방향으로만 설정할 수 있습니다">
-        문자페이 기본 정책보다 높은 한도는 설정할 수 없습니다. 과도한 결제가 걱정된다면 한도를 더 낮게 조정해 주세요.
+        메시지페이 기본 정책보다 높은 한도는 설정할 수 없습니다. 과도한 결제가 걱정된다면 한도를 더 낮게 조정해 주세요.
       </Notice>
 
       <section>
         <SectionTitle title="내 한도 설정" description="설정한 한도를 넘는 문자는 결제로 접수되지 않습니다." />
         <Card>
           <LimitsForm
-            defaultDaily={donor?.dailyLimit != null ? donor.dailyLimit.toString() : ''}
-            defaultMonthly={donor?.monthlyLimit != null ? donor.monthlyLimit.toString() : ''}
-            maxDaily={policy.donorDailyLimit.toString()}
-            maxMonthly={policy.donorMonthlyLimit.toString()}
-            maxDailyText={formatWon(policy.donorDailyLimit)}
-            maxMonthlyText={formatWon(policy.donorMonthlyLimit)}
+            defaultDaily={payer?.dailyLimit != null ? payer.dailyLimit.toString() : ''}
+            defaultMonthly={payer?.monthlyLimit != null ? payer.monthlyLimit.toString() : ''}
+            maxDaily={policy.payerDailyLimit.toString()}
+            maxMonthly={policy.payerMonthlyLimit.toString()}
+            maxDailyText={formatWon(policy.payerDailyLimit)}
+            maxMonthlyText={formatWon(policy.payerMonthlyLimit)}
           />
         </Card>
       </section>
 
       <section>
-        <SectionTitle title="기본 정책" description="아래 값은 문자페이가 모든 이용자에게 공통 적용하는 상한입니다." />
+        <SectionTitle title="기본 정책" description="아래 값은 메시지페이가 모든 이용자에게 공통 적용하는 상한입니다." />
         <Card>
           <div className="mb-2 flex items-center gap-2">
             <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-50 text-brand-700">
@@ -106,9 +106,9 @@ export default async function MyLimitsPage() {
             <CardTitle>전역 한도 정책</CardTitle>
           </div>
           <DataRow label="1건 허용 범위" value={`${formatWon(policy.minAmount)} ~ ${formatWon(policy.maxAmount)}`} />
-          <DataRow label="1일 최대" value={formatWon(policy.donorDailyLimit)} />
-          <DataRow label="1개월 최대" value={formatWon(policy.donorMonthlyLimit)} />
-          <DataRow label="가맹점 1명당 1일 최대" value={formatWon(policy.perCreatorDailyLimit)} />
+          <DataRow label="1일 최대" value={formatWon(policy.payerDailyLimit)} />
+          <DataRow label="1개월 최대" value={formatWon(policy.payerMonthlyLimit)} />
+          <DataRow label="가맹점 1명당 1일 최대" value={formatWon(policy.perMerchantDailyLimit)} />
           <DataRow
             label="연속 결제 제한"
             value={`${formatNumber(policy.velocityWindowSec)}초 내 ${formatNumber(policy.velocityMaxCount)}건`}
@@ -117,7 +117,7 @@ export default async function MyLimitsPage() {
             label="연속 결제 시 대기"
             value={`${formatNumber(policy.cooldownAfterCount)}건 이후 ${formatNumber(policy.cooldownSec)}초`}
           />
-          <DataRow label="신규 이용자 첫날 한도" value={formatWon(policy.newDonorFirstDayLimit)} />
+          <DataRow label="신규 이용자 첫날 한도" value={formatWon(policy.newPayerFirstDayLimit)} />
           <DataRow label="결제 실패 누적" value={`${formatNumber(policy.failureLockThreshold)}회 시 자동 잠금`} />
         </Card>
       </section>

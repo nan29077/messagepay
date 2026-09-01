@@ -1,15 +1,27 @@
 import { prisma } from '@/server/db';
 import { resolveSecureLink, consumeSecureLink } from './secure-link';
 import { checkLimits, resolvePolicy } from './limits';
-import { startPinAuthorization, setStatus } from './donation-flow';
+import { startPinAuthorization, setStatus } from './charge-flow';
+import {
+  buildOptionText, giveText, loadShippingPolicy, parseOptions, quoteShipping,
+  type ProductOption, type ShippingPolicyView,
+} from './products';
+import { encrypt, maskName, maskPhone, normalizePhone } from '@/lib/crypto';
 import { newId } from '@/lib/id';
+import type { DigitalProductType, ProductKind } from '@/generated/prisma/enums';
 
 /**
- * 충전 금액 선택.
+ * 상품·금액 선택.
  *
  * MO 문자에는 금액이 없다. 문자를 받으면 금액 0 · PENDING_AMOUNT 로 결제 건을 만들고
- * SELECT_AMOUNT 링크를 보낸다. 이용자가 이 화면에서 충전 상품을 고르면 그때 금액이 정해지고,
+ * SELECT_AMOUNT 링크를 보낸다. 이용자가 이 화면에서 상품을 고르면 그때 금액이 정해지고,
  * 한도를 확인한 뒤 곧바로 결제사 PIN 인증으로 이어진다(문자를 한 번 더 보내지 않는다).
+ *
+ * 상품은 두 종류다.
+ *  - 비실물 : 금액만 고르면 끝난다.
+ *  - 실물   : 수량·옵션·배송지를 함께 받고, 배송비를 더해 결제 금액을 만든다.
+ *             재고는 여기서 줄이지 않는다. **결제가 승인된 순간에만** 줄인다(charge-flow).
+ *             선택 단계에서 줄이면 결제를 포기한 사람들 때문에 재고가 잠겨 팔지 못한다.
  *
  * 이중 결제 방어
  *  - 링크는 1회용이다. 금액을 확정하는 순간 consumeSecureLink 로 선점한다.
@@ -19,14 +31,34 @@ import { newId } from '@/lib/id';
 
 export interface ChargeProductOption {
   id: string;
+  kind: ProductKind;
+  digitalType: DigitalProductType | null;
   name: string;
   amount: bigint;
+  description: string | null;
+  imageUrl: string | null;
+  /** 지급 안내 문구 (비실물만) */
+  give: string | null;
+  // ── 실물 전용 ──
+  /** 남은 재고. null 이면 무제한 */
+  stock: number | null;
+  soldOut: boolean;
+  maxPerOrder: number | null;
+  options: ProductOption[];
+  /** 1개 주문 시 배송비 (도서산간 제외) */
+  shippingFee: bigint;
+  /** 배송비가 무료가 되는 이유. 없으면 null */
+  freeReason: string | null;
+  /** 조건부 무료까지 남은 금액 */
+  freeShortfall: bigint | null;
+  /** 이 상품을 1개라도 살 수 있는지 (한도 안에 들어오는지) */
+  payable: boolean;
 }
 
 export interface SelectAmountContext {
   linkId: string;
-  donationId: string;
-  creatorName: string;
+  chargeId: string;
+  merchantName: string;
   /** 이용자가 보낸 문자 내용(필터링 완료본). 참고용으로만 보여준다. */
   message: string;
   products: ChargeProductOption[];
@@ -34,6 +66,7 @@ export interface SelectAmountContext {
   minAmount: bigint;
   maxAmount: bigint;
   expiresAt: Date;
+  shipping: ShippingPolicyView;
 }
 
 export async function loadSelectAmountContext(
@@ -51,46 +84,80 @@ export async function loadSelectAmountContext(
   }
 
   const link = res.link!;
-  if (link.purpose !== 'SELECT_AMOUNT' || !link.donationId) {
+  if (link.purpose !== 'SELECT_AMOUNT' || !link.chargeId) {
     return { ok: false, reason: '용도가 다른 링크입니다.' };
   }
 
-  const donation = await prisma.donation.findUnique({
-    where: { id: link.donationId },
-    include: { creator: true },
+  const charge = await prisma.charge.findUnique({
+    where: { id: link.chargeId },
+    include: { merchant: true },
   });
-  if (!donation) return { ok: false, reason: '결제 거래를 찾을 수 없습니다.' };
-  if (donation.status !== 'PENDING_AMOUNT') {
+  if (!charge) return { ok: false, reason: '결제 거래를 찾을 수 없습니다.' };
+  if (charge.status !== 'PENDING_AMOUNT') {
     return { ok: false, reason: '이미 처리된 결제입니다.' };
   }
 
-  const [products, policy] = await Promise.all([
+  const [rows, policy, shipping] = await Promise.all([
     prisma.chargeProduct.findMany({
-      where: { creatorId: donation.creatorId, active: true, archivedAt: null },
-      orderBy: [{ sortOrder: 'asc' }, { amount: 'asc' }],
-      select: { id: true, name: true, amount: true },
+      where: { merchantId: charge.merchantId, active: true, archivedAt: null },
+      orderBy: [{ kind: 'asc' }, { sortOrder: 'asc' }, { amount: 'asc' }],
     }),
-    resolvePolicy(donation.creatorId, donation.donorId),
+    resolvePolicy(charge.merchantId, charge.payerId),
+    loadShippingPolicy(charge.merchantId),
   ]);
 
   // 유효 범위 = 가맹점 허용 범위 ∩ 한도 정책 범위.
   const minAmount =
-    donation.creator.minAmount > policy.minAmount ? donation.creator.minAmount : policy.minAmount;
+    charge.merchant.minAmount > policy.minAmount ? charge.merchant.minAmount : policy.minAmount;
   const maxAmount =
-    donation.creator.maxAmount < policy.maxAmount ? donation.creator.maxAmount : policy.maxAmount;
+    charge.merchant.maxAmount < policy.maxAmount ? charge.merchant.maxAmount : policy.maxAmount;
+
+  const products: ChargeProductOption[] = [];
+  for (const p of rows) {
+    const quote = quoteShipping(
+      { kind: p.kind, amount: p.amount, shippingFee: p.shippingFee, freeShipOver: p.freeShipOver, freeShipping: p.freeShipping },
+      1,
+      shipping,
+    );
+    // 1개도 한도 안에 들어오지 않는 상품은 아예 고를 수 없다.
+    const payable = quote.total >= minAmount && quote.total <= maxAmount;
+    // 비실물은 한도 밖이면 목록에서 뺀다(과거 동작 유지).
+    // 실물은 목록에 남기되 고를 수 없게 표시한다 — 사라지면 가맹점이 원인을 못 찾는다.
+    if (p.kind === 'DIGITAL' && !payable) continue;
+
+    products.push({
+      id: p.id,
+      kind: p.kind,
+      digitalType: p.digitalType,
+      name: p.name,
+      amount: p.amount,
+      description: p.description,
+      imageUrl: p.imageUrl,
+      give: giveText(p),
+      stock: p.stock,
+      soldOut: p.kind === 'PHYSICAL' && p.stock !== null && p.stock <= 0,
+      maxPerOrder: p.maxPerOrder,
+      options: parseOptions(p.options),
+      shippingFee: quote.fee,
+      freeReason: quote.freeReason,
+      freeShortfall: quote.freeShortfall,
+      payable,
+    });
+  }
 
   return {
     ok: true,
     ctx: {
       linkId: link.id,
-      donationId: donation.id,
-      creatorName: donation.creator.displayName,
-      message: donation.message,
-      products: products.filter((p) => p.amount >= minAmount && p.amount <= maxAmount),
-      allowCustomAmount: donation.creator.allowCustomAmount,
+      chargeId: charge.id,
+      merchantName: charge.merchant.displayName,
+      message: charge.message,
+      products,
+      allowCustomAmount: charge.merchant.allowCustomAmount,
       minAmount,
       maxAmount,
       expiresAt: link.expiresAt,
+      shipping,
     },
   };
 }
@@ -105,12 +172,39 @@ export interface ConfirmAmountResult {
   mock?: boolean;
 }
 
+/** 실물 상품 주문에 필요한 배송지 */
+export interface ShippingAddressInput {
+  receiver: string;
+  phone: string;
+  zipCode: string;
+  address1: string;
+  address2?: string;
+  memo?: string;
+  /** 도서산간 여부. 추가 배송비가 붙는다. */
+  remote?: boolean;
+}
+
+/** 우편번호로 도서산간 여부를 판단한다(제주 63xxx, 울릉 40240 등 대표 구간). */
+export function isRemoteZip(zip: string): boolean {
+  const z = zip.replace(/[^\d]/g, '');
+  if (z.length !== 5) return false;
+  const n = Number(z);
+  // 제주 63000~63644, 울릉 40200~40240, 백령 23004 등 통상적으로 도서산간으로 보는 구간.
+  return (n >= 63000 && n <= 63644) || (n >= 40200 && n <= 40240) || n === 23004;
+}
+
 export async function confirmChargeAmount(input: {
   token: string;
   /** 상품을 고른 경우 */
   productId?: string | null;
   /** 직접 입력한 경우 (원) */
   customAmount?: bigint | null;
+  /** 실물 상품 주문 수량 */
+  quantity?: number | null;
+  /** 실물 상품 옵션 선택값 { '사이즈': 'L' } */
+  optionValues?: Record<string, string> | null;
+  /** 실물 상품 배송지 */
+  address?: ShippingAddressInput | null;
   ip?: string;
   userAgent?: string;
 }): Promise<ConfirmAmountResult> {
@@ -118,43 +212,103 @@ export async function confirmChargeAmount(input: {
   if (!loaded.ok) return { ok: false, message: loaded.reason };
   const ctx = loaded.ctx;
 
-  // 금액 결정
+  // ── 상품·수량·옵션·배송지 확정 ──────────────────────────────────
   let amount: bigint | null = null;
+  let shippingFee = 0n;
+  let quantity = 1;
+  let optionText: string | null = null;
+  let productId: string | null = null;
+  let remote = false;
+  let selected: ChargeProductOption | null = null;
+
   if (input.productId) {
     const product = ctx.products.find((p) => p.id === input.productId);
-    if (!product) return { ok: false, message: '선택한 충전 상품을 찾을 수 없습니다.' };
-    amount = product.amount;
+    if (!product) return { ok: false, message: '선택한 상품을 찾을 수 없습니다.' };
+    if (!product.payable) return { ok: false, message: '이 상품은 결제 한도를 넘어 지금 구매할 수 없습니다.' };
+    selected = product;
+    productId = product.id;
+
+    if (product.kind === 'PHYSICAL') {
+      if (product.soldOut) return { ok: false, message: '품절된 상품입니다.' };
+
+      quantity = Math.trunc(input.quantity ?? 1);
+      if (!Number.isFinite(quantity) || quantity < 1) return { ok: false, message: '수량을 확인해 주세요.' };
+      if (product.maxPerOrder !== null && quantity > product.maxPerOrder) {
+        return { ok: false, message: `이 상품은 한 번에 최대 ${product.maxPerOrder}개까지 주문할 수 있습니다.` };
+      }
+      if (product.stock !== null && quantity > product.stock) {
+        return { ok: false, message: `재고가 ${product.stock}개 남았습니다. 수량을 줄여 주세요.` };
+      }
+
+      const opt = buildOptionText(
+        // 화면에 준 옵션 정의를 그대로 다시 쓴다(폼 조작 방지).
+        product.options as unknown,
+        input.optionValues ?? {},
+      );
+      if (!opt.ok) return { ok: false, message: opt.message };
+      optionText = opt.text;
+
+      const addr = input.address;
+      if (!addr) return { ok: false, message: '배송지를 입력해 주세요.' };
+      const receiver = addr.receiver.trim();
+      const phone = normalizePhone(addr.phone ?? '');
+      const zip = (addr.zipCode ?? '').replace(/[^\d]/g, '');
+      const addr1 = addr.address1.trim();
+      if (receiver.length < 2 || receiver.length > 30) return { ok: false, message: '받는 분 이름을 확인해 주세요.' };
+      if (!/^01[016789]\d{7,8}$/.test(phone)) return { ok: false, message: '받는 분 연락처를 확인해 주세요.' };
+      if (zip.length !== 5) return { ok: false, message: '우편번호 5자리를 입력해 주세요.' };
+      if (addr1.length < 5 || addr1.length > 120) return { ok: false, message: '주소를 확인해 주세요.' };
+
+      remote = addr.remote ?? isRemoteZip(zip);
+
+      // 배송비는 화면과 서버가 같은 함수로 계산해야 금액 분쟁이 생기지 않는다.
+      const row = await prisma.chargeProduct.findFirst({
+        where: { id: product.id, merchantId: (await currentMerchantId(ctx.chargeId)) ?? '', active: true, archivedAt: null },
+        select: { kind: true, amount: true, shippingFee: true, freeShipOver: true, freeShipping: true },
+      });
+      if (!row) return { ok: false, message: '선택한 상품을 찾을 수 없습니다.' };
+
+      const quote = quoteShipping(row, quantity, ctx.shipping, remote);
+      amount = quote.total;
+      shippingFee = quote.fee;
+    } else {
+      amount = product.amount;
+    }
   } else if (input.customAmount != null) {
     if (!ctx.allowCustomAmount) {
       return { ok: false, message: '이 가맹점은 직접 입력을 받지 않습니다.' };
     }
     amount = input.customAmount;
   }
-  if (amount === null) return { ok: false, message: '충전 금액을 선택해 주세요.' };
+
+  if (amount === null) return { ok: false, message: '상품 또는 충전 금액을 선택해 주세요.' };
   if (amount < ctx.minAmount || amount > ctx.maxAmount) {
     return {
       ok: false,
-      message: `충전 금액은 ${ctx.minAmount.toString()}원 ~ ${ctx.maxAmount.toString()}원 사이여야 합니다.`,
+      message:
+        selected?.kind === 'PHYSICAL'
+          ? `배송비를 포함한 결제 금액이 ${ctx.minAmount.toString()}원 ~ ${ctx.maxAmount.toString()}원 범위를 벗어났습니다. 수량을 줄여 주세요.`
+          : `충전 금액은 ${ctx.minAmount.toString()}원 ~ ${ctx.maxAmount.toString()}원 사이여야 합니다.`,
     };
   }
 
-  const donation = await prisma.donation.findUniqueOrThrow({
-    where: { id: ctx.donationId },
-    select: { id: true, creatorId: true, donorId: true },
+  const charge = await prisma.charge.findUniqueOrThrow({
+    where: { id: ctx.chargeId },
+    select: { id: true, merchantId: true, payerId: true },
   });
-  if (!donation.donorId) return { ok: false, message: '이용자 정보를 찾을 수 없습니다.' };
+  if (!charge.payerId) return { ok: false, message: '이용자 정보를 찾을 수 없습니다.' };
 
-  const donor = await prisma.donorProfile.findUnique({ where: { id: donation.donorId } });
-  if (!donor) return { ok: false, message: '이용자 정보를 찾을 수 없습니다.' };
+  const payer = await prisma.payerProfile.findUnique({ where: { id: charge.payerId } });
+  if (!payer) return { ok: false, message: '이용자 정보를 찾을 수 없습니다.' };
 
-  const blocked = await prisma.blockedDonor.findUnique({
-    where: { creatorId_donorId: { creatorId: donation.creatorId, donorId: donor.id } },
+  const blocked = await prisma.blockedPayer.findUnique({
+    where: { merchantId_payerId: { merchantId: charge.merchantId, payerId: payer.id } },
   });
   const limit = await checkLimits({
-    donor,
-    creatorId: donation.creatorId,
+    payer,
+    merchantId: charge.merchantId,
     amount,
-    blockedByCreator: Boolean(blocked),
+    blockedByMerchant: Boolean(blocked),
   });
   if (!limit.ok) {
     // 금액 범위 오류는 입력 실수라 이상거래로 기록하지 않는다.
@@ -162,15 +316,15 @@ export async function confirmChargeAmount(input: {
       await prisma.riskDetection.create({
         data: {
           id: newId(),
-          donorId: donor.id,
-          creatorId: donation.creatorId,
-          donationId: donation.id,
+          payerId: payer.id,
+          merchantId: charge.merchantId,
+          chargeId: charge.id,
           type: limit.code === 'VELOCITY' || limit.code === 'COOLDOWN' ? 'VELOCITY' : 'DAILY_LIMIT',
           level: 'MEDIUM',
           detail: { code: limit.code, message: limit.message, channel: 'SELECT' } as object,
         },
       });
-      await setStatus(donation.id, 'LIMIT_BLOCKED', `${limit.code}: ${limit.message}`);
+      await setStatus(charge.id, 'LIMIT_BLOCKED', `${limit.code}: ${limit.message}`);
       // 한도로 막힌 건은 링크를 태워 같은 링크로 다시 시도하지 못하게 한다.
       await consumeSecureLink(ctx.linkId, input.ip, input.userAgent);
     }
@@ -182,25 +336,61 @@ export async function confirmChargeAmount(input: {
   if (!consumed) return { ok: false, message: '이미 처리된 요청입니다.' };
 
   // 금액 확정. PENDING_AMOUNT 일 때만 바뀌므로 동시 요청이 두 번 확정하지 못한다.
-  const claimed = await prisma.donation.updateMany({
-    where: { id: donation.id, status: 'PENDING_AMOUNT' },
-    data: { amount, status: 'RECEIVED', statusReason: null },
+  const claimed = await prisma.charge.updateMany({
+    where: { id: charge.id, status: 'PENDING_AMOUNT' },
+    data: {
+      amount,
+      status: 'RECEIVED',
+      statusReason: null,
+      productId,
+      quantity,
+      optionText,
+      shippingFee,
+    },
   });
   if (claimed.count === 0) return { ok: false, message: '이미 처리된 결제입니다.' };
 
-  await prisma.donationStatusLog.create({
+  // 배송지는 결제 건과 1:1 로 붙인다. 원문은 암호화하고 화면에는 마스킹만 남긴다.
+  if (selected?.kind === 'PHYSICAL' && input.address) {
+    const addr = input.address;
+    const phone = normalizePhone(addr.phone);
+    const full = `${addr.address1.trim()}${addr.address2?.trim() ? ` ${addr.address2.trim()}` : ''}`;
+    await prisma.chargeShipment.upsert({
+      where: { chargeId: charge.id },
+      create: {
+        id: newId(),
+        chargeId: charge.id,
+        merchantId: charge.merchantId,
+        receiverEnc: encrypt(addr.receiver.trim()),
+        receiverMasked: maskName(addr.receiver.trim()),
+        phoneEnc: encrypt(phone),
+        phoneMasked: maskPhone(phone),
+        zipCode: addr.zipCode.replace(/[^\d]/g, ''),
+        addressEnc: encrypt(full),
+        addressMasked: maskAddress(full),
+        memo: addr.memo?.slice(0, 100) || null,
+        remote,
+      },
+      update: {},
+    });
+  }
+
+  await prisma.chargeStatusLog.create({
     data: {
       id: newId(),
-      donationId: donation.id,
+      chargeId: charge.id,
       fromStatus: 'PENDING_AMOUNT',
       toStatus: 'RECEIVED',
-      reason: `충전 금액 확정 ${amount.toString()}원`,
-      actor: 'donor',
+      reason:
+        selected?.kind === 'PHYSICAL'
+          ? `${selected.name} ${quantity}개 주문 확정 ${amount.toString()}원 (배송비 ${shippingFee.toString()}원)`
+          : `결제 금액 확정 ${amount.toString()}원`,
+      actor: 'payer',
     },
   });
 
   // 문자를 한 번 더 보내지 않고, 이 화면에서 결제사 PIN 입력으로 그대로 넘어간다.
-  const pin = await startPinAuthorization(donation.id, { notify: false });
+  const pin = await startPinAuthorization(charge.id, { notify: false });
   if (!pin.ok || !pin.pinUrl) {
     return { ok: false, message: pin.message };
   }
@@ -212,4 +402,20 @@ export async function confirmChargeAmount(input: {
     expiresAt: pin.expiresAt,
     mock: pin.mock,
   };
+}
+
+/** 결제 건의 가맹점 ID. 상품이 정말 그 가맹점 것인지 다시 확인할 때 쓴다. */
+async function currentMerchantId(chargeId: string): Promise<string | null> {
+  const row = await prisma.charge.findUnique({ where: { id: chargeId }, select: { merchantId: true } });
+  return row?.merchantId ?? null;
+}
+
+/**
+ * 주소 마스킹. 목록 화면에는 이 값만 쓴다.
+ * 시/도 + 시/군/구까지만 남기고 나머지는 가린다.
+ */
+export function maskAddress(full: string): string {
+  const parts = full.trim().split(/\s+/);
+  if (parts.length <= 2) return `${parts[0] ?? ''} ***`.trim();
+  return `${parts[0]} ${parts[1]} ***`;
 }

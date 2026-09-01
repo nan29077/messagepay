@@ -4,21 +4,23 @@ import { PublicShell } from '@/components/layout/public-shell';
 import { PageHeader } from '@/components/public/page-header';
 import { Card, CardTitle, EmptyState, LinkButton, Badge } from '@/components/ui';
 import { prisma } from '@/server/db';
+import { isLegacyDonationContent } from '@/lib/public-content';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '자주 묻는 질문 | 문자페이',
+  title: '자주 묻는 질문 | 메시지페이',
   description: '문자결제 이용, 계좌 등록, 한도, 환불, 충전 반영에 대해 자주 묻는 질문을 모았습니다.',
 };
 
 const UNCATEGORIZED = '기타';
 
 export default async function FaqPage() {
-  const posts = await prisma.contentPost.findMany({
+  const allPosts = await prisma.contentPost.findMany({
     where: { type: 'FAQ', published: true },
     orderBy: { sortOrder: 'asc' },
   });
+  const posts = allPosts.filter((post) => !isLegacyDonationContent(post));
 
   // category 별 그룹핑 (등장 순서 유지)
   const groups: Array<{ category: string; items: typeof posts }> = [];

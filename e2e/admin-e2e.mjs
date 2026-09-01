@@ -22,8 +22,8 @@ const TITLES = Object.fromEntries([
   ['/admin', '운영 대시보드'],
   ['/admin/system', '시스템 상태'],
   ['/admin/users', '회원 관리'],
-  ['/admin/donors', '이용자 관리'],
-  ['/admin/creators', '가맹점 심사'],
+  ['/admin/payers', '이용자 관리'],
+  ['/admin/merchants', '가맹점 심사'],
   ['/admin/codes', '가맹점 코드 관리'],
   ['/admin/mo-numbers', 'MO 번호 재고·배정'],
   ['/admin/mo-messages', '수신 문자 관리'],
@@ -55,10 +55,10 @@ const MENU_GROUPS = ['운영현황', '회원·가맹점', '거래·결제', '방
 
 const POLICY_FIELDS = [
   'defaultAmount', 'minAmount', 'maxAmount',
-  'donorDailyLimit', 'donorMonthlyLimit', 'perCreatorDailyLimit',
-  'donorDailyMaxCount', 'velocityWindowSec', 'velocityMaxCount',
+  'payerDailyLimit', 'payerMonthlyLimit', 'perMerchantDailyLimit',
+  'payerDailyMaxCount', 'velocityWindowSec', 'velocityMaxCount',
   'cooldownAfterCount', 'cooldownSec', 'failureLockThreshold',
-  'newDonorFirstDayLimit', 'manualReviewAmount', 'ttsMinAmount',
+  'newPayerFirstDayLimit', 'manualReviewAmount', 'ttsMinAmount',
 ];
 
 try {
@@ -105,19 +105,19 @@ try {
   r.ok('적용 범위 select', (await p.locator('select[name=scope]').count()) > 0);
   {
     const opts = await p.locator('select[name=scope] option').allInnerTexts();
-    const miss = missingOf(opts.join('|'), ['전역 (GLOBAL)', '가맹점 (CREATOR)', '이용자 (DONOR)']);
+    const miss = missingOf(opts.join('|'), ['전역 (GLOBAL)', '가맹점 (MERCHANT)', '이용자 (PAYER)']);
     r.ok('적용 범위 3종', miss.length === 0, miss.join(','));
   }
   r.ok('적용 시작일 입력칸', (await p.locator('input[name=effectiveFrom]').count()) > 0);
   r.ok('정책 등록 버튼', (await p.locator('button:has-text("정책 등록")').count()) > 0);
 
   // 가맹점 범위 정책을 실제로 등록해 본다
-  await p.selectOption('select[name=scope]', 'CREATOR');
-  const creatorOpts = await p.locator('select[name=creatorId] option').count();
-  r.ok('가맹점 선택 옵션이 채워진다', creatorOpts > 1, `${creatorOpts}개`);
-  if (creatorOpts > 1) {
-    await p.selectOption('select[name=creatorId]', { index: 1 });
-    await p.fill('input[name=donorDailyMaxCount]', '7');
+  await p.selectOption('select[name=scope]', 'MERCHANT');
+  const merchantOpts = await p.locator('select[name=merchantId] option').count();
+  r.ok('가맹점 선택 옵션이 채워진다', merchantOpts > 1, `${merchantOpts}개`);
+  if (merchantOpts > 1) {
+    await p.selectOption('select[name=merchantId]', { index: 1 });
+    await p.fill('input[name=payerDailyMaxCount]', '7');
     await p.locator('button:has-text("정책 등록")').click();
     await p.waitForTimeout(3500);
     const after = await bodyText(p);
@@ -126,13 +126,13 @@ try {
   }
 
   // ══════════════ 4. 가맹점 심사 화면 ══════════════
-  await gotoReady(p, `${BASE}/admin/creators`);
+  await gotoReady(p, `${BASE}/admin/merchants`);
   const cr = await bodyText(p);
   {
     const miss = missingOf(cr, ['가맹점', '코드', '담당자', '1건 결제 금액', 'MO 번호', '상태', '심사 처리']);
     r.ok('가맹점 표 헤더', miss.length === 0, miss.join(','));
   }
-  r.ok('시드 가맹점이 보인다', cr.includes(SEED.creator1Name) && cr.includes(SEED.creator1Code));
+  r.ok('시드 가맹점이 보인다', cr.includes(SEED.merchant1Name) && cr.includes(SEED.merchant1Code));
   r.ok('공통 허용 범위 일괄 적용 카드', cr.includes('1건 결제 금액 허용 범위 공통 적용'));
   r.ok('검색 입력칸', (await p.locator('input[name=q]').count()) > 0);
 

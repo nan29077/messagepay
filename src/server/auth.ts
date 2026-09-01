@@ -5,7 +5,7 @@ import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
 import { generateToken, tokenHash } from '@/lib/crypto';
 import { addDays } from '@/lib/datetime';
-import type { UserRole, CreatorStatus } from '@/generated/prisma/enums';
+import type { UserRole, MerchantStatus } from '@/generated/prisma/enums';
 import { clientIpFrom } from '@/server/rate-limit';
 
 /**
@@ -23,12 +23,12 @@ export interface SessionUser {
   name: string | null;
   role: UserRole;
   avatarIndex: number;
-  creatorId?: string;
+  merchantId?: string;
   /** 가맹점 캐릭터를 DB 재생성 후에도 동일하게 유지하는 고정 코드 */
-  creatorCode?: string;
-  creatorAvatarUrl?: string | null;
+  merchantCode?: string;
+  merchantAvatarUrl?: string | null;
   /** 가맹점 프로필 상태. APPROVED 가 아니면 스튜디오 기능을 쓸 수 없다. */
-  creatorStatus?: CreatorStatus;
+  merchantStatus?: MerchantStatus;
   adminPermission?: string;
 }
 
@@ -88,7 +88,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   const session = await prisma.userSession.findUnique({
     where: { tokenHash: tokenHash(token) },
     include: {
-      user: { include: { creatorProfile: true, adminProfile: true } },
+      user: { include: { merchantProfile: true, adminProfile: true } },
     },
   });
   if (!session || session.revokedAt || session.expiresAt < new Date()) return null;
@@ -101,10 +101,10 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     name: u.name,
     role: u.role,
     avatarIndex: u.avatarIndex,
-    creatorId: u.creatorProfile?.id,
-    creatorCode: u.creatorProfile?.code,
-    creatorAvatarUrl: u.creatorProfile?.avatarUrl,
-    creatorStatus: u.creatorProfile?.status,
+    merchantId: u.merchantProfile?.id,
+    merchantCode: u.merchantProfile?.code,
+    merchantAvatarUrl: u.merchantProfile?.avatarUrl,
+    merchantStatus: u.merchantProfile?.status,
     adminPermission: u.adminProfile?.permission,
   };
 }
@@ -128,11 +128,11 @@ export async function requireRole(role: UserRole): Promise<SessionUser> {
  * 스튜디오에 접근되면 미승인 채널이 결제를 받거나, 정지된 채널이 정산을 신청할 수 있다.
  * 정지 상태는 세션 자체를 무효화해 모든 탭에서 즉시 로그아웃시킨다.
  */
-export async function requireCreator(): Promise<SessionUser & { creatorId: string }> {
+export async function requireMerchant(): Promise<SessionUser & { merchantId: string }> {
   const user = await requireUser();
-  if (!user.creatorId) throw new Error('가맹점 권한이 필요합니다.');
+  if (!user.merchantId) throw new Error('가맹점 권한이 필요합니다.');
 
-  const status = user.creatorStatus;
+  const status = user.merchantStatus;
   if (status !== 'APPROVED') {
     if (status === 'SUSPENDED') {
       await destroySession().catch(() => undefined);
@@ -142,7 +142,7 @@ export async function requireCreator(): Promise<SessionUser & { creatorId: strin
     throw new Error('채널 승인 후 이용할 수 있습니다. 심사가 완료되면 알려드립니다.');
   }
 
-  return user as SessionUser & { creatorId: string };
+  return user as SessionUser & { merchantId: string };
 }
 
 export async function requireAdmin(): Promise<SessionUser> {

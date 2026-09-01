@@ -15,7 +15,7 @@ const initial: PhoneLinkState = { ok: false };
 /**
  * 휴대폰 번호 인증·연결 폼.
  * 1단계: 번호 입력 → 인증번호 발송 (MT mock 어댑터)
- * 2단계: 인증번호 입력 → DonorProfile 연결
+ * 2단계: 인증번호 입력 → PayerProfile 연결
  */
 export function PhoneLinkForm({ linkedPhoneMasked }: { linkedPhoneMasked: string | null }) {
   const [sendState, sendAction, sending] = React.useActionState(requestPhoneVerification, initial);

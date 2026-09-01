@@ -3,8 +3,8 @@
 import * as React from 'react';
 import { CircleCheck, CircleX, Clock, ShieldCheck } from 'lucide-react';
 import { Button, Card, DataRow, Field, Input, Notice } from '@/components/ui';
-import { confirmDonationAction, updateDonorNicknameAction, type ConfirmActionResult } from '@/app/actions/confirm';
-import { checkDonorName, DONOR_NAME_MAX, isDefaultDonorName } from '@/lib/donor-name';
+import { confirmChargeAction, updatePayerNicknameAction, type ConfirmActionResult } from '@/app/actions/confirm';
+import { checkPayerName, PAYER_NAME_MAX, isDefaultPayerName } from '@/lib/payer-name';
 import { SNS_PLATFORMS, type SnsPlatform, SnsPlatformSelector } from '@/components/shared/sns-platform-selector';
 
 /**
@@ -16,26 +16,26 @@ import { SNS_PLATFORMS, type SnsPlatform, SnsPlatformSelector } from '@/componen
 
 export function ConfirmPanel({
   token,
-  creatorName,
+  merchantName,
   amountText,
   buttonText,
   message,
   expiresAtIso,
-  donorId,
-  donorNickname,
-  donorSnsPlatform,
+  payerId,
+  payerNickname,
+  payerSnsPlatform,
 }: {
   token: string;
-  creatorName: string;
+  merchantName: string;
   amountText: string;
   buttonText: string;
   message: string;
   expiresAtIso: string;
-  donorId?: string;
+  payerId?: string;
   /** 기존에 저장된 닉네임 (없으면 undefined) */
-  donorNickname?: string;
+  payerNickname?: string;
   /** 기존에 저장된 SNS 플랫폼 (없으면 undefined) */
-  donorSnsPlatform?: string;
+  payerSnsPlatform?: string;
 }) {
   const expiresAt = React.useMemo(() => new Date(expiresAtIso).getTime(), [expiresAtIso]);
   const [remainMs, setRemainMs] = React.useState(() => Math.max(0, expiresAt - Date.now()));
@@ -44,10 +44,10 @@ export function ConfirmPanel({
   const submitted = React.useRef(false);
 
   // 닉네임 필드: 기존 값이 기본값(이용자XXXX)이면 비워두고, 직접 입력한 값이면 표시
-  const hasRealNickname = donorNickname && !isDefaultDonorName(donorNickname);
-  const [nickname, setNickname] = React.useState(hasRealNickname ? donorNickname : '');
+  const hasRealNickname = payerNickname && !isDefaultPayerName(payerNickname);
+  const [nickname, setNickname] = React.useState(hasRealNickname ? payerNickname : '');
   const [snsPlatform, setSnsPlatform] = React.useState<SnsPlatform | ''>(
-    (donorSnsPlatform as SnsPlatform) || '',
+    (payerSnsPlatform as SnsPlatform) || '',
   );
   const [nicknameError, setNicknameError] = React.useState<string | null>(null);
   const [nicknameSaved, setNicknameSaved] = React.useState(false);
@@ -61,7 +61,7 @@ export function ConfirmPanel({
   const mm = String(Math.floor(remainMs / 60000)).padStart(2, '0');
   const ss = String(Math.floor((remainMs % 60000) / 1000)).padStart(2, '0');
 
-  const nameCheck = checkDonorName(nickname);
+  const nameCheck = checkPayerName(nickname);
   const nameErrorDisplay = nickname.trim().length > 1 && !nameCheck.ok ? nameCheck.message : null;
 
   function submit() {
@@ -69,8 +69,8 @@ export function ConfirmPanel({
     submitted.current = true;
     startTransition(async () => {
       // 닉네임 입력값이 있으면 먼저 저장
-      if (donorId && nickname.trim()) {
-        const res = await updateDonorNicknameAction(donorId, nickname.trim(), snsPlatform || undefined);
+      if (payerId && nickname.trim()) {
+        const res = await updatePayerNicknameAction(payerId, nickname.trim(), snsPlatform || undefined);
         if (!res.ok) {
           setNicknameError(res.message ?? '닉네임 저장에 실패했습니다.');
           submitted.current = false;
@@ -78,7 +78,7 @@ export function ConfirmPanel({
         }
         setNicknameSaved(true);
       }
-      const res = await confirmDonationAction(token);
+      const res = await confirmChargeAction(token);
       setResult(res);
     });
   }
@@ -91,7 +91,7 @@ export function ConfirmPanel({
           <p className="text-[16px] font-extrabold text-ink-900">결제가 완료되었습니다</p>
         </div>
         <div className="mt-3">
-          <DataRow label="가맹점" value={creatorName} />
+          <DataRow label="가맹점" value={merchantName} />
           <DataRow label="결제 금액" value={amountText} />
           {result.transactionNo ? <DataRow label="거래번호" value={result.transactionNo} /> : null}
         </div>
@@ -140,13 +140,13 @@ export function ConfirmPanel({
         </div>
         <p className="mt-2 text-[22px] font-extrabold tracking-tight text-ink-900">{amountText}</p>
         <div className="mt-3">
-          <DataRow label="가맹점" value={creatorName} />
+          <DataRow label="가맹점" value={merchantName} />
           <DataRow label="메시지" value={message || '(내용 없음)'} />
         </div>
       </Card>
 
       {/* SNS 닉네임 (선택) */}
-      {donorId ? (
+      {payerId ? (
         <Card>
           <p className="text-[13.5px] font-bold text-ink-900">
             결제 내역에 표시될 이름 <span className="font-normal text-ink-400">(선택)</span>
@@ -166,7 +166,7 @@ export function ConfirmPanel({
                 setNickname(e.target.value);
                 setNicknameError(null);
               }}
-              maxLength={DONOR_NAME_MAX + 4}
+              maxLength={PAYER_NAME_MAX + 4}
               placeholder={snsPlatform ? `${platformLabel} 닉네임` : '예: 밤톨이'}
               aria-label="결제 내역에 표시될 이름"
             />

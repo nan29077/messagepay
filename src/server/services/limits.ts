@@ -2,7 +2,7 @@ import { prisma } from '@/server/db';
 import { kv } from '@/server/redis';
 import { newId } from '@/lib/id';
 import { kstDateKey, kstMonthKey } from '@/lib/datetime';
-import type { DonorProfileModel as DonorProfile } from '@/generated/prisma/models';
+import type { PayerProfileModel as PayerProfile } from '@/generated/prisma/models';
 
 /** 전체 합계 행 센티널 */
 export const ALL = 'ALL';
@@ -14,24 +14,24 @@ type LimitsClient = typeof prisma | LimitsTx;
 
 /**
  * 한도 / 이상거래 정책 엔진.
- * 정책 우선순위: DONOR > CREATOR > GLOBAL
+ * 정책 우선순위: PAYER > MERCHANT > GLOBAL
  */
 
 export interface EffectivePolicy {
   defaultAmount: bigint;
   minAmount: bigint;
   maxAmount: bigint;
-  donorDailyLimit: bigint;
-  donorMonthlyLimit: bigint;
-  perCreatorDailyLimit: bigint;
+  payerDailyLimit: bigint;
+  payerMonthlyLimit: bigint;
+  perMerchantDailyLimit: bigint;
   /** 1인(이용자) 1일 최대 결제 건수 */
-  donorDailyMaxCount: number;
+  payerDailyMaxCount: number;
   velocityWindowSec: number;
   velocityMaxCount: number;
   cooldownAfterCount: number;
   cooldownSec: number;
   failureLockThreshold: number;
-  newDonorFirstDayLimit: bigint;
+  newPayerFirstDayLimit: bigint;
   manualReviewAmount: bigint;
   ttsMinAmount: bigint;
 }
@@ -40,25 +40,25 @@ export const FALLBACK_POLICY: EffectivePolicy = {
   defaultAmount: 3000n,
   minAmount: 1000n,
   maxAmount: 50000n,
-  donorDailyLimit: 100000n,
-  donorMonthlyLimit: 1000000n,
-  perCreatorDailyLimit: 50000n,
-  donorDailyMaxCount: 30,
+  payerDailyLimit: 100000n,
+  payerMonthlyLimit: 1000000n,
+  perMerchantDailyLimit: 50000n,
+  payerDailyMaxCount: 30,
   velocityWindowSec: 60,
   velocityMaxCount: 3,
   cooldownAfterCount: 5,
   cooldownSec: 300,
   failureLockThreshold: 3,
-  newDonorFirstDayLimit: 30000n,
+  newPayerFirstDayLimit: 30000n,
   manualReviewAmount: 200000n,
   ttsMinAmount: 3000n,
 };
 
 type PolicyRow = {
   defaultAmount: bigint; minAmount: bigint; maxAmount: bigint;
-  donorDailyLimit: bigint; donorMonthlyLimit: bigint; perCreatorDailyLimit: bigint;
-  donorDailyMaxCount: number; velocityWindowSec: number; velocityMaxCount: number; cooldownAfterCount: number; cooldownSec: number;
-  failureLockThreshold: number; newDonorFirstDayLimit: bigint; manualReviewAmount: bigint; ttsMinAmount: bigint;
+  payerDailyLimit: bigint; payerMonthlyLimit: bigint; perMerchantDailyLimit: bigint;
+  payerDailyMaxCount: number; velocityWindowSec: number; velocityMaxCount: number; cooldownAfterCount: number; cooldownSec: number;
+  failureLockThreshold: number; newPayerFirstDayLimit: bigint; manualReviewAmount: bigint; ttsMinAmount: bigint;
 };
 
 function pick(row: PolicyRow): EffectivePolicy {
@@ -66,28 +66,28 @@ function pick(row: PolicyRow): EffectivePolicy {
     defaultAmount: row.defaultAmount,
     minAmount: row.minAmount,
     maxAmount: row.maxAmount,
-    donorDailyLimit: row.donorDailyLimit,
-    donorMonthlyLimit: row.donorMonthlyLimit,
-    perCreatorDailyLimit: row.perCreatorDailyLimit,
-    donorDailyMaxCount: row.donorDailyMaxCount,
+    payerDailyLimit: row.payerDailyLimit,
+    payerMonthlyLimit: row.payerMonthlyLimit,
+    perMerchantDailyLimit: row.perMerchantDailyLimit,
+    payerDailyMaxCount: row.payerDailyMaxCount,
     velocityWindowSec: row.velocityWindowSec,
     velocityMaxCount: row.velocityMaxCount,
     cooldownAfterCount: row.cooldownAfterCount,
     cooldownSec: row.cooldownSec,
     failureLockThreshold: row.failureLockThreshold,
-    newDonorFirstDayLimit: row.newDonorFirstDayLimit,
+    newPayerFirstDayLimit: row.newPayerFirstDayLimit,
     manualReviewAmount: row.manualReviewAmount,
     ttsMinAmount: row.ttsMinAmount,
   };
 }
 
 export async function resolvePolicy(
-  creatorId?: string | null,
-  donorId?: string | null,
+  merchantId?: string | null,
+  payerId?: string | null,
   now: Date = new Date(),
   client: LimitsClient = prisma,
 ): Promise<EffectivePolicy> {
-  const rows = await client.donationLimitPolicy.findMany({
+  const rows = await client.chargeLimitPolicy.findMany({
     where: {
       active: true,
       // 시행일이 아직 오지 않았거나 이미 종료된 정책은 적용하지 않는다.
@@ -95,25 +95,25 @@ export async function resolvePolicy(
       effectiveFrom: { lte: now },
       OR: [
         { scope: 'GLOBAL' },
-        ...(creatorId ? [{ scope: 'CREATOR' as const, creatorId }] : []),
-        ...(donorId ? [{ scope: 'DONOR' as const, donorId }] : []),
+        ...(merchantId ? [{ scope: 'MERCHANT' as const, merchantId }] : []),
+        ...(payerId ? [{ scope: 'PAYER' as const, payerId }] : []),
       ],
       AND: [{ OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] }],
     },
     orderBy: { effectiveFrom: 'desc' },
   });
 
-  const byScope = (s: 'GLOBAL' | 'CREATOR' | 'DONOR') => rows.find((r) => r.scope === s);
-  const chosen = byScope('DONOR') ?? byScope('CREATOR') ?? byScope('GLOBAL');
+  const byScope = (s: 'GLOBAL' | 'MERCHANT' | 'PAYER') => rows.find((r) => r.scope === s);
+  const chosen = byScope('PAYER') ?? byScope('MERCHANT') ?? byScope('GLOBAL');
   return chosen ? pick(chosen as unknown as PolicyRow) : FALLBACK_POLICY;
 }
 
 export type LimitDenyCode =
   | 'AMOUNT_RANGE'
-  | 'DONOR_DAILY'
-  | 'DONOR_DAILY_COUNT'
-  | 'DONOR_MONTHLY'
-  | 'CREATOR_DAILY'
+  | 'PAYER_DAILY'
+  | 'PAYER_DAILY_COUNT'
+  | 'PAYER_MONTHLY'
+  | 'MERCHANT_DAILY'
   | 'VELOCITY'
   | 'COOLDOWN'
   | 'LOCKED'
@@ -129,12 +129,12 @@ export interface LimitCheckResult {
 }
 
 export interface LimitCheckInput {
-  donor: Pick<DonorProfile, 'id' | 'dailyLimit' | 'monthlyLimit' | 'lockedUntil' | 'blockedAt' | 'firstSeenAt'>;
-  creatorId: string;
+  payer: Pick<PayerProfile, 'id' | 'dailyLimit' | 'monthlyLimit' | 'lockedUntil' | 'blockedAt' | 'firstSeenAt'>;
+  merchantId: string;
   amount: bigint;
   now?: Date;
   /** 가맹점이 이 이용자를 차단했는지 */
-  blockedByCreator?: boolean;
+  blockedByMerchant?: boolean;
   /**
    * 속도 제한(velocity/streak) 카운터를 이번 호출에서 소진할지 여부. 기본 true.
    *
@@ -154,23 +154,23 @@ export interface LimitCheckInput {
 
 /**
  * 이용자 행 잠금 (`SELECT ... FOR UPDATE`).
- * donor_profile 행은 항상 존재하므로 집계 행이 아직 없어도 직렬화 지점이 된다.
- * (donation_counter 를 잠그면 첫 결제처럼 행이 없을 때 아무것도 잠기지 않는다)
+ * payer_profile 행은 항상 존재하므로 집계 행이 아직 없어도 직렬화 지점이 된다.
+ * (charge_counter 를 잠그면 첫 결제처럼 행이 없을 때 아무것도 잠기지 않는다)
  */
-async function lockDonorRow(tx: LimitsTx, donorId: string) {
-  await tx.$queryRawUnsafe('SELECT id FROM donor_profile WHERE id = $1 FOR UPDATE', donorId);
+async function lockPayerRow(tx: LimitsTx, payerId: string) {
+  await tx.$queryRawUnsafe('SELECT id FROM payer_profile WHERE id = $1 FOR UPDATE', payerId);
 }
 
 async function readCounter(
   client: LimitsClient,
-  donorId: string,
-  creatorId: string,
+  payerId: string,
+  merchantId: string,
   periodType: string,
   periodKey: string,
 ) {
-  const row = await client.donationCounter.findUnique({
+  const row = await client.chargeCounter.findUnique({
     where: {
-      donorId_creatorId_periodType_periodKey: { donorId, creatorId, periodType, periodKey },
+      payerId_merchantId_periodType_periodKey: { payerId, merchantId, periodType, periodKey },
     },
   });
   return { count: row?.count ?? 0, amount: row?.amount ?? 0n };
@@ -179,38 +179,38 @@ async function readCounter(
 export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckResult> {
   const now = input.now ?? new Date();
   const db: LimitsClient = input.tx ?? prisma;
-  const policy = await resolvePolicy(input.creatorId, input.donor.id, now, db);
+  const policy = await resolvePolicy(input.merchantId, input.payer.id, now, db);
 
-  const donorDaily = input.donor.dailyLimit ?? policy.donorDailyLimit;
-  const donorMonthly = input.donor.monthlyLimit ?? policy.donorMonthlyLimit;
+  const payerDaily = input.payer.dailyLimit ?? policy.payerDailyLimit;
+  const payerMonthly = input.payer.monthlyLimit ?? policy.payerMonthlyLimit;
 
   const deny = (code: LimitDenyCode, message: string): LimitCheckResult => ({
     ok: false, code, message, requiresManualReview: false, policy,
   });
 
-  if (input.blockedByCreator) return deny('BLOCKED', '가맹점이 차단한 이용자입니다.');
-  if (input.donor.blockedAt) return deny('BLOCKED', '이용이 제한된 이용자입니다.');
-  // 이용자가 /my/blocks 에서 직접 건 차단(donorCreatorLink.donorBlockedAt). 결제 경로 전부에서 막아야 한다.
-  // 가맹점이 건 차단은 blockedByCreator(blocked_donor) 로 따로 들어온다.
-  const link = await db.donorCreatorLink.findUnique({
-    where: { donorId_creatorId: { donorId: input.donor.id, creatorId: input.creatorId } },
-    select: { donorBlockedAt: true },
+  if (input.blockedByMerchant) return deny('BLOCKED', '가맹점이 차단한 이용자입니다.');
+  if (input.payer.blockedAt) return deny('BLOCKED', '이용이 제한된 이용자입니다.');
+  // 이용자가 /my/blocks 에서 직접 건 차단(payerMerchantLink.payerBlockedAt). 결제 경로 전부에서 막아야 한다.
+  // 가맹점이 건 차단은 blockedByMerchant(blocked_payer) 로 따로 들어온다.
+  const link = await db.payerMerchantLink.findUnique({
+    where: { payerId_merchantId: { payerId: input.payer.id, merchantId: input.merchantId } },
+    select: { payerBlockedAt: true },
   });
-  if (link?.donorBlockedAt) return deny('BLOCKED', '이용자가 차단한 가맹점입니다. 내 정보 > 차단 관리에서 해제할 수 있습니다.');
-  if (input.donor.lockedUntil && input.donor.lockedUntil > now) {
+  if (link?.payerBlockedAt) return deny('BLOCKED', '이용자가 차단한 가맹점입니다. 내 정보 > 차단 관리에서 해제할 수 있습니다.');
+  if (input.payer.lockedUntil && input.payer.lockedUntil > now) {
     return deny('LOCKED', '결제 실패가 반복되어 일시적으로 잠겼습니다. 관리자 해제가 필요합니다.');
   }
   // 허용 범위 = 플랫폼 한도 정책 ∩ 가맹점이 결제 페이지 설정에서 정한 범위.
   // 가맹점 설정을 보지 않으면, 이용자가 문자로 금액을 지정했을 때
   // 가맹점이 정한 상·하한을 그냥 넘어가 버린다.
-  const creatorRange = await db.creatorProfile.findUnique({
-    where: { id: input.creatorId },
+  const merchantRange = await db.merchantProfile.findUnique({
+    where: { id: input.merchantId },
     select: { minAmount: true, maxAmount: true },
   });
   const effMin =
-    creatorRange && creatorRange.minAmount > policy.minAmount ? creatorRange.minAmount : policy.minAmount;
+    merchantRange && merchantRange.minAmount > policy.minAmount ? merchantRange.minAmount : policy.minAmount;
   const effMax =
-    creatorRange && creatorRange.maxAmount < policy.maxAmount ? creatorRange.maxAmount : policy.maxAmount;
+    merchantRange && merchantRange.maxAmount < policy.maxAmount ? merchantRange.maxAmount : policy.maxAmount;
 
   if (input.amount < effMin || input.amount > effMax) {
     return deny('AMOUNT_RANGE', `결제 금액은 ${effMin}원 ~ ${effMax}원 사이여야 합니다.`);
@@ -221,30 +221,30 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
 
   // 한도 집계를 읽기 직전에 이용자 행을 잠근다.
   // 잠금을 잡은 트랜잭션이 커밋될 때까지 같은 이용자의 다음 요청은 여기서 멈춘다.
-  if (input.tx) await lockDonorRow(input.tx, input.donor.id);
+  if (input.tx) await lockPayerRow(input.tx, input.payer.id);
 
-  const donorDay = await readCounter(db, input.donor.id, ALL, 'DAY', dayKey);
-  if (donorDay.amount + input.amount > donorDaily) {
-    return deny('DONOR_DAILY', '일일 결제 한도를 초과했습니다.');
+  const payerDay = await readCounter(db, input.payer.id, ALL, 'DAY', dayKey);
+  if (payerDay.amount + input.amount > payerDaily) {
+    return deny('PAYER_DAILY', '일일 결제 한도를 초과했습니다.');
   }
 
   // 1인 1일 최대 건수 (금액과 별개로 건수 자체를 제한)
-  if (donorDay.count + 1 > policy.donorDailyMaxCount) {
-    return deny('DONOR_DAILY_COUNT', `하루 최대 ${policy.donorDailyMaxCount}건까지 결제할 수 있습니다.`);
+  if (payerDay.count + 1 > policy.payerDailyMaxCount) {
+    return deny('PAYER_DAILY_COUNT', `하루 최대 ${policy.payerDailyMaxCount}건까지 결제할 수 있습니다.`);
   }
 
-  const donorMonth = await readCounter(db, input.donor.id, ALL, 'MONTH', monthKey);
-  if (donorMonth.amount + input.amount > donorMonthly) {
-    return deny('DONOR_MONTHLY', '월간 결제 한도를 초과했습니다.');
+  const payerMonth = await readCounter(db, input.payer.id, ALL, 'MONTH', monthKey);
+  if (payerMonth.amount + input.amount > payerMonthly) {
+    return deny('PAYER_MONTHLY', '월간 결제 한도를 초과했습니다.');
   }
 
-  const creatorDay = await readCounter(db, input.donor.id, input.creatorId, 'DAY', dayKey);
-  if (creatorDay.amount + input.amount > policy.perCreatorDailyLimit) {
-    return deny('CREATOR_DAILY', '해당 가맹점에 대한 일일 한도를 초과했습니다.');
+  const merchantDay = await readCounter(db, input.payer.id, input.merchantId, 'DAY', dayKey);
+  if (merchantDay.amount + input.amount > policy.perMerchantDailyLimit) {
+    return deny('MERCHANT_DAILY', '해당 가맹점에 대한 일일 한도를 초과했습니다.');
   }
 
   // 신규 이용자 첫날 한도
-  if (kstDateKey(input.donor.firstSeenAt) === dayKey && donorDay.amount + input.amount > policy.newDonorFirstDayLimit) {
+  if (kstDateKey(input.payer.firstSeenAt) === dayKey && payerDay.amount + input.amount > policy.newPayerFirstDayLimit) {
     return deny('NEW_DONOR_FIRST_DAY', '신규 이용자 첫날 한도를 초과했습니다.');
   }
 
@@ -261,21 +261,21 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
   // 결제 직전 재검사가 반드시 확인해야 하는 것은 DB 집계 기반 한도이고, 그건 위에서 끝냈다.
   // ------------------------------------------------------------------
   if (!input.tx) {
-    const cooldownKey = `cooldown:${input.donor.id}`;
+    const cooldownKey = `cooldown:${input.payer.id}`;
     if (await kv.get(cooldownKey)) {
       return deny('COOLDOWN', '연속 결제로 대기 중입니다. 잠시 후 다시 시도해 주세요.');
     }
 
     if (input.consumeVelocity !== false) {
       // 속도 제한: window 내 최대 건수
-      const velocityKey = `velocity:${input.donor.id}:${Math.floor(now.getTime() / (policy.velocityWindowSec * 1000))}`;
+      const velocityKey = `velocity:${input.payer.id}:${Math.floor(now.getTime() / (policy.velocityWindowSec * 1000))}`;
       const vCount = await kv.incr(velocityKey, policy.velocityWindowSec);
       if (vCount > policy.velocityMaxCount) {
         return deny('VELOCITY', `${policy.velocityWindowSec}초 내 최대 ${policy.velocityMaxCount}건까지 결제할 수 있습니다.`);
       }
 
       // 연속 N건 이후 쿨다운 부여
-      const streakKey = `streak:${input.donor.id}`;
+      const streakKey = `streak:${input.payer.id}`;
       const streak = await kv.incr(streakKey, policy.cooldownSec);
       if (streak >= policy.cooldownAfterCount) {
         await kv.set(cooldownKey, '1', policy.cooldownSec);
@@ -297,30 +297,30 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
  * 뒤이어 대기하던 동시 요청은 갱신된 집계를 보고 한도 초과로 막힌다.
  */
 export async function commitCounters(
-  donorId: string,
-  creatorId: string,
+  payerId: string,
+  merchantId: string,
   amount: bigint,
   now = new Date(),
   client: LimitsClient = prisma,
 ) {
   const dayKey = kstDateKey(now);
   const monthKey = kstMonthKey(now);
-  const targets: Array<{ creatorId: string; periodType: string; periodKey: string }> = [
-    { creatorId: ALL, periodType: 'DAY', periodKey: dayKey },
-    { creatorId: ALL, periodType: 'MONTH', periodKey: monthKey },
-    { creatorId, periodType: 'DAY', periodKey: dayKey },
-    { creatorId, periodType: 'MONTH', periodKey: monthKey },
+  const targets: Array<{ merchantId: string; periodType: string; periodKey: string }> = [
+    { merchantId: ALL, periodType: 'DAY', periodKey: dayKey },
+    { merchantId: ALL, periodType: 'MONTH', periodKey: monthKey },
+    { merchantId, periodType: 'DAY', periodKey: dayKey },
+    { merchantId, periodType: 'MONTH', periodKey: monthKey },
   ];
 
   for (const t of targets) {
-    await client.donationCounter.upsert({
+    await client.chargeCounter.upsert({
       where: {
-        donorId_creatorId_periodType_periodKey: {
-          donorId, creatorId: t.creatorId, periodType: t.periodType, periodKey: t.periodKey,
+        payerId_merchantId_periodType_periodKey: {
+          payerId, merchantId: t.merchantId, periodType: t.periodType, periodKey: t.periodKey,
         },
       },
       create: {
-        id: newId(), donorId, creatorId: t.creatorId,
+        id: newId(), payerId, merchantId: t.merchantId,
         periodType: t.periodType, periodKey: t.periodKey, count: 1, amount,
       },
       update: { count: { increment: 1 }, amount: { increment: amount } },
@@ -330,36 +330,36 @@ export async function commitCounters(
 
 /** 환불 시 집계 되돌림 */
 export async function rollbackCounters(
-  donorId: string,
-  creatorId: string,
+  payerId: string,
+  merchantId: string,
   amount: bigint,
   at: Date,
   client: LimitsClient = prisma,
 ) {
   const dayKey = kstDateKey(at);
   const monthKey = kstMonthKey(at);
-  const targets: Array<{ creatorId: string; periodType: string; periodKey: string }> = [
-    { creatorId: ALL, periodType: 'DAY', periodKey: dayKey },
-    { creatorId: ALL, periodType: 'MONTH', periodKey: monthKey },
-    { creatorId, periodType: 'DAY', periodKey: dayKey },
-    { creatorId, periodType: 'MONTH', periodKey: monthKey },
+  const targets: Array<{ merchantId: string; periodType: string; periodKey: string }> = [
+    { merchantId: ALL, periodType: 'DAY', periodKey: dayKey },
+    { merchantId: ALL, periodType: 'MONTH', periodKey: monthKey },
+    { merchantId, periodType: 'DAY', periodKey: dayKey },
+    { merchantId, periodType: 'MONTH', periodKey: monthKey },
   ];
   for (const t of targets) {
-    await client.donationCounter.updateMany({
-      where: { donorId, creatorId: t.creatorId, periodType: t.periodType, periodKey: t.periodKey },
+    await client.chargeCounter.updateMany({
+      where: { payerId, merchantId: t.merchantId, periodType: t.periodType, periodKey: t.periodKey },
       data: { count: { decrement: 1 }, amount: { decrement: amount } },
     });
   }
 }
 
-export async function registerFailure(donorId: string, threshold: number) {
-  const donor = await prisma.donorProfile.update({
-    where: { id: donorId },
+export async function registerFailure(payerId: string, threshold: number) {
+  const payer = await prisma.payerProfile.update({
+    where: { id: payerId },
     data: { failCount: { increment: 1 } },
   });
-  if (donor.failCount >= threshold) {
-    await prisma.donorProfile.update({
-      where: { id: donorId },
+  if (payer.failCount >= threshold) {
+    await prisma.payerProfile.update({
+      where: { id: payerId },
       // 관리자 해제 전까지 잠금 (충분히 먼 미래)
       data: { lockedUntil: new Date(Date.now() + 365 * 86_400_000) },
     });
@@ -368,6 +368,6 @@ export async function registerFailure(donorId: string, threshold: number) {
   return false;
 }
 
-export async function clearFailures(donorId: string) {
-  await prisma.donorProfile.update({ where: { id: donorId }, data: { failCount: 0 } });
+export async function clearFailures(payerId: string) {
+  await prisma.payerProfile.update({ where: { id: payerId }, data: { failCount: 0 } });
 }

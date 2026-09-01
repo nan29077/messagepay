@@ -49,15 +49,15 @@ export default async function AdminRiskPage({
       take: PAGE_SIZE,
       select: {
         id: true, type: true, level: true, resolved: true, resolvedBy: true, resolvedAt: true,
-        createdAt: true, detail: true, donationId: true, creatorId: true,
-        donor: { select: { id: true, phoneMasked: true } },
+        createdAt: true, detail: true, chargeId: true, merchantId: true,
+        payer: { select: { id: true, phoneMasked: true } },
       },
     }),
     prisma.riskDetection.groupBy({ by: ['level'], where: { resolved: false }, _count: { _all: true } }),
     prisma.riskDetection.count({ where: { resolved: false } }),
-    prisma.donation.count({ where: { status: 'LIMIT_BLOCKED', receivedAt: { gte: todayStart } } }),
-    prisma.donation.count({ where: { status: 'LIMIT_BLOCKED', receivedAt: { gte: monthStart } } }),
-    prisma.donation.aggregate({ where: { status: 'LIMIT_BLOCKED' }, _count: { _all: true }, _sum: { amount: true } }),
+    prisma.charge.count({ where: { status: 'LIMIT_BLOCKED', receivedAt: { gte: todayStart } } }),
+    prisma.charge.count({ where: { status: 'LIMIT_BLOCKED', receivedAt: { gte: monthStart } } }),
+    prisma.charge.aggregate({ where: { status: 'LIMIT_BLOCKED' }, _count: { _all: true }, _sum: { amount: true } }),
     prisma.riskDetection.groupBy({ by: ['type'], where: { resolved: false }, _count: { _all: true } }),
   ]);
 
@@ -156,15 +156,15 @@ export default async function AdminRiskPage({
                       <Badge tone={riskLevelLabel[r.level].tone}>{riskLevelLabel[r.level].text}</Badge>
                     </Td>
                     <Td>
-                      {r.donor ? (
-                        <Link href={`/admin/donors/${r.donor.id}`} className="font-semibold text-brand-700">
-                          {r.donor.phoneMasked}
+                      {r.payer ? (
+                        <Link href={`/admin/payers/${r.payer.id}`} className="font-semibold text-brand-700">
+                          {r.payer.phoneMasked}
                         </Link>
                       ) : (
                         <span className="text-ink-300">-</span>
                       )}
                     </Td>
-                    <Td className="font-mono text-[11px]">{r.donationId ?? '-'}</Td>
+                    <Td className="font-mono text-[11px]">{r.chargeId ?? '-'}</Td>
                     <Td>
                       <details>
                         <summary className="cursor-pointer text-[12px] text-brand-700">상세 보기</summary>

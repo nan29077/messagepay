@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { PageHeader } from '@/components/layout/console-shell';
 import { Badge, Card, CardTitle, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
-import { AdminField, AdminInput, AdminSelect, CreatorOptions } from '@/components/admin/controls';
+import { AdminField, AdminInput, AdminSelect, MerchantOptions } from '@/components/admin/controls';
 import { ActionButton, ActionForm } from '@/components/admin/action-form';
 import { createFeePolicy, deactivateFeePolicy } from '@/app/actions/admin/settlement';
 import { prisma } from '@/server/db';
@@ -18,18 +18,18 @@ function ratePercent(value: string): string {
 }
 
 export default async function AdminFeesPage() {
-  const [policies, creators] = await Promise.all([
+  const [policies, merchants] = await Promise.all([
     prisma.feePolicy.findMany({
       orderBy: [{ active: 'desc' }, { effectiveFrom: 'desc' }],
       take: 100,
       select: {
-        id: true, scope: true, creatorId: true, pgFeeRate: true, pgFixedFee: true,
-        platformFeeRate: true, smsCost: true, vatIncluded: true, active: true,
+        id: true, scope: true, merchantId: true, pgFeeRate: true, pgFixedFee: true,
+        platformFeeRate: true, smsCost: true, vatIncluded: true, settlementDays: true, active: true,
         effectiveFrom: true, effectiveTo: true, createdAt: true,
-        creator: { select: { id: true, displayName: true, code: true } },
+        merchant: { select: { id: true, displayName: true, code: true } },
       },
     }),
-    prisma.creatorProfile.findMany({
+    prisma.merchantProfile.findMany({
       where: { status: 'APPROVED' },
       orderBy: { displayName: 'asc' },
       select: { id: true, displayName: true, code: true },
@@ -37,7 +37,7 @@ export default async function AdminFeesPage() {
   ]);
 
   const activeGlobal = policies.find((p) => p.active && p.scope === 'GLOBAL');
-  const activeCreatorCount = policies.filter((p) => p.active && p.scope === 'CREATOR').length;
+  const activeMerchantCount = policies.filter((p) => p.active && p.scope === 'MERCHANT').length;
 
   // 실제 정산과 같은 함수로 계산한 예시. 요율만 보고는 부가세 반영 결과를 알기 어렵다.
   const SAMPLE = 3_000n;
@@ -67,7 +67,7 @@ export default async function AdminFeesPage() {
           value={activeGlobal ? ratePercent(activeGlobal.platformFeeRate.toString()) : '미설정'}
           sub={activeGlobal ? `문자 원가 ${formatWon(activeGlobal.smsCost)}` : '기본값 15.00% 적용'}
         />
-        <StatTile label="가맹점 개별 정책" value={formatNumber(activeCreatorCount)} />
+        <StatTile label="가맹점 개별 정책" value={formatNumber(activeMerchantCount)} />
         <StatTile label="전체 정책 이력" value={formatNumber(policies.length)} sub="최근 100건" />
       </div>
 
@@ -111,12 +111,12 @@ export default async function AdminFeesPage() {
             <AdminField label="적용 범위">
               <AdminSelect name="scope" defaultValue="GLOBAL">
                 <option value="GLOBAL">전역 (GLOBAL)</option>
-                <option value="CREATOR">가맹점 개별 (CREATOR)</option>
+                <option value="MERCHANT">가맹점 개별 (MERCHANT)</option>
               </AdminSelect>
             </AdminField>
             <AdminField label="가맹점" hint="적용 범위가 가맹점일 때만 사용됩니다.">
-              <AdminSelect name="creatorId" defaultValue="">
-                <CreatorOptions creators={creators} allLabel="선택 안 함" />
+              <AdminSelect name="merchantId" defaultValue="">
+                <MerchantOptions merchants={merchants} allLabel="선택 안 함" />
               </AdminSelect>
             </AdminField>
             <div className="grid grid-cols-2 gap-2">
@@ -131,6 +131,14 @@ export default async function AdminFeesPage() {
               </AdminField>
               <AdminField label="문자 원가 (원)">
                 <AdminInput name="smsCost" inputMode="numeric" defaultValue="0" required />
+              </AdminField>
+              <AdminField label="지급일 (영업일)" hint="결제일 + N영업일에 자동 지급">
+                <AdminInput
+                  name="settlementDays"
+                  inputMode="numeric"
+                  defaultValue={activeGlobal ? String(activeGlobal.settlementDays) : '5'}
+                  required
+                />
               </AdminField>
             </div>
             <AdminField label="적용 시작일 (KST)">
@@ -161,6 +169,7 @@ export default async function AdminFeesPage() {
                   <Th className="text-right">플랫폼 수수료</Th>
                   <Th className="text-right">문자 원가</Th>
                   <Th>부가세</Th>
+                  <Th className="text-right">지급일</Th>
                   <Th>적용 기간</Th>
                   <Th>상태</Th>
                   <Th>처리</Th>
@@ -172,9 +181,9 @@ export default async function AdminFeesPage() {
                     <Td>
                       {p.scope === 'GLOBAL' ? (
                         <Badge tone="brand">전역</Badge>
-                      ) : p.creator ? (
-                        <Link href={`/admin/creators/${p.creator.id}`} className="font-semibold text-brand-700">
-                          {p.creator.displayName}
+                      ) : p.merchant ? (
+                        <Link href={`/admin/merchants/${p.merchant.id}`} className="font-semibold text-brand-700">
+                          {p.merchant.displayName}
                         </Link>
                       ) : (
                         <span className="text-ink-300">-</span>
@@ -185,6 +194,7 @@ export default async function AdminFeesPage() {
                     <Td className="text-right tabular-nums">{ratePercent(p.platformFeeRate.toString())}</Td>
                     <Td className="text-right tabular-nums">{formatWon(p.smsCost)}</Td>
                     <Td>{p.vatIncluded ? '포함' : '별도'}</Td>
+                    <Td className="text-right tabular-nums">D+{p.settlementDays}</Td>
                     <Td className="whitespace-nowrap text-[12px]">
                       {formatKst(p.effectiveFrom, false)}
                       <span className="block text-ink-400">~ {p.effectiveTo ? formatKst(p.effectiveTo, false) : '현재'}</span>

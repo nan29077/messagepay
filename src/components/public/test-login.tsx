@@ -23,14 +23,14 @@ export function TestLoginPanel({ seedAccounts }: { seedAccounts: { email: string
       className: 'bg-brand-400 text-ink-900 hover:bg-brand-500',
     },
     {
-      account: 'creator',
+      account: 'merchant',
       label: '가맹점으로 로그인',
       hint: '가맹점 관리자 · /studio',
       icon: <Radio size={17} strokeWidth={1.7} />,
       className: 'bg-ink-900 text-white hover:opacity-90',
     },
     {
-      account: 'donor',
+      account: 'payer',
       label: '이용자로 로그인',
       hint: '마이페이지 · /my',
       icon: <Heart size={17} strokeWidth={1.7} />,

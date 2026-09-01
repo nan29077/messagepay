@@ -11,7 +11,7 @@ import { Logo, MunjaPayMark } from '@/components/brand/logo';
 import { PublicMarginMascots } from '@/components/brand/mascot-decorations';
 import { NotificationBell } from '@/components/notifications/notification-bell';
 import { ProfileAvatar } from '@/components/profile/generated-avatar';
-import { DonationLookupSheet } from '@/components/public/donation-lookup-sheet';
+import { ChargeLookupSheet } from '@/components/public/charge-lookup-sheet';
 import { cx } from '@/components/ui';
 
 /**
@@ -89,12 +89,12 @@ export function PublicShellClient({
 
   return (
     <div className="public-canvas min-h-dvh pb-20 lg:pb-0">
-      <PublicMarginMascots home={pathname === '/'} />
+      <PublicMarginMascots />
       <div className="relative z-[2] mx-auto flex w-full max-w-[824px] items-start justify-center">
         <div className="public-app-surface min-h-dvh w-full min-w-0 max-w-[720px] shadow-[0_0_70px_rgba(7,20,38,0.12)]">
       <header className="public-header sticky top-0 z-40 border-b backdrop-blur-xl">
         <div className="flex h-[68px] w-full items-center justify-between px-4 sm:px-6">
-          <Link href="/" aria-label="문자페이 홈">
+          <Link href="/" aria-label="메시지페이 홈">
             <Logo />
           </Link>
 
@@ -178,7 +178,7 @@ export function PublicShellClient({
           <nav className="public-side-nav flex w-full flex-col items-center gap-0.5 rounded-[24px] border px-2 py-3 backdrop-blur-xl">
             <Link
               href="/"
-              aria-label="문자페이 홈"
+              aria-label="메시지페이 홈"
               className="mb-2 grid h-10 w-10 place-items-center rounded-[14px] bg-[#071426] text-[#b7f34a] shadow-[0_8px_18px_rgba(7,20,38,0.24)] ring-1 ring-white/10 transition-transform hover:-translate-y-0.5"
             >
               <MunjaPayMark size={38} onDark />
@@ -258,7 +258,7 @@ export function PublicShellClient({
               </Link>
             )}
 
-            <p className="mt-2 text-[8px] font-extrabold tracking-[0.16em] text-ink-300">MESSAGEPAY</p>
+            <p className="mt-2 text-[8px] font-extrabold tracking-[0.12em] text-ink-300">MessagePay</p>
           </nav>
         </aside>
       </div>
@@ -298,7 +298,7 @@ export function PublicShellClient({
         </div>
       </nav>
 
-      <DonationLookupSheet open={lookupOpen} onClose={() => setLookupOpen(false)} />
+      <ChargeLookupSheet open={lookupOpen} onClose={() => setLookupOpen(false)} />
 
     </div>
   );
@@ -314,7 +314,7 @@ function Footer() {
           <Link href="/terms/e-finance">전자금융거래약관</Link>
           <Link href="/support">고객센터</Link>
         </div>
-        <p>문자페이 | 쉽고 빠른 문자결제</p>
+        <p>MessagePay(메시지페이) | 쉽고 빠른 문자결제</p>
         <p className="mt-1">문자를 통해 간편하게 결제하고 서비스 포인트와 이용권을 충전하는 결제 서비스입니다.</p>
         <p className="mt-1">현재 준비 단계로 실제 결제와 문자 발송은 비활성화되어 있습니다.</p>
       </div>

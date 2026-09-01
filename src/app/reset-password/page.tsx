@@ -5,7 +5,7 @@ import { PageHeader } from '@/components/public/page-header';
 import { RequestResetForm } from '@/components/public/password-reset-forms';
 
 export const metadata: Metadata = {
-  title: '비밀번호 재설정 | 문자페이',
+  title: '비밀번호 재설정 | 메시지페이',
   description: '가입한 이메일로 비밀번호 재설정 링크를 받습니다.',
   robots: { index: false, follow: false },
 };

@@ -3,9 +3,9 @@
 import * as React from 'react';
 import { Undo2 } from 'lucide-react';
 import { Button, Textarea, Notice } from '@/components/ui';
-import { requestDonationRefund, type DonorActionState } from '@/app/actions/donor';
+import { requestChargeRefund, type PayerActionState } from '@/app/actions/payer';
 
-const initial: DonorActionState = { ok: false };
+const initial: PayerActionState = { ok: false };
 
 /**
  * 결제 건별 환불 요청.
@@ -13,15 +13,15 @@ const initial: DonorActionState = { ok: false };
  * - 소유권 검증은 서버 액션에서 다시 수행한다.
  */
 export function RefundRequestForm({
-  donationId,
+  chargeId,
   disabled,
   disabledReason,
 }: {
-  donationId: string;
+  chargeId: string;
   disabled?: boolean;
   disabledReason?: string;
 }) {
-  const [state, formAction, pending] = React.useActionState(requestDonationRefund, initial);
+  const [state, formAction, pending] = React.useActionState(requestChargeRefund, initial);
 
   if (disabled) {
     return (
@@ -47,7 +47,7 @@ export function RefundRequestForm({
         환불 요청
       </summary>
       <form action={formAction} className="mt-2 space-y-2">
-        <input type="hidden" name="donationId" value={donationId} />
+        <input type="hidden" name="chargeId" value={chargeId} />
         <Textarea
           name="reason"
           rows={3}

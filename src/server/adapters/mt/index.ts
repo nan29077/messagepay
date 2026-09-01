@@ -36,7 +36,9 @@ export function decideMessageType(text: string, force?: 'SMS' | 'LMS'): 'SMS' | 
  * (프로세스 단위 상태는 같은 이유로 globalThis 를 쓴다)
  */
 const globalForMt = globalThis as unknown as {
-  mtMockOutbox?: Array<{ to: string; text: string; at: Date; id: string }>;
+  // template 을 함께 담는다. 문구가 바뀌어도 "어떤 문자인지"로 찾을 수 있어야
+  // 테스트·시드가 본문 문자열에 묶이지 않는다.
+  mtMockOutbox?: Array<{ to: string; text: string; at: Date; id: string; template?: string }>;
 };
 const outbox = globalForMt.mtMockOutbox ?? [];
 globalForMt.mtMockOutbox = outbox;
@@ -55,7 +57,7 @@ export const mockMtAdapter: MtAdapter = {
   },
   async send(req) {
     const id = `MTMOCK${Date.now()}${Math.floor(Math.random() * 1000)}`;
-    outbox.push({ to: req.to, text: req.text, at: new Date(), id });
+    outbox.push({ to: req.to, text: req.text, at: new Date(), id, template: req.templateCode });
     if (outbox.length > 500) outbox.splice(0, outbox.length - 500);
     logger.info('MT(mock) 발송', { to: req.to, template: req.templateCode, bytes: Buffer.byteLength(req.text) });
     return {

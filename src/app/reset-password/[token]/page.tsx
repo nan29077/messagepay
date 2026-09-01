@@ -16,7 +16,7 @@ import { loadResetToken } from '@/server/services/password-reset';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '새 비밀번호 설정 | 문자페이',
+  title: '새 비밀번호 설정 | 메시지페이',
   robots: { index: false, follow: false },
 };
 

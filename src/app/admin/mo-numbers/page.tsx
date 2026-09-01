@@ -24,25 +24,25 @@ export default async function AdminMoNumbersPage({
   const q = (sp.q ?? '').trim();
   const status = STATUSES.includes(sp.status as MoNumberStatus) ? (sp.status as MoNumberStatus) : undefined;
 
-  const where: Prisma.CreatorMoNumberWhereInput = {
+  const where: Prisma.MerchantMoNumberWhereInput = {
     ...(status ? { status } : {}),
     ...(q ? { OR: [{ phoneNumber: { contains: q } }, { keyword: { contains: q.toUpperCase() } }] } : {}),
   };
 
-  const [numbers, grouped, costSum, approvedCreators] = await Promise.all([
-    prisma.creatorMoNumber.findMany({
+  const [numbers, grouped, costSum, approvedMerchants] = await Promise.all([
+    prisma.merchantMoNumber.findMany({
       where,
       orderBy: [{ status: 'asc' }, { phoneNumber: 'asc' }],
       take: 200,
       select: {
         id: true, phoneNumber: true, keyword: true, mode: true, status: true, monthlyCost: true,
         assignedAt: true, releasedAt: true, memo: true,
-        creator: { select: { id: true, displayName: true, code: true } },
+        merchant: { select: { id: true, displayName: true, code: true } },
       },
     }),
-    prisma.creatorMoNumber.groupBy({ by: ['status'], _count: { _all: true }, _sum: { monthlyCost: true } }),
-    prisma.creatorMoNumber.aggregate({ _sum: { monthlyCost: true } }),
-    prisma.creatorProfile.findMany({
+    prisma.merchantMoNumber.groupBy({ by: ['status'], _count: { _all: true }, _sum: { monthlyCost: true } }),
+    prisma.merchantMoNumber.aggregate({ _sum: { monthlyCost: true } }),
+    prisma.merchantProfile.findMany({
       where: { status: 'APPROVED' },
       orderBy: { displayName: 'asc' },
       select: { id: true, displayName: true, code: true },
@@ -87,7 +87,7 @@ export default async function AdminMoNumbersPage({
               <AdminInput name="phoneNumber" inputMode="numeric" placeholder="05051234567" required />
             </AdminField>
             <AdminField label="키워드" hint="대표번호 공유 모드에서 문자 맨 앞에 붙는 식별 키워드">
-              <AdminInput name="keyword" placeholder="MUNJAPAY" />
+              <AdminInput name="keyword" placeholder="MessagePay" />
             </AdminField>
             <AdminField label="수신 모드">
               <AdminSelect name="mode" defaultValue="DEDICATED">
@@ -113,7 +113,7 @@ export default async function AdminMoNumbersPage({
           <div className="mt-3">
             <FilterBar action="/admin/mo-numbers" resetHref="/admin/mo-numbers">
               <AdminField label="번호·키워드 검색" className="w-52">
-                <AdminInput name="q" defaultValue={q} placeholder="0505... 또는 MUNJAPAY" />
+                <AdminInput name="q" defaultValue={q} placeholder="0505... 또는 MessagePay" />
               </AdminField>
               <AdminField label="상태" className="w-40">
                 <AdminSelect name="status" defaultValue={status ?? ''}>
@@ -160,9 +160,9 @@ export default async function AdminMoNumbersPage({
                   {n.memo ? <span className="mt-0.5 block max-w-[140px] text-[11px] break-words text-ink-400">{n.memo}</span> : null}
                 </Td>
                 <Td>
-                  {n.creator ? (
-                    <Link href={`/admin/creators/${n.creator.id}`} className="font-semibold text-brand-700">
-                      {n.creator.displayName}
+                  {n.merchant ? (
+                    <Link href={`/admin/merchants/${n.merchant.id}`} className="font-semibold text-brand-700">
+                      {n.merchant.displayName}
                     </Link>
                   ) : (
                     <span className="text-ink-300">-</span>
@@ -180,10 +180,10 @@ export default async function AdminMoNumbersPage({
                     <SelectActionForm
                       action={assignMoNumber}
                       values={{ id: n.id }}
-                      name="creatorId"
+                      name="merchantId"
                       options={[
                         { value: '', label: '가맹점 선택' },
-                        ...approvedCreators.map((c) => ({ value: c.id, label: `${c.displayName} (${c.code})` })),
+                        ...approvedMerchants.map((c) => ({ value: c.id, label: `${c.displayName} (${c.code})` })),
                       ]}
                       submitLabel="배정"
                       confirm="선택한 가맹점에 이 수신번호를 배정합니다."

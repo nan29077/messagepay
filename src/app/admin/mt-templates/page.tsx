@@ -47,7 +47,7 @@ export default async function AdminMtTemplatesPage() {
 
       <div className="mb-4">
         <Notice tone="warning" title="저장한 문구가 그대로 이용자 휴대폰에 찍힙니다">
-          발신 주체 표기(<span className="font-semibold">[문자페이]</span>)는 본문 앞에 자동으로 붙습니다. &ldquo;결제되지
+          발신 주체 표기(<span className="font-semibold">[메시지페이]</span>)는 본문 앞에 자동으로 붙습니다. &ldquo;결제되지
           않았습니다&rdquo; 같은 고지 문구를 지우면 이용자가 결제 여부를 오인할 수 있으니 문구를 바꿀 때 함께
           확인해 주세요. 현재 {editableCodes.length}개 중 {customCount}개가 커스텀 문구를 쓰고 있습니다.
         </Notice>

@@ -1,7 +1,12 @@
 import Link from 'next/link';
 import { PageHeader } from '@/components/layout/console-shell';
 import { EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
-import { AdminField, AdminInput, AdminSelect, CreatorOptions, FilterBar, Pager } from '@/components/admin/controls';
+import { AdminField, AdminInput, AdminSelect, MerchantOptions, FilterBar, Pager } from '@/components/admin/controls';
+import { ActionForm } from '@/components/admin/action-form';
+import { runPayoutBatchAction, retryPayoutAction } from '@/app/actions/admin/settlement';
+import { buildPayoutDashboard } from '@/server/services/auto-settlement';
+import { formatDateKeyKo } from '@/lib/business-day';
+import { env } from '@/lib/env';
 import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
 import { SettlementRequestsPanel, type SettlementRow } from '@/components/admin/settlement-requests';
 import { prisma } from '@/server/db';
@@ -19,7 +24,7 @@ const REQUEST_STATUSES: SettlementRequestStatus[] = ['REQUESTED', 'REVIEWING', '
 export default async function AdminSettlementsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; creatorId?: string; key?: string; page?: string; rpage?: string }>;
+  searchParams: Promise<{ status?: string; merchantId?: string; key?: string; page?: string; rpage?: string }>;
 }) {
   const sp = await searchParams;
   const page = parsePage(sp.page);
@@ -28,20 +33,20 @@ export default async function AdminSettlementsPage({
   const status = REQUEST_STATUSES.includes(sp.status as SettlementRequestStatus)
     ? (sp.status as SettlementRequestStatus)
     : undefined;
-  const creatorId = (sp.creatorId ?? '').trim() || undefined;
+  const merchantId = (sp.merchantId ?? '').trim() || undefined;
   const settlementKey = (sp.key ?? '').trim();
 
   const requestWhere: Prisma.SettlementRequestWhereInput = {
     ...(status ? { status } : {}),
-    ...(creatorId ? { creatorId } : {}),
+    ...(merchantId ? { merchantId } : {}),
   };
   const ledgerWhere: Prisma.SettlementLedgerWhereInput = {
-    ...(creatorId ? { creatorId } : {}),
+    ...(merchantId ? { merchantId } : {}),
     ...(settlementKey ? { settlementKey } : {}),
   };
 
-  const [creators, requestTotal, requests, ledgerTotal, ledgers, byStatus, ledgerKeys] = await Promise.all([
-    prisma.creatorProfile.findMany({
+  const [merchants, requestTotal, requests, ledgerTotal, ledgers, byStatus, ledgerKeys] = await Promise.all([
+    prisma.merchantProfile.findMany({
       where: { status: 'APPROVED' },
       orderBy: { displayName: 'asc' },
       take: 60,
@@ -60,7 +65,7 @@ export default async function AdminSettlementsPage({
         memo: true, adminMemo: true, payoutFailReason: true,
         residentMasked: true, residentPurgedAt: true,
         requestedAt: true, approvedAt: true, paidAt: true, rejectedAt: true,
-        creator: {
+        merchant: {
           select: {
             id: true, displayName: true, code: true,
             settlementAccount: { select: { bankName: true, accountTail4: true, holderMasked: true, verified: true } },
@@ -76,8 +81,8 @@ export default async function AdminSettlementsPage({
       take: PAGE_SIZE,
       select: {
         id: true, entryType: true, amount: true, memo: true, occurredAt: true, settlementKey: true,
-        donationId: true, refundId: true, requestId: true,
-        creator: { select: { id: true, displayName: true } },
+        chargeId: true, refundId: true, requestId: true,
+        merchant: { select: { id: true, displayName: true } },
       },
     }),
     prisma.settlementRequest.groupBy({ by: ['status'], _count: { _all: true }, _sum: { amount: true } }),
@@ -89,8 +94,11 @@ export default async function AdminSettlementsPage({
     }),
   ]);
 
+  // 자동 지급 모니터링 (오늘 지급 예정 / 실행 결과 / 실패 / 보류)
+  const payout = await buildPayoutDashboard();
+
   const summaries = await Promise.all(
-    creators.slice(0, 30).map(async (c) => ({ creator: c, summary: await getSettlementSummary(c.id) })),
+    merchants.slice(0, 30).map(async (c) => ({ merchant: c, summary: await getSettlementSummary(c.id) })),
   );
   const visibleSummaries = summaries.filter((s) => s.summary.balance !== 0n || s.summary.pending !== 0n);
 
@@ -107,12 +115,12 @@ export default async function AdminSettlementsPage({
     amount: r.amount.toString(),
     withholding: r.withholding.toString(),
     payoutAmount: r.payoutAmount.toString(),
-    creatorName: r.creator.displayName,
-    creatorCode: r.creator.code,
-    bank: r.creator.settlementAccount?.bankName ?? null,
-    accountTail4: r.creator.settlementAccount?.accountTail4 ?? null,
-    holderMasked: r.creator.settlementAccount?.holderMasked ?? null,
-    verified: r.creator.settlementAccount?.verified ?? false,
+    merchantName: r.merchant.displayName,
+    merchantCode: r.merchant.code,
+    bank: r.merchant.settlementAccount?.bankName ?? null,
+    accountTail4: r.merchant.settlementAccount?.accountTail4 ?? null,
+    holderMasked: r.merchant.settlementAccount?.holderMasked ?? null,
+    verified: r.merchant.settlementAccount?.verified ?? false,
     adminMemo: r.adminMemo,
     memo: r.memo,
     residentMasked: r.residentMasked,
@@ -127,15 +135,144 @@ export default async function AdminSettlementsPage({
     <>
       <PageHeader
         title="정산 관리"
-        description="가맹점별 정산 잔액과 정산 요청 처리, 정산 원장 조회를 제공합니다."
+        description="자동 지급 현황과 가맹점별 정산 잔액, 지급 회차 처리, 정산 원장 조회를 제공합니다."
       />
 
       <div className="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-        <StatTile label="요청 대기" value={formatNumber(countOf('REQUESTED'))} sub={formatWon(sumOf('REQUESTED'))} tone={countOf('REQUESTED') > 0 ? 'warning' : 'neutral'} />
+        <StatTile label="접수" value={formatNumber(countOf('REQUESTED'))} sub={formatWon(sumOf('REQUESTED'))} tone={countOf('REQUESTED') > 0 ? 'warning' : 'neutral'} />
         <StatTile label="검토중" value={formatNumber(countOf('REVIEWING'))} sub={formatWon(sumOf('REVIEWING'))} />
         <StatTile label="승인(지급 대기)" value={formatNumber(countOf('APPROVED'))} sub={formatWon(sumOf('APPROVED'))} tone="brand" />
         <StatTile label="지급 완료" value={formatNumber(countOf('PAID'))} sub={formatWon(sumOf('PAID'))} tone="success" />
       </div>
+
+      <section className="mb-5">
+        <SectionTitle
+          title="자동 지급 현황"
+          description={`지급일은 수수료 정책의 "지급일(영업일)"로 결정됩니다. 전역 정책으로 일괄 지정하고 가맹점 정책으로 개별 조정합니다. · 기준일 ${formatDateKeyKo(payout.todayKey)}`}
+        />
+        <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+          <StatTile
+            label="오늘 지급 예정"
+            value={formatWon(payout.scheduled.amount)}
+            sub={`가맹점 ${formatNumber(payout.scheduled.merchants)}곳`}
+            tone="brand"
+          />
+          <StatTile
+            label="오늘 지급 완료"
+            value={formatWon(payout.paidToday.amount)}
+            sub={`${formatNumber(payout.paidToday.count)}건 (자동)`}
+            tone="success"
+          />
+          <StatTile
+            label="지급 실패"
+            value={formatNumber(payout.failed.length)}
+            sub={payout.failed.length > 0 ? '재시도 필요' : '없음'}
+            tone={payout.failed.length > 0 ? 'danger' : 'neutral'}
+          />
+          <StatTile
+            label="지급 보류(계좌)"
+            value={formatNumber(payout.blocked.length)}
+            sub={payout.blocked.length > 0 ? formatWon(payout.blocked.reduce((s, b) => s + b.amount, 0n)) : '없음'}
+            tone={payout.blocked.length > 0 ? 'warning' : 'neutral'}
+          />
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-start gap-3">
+          <ActionForm
+            action={runPayoutBatchAction}
+            submitLabel="자동 지급 지금 실행"
+            variant="secondary"
+            compact
+            confirm="지급일이 도래한 가맹점에 실제로 이체를 실행합니다. 계속할까요?"
+          />
+          <p className="max-w-[560px] text-[11.5px] leading-relaxed text-ink-400">
+            배치는 매일 자동으로 실행됩니다. 이 버튼은 크론이 실패했거나 계좌 인증을 뒤늦게 마친 가맹점을 그날 안에
+            지급할 때만 사용하세요. 같은 날 이미 처리된 가맹점은 멱등키로 걸러져 이중 지급되지 않습니다.
+          </p>
+        </div>
+
+        {env.payout.provider === 'mock' ? (
+          <div className="mt-3">
+            <Notice tone="warning" title="지급대행 연동은 아직 mock 입니다">
+              PAYOUT_PROVIDER 가 mock 이라 실제 이체가 일어나지 않습니다. 화면의 &ldquo;지급 완료&rdquo;는 모의 결과이며,
+              운영 전환 시 지급대행사 규격에 맞춘 어댑터로 교체해야 합니다.
+            </Notice>
+          </div>
+        ) : null}
+
+        {payout.blocked.length > 0 ? (
+          <div className="mt-4">
+            <SectionTitle title="지급 보류 가맹점" description="지급 예정 금액이 있으나 계좌 문제로 지급되지 않습니다. 금액은 다음 회차로 이월됩니다." />
+            <Table className="min-w-[700px]">
+              <thead>
+                <tr>
+                  <Th>가맹점</Th>
+                  <Th className="text-right">보류 금액</Th>
+                  <Th>사유</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {payout.blocked.map((b) => (
+                  <tr key={b.merchantId}>
+                    <Td>
+                      <Link href={`/admin/merchants/${b.merchantId}`} className="font-semibold text-brand-700">
+                        {b.merchantName}
+                      </Link>
+                    </Td>
+                    <Td className="text-right tabular-nums">{formatWon(b.amount)}</Td>
+                    <Td className="text-danger-500">{b.reason}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+        ) : null}
+
+        {payout.failed.length > 0 ? (
+          <div className="mt-4">
+            <SectionTitle
+              title="지급 실패 회차"
+              description="재시도는 대행사 조회로 이미 지급되지 않았는지 확인한 뒤에만 다시 이체합니다."
+            />
+            <Table className="min-w-[900px]">
+              <thead>
+                <tr>
+                  <Th>회차 생성일</Th>
+                  <Th>가맹점</Th>
+                  <Th className="text-right">실지급액</Th>
+                  <Th>실패 사유</Th>
+                  <Th>처리</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {payout.failed.map((f) => (
+                  <tr key={f.id}>
+                    <Td className="whitespace-nowrap tabular-nums">{formatKst(f.at, false)}</Td>
+                    <Td>
+                      <Link href={`/admin/merchants/${f.merchantId}`} className="font-semibold text-brand-700">
+                        {f.merchantName}
+                      </Link>
+                    </Td>
+                    <Td className="text-right font-semibold tabular-nums">{formatWon(f.amount)}</Td>
+                    <Td className="max-w-[280px] break-words text-danger-500">{f.reason ?? '-'}</Td>
+                    <Td>
+                      <ActionForm
+                        action={retryPayoutAction}
+                        submitLabel="지급 재시도"
+                        variant="secondary"
+                        compact
+                        confirm="대행사 조회 후 필요하면 다시 이체합니다. 계속할까요?"
+                      >
+                        <input type="hidden" name="requestId" value={f.id} />
+                      </ActionForm>
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+        ) : null}
+      </section>
 
       <Notice tone="danger" title="정산 원장은 조회 전용입니다">
         settlement_ledger 는 append-only 테이블이며, UPDATE/DELETE 는 DB 트리거로 차단되어 있습니다. 금액 정정이
@@ -145,7 +282,7 @@ export default async function AdminSettlementsPage({
       <section className="mt-5">
         <SectionTitle
           title="가맹점별 정산 요약"
-          description="잔액 = 원장 합계 / 보류 = 정산 요청 중 금액 / 가능 = 지금 요청 가능한 금액"
+          description="잔액 = 원장 합계 / 보류 = 지급 진행 중 금액 / 가능 = 다음 회차에 지급 가능한 금액"
         />
         {visibleSummaries.length === 0 ? (
           <EmptyState title="정산 원장이 있는 가맹점이 없습니다" />
@@ -164,13 +301,13 @@ export default async function AdminSettlementsPage({
               </tr>
             </thead>
             <tbody>
-              {visibleSummaries.map(({ creator, summary }) => (
-                <tr key={creator.id}>
+              {visibleSummaries.map(({ merchant, summary }) => (
+                <tr key={merchant.id}>
                   <Td>
-                    <Link href={`/admin/creators/${creator.id}`} className="font-semibold text-brand-700">
-                      {creator.displayName}
+                    <Link href={`/admin/merchants/${merchant.id}`} className="font-semibold text-brand-700">
+                      {merchant.displayName}
                     </Link>
-                    <span className="mt-0.5 block text-[11px] text-ink-400">{creator.code}</span>
+                    <span className="mt-0.5 block text-[11px] text-ink-400">{merchant.code}</span>
                   </Td>
                   <Td className="text-right tabular-nums">{formatWon(summary.totalGross)}</Td>
                   <Td className="text-right tabular-nums">{formatWon(summary.totalPgFee + summary.totalPlatformFee)}</Td>
@@ -188,8 +325,8 @@ export default async function AdminSettlementsPage({
 
       <section className="mt-6">
         <SectionTitle
-          title="정산 요청 처리"
-          description={`전체 ${formatNumber(requestTotal)}건 · 미처리 건을 오래된 순으로 먼저 보여줍니다 (${requestPage}/${requestLastPage} 페이지)`}
+          title="지급 회차 처리"
+          description={`전체 ${formatNumber(requestTotal)}건 · 자동 지급 배치가 만든 회차와 수동 처리 건을 함께 보여줍니다 (${requestPage}/${requestLastPage} 페이지)`}
         />
         <FilterBar action="/admin/settlements" resetHref="/admin/settlements">
           <AdminField label="요청 상태" className="w-40">
@@ -203,8 +340,8 @@ export default async function AdminSettlementsPage({
             </AdminSelect>
           </AdminField>
           <AdminField label="가맹점" className="w-52">
-            <AdminSelect name="creatorId" defaultValue={creatorId ?? ''}>
-              <CreatorOptions creators={creators} />
+            <AdminSelect name="merchantId" defaultValue={merchantId ?? ''}>
+              <MerchantOptions merchants={merchants} />
             </AdminSelect>
           </AdminField>
           <AdminField label="정산 월 (원장 필터)" className="w-40">
@@ -232,7 +369,7 @@ export default async function AdminSettlementsPage({
 
         <Pager
           basePath="/admin/settlements"
-          params={{ status: status ?? '', creatorId: creatorId ?? '', key: settlementKey, page: String(page) }}
+          params={{ status: status ?? '', merchantId: merchantId ?? '', key: settlementKey, page: String(page) }}
           page={requestPage}
           lastPage={requestLastPage}
           total={requestTotal}
@@ -267,8 +404,8 @@ export default async function AdminSettlementsPage({
                     <Td className="whitespace-nowrap">{formatKst(l.occurredAt, false)}</Td>
                     <Td className="font-mono text-[12px]">{l.settlementKey}</Td>
                     <Td>
-                      <Link href={`/admin/creators/${l.creator.id}`} className="font-semibold text-brand-700">
-                        {l.creator.displayName}
+                      <Link href={`/admin/merchants/${l.merchant.id}`} className="font-semibold text-brand-700">
+                        {l.merchant.displayName}
                       </Link>
                     </Td>
                     <Td>{ledgerEntryLabel[l.entryType]}</Td>
@@ -277,10 +414,10 @@ export default async function AdminSettlementsPage({
                     </Td>
                     <Td className="max-w-[200px] break-words">{l.memo ?? '-'}</Td>
                     <Td className="font-mono text-[11px] text-ink-400">
-                      {l.donationId ? <span className="block">결제 {l.donationId}</span> : null}
+                      {l.chargeId ? <span className="block">결제 {l.chargeId}</span> : null}
                       {l.refundId ? <span className="block">환불 {l.refundId}</span> : null}
                       {l.requestId ? <span className="block">정산 {l.requestId}</span> : null}
-                      {!l.donationId && !l.refundId && !l.requestId ? '-' : null}
+                      {!l.chargeId && !l.refundId && !l.requestId ? '-' : null}
                     </Td>
                   </tr>
                 ))}
@@ -288,7 +425,7 @@ export default async function AdminSettlementsPage({
             </Table>
             <Pager
               basePath="/admin/settlements"
-              params={{ status: status ?? '', creatorId: creatorId ?? '', key: settlementKey, rpage: String(requestPage) }}
+              params={{ status: status ?? '', merchantId: merchantId ?? '', key: settlementKey, rpage: String(requestPage) }}
               page={page}
               lastPage={lastPage}
               total={ledgerTotal}

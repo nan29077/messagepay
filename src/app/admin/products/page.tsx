@@ -1,0 +1,295 @@
+import Link from 'next/link';
+import { PageHeader } from '@/components/layout/console-shell';
+import { Badge, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
+import { AdminField, AdminSelect, MerchantOptions, FilterBar, Pager } from '@/components/admin/controls';
+import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
+import { prisma } from '@/server/db';
+import { formatWon, formatNumber } from '@/lib/money';
+import { formatKst } from '@/lib/datetime';
+import { digitalTypeLabel, productKindLabel, stockText } from '@/server/services/products';
+import { PAID_STATUSES } from '@/components/studio/shared';
+import type { Prisma } from '@/generated/prisma/client';
+import type { ShipmentStatus } from '@/generated/prisma/enums';
+
+export const dynamic = 'force-dynamic';
+
+/**
+ * 최고관리자 상품·주문 모니터링.
+ *
+ * 가맹점이 무엇을 팔고 있는지, 실물 주문이 제때 발송되는지를 한 화면에서 본다.
+ * 배송지 원문은 여기서 보여주지 않는다 — 발송에 필요한 곳(가맹점 콘솔)에서만 복호화한다.
+ * 통합 관리자가 원문을 봐야 하는 경우는 분쟁 처리라, 결제 상세에서 건별로 확인한다.
+ */
+
+const SHIPMENT_LABEL: Record<ShipmentStatus, { text: string; tone: 'brand' | 'success' | 'warning' | 'neutral' }> = {
+  PREPARING: { text: '배송 준비', tone: 'warning' },
+  SHIPPED: { text: '발송 완료', tone: 'brand' },
+  DELIVERED: { text: '배송 완료', tone: 'success' },
+  CANCELED: { text: '배송 취소', tone: 'neutral' },
+};
+
+/** 이 시간을 넘도록 발송되지 않은 주문은 지연으로 본다. */
+const DELAY_HOURS = 72;
+
+export default async function AdminProductsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ merchantId?: string; kind?: string; page?: string }>;
+}) {
+  const sp = await searchParams;
+  const page = parsePage(sp.page);
+  const merchantId = (sp.merchantId ?? '').trim() || undefined;
+  const kind = sp.kind === 'DIGITAL' || sp.kind === 'PHYSICAL' ? sp.kind : undefined;
+
+  const where: Prisma.ChargeProductWhereInput = {
+    archivedAt: null,
+    ...(merchantId ? { merchantId } : {}),
+    ...(kind ? { kind } : {}),
+  };
+
+  const delayCut = new Date(Date.now() - DELAY_HOURS * 3_600_000);
+
+  const [merchants, total, products, soldByProduct, shipmentCounts, delayed, lowStock] = await Promise.all([
+    prisma.merchantProfile.findMany({
+      where: { status: 'APPROVED' },
+      orderBy: { displayName: 'asc' },
+      take: 60,
+      select: { id: true, displayName: true, code: true },
+    }),
+    prisma.chargeProduct.count({ where }),
+    prisma.chargeProduct.findMany({
+      where,
+      orderBy: [{ merchantId: 'asc' }, { kind: 'asc' }, { sortOrder: 'asc' }],
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+      include: { merchant: { select: { id: true, displayName: true } } },
+    }),
+    prisma.charge.groupBy({
+      by: ['productId'],
+      where: { productId: { not: null }, status: { in: PAID_STATUSES } },
+      _count: { _all: true },
+      _sum: { amount: true },
+    }),
+    prisma.chargeShipment.groupBy({
+      by: ['status'],
+      where: { charge: { status: { in: PAID_STATUSES } } },
+      _count: { _all: true },
+    }),
+    // 결제된 지 오래됐는데 아직 발송되지 않은 주문
+    prisma.chargeShipment.findMany({
+      where: {
+        status: 'PREPARING',
+        charge: { status: { in: PAID_STATUSES }, paidAt: { lt: delayCut } },
+        ...(merchantId ? { merchantId } : {}),
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 20,
+      include: {
+        merchant: { select: { id: true, displayName: true } },
+        charge: { select: { id: true, transactionNo: true, amount: true, paidAt: true, quantity: true, product: { select: { name: true } } } },
+      },
+    }),
+    prisma.chargeProduct.findMany({
+      where: { kind: 'PHYSICAL', archivedAt: null, active: true, stock: { not: null, lte: 5 } },
+      orderBy: { stock: 'asc' },
+      take: 20,
+      include: { merchant: { select: { id: true, displayName: true } } },
+    }),
+  ]);
+
+  const shipOf = (s: ShipmentStatus) => shipmentCounts.find((c) => c.status === s)?._count._all ?? 0;
+  const soldOf = (id: string) => soldByProduct.find((s) => s.productId === id);
+  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  return (
+    <>
+      <PageHeader
+        title="상품 · 주문"
+        description="가맹점이 등록한 상품과 실물 주문의 배송 진행 상황을 모니터링합니다."
+      />
+
+      <div className="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+        <StatTile
+          label="배송 준비"
+          value={formatNumber(shipOf('PREPARING'))}
+          sub={delayed.length > 0 ? `${DELAY_HOURS}시간 초과 ${delayed.length}건` : '지연 없음'}
+          tone={delayed.length > 0 ? 'danger' : shipOf('PREPARING') > 0 ? 'warning' : 'neutral'}
+        />
+        <StatTile label="발송 완료" value={formatNumber(shipOf('SHIPPED'))} tone="brand" />
+        <StatTile label="배송 완료" value={formatNumber(shipOf('DELIVERED'))} tone="success" />
+        <StatTile
+          label="재고 부족 상품"
+          value={formatNumber(lowStock.length)}
+          sub={lowStock.length > 0 ? '5개 이하' : '없음'}
+          tone={lowStock.length > 0 ? 'warning' : 'neutral'}
+        />
+      </div>
+
+      <Notice tone="neutral" title="배송지 원문은 이 화면에 표시하지 않습니다">
+        받는 분 이름·연락처·주소는 암호화되어 저장되며 발송이 필요한 가맹점 콘솔에서만 복호화됩니다. 분쟁 처리로
+        원문 확인이 필요하면 해당 결제 상세에서 확인해 주세요.
+      </Notice>
+
+      {delayed.length > 0 ? (
+        <section className="mt-5">
+          <SectionTitle
+            title="발송 지연 주문"
+            description={`결제 후 ${DELAY_HOURS}시간이 지나도록 발송되지 않은 주문입니다.`}
+          />
+          <Table className="min-w-[900px]">
+            <thead>
+              <tr>
+                <Th>결제일</Th>
+                <Th>가맹점</Th>
+                <Th>상품</Th>
+                <Th className="text-right">결제 금액</Th>
+                <Th>거래번호</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {delayed.map((d) => (
+                <tr key={d.id}>
+                  <Td className="whitespace-nowrap tabular-nums text-danger-500">{formatKst(d.charge.paidAt, false)}</Td>
+                  <Td>
+                    <Link href={`/admin/merchants/${d.merchant.id}`} className="font-semibold text-brand-700">
+                      {d.merchant.displayName}
+                    </Link>
+                  </Td>
+                  <Td>
+                    {d.charge.product?.name ?? '(보관된 상품)'}
+                    <span className="ml-1 text-ink-400">× {d.charge.quantity}</span>
+                  </Td>
+                  <Td className="text-right tabular-nums">{formatWon(d.charge.amount)}</Td>
+                  <Td className="font-mono text-[11.5px] text-ink-400">{d.charge.transactionNo}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </section>
+      ) : null}
+
+      {lowStock.length > 0 ? (
+        <section className="mt-5">
+          <SectionTitle title="재고 부족 상품" description="재고가 5개 이하로 남은 실물 상품입니다." />
+          <Table className="min-w-[700px]">
+            <thead>
+              <tr>
+                <Th>가맹점</Th>
+                <Th>상품</Th>
+                <Th className="text-right">가격</Th>
+                <Th className="text-right">재고</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {lowStock.map((p) => (
+                <tr key={p.id}>
+                  <Td>
+                    <Link href={`/admin/merchants/${p.merchant.id}`} className="font-semibold text-brand-700">
+                      {p.merchant.displayName}
+                    </Link>
+                  </Td>
+                  <Td>{p.name}</Td>
+                  <Td className="text-right tabular-nums">{formatWon(p.amount)}</Td>
+                  <Td className={`text-right tabular-nums ${p.stock !== null && p.stock <= 0 ? 'font-bold text-danger-500' : 'text-warning-500'}`}>
+                    {stockText(p) ?? '-'}
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </section>
+      ) : null}
+
+      <section className="mt-6">
+        <SectionTitle
+          title="등록된 상품"
+          description={`전체 ${formatNumber(total)}개 (${page}/${lastPage} 페이지)`}
+        />
+        <FilterBar action="/admin/products" resetHref="/admin/products">
+          <AdminField label="가맹점" className="w-52">
+            <AdminSelect name="merchantId" defaultValue={merchantId ?? ''}>
+              <MerchantOptions merchants={merchants} />
+            </AdminSelect>
+          </AdminField>
+          <AdminField label="상품 종류" className="w-40">
+            <AdminSelect name="kind" defaultValue={kind ?? ''}>
+              <option value="">전체</option>
+              <option value="DIGITAL">비실물</option>
+              <option value="PHYSICAL">실물</option>
+            </AdminSelect>
+          </AdminField>
+        </FilterBar>
+
+        {products.length === 0 ? (
+          <EmptyState title="조건에 맞는 상품이 없습니다" />
+        ) : (
+          <>
+            <Table className="min-w-[1000px]">
+              <thead>
+                <tr>
+                  <Th>가맹점</Th>
+                  <Th>상품</Th>
+                  <Th>종류</Th>
+                  <Th className="text-right">가격</Th>
+                  <Th className="text-right">배송비</Th>
+                  <Th className="text-right">재고</Th>
+                  <Th className="text-right">판매</Th>
+                  <Th>상태</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.map((p) => {
+                  const sold = soldOf(p.id);
+                  return (
+                    <tr key={p.id}>
+                      <Td>
+                        <Link href={`/admin/merchants/${p.merchant.id}`} className="font-semibold text-brand-700">
+                          {p.merchant.displayName}
+                        </Link>
+                      </Td>
+                      <Td>
+                        {p.name}
+                        {p.sku ? <span className="ml-1 font-mono text-[11px] text-ink-400">{p.sku}</span> : null}
+                      </Td>
+                      <Td>
+                        <Badge tone={p.kind === 'PHYSICAL' ? 'neutral' : 'brand'}>{productKindLabel[p.kind]}</Badge>
+                        {p.digitalType ? (
+                          <span className="ml-1 text-[11.5px] text-ink-500">{digitalTypeLabel[p.digitalType]}</span>
+                        ) : null}
+                      </Td>
+                      <Td className="text-right tabular-nums">{formatWon(p.amount)}</Td>
+                      <Td className="text-right tabular-nums text-ink-500">
+                        {p.kind !== 'PHYSICAL'
+                          ? '-'
+                          : p.freeShipping
+                            ? '무료'
+                            : p.shippingFee != null
+                              ? formatWon(p.shippingFee)
+                              : '기본정책'}
+                      </Td>
+                      <Td className="text-right tabular-nums">{stockText(p) ?? (p.kind === 'PHYSICAL' ? '무제한' : '-')}</Td>
+                      <Td className="text-right tabular-nums">
+                        {formatNumber(sold?._count._all ?? 0)}건
+                        {sold?._sum.amount ? (
+                          <span className="block text-[11px] text-ink-400">{formatWon(sold._sum.amount)}</span>
+                        ) : null}
+                      </Td>
+                      <Td>{p.active ? <Badge tone="success">노출</Badge> : <Badge tone="neutral">숨김</Badge>}</Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+            <Pager
+              basePath="/admin/products"
+              params={{ merchantId: merchantId ?? '', kind: kind ?? '' }}
+              page={page}
+              lastPage={lastPage}
+              total={total}
+            />
+          </>
+        )}
+      </section>
+    </>
+  );
+}

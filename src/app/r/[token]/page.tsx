@@ -12,14 +12,14 @@ import {
 import { Card, CardTitle, DataRow, Notice } from '@/components/ui';
 import { prisma } from '@/server/db';
 import { resolveSecureLink } from '@/server/services/secure-link';
-import { loadRegistrationContext } from '@/server/services/donor-registration';
-import { loadConfirmContext } from '@/server/services/donation-confirm';
+import { loadRegistrationContext } from '@/server/services/payer-registration';
+import { loadConfirmContext } from '@/server/services/charge-confirm';
 import { resolvePolicy } from '@/server/services/limits';
 import { formatWon } from '@/lib/money';
 import { computeFees } from '@/server/services/settlement';
 import { LinkShell } from './link-shell';
 import { RegisterForm, type TermsItem } from './register-form';
-import { defaultDonorName } from '@/lib/donor-name';
+import { defaultPayerName } from '@/lib/payer-name';
 import { ConfirmPanel } from './confirm-panel';
 import { SelectAmountPanel } from './select-amount-panel';
 import { loadSelectAmountContext } from '@/server/services/charge-select';
@@ -36,7 +36,7 @@ import { getPaymentAdapter } from '@/server/adapters/payment';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '문자페이 결제 확인',
+  title: '메시지페이 결제 확인',
   robots: { index: false, follow: false },
 };
 
@@ -142,7 +142,7 @@ function InvalidLink({ reason }: { reason: 'NOT_FOUND' | 'EXPIRED' | 'USED' }) {
       </p>
       <div className="mt-3">
         <Notice tone="warning" title="주의">
-          문자페이는 문자로 발송한 링크 외에 다른 경로로 계좌 정보를 요구하지 않습니다.
+          메시지페이는 문자로 발송한 링크 외에 다른 경로로 계좌 정보를 요구하지 않습니다.
         </Notice>
       </div>
     </Card>
@@ -166,8 +166,8 @@ async function RegisterScreen({ token }: { token: string }) {
   // 시행일이 도래한 정책·약관만 노출한다.
   const nowForPolicy = new Date();
   const [moNumber, feePolicy, policy, termsRows] = await Promise.all([
-    ctx.creatorId
-      ? prisma.creatorMoNumber.findFirst({ where: { creatorId: ctx.creatorId, status: 'ASSIGNED' } })
+    ctx.merchantId
+      ? prisma.merchantMoNumber.findFirst({ where: { merchantId: ctx.merchantId, status: 'ASSIGNED' } })
       : Promise.resolve(null),
     prisma.feePolicy.findFirst({
       where: {
@@ -178,7 +178,7 @@ async function RegisterScreen({ token }: { token: string }) {
       },
       orderBy: { effectiveFrom: 'desc' },
     }),
-    resolvePolicy(ctx.creatorId, ctx.donorId, nowForPolicy),
+    resolvePolicy(ctx.merchantId, ctx.payerId, nowForPolicy),
     prisma.termsVersion.findMany({
       // TermsVersion 은 종료일이 없다(신 버전 등록 시 구 버전 active=false 처리).
       where: { active: true, effectiveFrom: { lte: nowForPolicy } },
@@ -188,9 +188,9 @@ async function RegisterScreen({ token }: { token: string }) {
 
   // 등록 시점에는 충전 금액이 정해지지 않았다(문자를 보낸 뒤 링크에서 고른다).
   // 수수료 구조를 보여 주기 위해 가장 낮은 충전 상품 금액을 예시로 쓴다.
-  const sampleProduct = ctx.creatorId
+  const sampleProduct = ctx.merchantId
     ? await prisma.chargeProduct.findFirst({
-        where: { creatorId: ctx.creatorId, active: true, archivedAt: null },
+        where: { merchantId: ctx.merchantId, active: true, archivedAt: null },
         orderBy: { amount: 'asc' },
         select: { amount: true },
       })
@@ -227,7 +227,7 @@ async function RegisterScreen({ token }: { token: string }) {
       <Card>
         <p className="text-[12px] font-semibold text-brand-700">최초 1회 계좌 등록</p>
         <h1 className="mt-1 text-[20px] font-extrabold leading-snug tracking-tight text-ink-900">
-          {ctx.creatorName ?? '가맹점'} 결제를 위한
+          {ctx.merchantName ?? '가맹점'} 결제를 위한
           <br />
           계좌 등록과 이용 동의
         </h1>
@@ -235,7 +235,7 @@ async function RegisterScreen({ token }: { token: string }) {
           보내주신 최초 문자는 결제 처리되지 않았습니다. 아래 내용을 확인하고 등록을 완료해 주세요.
         </p>
         <div className="mt-3">
-          <DataRow label="결제 대상" value={ctx.creatorName ?? '-'} />
+          <DataRow label="결제 대상" value={ctx.merchantName ?? '-'} />
           <DataRow
             label="결제 수신번호"
             value={
@@ -287,10 +287,10 @@ async function RegisterScreen({ token }: { token: string }) {
           </span>
           <CardTitle>이용 한도</CardTitle>
         </div>
-        <DataRow label="1일 최대" value={formatWon(policy.donorDailyLimit)} />
-        <DataRow label="1개월 최대" value={formatWon(policy.donorMonthlyLimit)} />
-        <DataRow label="가맹점별 1일 최대" value={formatWon(policy.perCreatorDailyLimit)} />
-        <DataRow label="신규 이용자 첫날 최대" value={formatWon(policy.newDonorFirstDayLimit)} />
+        <DataRow label="1일 최대" value={formatWon(policy.payerDailyLimit)} />
+        <DataRow label="1개월 최대" value={formatWon(policy.payerMonthlyLimit)} />
+        <DataRow label="가맹점별 1일 최대" value={formatWon(policy.perMerchantDailyLimit)} />
+        <DataRow label="신규 이용자 첫날 최대" value={formatWon(policy.newPayerFirstDayLimit)} />
         <DataRow
           label="연속 결제 제한"
           value={`${policy.velocityWindowSec}초 내 ${policy.velocityMaxCount}건`}
@@ -319,7 +319,7 @@ async function RegisterScreen({ token }: { token: string }) {
         </ul>
       </Card>
 
-      <RegisterForm token={token} terms={terms} defaultName={defaultDonorName(ctx.phoneMasked)} />
+      <RegisterForm token={token} terms={terms} defaultName={defaultPayerName(ctx.phoneMasked)} />
     </div>
   );
 }
@@ -352,17 +352,36 @@ async function SelectAmountScreen({ token }: { token: string }) {
         <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-50 text-brand-700">
           <Wallet size={17} strokeWidth={1.7} />
         </span>
-        <CardTitle>{ctx.creatorName} 충전</CardTitle>
+        <CardTitle>{ctx.merchantName} 결제</CardTitle>
       </div>
       <SelectAmountPanel
         token={token}
-        creatorName={ctx.creatorName}
-        products={ctx.products.map((p) => ({ id: p.id, name: p.name, amount: p.amount.toString() }))}
+        merchantName={ctx.merchantName}
+        products={ctx.products.map((p) => ({
+          id: p.id,
+          kind: p.kind,
+          digitalType: p.digitalType,
+          name: p.name,
+          amount: p.amount.toString(),
+          description: p.description,
+          give: p.give,
+          stock: p.stock,
+          soldOut: p.soldOut,
+          maxPerOrder: p.maxPerOrder,
+          options: p.options,
+          shippingFee: p.shippingFee.toString(),
+          freeReason: p.freeReason,
+          freeShortfall: p.freeShortfall != null ? p.freeShortfall.toString() : null,
+          payable: p.payable,
+        }))}
         allowCustom={ctx.allowCustomAmount}
         minAmount={ctx.minAmount.toString()}
         maxAmount={ctx.maxAmount.toString()}
         message={ctx.message}
         paymentMock={paymentMock}
+        shippingGuide={ctx.shipping.guide}
+        carrier={ctx.shipping.carrier}
+        remoteFee={ctx.shipping.remoteFee.toString()}
       />
     </Card>
   );
@@ -384,14 +403,14 @@ async function ConfirmScreen({ token }: { token: string }) {
   return (
     <ConfirmPanel
       token={token}
-      creatorName={ctx.creatorName}
+      merchantName={ctx.merchantName}
       amountText={formatWon(ctx.amount)}
       buttonText={`${formatWon(ctx.amount)} 충전하기`}
       message={ctx.message}
       expiresAtIso={ctx.expiresAt.toISOString()}
-      donorId={ctx.donorId ?? undefined}
-      donorNickname={ctx.donorNickname ?? undefined}
-      donorSnsPlatform={ctx.donorSnsPlatform ?? undefined}
+      payerId={ctx.payerId ?? undefined}
+      payerNickname={ctx.payerNickname ?? undefined}
+      payerSnsPlatform={ctx.payerSnsPlatform ?? undefined}
     />
   );
 }

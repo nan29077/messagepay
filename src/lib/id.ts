@@ -30,12 +30,12 @@ export function newOrderNo(now = new Date()): string {
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 혼동 문자 제외
 
 /** 가맹점 코드: MJP-8K2M */
-export function newCreatorCode(): string {
+export function newMerchantCode(): string {
   // 예측 가능한 코드는 타인의 결제 페이지 코드 추측으로 이어지므로 CSPRNG 를 쓴다.
   return `MJP-${randomCodeString(CODE_ALPHABET, 4)}`;
 }
 
-export function normalizeCreatorCode(input: string): string {
+export function normalizeMerchantCode(input: string): string {
   const v = (input || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (v.startsWith('MJP')) return `MJP-${v.slice(3)}`;
   return `MJP-${v}`;

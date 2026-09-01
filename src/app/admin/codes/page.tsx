@@ -4,11 +4,11 @@ import { Badge, EmptyState, Notice, StatTile, Table, Td, Th } from '@/components
 import { AdminField, AdminInput, AdminSelect, FilterBar, Pager } from '@/components/admin/controls';
 import { ActionButton } from '@/components/admin/action-form';
 import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
-import { reissueCreatorCode } from '@/app/actions/admin/accounts';
+import { reissueMerchantCode } from '@/app/actions/admin/accounts';
 import { prisma } from '@/server/db';
 import { formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
-import { creatorStatusLabel } from '@/lib/labels';
+import { merchantStatusLabel } from '@/lib/labels';
 import type { Prisma } from '@/generated/prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -23,33 +23,33 @@ export default async function AdminCodesPage({
   const q = (sp.q ?? '').trim();
   const state = sp.state === 'ACTIVE' || sp.state === 'REVOKED' ? sp.state : '';
 
-  const where: Prisma.CreatorCodeWhereInput = {
+  const where: Prisma.MerchantCodeWhereInput = {
     ...(state === 'ACTIVE' ? { active: true } : {}),
     ...(state === 'REVOKED' ? { active: false } : {}),
     ...(q
       ? {
           OR: [
             { code: { contains: q.toUpperCase() } },
-            { creator: { displayName: { contains: q, mode: 'insensitive' as const } } },
+            { merchant: { displayName: { contains: q, mode: 'insensitive' as const } } },
           ],
         }
       : {}),
   };
 
   const [total, codes, activeCount, revokedCount] = await Promise.all([
-    prisma.creatorCode.count({ where }),
-    prisma.creatorCode.findMany({
+    prisma.merchantCode.count({ where }),
+    prisma.merchantCode.findMany({
       where,
       orderBy: { issuedAt: 'desc' },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       select: {
         id: true, code: true, active: true, issuedAt: true, revokedAt: true,
-        creator: { select: { id: true, displayName: true, status: true, code: true } },
+        merchant: { select: { id: true, displayName: true, status: true, code: true } },
       },
     }),
-    prisma.creatorCode.count({ where: { active: true } }),
-    prisma.creatorCode.count({ where: { active: false } }),
+    prisma.merchantCode.count({ where: { active: true } }),
+    prisma.merchantCode.count({ where: { active: false } }),
   ]);
 
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -110,14 +110,14 @@ export default async function AdminCodesPage({
                   <tr key={c.id}>
                     <Td className="font-mono text-[13px] font-semibold">{c.code}</Td>
                     <Td>
-                      <Link href={`/admin/creators/${c.creator.id}`} className="font-semibold text-brand-700">
-                        {c.creator.displayName}
+                      <Link href={`/admin/merchants/${c.merchant.id}`} className="font-semibold text-brand-700">
+                        {c.merchant.displayName}
                       </Link>
-                      <span className="mt-0.5 block text-[11px] text-ink-400">현재 코드 {c.creator.code}</span>
+                      <span className="mt-0.5 block text-[11px] text-ink-400">현재 코드 {c.merchant.code}</span>
                     </Td>
                     <Td>
-                      <Badge tone={creatorStatusLabel[c.creator.status].tone}>
-                        {creatorStatusLabel[c.creator.status].text}
+                      <Badge tone={merchantStatusLabel[c.merchant.status].tone}>
+                        {merchantStatusLabel[c.merchant.status].text}
                       </Badge>
                     </Td>
                     <Td>{c.active ? <Badge tone="success">활성</Badge> : <Badge tone="neutral">폐기</Badge>}</Td>
@@ -127,11 +127,11 @@ export default async function AdminCodesPage({
                     <Td>
                       {c.active ? (
                         <ActionButton
-                          action={reissueCreatorCode}
-                          values={{ creatorId: c.creator.id }}
+                          action={reissueMerchantCode}
+                          values={{ merchantId: c.merchant.id }}
                           label="재발급"
                           variant="danger"
-                          confirm={`${c.creator.displayName} 님의 코드를 재발급합니다. 기존 링크 /c/${c.code} 는 즉시 무효화됩니다.`}
+                          confirm={`${c.merchant.displayName} 님의 코드를 재발급합니다. 기존 링크 /c/${c.code} 는 즉시 무효화됩니다.`}
                         />
                       ) : (
                         <span className="text-[12px] text-ink-300">-</span>

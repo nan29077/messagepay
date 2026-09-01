@@ -2,7 +2,7 @@
 
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { startRegistration, completeRegistration } from '@/server/services/donor-registration';
+import { startRegistration, completeRegistration } from '@/server/services/payer-registration';
 import { getSessionUser } from '@/server/auth';
 import { prisma } from '@/server/db';
 import type { ConsentType, PaymentMethodKind } from '@/generated/prisma/enums';
@@ -95,14 +95,14 @@ export async function completeRegistrationAction(input: {
     // (연결돼 있어야 마이페이지에서 결제·결제 내역을 볼 수 있다)
     try {
       const user = await getSessionUser();
-      if (user && res.donorId) {
-        const alreadyLinked = await prisma.donorProfile.findUnique({
+      if (user && res.payerId) {
+        const alreadyLinked = await prisma.payerProfile.findUnique({
           where: { userId: user.id },
           select: { id: true },
         });
         if (!alreadyLinked) {
-          await prisma.donorProfile.updateMany({
-            where: { id: res.donorId, userId: null },
+          await prisma.payerProfile.updateMany({
+            where: { id: res.payerId, userId: null },
             data: { userId: user.id },
           });
         }

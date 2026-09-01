@@ -9,8 +9,8 @@ import { prisma } from '@/server/db';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '공지사항 | 문자페이',
-  description: '문자페이 서비스 운영 공지와 점검, 정책 변경 안내를 확인하세요.',
+  title: '공지사항 | 메시지페이',
+  description: '메시지페이 서비스 운영 공지와 점검, 정책 변경 안내를 확인하세요.',
 };
 
 export default async function NoticePage() {
@@ -61,7 +61,7 @@ function NoticeAside() {
       <Card>
         <CardTitle>운영 상태</CardTitle>
         <p className="mt-2 text-[13px] leading-relaxed text-ink-500">
-          문자페이는 현재 준비 단계로, 실제 결제와 문자 발송은 비활성화되어 있습니다. 화면에 보이는 결제·문자 관련
+          메시지페이는 현재 준비 단계로, 실제 결제와 문자 발송은 비활성화되어 있습니다. 화면에 보이는 결제·문자 관련
           동작은 모의(mock) 처리입니다.
         </p>
       </Card>

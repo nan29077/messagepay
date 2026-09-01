@@ -4,6 +4,7 @@ import { prisma } from '@/server/db';
 import { INQUIRY_GUEST_COOKIE } from '@/server/services/inquiry';
 import { PublicShellClient, type ShellViewer } from './public-shell-client';
 import { SupportWidget } from '@/components/public/support-widget';
+import { isLegacyDonationContent } from '@/lib/public-content';
 
 /**
  * 공개 영역 레이아웃 (서버 래퍼).
@@ -21,11 +22,11 @@ export async function PublicShell({
   const user = await getSessionUser().catch(() => null);
 
   // 가맹점은 프로필 캐릭터(아바타)를 우측 메뉴 프로필에도 그대로 보여준다.
-  const creatorAvatar =
-    user?.role === 'CREATOR' && user.creatorId
+  const merchantAvatar =
+    user?.role === 'MERCHANT' && user.merchantId
       ? (
-          await prisma.creatorProfile.findUnique({
-            where: { id: user.creatorId },
+          await prisma.merchantProfile.findUnique({
+            where: { id: user.merchantId },
             select: { avatarUrl: true, code: true },
           })
         )
@@ -36,21 +37,22 @@ export async function PublicShell({
         id: user.id,
         name: user.name,
         email: user.email,
-        myHref: user.role === 'ADMIN' ? '/admin' : user.role === 'CREATOR' ? '/studio' : '/my',
-        roleLabel: user.role === 'ADMIN' ? '관리자' : user.role === 'CREATOR' ? '가맹점' : '이용자',
-        avatarUrl: creatorAvatar?.avatarUrl ?? null,
-        avatarSeed: creatorAvatar?.code ?? user.id,
+        myHref: user.role === 'ADMIN' ? '/admin' : user.role === 'MERCHANT' ? '/studio' : '/my',
+        roleLabel: user.role === 'ADMIN' ? '관리자' : user.role === 'MERCHANT' ? '가맹점' : '이용자',
+        avatarUrl: merchantAvatar?.avatarUrl ?? null,
+        avatarSeed: merchantAvatar?.code ?? user.id,
         avatarIndex: user.avatarIndex,
       }
     : null;
 
   // 문의 위젯의 FAQ 탭에 보여줄 상위 FAQ (고정글 우선)
-  const faqs = await prisma.contentPost.findMany({
+  const faqCandidates = await prisma.contentPost.findMany({
     where: { type: 'FAQ', published: true },
     orderBy: [{ pinned: 'desc' }, { sortOrder: 'asc' }],
-    take: 6,
+    take: 30,
     select: { id: true, title: true, body: true },
   });
+  const faqs = faqCandidates.filter((faq) => !isLegacyDonationContent(faq)).slice(0, 6);
 
   // 문의 이력이 있을 때만 배경 폴링을 돌린다.
   // (모든 방문자가 15초/5분마다 /api/inquiry 를 두드리면 공개 페이지 전체가 불필요한 DB 부하를 진다)

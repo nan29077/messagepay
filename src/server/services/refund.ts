@@ -3,7 +3,7 @@ import { newId } from '@/lib/id';
 import { getPaymentAdapter } from '@/server/adapters/payment';
 import { calculateFees, postRefundSettlement } from './settlement';
 import { rollbackCounters } from './limits';
-import { sendMtForDonor } from './donation-flow';
+import { sendMtForPayer } from './charge-flow';
 import * as tpl from './mt-templates';
 
 /**
@@ -13,23 +13,23 @@ import * as tpl from './mt-templates';
  */
 
 export async function requestRefund(input: {
-  donationId: string;
+  chargeId: string;
   reason: string;
   requestedBy?: string;
 }) {
-  const donation = await prisma.donation.findUnique({ where: { id: input.donationId } });
-  if (!donation) throw new Error('결제 거래를 찾을 수 없습니다.');
-  if (!['PAYMENT_SUCCESS', 'BROADCAST_PENDING', 'BROADCASTED', 'PARTIAL_DELIVERY_FAILED', 'SETTLEMENT_PENDING', 'SETTLED'].includes(donation.status)) {
+  const charge = await prisma.charge.findUnique({ where: { id: input.chargeId } });
+  if (!charge) throw new Error('결제 거래를 찾을 수 없습니다.');
+  if (!['PAYMENT_SUCCESS', 'BROADCAST_PENDING', 'BROADCASTED', 'PARTIAL_DELIVERY_FAILED', 'SETTLEMENT_PENDING', 'SETTLED'].includes(charge.status)) {
     throw new Error('결제가 완료된 거래만 환불할 수 있습니다.');
   }
   const existing = await prisma.refund.findFirst({
-    where: { donationId: input.donationId, status: { in: ['REQUESTED', 'APPROVED', 'DONE'] } },
+    where: { chargeId: input.chargeId, status: { in: ['REQUESTED', 'APPROVED', 'DONE'] } },
   });
   if (existing) throw new Error('이미 환불이 요청된 거래입니다.');
 
   // 더블클릭·동시 요청으로 REQUESTED 가 두 건 생기지 않도록, 결제 상태 전이를 조건부 UPDATE 로 선점한다.
-  const claimed = await prisma.donation.updateMany({
-    where: { id: donation.id, status: donation.status },
+  const claimed = await prisma.charge.updateMany({
+    where: { id: charge.id, status: charge.status },
     data: { status: 'REFUND_REQUESTED' },
   });
   if (claimed.count !== 1) throw new Error('이미 환불이 요청된 거래입니다.');
@@ -37,18 +37,18 @@ export async function requestRefund(input: {
   const refund = await prisma.refund.create({
     data: {
       id: newId(),
-      donationId: donation.id,
-      amount: donation.amount,
+      chargeId: charge.id,
+      amount: charge.amount,
       reason: input.reason,
       requestedBy: input.requestedBy ?? null,
     },
   });
   // 거절 시 이전 상태로 되돌릴 수 있도록 전이 이력을 남긴다.
-  await prisma.donationStatusLog.create({
+  await prisma.chargeStatusLog.create({
     data: {
       id: newId(),
-      donationId: donation.id,
-      fromStatus: donation.status,
+      chargeId: charge.id,
+      fromStatus: charge.status,
       toStatus: 'REFUND_REQUESTED',
       actor: input.requestedBy ?? 'system',
       reason: input.reason.slice(0, 200),
@@ -60,7 +60,7 @@ export async function requestRefund(input: {
 export async function approveRefund(refundId: string, adminUserId?: string) {
   const refund = await prisma.refund.findUnique({
     where: { id: refundId },
-    include: { donation: { include: { creator: true, transactions: true } } },
+    include: { charge: { include: { merchant: true, transactions: true } } },
   });
   if (!refund) throw new Error('환불 요청을 찾을 수 없습니다.');
   if (refund.status === 'DONE') return refund;
@@ -80,7 +80,7 @@ export async function approveRefund(refundId: string, adminUserId?: string) {
     throw new Error('이미 다른 처리가 진행 중인 환불입니다. 잠시 후 상태를 다시 확인해 주세요.');
   }
 
-  const txn = refund.donation.transactions.find((t) => t.status === 'APPROVED');
+  const txn = refund.charge.transactions.find((t) => t.status === 'APPROVED');
   if (!txn) throw new Error('승인된 결제 거래가 없습니다.');
 
   const adapter = getPaymentAdapter();
@@ -101,7 +101,7 @@ export async function approveRefund(refundId: string, adminUserId?: string) {
     throw new Error(res.message ?? '환불 처리에 실패했습니다.');
   }
 
-  const fees = await calculateFees(refund.donation.creatorId, refund.amount);
+  const fees = await calculateFees(refund.charge.merchantId, refund.amount);
   const now = new Date();
 
   // 환불 확정 기록과 정산 원장 반대 분개는 반드시 같은 트랜잭션이어야 한다.
@@ -112,17 +112,39 @@ export async function approveRefund(refundId: string, adminUserId?: string) {
       data: { status: 'DONE', approvedBy: adminUserId ?? null, processedAt: now, providerTid: txn.providerTid },
     });
     await tx.paymentTransaction.update({ where: { id: txn.id }, data: { status: 'CANCELED', canceledAt: now } });
-    await tx.donation.update({
-      where: { id: refund.donationId },
+    await tx.charge.update({
+      where: { id: refund.chargeId },
       data: { status: 'REFUNDED', refundedAt: now },
     });
-    await tx.donationStatusLog.create({
-      data: { id: newId(), donationId: refund.donationId, toStatus: 'REFUNDED', actor: adminUserId ?? 'admin', reason: refund.reason },
+    await tx.chargeStatusLog.create({
+      data: { id: newId(), chargeId: refund.chargeId, toStatus: 'REFUNDED', actor: adminUserId ?? 'admin', reason: refund.reason },
     });
+
+    // 실물 주문을 환불하면 잡아둔 재고를 돌려놓는다.
+    // 다만 이미 발송했다면 물건은 나간 상태이므로 되돌리지 않는다(가맹점이 회수 후 직접 조정한다).
+    if (refund.charge.productId && refund.charge.quantity > 0) {
+      const shipment = await tx.chargeShipment.findUnique({
+        where: { chargeId: refund.chargeId },
+        select: { status: true },
+      });
+      const shippedOut = shipment ? shipment.status === 'SHIPPED' || shipment.status === 'DELIVERED' : false;
+      if (!shippedOut) {
+        await tx.chargeProduct.updateMany({
+          where: { id: refund.charge.productId, kind: 'PHYSICAL', stock: { not: null } },
+          data: { stock: { increment: refund.charge.quantity } },
+        });
+      }
+      if (shipment) {
+        await tx.chargeShipment.update({
+          where: { chargeId: refund.chargeId },
+          data: shippedOut ? { memo: '환불 처리됨 — 발송분 회수 필요' } : { status: 'CANCELED' },
+        });
+      }
+    }
     await postRefundSettlement(
       {
-        creatorId: refund.donation.creatorId,
-        donationId: refund.donationId,
+        merchantId: refund.charge.merchantId,
+        chargeId: refund.chargeId,
         refundId: refund.id,
         amount: refund.amount,
         fees,
@@ -132,17 +154,17 @@ export async function approveRefund(refundId: string, adminUserId?: string) {
     );
   });
 
-  if (refund.donation.donorId && refund.donation.paidAt) {
-    await rollbackCounters(refund.donation.donorId, refund.donation.creatorId, refund.amount, refund.donation.paidAt);
-    await prisma.donorCreatorLink.updateMany({
-      where: { donorId: refund.donation.donorId, creatorId: refund.donation.creatorId },
+  if (refund.charge.payerId && refund.charge.paidAt) {
+    await rollbackCounters(refund.charge.payerId, refund.charge.merchantId, refund.amount, refund.charge.paidAt);
+    await prisma.payerMerchantLink.updateMany({
+      where: { payerId: refund.charge.payerId, merchantId: refund.charge.merchantId },
       data: { totalAmount: { decrement: refund.amount }, totalCount: { decrement: 1 } },
     });
-    await sendMtForDonor(
-      refund.donation.donorId,
-      tpl.tplRefundDone(refund.donation.creator.displayName, refund.amount),
-      refund.donationId,
-      refund.donation.creatorId,
+    await sendMtForPayer(
+      refund.charge.payerId,
+      tpl.tplRefundDone(refund.charge.merchant.displayName, refund.amount),
+      refund.chargeId,
+      refund.charge.merchantId,
     );
   }
 
@@ -162,13 +184,13 @@ export async function rejectRefund(refundId: string, adminUserId?: string, memo?
     throw new Error('이미 처리된 환불입니다. 목록을 새로고침해 현재 상태를 확인해 주세요.');
   }
   // 환불 요청 직전 상태(BROADCASTED·SETTLED 등)로 되돌린다. 이력이 없는 예전 건은 정산대기로 둔다.
-  const transition = await prisma.donationStatusLog.findFirst({
-    where: { donationId: refund.donationId, toStatus: 'REFUND_REQUESTED' },
+  const transition = await prisma.chargeStatusLog.findFirst({
+    where: { chargeId: refund.chargeId, toStatus: 'REFUND_REQUESTED' },
     orderBy: { createdAt: 'desc' },
     select: { fromStatus: true },
   });
-  await prisma.donation.update({
-    where: { id: refund.donationId },
+  await prisma.charge.update({
+    where: { id: refund.chargeId },
     data: { status: transition?.fromStatus ?? 'SETTLEMENT_PENDING', statusReason: '환불 거절' },
   });
   return refund;

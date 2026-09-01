@@ -4,13 +4,13 @@ import * as React from 'react';
 import Link from 'next/link';
 import { UserPlus } from 'lucide-react';
 import { Button, Field, Input, Notice, Checkbox } from '@/components/ui';
-import { signupDonor, type SignupFormState } from '@/app/actions/auth';
+import { signupPayer, type SignupFormState } from '@/app/actions/auth';
 import { GeneratedAvatar } from '@/components/profile/generated-avatar';
 
 const initial: SignupFormState = { ok: false };
 
 export function SignupForm() {
-  const [state, formAction, pending] = React.useActionState(signupDonor, initial);
+  const [state, formAction, pending] = React.useActionState(signupPayer, initial);
 
   return (
     <form action={formAction} className="space-y-4">

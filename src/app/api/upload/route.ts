@@ -1,4 +1,4 @@
-import { requireCreator } from '@/server/auth';
+import { requireMerchant } from '@/server/auth';
 import { isSameOrigin } from '@/server/request-guard';
 import { putObject, newObjectName } from '@/server/uploads';
 
@@ -43,8 +43,8 @@ export async function POST(req: Request) {
     return Response.json({ ok: false, message: '허용되지 않은 요청입니다.' }, { status: 403 });
   }
 
-  const creator = await requireCreator().catch(() => null);
-  if (!creator) {
+  const merchant = await requireMerchant().catch(() => null);
+  if (!merchant) {
     return Response.json({ ok: false, message: '가맹점 로그인이 필요합니다.' }, { status: 401 });
   }
 

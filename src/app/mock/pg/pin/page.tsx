@@ -40,7 +40,7 @@ export default async function MockPgPinPage({ searchParams }: { searchParams: Pr
   const session = sessionId
     ? await prisma.paymentPinSession.findUnique({
         where: { sessionId },
-        include: { donation: { include: { creator: { select: { displayName: true } } } } },
+        include: { charge: { include: { merchant: { select: { displayName: true } } } } },
       })
     : null;
 
@@ -69,9 +69,9 @@ export default async function MockPgPinPage({ searchParams }: { searchParams: Pr
         ) : (
           <MockPinForm
             sessionId={session.sessionId}
-            creatorName={session.donation.creator.displayName}
+            merchantName={session.charge.merchant.displayName}
             amountText={`${formatNumber(session.amount)}원`}
-            message={session.donation.message}
+            message={session.charge.message}
             status={session.status}
             expiresAtIso={session.expiresAt.toISOString()}
           />

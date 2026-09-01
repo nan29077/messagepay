@@ -2,12 +2,12 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ConsoleShell, type NavGroup } from '@/components/layout/console-shell';
-import { getSessionUser, requireCreator } from '@/server/auth';
+import { getSessionUser, requireMerchant } from '@/server/auth';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '가맹점 관리자 | 문자페이',
+  title: '가맹점 관리자 | 메시지페이',
   robots: { index: false, follow: false },
 };
 
@@ -16,13 +16,15 @@ const groups: NavGroup[] = [
     title: '현황',
     items: [
       { href: '/studio', label: '대시보드', icon: 'dashboard' },
-      { href: '/studio/donations', label: '결제 내역', icon: 'donations' },
+      { href: '/studio/charges', label: '결제 내역', icon: 'charges' },
       { href: '/studio/messages', label: '문자 관리', icon: 'messages' },
     ],
   },
   {
     title: '운영',
     items: [
+      { href: '/studio/products', label: '상품 설정', icon: 'products' },
+      { href: '/studio/orders', label: '주문·배송', icon: 'orders' },
       { href: '/studio/settings', label: '결제 설정', icon: 'settings' },
       { href: '/studio/moderation', label: '금칙어·차단', icon: 'moderation' },
       { href: '/studio/reports', label: '신고', icon: 'reports' },
@@ -57,11 +59,11 @@ const STATUS_NOTICE: Record<string, { title: string; body: string }> = {
 
 export default async function StudioLayout({ children }: { children: React.ReactNode }) {
   const session = await getSessionUser().catch(() => null);
-  if (!session?.creatorId) redirect('/login?next=/studio');
+  if (!session?.merchantId) redirect('/login?next=/studio');
 
   // 미승인·반려·정지 채널은 스튜디오 기능 대신 상태 안내만 노출한다.
-  if (session.creatorStatus !== 'APPROVED') {
-    const notice = STATUS_NOTICE[session.creatorStatus ?? 'PENDING'] ?? STATUS_NOTICE.PENDING;
+  if (session.merchantStatus !== 'APPROVED') {
+    const notice = STATUS_NOTICE[session.merchantStatus ?? 'PENDING'] ?? STATUS_NOTICE.PENDING;
     return (
       <div className="console-canvas mx-auto flex min-h-screen max-w-[560px] flex-col justify-center px-5 py-16">
         <div className="card p-7">
@@ -80,7 +82,7 @@ export default async function StudioLayout({ children }: { children: React.React
     );
   }
 
-  const user = await requireCreator().catch(() => null);
+  const user = await requireMerchant().catch(() => null);
   if (!user) redirect('/login?next=/studio');
 
   return (
@@ -91,8 +93,8 @@ export default async function StudioLayout({ children }: { children: React.React
         id: user.id,
         name: user.name ?? '가맹점',
         role: '가맹점',
-        avatarUrl: user.creatorAvatarUrl,
-        avatarSeed: user.creatorCode ?? user.id,
+        avatarUrl: user.merchantAvatarUrl,
+        avatarSeed: user.merchantCode ?? user.id,
         avatarIndex: user.avatarIndex,
       }}
     >

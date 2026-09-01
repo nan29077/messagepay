@@ -34,7 +34,7 @@ const MAX_BODY_BYTES = 16 * 1024;
 
 interface PinCallbackBody {
   sessionId?: unknown;
-  donationId?: unknown;
+  chargeId?: unknown;
   resultCode?: unknown;
   resultMessage?: unknown;
 }
@@ -137,11 +137,11 @@ export async function POST(req: Request) {
   }
 
   const sessionId = str(parsed.sessionId);
-  const donationId = str(parsed.donationId);
-  if (!sessionId && !donationId) {
-    return finish(400, 'sessionId/donationId 없음', {
+  const chargeId = str(parsed.chargeId);
+  if (!sessionId && !chargeId) {
+    return finish(400, 'sessionId/chargeId 없음', {
       ok: false,
-      message: 'sessionId 또는 donationId 가 필요합니다.',
+      message: 'sessionId 또는 chargeId 가 필요합니다.',
     });
   }
 
@@ -153,7 +153,7 @@ export async function POST(req: Request) {
     const verdict = verifyResultCode(resultCode);
     if (!verdict.ok) {
       const failed = await failPinAuthorization(
-        { sessionId, donationId },
+        { sessionId, chargeId },
         [verdict.reason, resultMessage].filter(Boolean).join(' / '),
       );
       logger.warn('PIN 콜백 - 인증 실패 통지', { reason: verdict.reason, code: failed.code });
@@ -167,7 +167,7 @@ export async function POST(req: Request) {
 
     const result = await completePinAuthorization({
       sessionId,
-      donationId,
+      chargeId,
       resultCode,
       resultMessage,
     });

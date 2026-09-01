@@ -46,7 +46,7 @@ export default async function AdminModerationPage({
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       select: {
-        id: true, donationId: true, creatorId: true, category: true, content: true,
+        id: true, chargeId: true, merchantId: true, category: true, content: true,
         status: true, handledBy: true, handledAt: true, createdAt: true, reporterUserId: true,
       },
     }),
@@ -190,7 +190,7 @@ export default async function AdminModerationPage({
                         })()}
                       </Td>
                       <Td className="max-w-[280px] break-words">{r.content}</Td>
-                      <Td className="font-mono text-[11px] text-ink-400">{r.donationId ?? '-'}</Td>
+                      <Td className="font-mono text-[11px] text-ink-400">{r.chargeId ?? '-'}</Td>
                       <Td>
                         <Badge tone={reportStatusLabel[r.status].tone}>{reportStatusLabel[r.status].text}</Badge>
                       </Td>

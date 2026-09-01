@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
-import { setChargeAmount, inboundAndPay, resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
-import { handleMoInbound, routeCreator } from '@/server/services/donation-flow';
+import { setChargeAmount, inboundAndPay, resetDb, seedBasics, seedRegisteredPayer, moPayload, type Fixture } from './helpers';
+import { handleMoInbound, routeMerchant } from '@/server/services/charge-flow';
 import { mockMoAdapter } from '@/server/adapters/mo';
 import {
   calculateWithholding,
@@ -21,7 +21,7 @@ import { kstMonthEndKey } from '@/lib/datetime';
  */
 
 let fx: Fixture;
-const inbound = (p: Record<string, unknown>) => inboundAndPay(p, fx.creatorId);
+const inbound = (p: Record<string, unknown>) => inboundAndPay(p, fx.merchantId);
 
 // ───────────────────────── M-1 원천징수 2단계 계산 ─────────────────────────
 
@@ -104,44 +104,44 @@ describe('MO 번호 라우팅', () => {
   });
 
   it('같은 번호에 전용/대표번호가 섞이면 라우팅하지 않는다', async () => {
-    const route = await prisma.creatorMoNumber.findFirstOrThrow({ where: { creatorId: fx.creatorId } });
+    const route = await prisma.merchantMoNumber.findFirstOrThrow({ where: { merchantId: fx.merchantId } });
 
     // 같은 번호에 SHARED_PREFIX 행을 하나 더 심는다 (DB 유니크로는 막히지 않는 조합).
-    const other = await prisma.creatorProfile.create({
+    const other = await prisma.merchantProfile.create({
       data: {
         id: newId(),
         userId: (await prisma.user.create({
-          data: { id: newId(), email: `x${newId()}@t.kr`, passwordHash: 'x', role: 'CREATOR', status: 'ACTIVE' },
+          data: { id: newId(), email: `x${newId()}@t.kr`, passwordHash: 'x', role: 'MERCHANT', status: 'ACTIVE' },
         })).id,
         code: `MJP-${newId().slice(-5).toUpperCase()}`,
         displayName: '충돌 가맹점',
         status: 'APPROVED',
       },
     });
-    await prisma.creatorMoNumber.create({
+    await prisma.merchantMoNumber.create({
       data: {
         id: newId(),
         phoneNumber: route.phoneNumber,
         keyword: 'ZZZ',
         mode: 'SHARED_PREFIX',
         status: 'ASSIGNED',
-        creatorId: other.id,
+        merchantId: other.id,
         assignedAt: new Date(),
       },
     });
 
     // 충돌 상태에서는 아무에게도 배달하지 않는다.
     // (고치기 전에는 DEDICATED 가 먼저 매칭돼 ZZZ 결제까지 fx 가맹점가 가져갔다)
-    expect(await routeCreator(route.phoneNumber, 'ZZZ 응원합니다')).toBeNull();
-    expect(await routeCreator(route.phoneNumber, '그냥 응원')).toBeNull();
+    expect(await routeMerchant(route.phoneNumber, 'ZZZ 응원합니다')).toBeNull();
+    expect(await routeMerchant(route.phoneNumber, '그냥 응원')).toBeNull();
   });
 
   it('전용번호는 PostgreSQL 부분 유니크 인덱스로 중복 등록이 막힌다', async () => {
-    const route = await prisma.creatorMoNumber.findFirstOrThrow({ where: { creatorId: fx.creatorId } });
+    const route = await prisma.merchantMoNumber.findFirstOrThrow({ where: { merchantId: fx.merchantId } });
     // keyword 가 NULL 이면 (phone_number, keyword) 유니크로는 중복이 통과한다.
     // 부분 유니크 인덱스가 있어야 실제로 막힌다.
     await expect(
-      prisma.creatorMoNumber.create({
+      prisma.merchantMoNumber.create({
         data: { id: newId(), phoneNumber: route.phoneNumber, keyword: null, mode: 'DEDICATED', status: 'AVAILABLE' },
       }),
     ).rejects.toThrow();
@@ -157,7 +157,7 @@ describe('결제 결과 미확인(UNKNOWN)', () => {
   });
 
   it('실패로 덮어쓰지 않고 UNKNOWN 으로 남겨 관리자 확인 큐에 올린다', async () => {
-    await seedRegisteredDonor(fx.donorPhone);
+    await seedRegisteredPayer(fx.payerPhone);
     // mock 어댑터: 금액 끝 777 = 타임아웃 후 조회도 실패(FAILED), 888 = 타임아웃 후 승인.
     // 조회 자체가 결과를 못 주는 상황을 만들기 위해 승인 기록이 없는 주문을 쓴다.
     setChargeAmount(3888n);
@@ -169,13 +169,13 @@ describe('결제 결과 미확인(UNKNOWN)', () => {
   });
 
   it('결제 성공 시 원장 분개가 같은 트랜잭션에서 기록된다', async () => {
-    await seedRegisteredDonor(fx.donorPhone);
+    await seedRegisteredPayer(fx.payerPhone);
     await inbound(moPayload({ to: fx.moNumber }));
 
-    const donation = await prisma.donation.findFirstOrThrow();
-    const entries = await prisma.settlementLedger.findMany({ where: { donationId: donation.id } });
+    const charge = await prisma.charge.findFirstOrThrow();
+    const entries = await prisma.settlementLedger.findMany({ where: { chargeId: charge.id } });
     // 결제 성공 = 원장 3분개가 반드시 함께 존재해야 한다.
-    expect(entries.map((e) => e.entryType).sort()).toEqual(['DONATION_GROSS', 'PG_FEE', 'PLATFORM_FEE']);
+    expect(entries.map((e) => e.entryType).sort()).toEqual(['CHARGE_GROSS', 'PG_FEE', 'PLATFORM_FEE']);
   });
 });
 
@@ -185,16 +185,16 @@ describe('정산 지급 안전장치', () => {
   beforeEach(async () => {
     await resetDb();
     fx = await seedBasics({ paymentMode: 'DIRECT_TRIGGER' });
-    await seedRegisteredDonor(fx.donorPhone);
+    await seedRegisteredPayer(fx.payerPhone);
     for (let i = 0; i < 3; i += 1) {
-      await prisma.donationLimitPolicy.updateMany({ data: { velocityMaxCount: 100, cooldownAfterCount: 100 } });
+      await prisma.chargeLimitPolicy.updateMany({ data: { velocityMaxCount: 100, cooldownAfterCount: 100 } });
       await inbound(moPayload({ to: fx.moNumber, text: `적립 ${i}` }));
     }
   });
 
   it('이체파일 발급 이력이 남고, 재발급 건은 재발급으로 표시된다', async () => {
-    const summary = await getSettlementSummary(fx.creatorId);
-    const req = await createSettlementRequest(fx.creatorId, summary.available);
+    const summary = await getSettlementSummary(fx.merchantId);
+    const req = await createSettlementRequest(fx.merchantId, summary.available);
 
     const first = await markPayoutFileIssued([req.id], 'admin-test');
     expect(first.batchNo).toMatch(/^B[0-9A-Z]{10}$/);
@@ -215,12 +215,12 @@ describe('정산 지급 안전장치', () => {
   });
 
   it('이체 후 이상이 발견돼도 지급 분개는 반드시 남는다 (throw 하면 이중지급)', async () => {
-    const summary = await getSettlementSummary(fx.creatorId);
-    const req = await createSettlementRequest(fx.creatorId, summary.available);
+    const summary = await getSettlementSummary(fx.merchantId);
+    const req = await createSettlementRequest(fx.merchantId, summary.available);
     await prisma.settlementRequest.update({ where: { id: req.id }, data: { status: 'APPROVED' } });
 
     // 이체는 이미 끝난 상황을 가정: 계좌 인증이 그 사이 해제됐다.
-    await prisma.settlementAccount.update({ where: { creatorId: fx.creatorId }, data: { verified: false } });
+    await prisma.settlementAccount.update({ where: { merchantId: fx.merchantId }, data: { verified: false } });
 
     const paid = await markSettlementPaid(req.id, 'admin-test');
     expect(paid.status).toBe('PAID');
@@ -230,13 +230,13 @@ describe('정산 지급 안전장치', () => {
     expect(entries.map((e) => e.entryType).sort()).toEqual(['PAYOUT', 'PAYOUT_WITHHOLDING']);
 
     // 잔액이 실제로 줄어 재신청·이중지급이 불가능해야 한다.
-    const after = await getSettlementSummary(fx.creatorId);
+    const after = await getSettlementSummary(fx.merchantId);
     expect(after.balance).toBe(0n);
   });
 
   it('반려·지급실패 건의 주민등록번호는 즉시 파기된다', async () => {
-    const summary = await getSettlementSummary(fx.creatorId);
-    const req = await createSettlementRequest(fx.creatorId, summary.available, { resident: '9010101234567' });
+    const summary = await getSettlementSummary(fx.merchantId);
+    const req = await createSettlementRequest(fx.merchantId, summary.available, { resident: '9010101234567' });
     expect((await prisma.settlementRequest.findUniqueOrThrow({ where: { id: req.id } })).residentEnc).toBeTruthy();
 
     await prisma.settlementRequest.update({ where: { id: req.id }, data: { status: 'APPROVED' } });
@@ -253,8 +253,8 @@ describe('정산 지급 안전장치', () => {
   });
 
   it('정산 요청 시 소득세·지방소득세가 각각 기록된다 (지급명세서 신고용)', async () => {
-    const summary = await getSettlementSummary(fx.creatorId);
-    const req = await createSettlementRequest(fx.creatorId, summary.available);
+    const summary = await getSettlementSummary(fx.merchantId);
+    const req = await createSettlementRequest(fx.merchantId, summary.available);
     const expected = calculateWithholding(summary.available);
     expect(req.incomeTax).toBe(expected.incomeTax);
     expect(req.localTax).toBe(expected.localTax);

@@ -18,7 +18,7 @@ export interface MockPinResult {
   message: string;
   transactionNo?: string;
   amountText?: string;
-  creatorName?: string;
+  merchantName?: string;
 }
 
 export async function submitMockPinAction(sessionId: string, pin: string): Promise<MockPinResult> {
@@ -37,18 +37,18 @@ export async function submitMockPinAction(sessionId: string, pin: string): Promi
     resultMessage: '[MOCK] 모의 PIN 화면에서 인증 완료',
   });
 
-  if (!result.donationId) return { ok: result.ok, message: result.message };
+  if (!result.chargeId) return { ok: result.ok, message: result.message };
 
-  const donation = await prisma.donation.findUnique({
-    where: { id: result.donationId },
-    select: { transactionNo: true, amount: true, creator: { select: { displayName: true } } },
+  const charge = await prisma.charge.findUnique({
+    where: { id: result.chargeId },
+    select: { transactionNo: true, amount: true, merchant: { select: { displayName: true } } },
   });
 
   return {
     ok: result.ok,
     message: result.message,
-    transactionNo: donation?.transactionNo,
-    amountText: donation ? `${formatNumber(donation.amount)}원` : undefined,
-    creatorName: donation?.creator.displayName,
+    transactionNo: charge?.transactionNo,
+    amountText: charge ? `${formatNumber(charge.amount)}원` : undefined,
+    merchantName: charge?.merchant.displayName,
   };
 }

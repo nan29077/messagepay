@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { headers } from 'next/headers';
 import './globals.css';
 
-const shareTitle = '문자페이 | 문자 한 통으로, 결제와 충전이 끝납니다';
+const shareTitle = 'MessagePay(메시지페이) | 문자 한 통으로, 결제와 충전이 끝납니다';
 const shareDescription = '앱 설치 없이 문자로 간편하게 결제하고 포인트를 충전하는 쉽고 빠른 문자결제 서비스입니다.';
 
 function isLocalUrl(value: string | undefined) {
@@ -44,9 +44,9 @@ export async function generateMetadata(): Promise<Metadata> {
 
   return {
     metadataBase,
-    title: { default: shareTitle, template: '%s | 문자페이' },
+    title: { default: shareTitle, template: '%s | 메시지페이' },
     description: shareDescription,
-    keywords: ['문자페이', '문자결제', '포인트 충전', '간편결제', 'SMS 결제', '선불 충전'],
+    keywords: ['메시지페이', 'MessagePay', '문자결제', '포인트 충전', '간편결제', 'SMS 결제', '선불 충전'],
     icons: {
       icon: [
         { url: '/munjapay-mark.svg?v=1', type: 'image/svg+xml', sizes: 'any' },
@@ -58,9 +58,9 @@ export async function generateMetadata(): Promise<Metadata> {
       description: shareDescription,
       type: 'website',
       url: metadataBase,
-      siteName: '문자페이',
+      siteName: 'MessagePay(메시지페이)',
       locale: 'ko_KR',
-      images: [{ url: shareImage, width: 1200, height: 630, alt: '문자페이 쉽고 빠른 문자결제' }],
+      images: [{ url: shareImage, width: 1200, height: 630, alt: '메시지페이 쉽고 빠른 문자결제' }],
     },
     twitter: {
       card: 'summary_large_image',

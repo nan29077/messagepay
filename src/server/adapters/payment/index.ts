@@ -87,7 +87,7 @@ export type InquiryStatus = 'APPROVED' | 'FAILED' | 'CANCELED' | 'NOT_FOUND' | '
 export interface PaymentAdapter {
   info(): AdapterInfo;
   createRegistrationSession(input: {
-    donorRef: string;
+    payerRef: string;
     returnUrl: string;
     notifyUrl: string;
     /** 생략하면 ACCOUNT. 카드 빌링키는 규격 수령 후 어댑터에서 분기한다. */
@@ -100,13 +100,13 @@ export interface PaymentAdapter {
    * 이 호출은 출금을 일으키지 않는다. 이용자가 PIN 을 입력해야 결제사가 콜백을 보내고,
    * 그 콜백을 받은 뒤에야 approve() 로 실제 승인이 이루어진다.
    *
-   * @param donationId 결제 거래 ID. 콜백에서 거래를 식별하는 키로 쓴다.
+   * @param chargeId 결제 거래 ID. 콜백에서 거래를 식별하는 키로 쓴다.
    * @param amount     결제 금액(원). 금액은 전 구간 bigint 로 다룬다.
    * @param phone      이용자 전화번호(정규화된 원문). 결제사 인증 대상 확인용이며 저장하지 않는다.
    * @param method     인증할 결제수단 종류. 생략하면 ACCOUNT(내통장결제 계좌 빌키).
    */
   requestPinLink(
-    donationId: string,
+    chargeId: string,
     amount: bigint,
     phone: string,
     method?: PaymentMethodKind,
@@ -153,13 +153,13 @@ export const mockPaymentAdapter: PaymentAdapter = {
     return { provider: 'mock', mode: 'mock', missingCredentials: [] };
   },
 
-  async createRegistrationSession({ donorRef, returnUrl, method = 'ACCOUNT' }) {
+  async createRegistrationSession({ payerRef, returnUrl, method = 'ACCOUNT' }) {
     const tid = `MOCKREG${Date.now()}`;
     return {
       ok: true,
       data: {
         // Mock 결제창. 실제 헥토 결제창을 대체하는 내부 화면
-        redirectUrl: `/mock/pg/register?tid=${tid}&ref=${encodeURIComponent(donorRef)}&method=${method}&return=${encodeURIComponent(returnUrl)}`,
+        redirectUrl: `/mock/pg/register?tid=${tid}&ref=${encodeURIComponent(payerRef)}&method=${method}&return=${encodeURIComponent(returnUrl)}`,
         providerTid: tid,
         expiresAt: new Date(Date.now() + 10 * 60 * 1000),
       },
@@ -203,12 +203,12 @@ export const mockPaymentAdapter: PaymentAdapter = {
    * Mock PIN 링크 발급.
    * 실제 결제사에 아무것도 보내지 않으며, 문자페이 내부의 모의 PIN 화면 주소를 돌려준다.
    */
-  async requestPinLink(donationId, amount, _phone, method = 'ACCOUNT') {
+  async requestPinLink(chargeId, amount, _phone, method = 'ACCOUNT') {
     if (Number(amount % 1000n) === 555) {
       return { ok: false, code: 'M0555', message: 'PIN 인증창을 생성하지 못했습니다.' };
     }
     mockPinSeq += 1;
-    const sessionId = `MOCKPIN-${donationId}-${mockPinSeq}`;
+    const sessionId = `MOCKPIN-${chargeId}-${mockPinSeq}`;
     return {
       ok: true,
       data: {

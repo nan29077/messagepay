@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/server/db';
 import { mockMoAdapter } from '@/server/adapters/mo';
 import { readMockOutbox } from '@/server/adapters/mt';
-import { handleMoInbound } from '@/server/services/donation-flow';
+import { handleMoInbound } from '@/server/services/charge-flow';
 import { confirmChargeAmount, loadSelectAmountContext } from '@/server/services/charge-select';
 import { completePinAuthorization } from '@/server/services/pin-authorization';
-import { resetDb, seedBasics, seedRegisteredDonor, moPayload, lastSelectAmountToken, type Fixture } from './helpers';
+import { resetDb, seedBasics, seedRegisteredPayer, moPayload, lastSelectAmountToken, type Fixture } from './helpers';
 
 /**
  * 충전 금액 선택 흐름 (문자PG 핵심 경로).
@@ -27,16 +27,16 @@ describe('충전 금액 선택', () => {
   beforeEach(async () => {
     await resetDb();
     fx = await seedBasics({ paymentMode: 'CONFIRM_LINK' });
-    await seedRegisteredDonor(fx.donorPhone);
+    await seedRegisteredPayer(fx.payerPhone);
   });
 
   it('[1] MO 만으로는 금액이 정해지지 않고 선택 링크 1통만 나간다', async () => {
     const res = await inbound(moPayload({ to: fx.moNumber, text: '충전합니다' }));
 
     expect(res.status).toBe('PENDING_AMOUNT');
-    const donation = await prisma.donation.findUniqueOrThrow({ where: { id: res.donationId! } });
-    expect(donation.amount).toBe(0n);
-    expect(donation.paidAt).toBeNull();
+    const charge = await prisma.charge.findUniqueOrThrow({ where: { id: res.chargeId! } });
+    expect(charge.amount).toBe(0n);
+    expect(charge.paidAt).toBeNull();
 
     // 출금·PIN 은 아직 없다
     expect(await prisma.paymentTransaction.count()).toBe(0);
@@ -74,9 +74,9 @@ describe('충전 금액 선택', () => {
     expect(sel.ok).toBe(true);
     expect(sel.pinUrl).toBeTruthy();
 
-    const donation = await prisma.donation.findUniqueOrThrow({ where: { id: res.donationId! } });
-    expect(donation.amount).toBe(10000n);
-    expect(donation.status).toBe('PENDING_PIN');
+    const charge = await prisma.charge.findUniqueOrThrow({ where: { id: res.chargeId! } });
+    expect(charge.amount).toBe(10000n);
+    expect(charge.status).toBe('PENDING_PIN');
     // 아직 출금 전이다
     expect(await prisma.paymentTransaction.count()).toBe(0);
     // PIN 은 화면에서 이어지므로 문자를 한 번 더 보내지 않는다
@@ -88,10 +88,10 @@ describe('충전 금액 선택', () => {
     const done = await completePinAuthorization({ sessionId: session.sessionId });
     expect(done.ok).toBe(true);
 
-    const paid = await prisma.donation.findUniqueOrThrow({ where: { id: res.donationId! } });
+    const paid = await prisma.charge.findUniqueOrThrow({ where: { id: res.chargeId! } });
     expect(paid.paidAt).not.toBeNull();
     expect(paid.amount).toBe(10000n);
-    expect(await prisma.settlementLedger.count({ where: { donationId: paid.id } })).toBeGreaterThan(0);
+    expect(await prisma.settlementLedger.count({ where: { chargeId: paid.id } })).toBeGreaterThan(0);
   });
 
   it('[4] 같은 링크로 두 번 확정해도 결제는 한 건이다', async () => {
@@ -132,13 +132,13 @@ describe('충전 금액 선택', () => {
     // 거절된 뒤에도 링크는 살아 있어 정상 금액으로 다시 시도할 수 있다
     const ok = await confirmChargeAmount({ token, customAmount: 5000n });
     expect(ok.ok).toBe(true);
-    const donation = await prisma.donation.findFirstOrThrow();
-    expect(donation.amount).toBe(5000n);
+    const charge = await prisma.charge.findFirstOrThrow();
+    expect(charge.amount).toBe(5000n);
   });
 
   it('[7] 직접 입력을 끈 가맹점에서는 직접 입력이 거절된다', async () => {
-    await prisma.creatorProfile.update({
-      where: { id: fx.creatorId },
+    await prisma.merchantProfile.update({
+      where: { id: fx.merchantId },
       data: { allowCustomAmount: false },
     });
     await inbound(moPayload({ to: fx.moNumber }));
@@ -151,9 +151,9 @@ describe('충전 금액 선택', () => {
 
   it('[8] 다른 가맹점의 상품은 고를 수 없다', async () => {
     const otherUser = await prisma.user.create({
-      data: { id: `u-${Date.now()}`, email: `other-${Date.now()}@test.kr`, name: '다른가맹점', role: 'CREATOR' },
+      data: { id: `u-${Date.now()}`, email: `other-${Date.now()}@test.kr`, name: '다른가맹점', role: 'MERCHANT' },
     });
-    const other = await prisma.creatorProfile.create({
+    const other = await prisma.merchantProfile.create({
       data: {
         id: `c-${Date.now()}`,
         userId: otherUser.id,
@@ -163,7 +163,7 @@ describe('충전 금액 선택', () => {
       },
     });
     const otherProduct = await prisma.chargeProduct.create({
-      data: { id: `p-${Date.now()}`, creatorId: other.id, name: '남의 상품', amount: 7000n },
+      data: { id: `p-${Date.now()}`, merchantId: other.id, name: '남의 상품', amount: 7000n },
     });
 
     await inbound(moPayload({ to: fx.moNumber }));
@@ -204,9 +204,9 @@ describe('충전 금액 선택', () => {
   });
 
   it('[11] 고를 수 있는 금액이 하나도 없으면 링크를 보내지 않고 실패로 안내한다', async () => {
-    await prisma.chargeProduct.updateMany({ where: { creatorId: fx.creatorId }, data: { active: false } });
-    await prisma.creatorProfile.update({
-      where: { id: fx.creatorId },
+    await prisma.chargeProduct.updateMany({ where: { merchantId: fx.merchantId }, data: { active: false } });
+    await prisma.merchantProfile.update({
+      where: { id: fx.merchantId },
       data: { allowCustomAmount: false },
     });
 
@@ -217,9 +217,9 @@ describe('충전 금액 선택', () => {
   });
 
   it('[12] 차단된 이용자는 링크를 받지 못한다', async () => {
-    const donor = await prisma.donorProfile.findFirstOrThrow();
-    await prisma.blockedDonor.create({
-      data: { id: `b-${Date.now()}`, creatorId: fx.creatorId, donorId: donor.id, reason: '테스트' },
+    const payer = await prisma.payerProfile.findFirstOrThrow();
+    await prisma.blockedPayer.create({
+      data: { id: `b-${Date.now()}`, merchantId: fx.merchantId, payerId: payer.id, reason: '테스트' },
     });
 
     const res = await inbound(moPayload({ to: fx.moNumber }));
@@ -227,7 +227,7 @@ describe('충전 금액 선택', () => {
     expect(await prisma.secureLink.count({ where: { purpose: 'SELECT_AMOUNT' } })).toBe(0);
   });
 
-  it('[13] 결제가 승인되면 가맹 서비스에 충전 반영을 요청한다 (휴대폰 번호로 매칭)', async () => {
+  it('[13] 결제가 승인돼도 포인트 지급은 대기 상태로 남는다 (지급은 가맹점이 한다)', async () => {
     const res = await inbound(moPayload({ to: fx.moNumber }));
     const token = lastSelectAmountToken()!;
     const product = await prisma.chargeProduct.findFirstOrThrow({ where: { amount: 3000n } });
@@ -236,31 +236,11 @@ describe('충전 금액 선택', () => {
     const session = await prisma.paymentPinSession.findFirstOrThrow();
     await completePinAuthorization({ sessionId: session.sessionId });
 
-    const paid = await prisma.donation.findUniqueOrThrow({ where: { id: res.donationId! } });
-    expect(paid.reflectStatus).toBe('SENT');
-    expect(paid.reflectedAt).not.toBeNull();
-    expect(paid.reflectNote).toContain('MOCKREF');
-  });
-
-  it('[14] 가맹 서비스에서 회원을 찾지 못해도 결제·정산은 그대로 유지된다', async () => {
-    // mock 규칙: 번호가 0000 으로 끝나면 회원 조회 실패
-    const donorPhone = '01099990000';
-    await seedRegisteredDonor(donorPhone);
-
-    const res = await inbound(moPayload({ to: fx.moNumber, from: donorPhone }));
-    const token = lastSelectAmountToken()!;
-    const product = await prisma.chargeProduct.findFirstOrThrow({ where: { amount: 3000n } });
-    await confirmChargeAmount({ token, productId: product.id });
-
-    const session = await prisma.paymentPinSession.findFirstOrThrow({ where: { donationId: res.donationId! } });
-    const done = await completePinAuthorization({ sessionId: session.sessionId });
-    expect(done.ok).toBe(true);
-
-    const paid = await prisma.donation.findUniqueOrThrow({ where: { id: res.donationId! } });
-    // 결제는 성공이고 정산 분개도 남는다. 반영만 실패로 표시된다.
+    const paid = await prisma.charge.findUniqueOrThrow({ where: { id: res.chargeId! } });
     expect(paid.paidAt).not.toBeNull();
-    expect(paid.reflectStatus).toBe('FAILED');
-    expect(paid.reflectNote).toContain('NOT_FOUND');
-    expect(await prisma.settlementLedger.count({ where: { donationId: paid.id } })).toBeGreaterThan(0);
+    // 문자페이는 가맹점 서버를 호출하지 않는다. 지급 여부는 가맹점이 콘솔에서 표시한다.
+    expect(paid.pointStatus).toBe('PENDING');
+    expect(paid.pointGivenAt).toBeNull();
   });
+
 });

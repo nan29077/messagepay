@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { PageHeader } from '@/components/layout/console-shell';
 import { Badge, Card, CardTitle, EmptyState, Notice, SectionTitle, StatTile } from '@/components/ui';
-import { AdminField, AdminInput, AdminSelect, CreatorOptions } from '@/components/admin/controls';
+import { AdminField, AdminInput, AdminSelect, MerchantOptions } from '@/components/admin/controls';
 import { ActionButton, ActionForm } from '@/components/admin/action-form';
 import { saveLimitPolicy, toggleLimitPolicy } from '@/app/actions/admin/policy';
 import { prisma } from '@/server/db';
@@ -15,16 +15,16 @@ interface LimitValues {
   defaultAmount: string;
   minAmount: string;
   maxAmount: string;
-  donorDailyLimit: string;
-  donorMonthlyLimit: string;
-  perCreatorDailyLimit: string;
-  donorDailyMaxCount: string;
+  payerDailyLimit: string;
+  payerMonthlyLimit: string;
+  perMerchantDailyLimit: string;
+  payerDailyMaxCount: string;
   velocityWindowSec: string;
   velocityMaxCount: string;
   cooldownAfterCount: string;
   cooldownSec: string;
   failureLockThreshold: string;
-  newDonorFirstDayLimit: string;
+  newPayerFirstDayLimit: string;
   manualReviewAmount: string;
 }
 
@@ -32,16 +32,16 @@ const fallbackValues: LimitValues = {
   defaultAmount: FALLBACK_POLICY.defaultAmount.toString(),
   minAmount: FALLBACK_POLICY.minAmount.toString(),
   maxAmount: FALLBACK_POLICY.maxAmount.toString(),
-  donorDailyLimit: FALLBACK_POLICY.donorDailyLimit.toString(),
-  donorMonthlyLimit: FALLBACK_POLICY.donorMonthlyLimit.toString(),
-  perCreatorDailyLimit: FALLBACK_POLICY.perCreatorDailyLimit.toString(),
-  donorDailyMaxCount: String(FALLBACK_POLICY.donorDailyMaxCount),
+  payerDailyLimit: FALLBACK_POLICY.payerDailyLimit.toString(),
+  payerMonthlyLimit: FALLBACK_POLICY.payerMonthlyLimit.toString(),
+  perMerchantDailyLimit: FALLBACK_POLICY.perMerchantDailyLimit.toString(),
+  payerDailyMaxCount: String(FALLBACK_POLICY.payerDailyMaxCount),
   velocityWindowSec: String(FALLBACK_POLICY.velocityWindowSec),
   velocityMaxCount: String(FALLBACK_POLICY.velocityMaxCount),
   cooldownAfterCount: String(FALLBACK_POLICY.cooldownAfterCount),
   cooldownSec: String(FALLBACK_POLICY.cooldownSec),
   failureLockThreshold: String(FALLBACK_POLICY.failureLockThreshold),
-  newDonorFirstDayLimit: FALLBACK_POLICY.newDonorFirstDayLimit.toString(),
+  newPayerFirstDayLimit: FALLBACK_POLICY.newPayerFirstDayLimit.toString(),
   manualReviewAmount: FALLBACK_POLICY.manualReviewAmount.toString(),
 };
 
@@ -58,16 +58,16 @@ function LimitFields({ v }: { v: LimitValues }) {
         <AdminInput name="maxAmount" inputMode="numeric" defaultValue={v.maxAmount} required />
       </AdminField>
       <AdminField label="이용자 1일 한도 (원)">
-        <AdminInput name="donorDailyLimit" inputMode="numeric" defaultValue={v.donorDailyLimit} required />
+        <AdminInput name="payerDailyLimit" inputMode="numeric" defaultValue={v.payerDailyLimit} required />
       </AdminField>
       <AdminField label="이용자 1개월 한도 (원)">
-        <AdminInput name="donorMonthlyLimit" inputMode="numeric" defaultValue={v.donorMonthlyLimit} required />
+        <AdminInput name="payerMonthlyLimit" inputMode="numeric" defaultValue={v.payerMonthlyLimit} required />
       </AdminField>
       <AdminField label="가맹점별 1일 한도 (원)">
-        <AdminInput name="perCreatorDailyLimit" inputMode="numeric" defaultValue={v.perCreatorDailyLimit} required />
+        <AdminInput name="perMerchantDailyLimit" inputMode="numeric" defaultValue={v.perMerchantDailyLimit} required />
       </AdminField>
       <AdminField label="1인 1일 최대 건수" hint="금액과 별개로 하루 결제 건수를 제한">
-        <AdminInput name="donorDailyMaxCount" inputMode="numeric" defaultValue={v.donorDailyMaxCount} required />
+        <AdminInput name="payerDailyMaxCount" inputMode="numeric" defaultValue={v.payerDailyMaxCount} required />
       </AdminField>
       <AdminField label="속도 제한 구간 (초)" hint="이 시간 안의 건수를 제한">
         <AdminInput name="velocityWindowSec" inputMode="numeric" defaultValue={v.velocityWindowSec} required />
@@ -85,7 +85,7 @@ function LimitFields({ v }: { v: LimitValues }) {
         <AdminInput name="failureLockThreshold" inputMode="numeric" defaultValue={v.failureLockThreshold} required />
       </AdminField>
       <AdminField label="신규 이용자 첫날 한도 (원)">
-        <AdminInput name="newDonorFirstDayLimit" inputMode="numeric" defaultValue={v.newDonorFirstDayLimit} required />
+        <AdminInput name="newPayerFirstDayLimit" inputMode="numeric" defaultValue={v.newPayerFirstDayLimit} required />
       </AdminField>
       <AdminField label="수동 검수 기준 (원)" hint="이 금액 이상이면 검수 대상">
         <AdminInput name="manualReviewAmount" inputMode="numeric" defaultValue={v.manualReviewAmount} required />
@@ -95,21 +95,21 @@ function LimitFields({ v }: { v: LimitValues }) {
 }
 
 export default async function AdminPoliciesPage() {
-  const [policies, creators] = await Promise.all([
-    prisma.donationLimitPolicy.findMany({
+  const [policies, merchants] = await Promise.all([
+    prisma.chargeLimitPolicy.findMany({
       orderBy: [{ active: 'desc' }, { scope: 'asc' }, { effectiveFrom: 'desc' }],
       take: 50,
       select: {
-        id: true, scope: true, creatorId: true, donorId: true, active: true,
+        id: true, scope: true, merchantId: true, payerId: true, active: true,
         effectiveFrom: true, effectiveTo: true, updatedAt: true,
         defaultAmount: true, minAmount: true, maxAmount: true,
-        donorDailyLimit: true, donorMonthlyLimit: true, perCreatorDailyLimit: true, donorDailyMaxCount: true,
+        payerDailyLimit: true, payerMonthlyLimit: true, perMerchantDailyLimit: true, payerDailyMaxCount: true,
         velocityWindowSec: true, velocityMaxCount: true, cooldownAfterCount: true, cooldownSec: true,
-        failureLockThreshold: true, newDonorFirstDayLimit: true, manualReviewAmount: true,
-        creator: { select: { id: true, displayName: true, code: true } },
+        failureLockThreshold: true, newPayerFirstDayLimit: true, manualReviewAmount: true,
+        merchant: { select: { id: true, displayName: true, code: true } },
       },
     }),
-    prisma.creatorProfile.findMany({
+    prisma.merchantProfile.findMany({
       where: { status: 'APPROVED' },
       orderBy: { displayName: 'asc' },
       select: { id: true, displayName: true, code: true },
@@ -117,20 +117,20 @@ export default async function AdminPoliciesPage() {
   ]);
 
   const globalActive = policies.find((p) => p.active && p.scope === 'GLOBAL');
-  const donorScoped = policies.filter((p) => p.scope === 'DONOR').length;
-  const creatorScoped = policies.filter((p) => p.scope === 'CREATOR').length;
+  const payerScoped = policies.filter((p) => p.scope === 'PAYER').length;
+  const merchantScoped = policies.filter((p) => p.scope === 'MERCHANT').length;
 
   return (
     <>
       <PageHeader
         title="한도 정책"
-        description="정책 우선순위는 이용자(DONOR) → 가맹점(CREATOR) → 전역(GLOBAL) 순으로 적용됩니다."
+        description="정책 우선순위는 이용자(PAYER) → 가맹점(MERCHANT) → 전역(GLOBAL) 순으로 적용됩니다."
       />
 
       <div className="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         <StatTile
           label="전역 1일 한도"
-          value={formatWon(globalActive?.donorDailyLimit ?? FALLBACK_POLICY.donorDailyLimit)}
+          value={formatWon(globalActive?.payerDailyLimit ?? FALLBACK_POLICY.payerDailyLimit)}
           sub={globalActive ? '활성 전역 정책' : '정책 미등록 · 코드 기본값'}
           tone="brand"
         />
@@ -138,8 +138,8 @@ export default async function AdminPoliciesPage() {
           label="전역 1회 범위"
           value={`${formatWon(globalActive?.minAmount ?? FALLBACK_POLICY.minAmount)} ~ ${formatWon(globalActive?.maxAmount ?? FALLBACK_POLICY.maxAmount)}`}
         />
-        <StatTile label="가맹점 정책" value={formatNumber(creatorScoped)} />
-        <StatTile label="이용자 정책" value={formatNumber(donorScoped)} />
+        <StatTile label="가맹점 정책" value={formatNumber(merchantScoped)} />
+        <StatTile label="이용자 정책" value={formatNumber(payerScoped)} />
       </div>
 
       <Notice tone="warning" title="한도 값 변경은 즉시 반영됩니다">
@@ -153,19 +153,19 @@ export default async function AdminPoliciesPage() {
           <ActionForm action={saveLimitPolicy} submitLabel="정책 등록" confirm="새 한도 정책을 등록합니다.">
             <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
               <AdminField label="적용 범위">
-                <AdminSelect name="scope" defaultValue="CREATOR">
+                <AdminSelect name="scope" defaultValue="MERCHANT">
                   <option value="GLOBAL">전역 (GLOBAL)</option>
-                  <option value="CREATOR">가맹점 (CREATOR)</option>
-                  <option value="DONOR">이용자 (DONOR)</option>
+                  <option value="MERCHANT">가맹점 (MERCHANT)</option>
+                  <option value="PAYER">이용자 (PAYER)</option>
                 </AdminSelect>
               </AdminField>
-              <AdminField label="가맹점" hint="CREATOR 범위일 때만 사용">
-                <AdminSelect name="creatorId" defaultValue="">
-                  <CreatorOptions creators={creators} allLabel="선택 안 함" />
+              <AdminField label="가맹점" hint="MERCHANT 범위일 때만 사용">
+                <AdminSelect name="merchantId" defaultValue="">
+                  <MerchantOptions merchants={merchants} allLabel="선택 안 함" />
                 </AdminSelect>
               </AdminField>
-              <AdminField label="이용자 ID" hint="DONOR 범위일 때만 사용. 이용자 상세 화면의 ID">
-                <AdminInput name="donorId" placeholder="01JXXXXXXXXXXXXXXXXXXXXXXX" />
+              <AdminField label="이용자 ID" hint="PAYER 범위일 때만 사용. 이용자 상세 화면의 ID">
+                <AdminInput name="payerId" placeholder="01JXXXXXXXXXXXXXXXXXXXXXXX" />
               </AdminField>
               <AdminField label="적용 시작일 (KST)">
                 <AdminInput type="date" name="effectiveFrom" defaultValue={kstDateKey()} />
@@ -196,18 +196,18 @@ export default async function AdminPoliciesPage() {
                     <CardTitle>
                       {p.scope === 'GLOBAL'
                         ? '전역 정책'
-                        : p.scope === 'CREATOR'
-                          ? `가맹점 정책 · ${p.creator?.displayName ?? p.creatorId ?? '-'}`
-                          : `이용자 정책 · ${p.donorId ?? '-'}`}
+                        : p.scope === 'MERCHANT'
+                          ? `가맹점 정책 · ${p.merchant?.displayName ?? p.merchantId ?? '-'}`
+                          : `이용자 정책 · ${p.payerId ?? '-'}`}
                     </CardTitle>
                     <Badge tone={p.active ? 'success' : 'neutral'}>{p.active ? '활성' : '비활성'}</Badge>
-                    {p.scope === 'CREATOR' && p.creator ? (
-                      <Link href={`/admin/creators/${p.creator.id}`} className="text-[12px] font-semibold text-brand-700">
+                    {p.scope === 'MERCHANT' && p.merchant ? (
+                      <Link href={`/admin/merchants/${p.merchant.id}`} className="text-[12px] font-semibold text-brand-700">
                         가맹점 상세
                       </Link>
                     ) : null}
-                    {p.scope === 'DONOR' && p.donorId ? (
-                      <Link href={`/admin/donors/${p.donorId}`} className="text-[12px] font-semibold text-brand-700">
+                    {p.scope === 'PAYER' && p.payerId ? (
+                      <Link href={`/admin/payers/${p.payerId}`} className="text-[12px] font-semibold text-brand-700">
                         이용자 상세
                       </Link>
                     ) : null}
@@ -235,16 +235,16 @@ export default async function AdminPoliciesPage() {
                       defaultAmount: p.defaultAmount.toString(),
                       minAmount: p.minAmount.toString(),
                       maxAmount: p.maxAmount.toString(),
-                      donorDailyLimit: p.donorDailyLimit.toString(),
-                      donorMonthlyLimit: p.donorMonthlyLimit.toString(),
-                      perCreatorDailyLimit: p.perCreatorDailyLimit.toString(),
-                      donorDailyMaxCount: String(p.donorDailyMaxCount),
+                      payerDailyLimit: p.payerDailyLimit.toString(),
+                      payerMonthlyLimit: p.payerMonthlyLimit.toString(),
+                      perMerchantDailyLimit: p.perMerchantDailyLimit.toString(),
+                      payerDailyMaxCount: String(p.payerDailyMaxCount),
                       velocityWindowSec: String(p.velocityWindowSec),
                       velocityMaxCount: String(p.velocityMaxCount),
                       cooldownAfterCount: String(p.cooldownAfterCount),
                       cooldownSec: String(p.cooldownSec),
                       failureLockThreshold: String(p.failureLockThreshold),
-                      newDonorFirstDayLimit: p.newDonorFirstDayLimit.toString(),
+                      newPayerFirstDayLimit: p.newPayerFirstDayLimit.toString(),
                       manualReviewAmount: p.manualReviewAmount.toString(),
                     }}
                   />

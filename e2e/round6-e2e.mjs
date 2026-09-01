@@ -12,7 +12,7 @@ import {
 await assertServerUp();
 const r = createReporter('6차 — 결제 페이지 · PC PIN 결제 전 구간');
 const b = await launch();
-const SHOP = `${BASE}/c/${SEED.creator1Code}`;
+const SHOP = `${BASE}/c/${SEED.merchant1Code}`;
 
 try {
   // ══════════════════════════════ PC ══════════════════════════════
@@ -21,8 +21,8 @@ try {
   await gotoReady(pc, SHOP);
   const pcText = await bodyText(pc);
 
-  r.ok('PC: 가맹점 이름이 보인다', pcText.includes(SEED.creator1Name));
-  r.ok('PC: 결제 패널 제목', pcText.includes(`${SEED.creator1Name} 님에게 결제하기`));
+  r.ok('PC: 가맹점 이름이 보인다', pcText.includes(SEED.merchant1Name));
+  r.ok('PC: 결제 패널 제목', pcText.includes(`${SEED.merchant1Name} 님에게 결제하기`));
   r.ok(
     'PC: 기본 배너가 적용된다',
     (await pc.locator('header img[src*="/banners/munjapay-live-banner-"]').count()) > 0,
@@ -78,7 +78,7 @@ try {
   );
   r.ok('PC: 이전 단계로 돌아가는 버튼', (await pc.locator('button:has-text("금액·메시지 다시 고르기")').count()) > 0);
 
-  await phoneInput.fill(SEED.donorPhone);
+  await phoneInput.fill(SEED.payerPhone);
   await pc.locator('button:has-text("PIN 입력 링크 문자로 받기")').click();
 
   // ── 3단계: PIN 링크 발송 대기
@@ -99,7 +99,7 @@ try {
     r.ok('PIN 화면: 결제 PIN 인증 제목', pinText.includes('결제 PIN 인증'));
     r.ok('PIN 화면: 모의 화면 고지', pinText.includes('[MOCK] 실제 결제사 화면이 아닙니다'));
     r.ok('PIN 화면: 입력 시 출금된다는 고지', pinText.includes('PIN 입력 시 출금됩니다'));
-    r.ok('PIN 화면: 가맹점·메시지 확인', pinText.includes(SEED.creator1Name) && pinText.includes('E2E 자동 검증 결제입니다'));
+    r.ok('PIN 화면: 가맹점·메시지 확인', pinText.includes(SEED.merchant1Name) && pinText.includes('E2E 자동 검증 결제입니다'));
 
     const pinInput = pinPage.locator('input[placeholder="000000"]');
     r.ok('PIN 화면: 6자리 입력칸', (await pinInput.count()) > 0);
@@ -142,12 +142,12 @@ try {
   await gotoReady(m, SHOP);
   const mText = await bodyText(m);
 
-  r.ok('모바일: 전용 결제 수신번호 카드', mText.includes(`${SEED.creator1Name} 전용 결제 수신번호`));
+  r.ok('모바일: 전용 결제 수신번호 카드', mText.includes(`${SEED.merchant1Name} 전용 결제 수신번호`));
   {
     // 화면은 0505-1001-001 처럼 끊어 보여 주고 DB 에는 하이픈 없이 저장한다.
     // 서식이 바뀌어도 깨지지 않게 숫자만 남겨 비교한다.
     const digits = mText.replace(/[^0-9]/g, '');
-    r.ok('모바일: 배정된 MO 번호가 보인다', digits.includes(SEED.creator1Mo), '화면에서 번호를 찾지 못함');
+    r.ok('모바일: 배정된 MO 번호가 보인다', digits.includes(SEED.merchant1Mo), '화면에서 번호를 찾지 못함');
   }
   r.ok('모바일: 번호 복사 버튼', (await m.locator('button:has-text("번호 복사")').count()) > 0);
   r.ok('모바일: sms 링크로 문자 앱을 연다', (await m.locator(`a[href^="sms:"]`).count()) > 0);
@@ -162,7 +162,7 @@ try {
     ]);
     r.ok('모바일: 결제 방법 4단계(문자 기준)', miss.length === 0, miss.join(','));
   }
-  r.ok('모바일: PC 결제 패널은 숨는다', !mText.includes(`${SEED.creator1Name} 님에게 결제하기`));
+  r.ok('모바일: PC 결제 패널은 숨는다', !mText.includes(`${SEED.merchant1Name} 님에게 결제하기`));
   await mctx.close();
 
   // ══════════════ 미등록 이용자 → 등록 화면 (방송 닉네임 입력) ══════════════

@@ -73,7 +73,7 @@ export async function POST(req: Request) {
   await createSession(user.id);
   await kv.del(key);
 
-  const home = user.role === 'ADMIN' ? '/admin' : user.role === 'CREATOR' ? '/studio' : '/my';
+  const home = user.role === 'ADMIN' ? '/admin' : user.role === 'MERCHANT' ? '/studio' : '/my';
   const redirect = nextPath ?? home;
   if (isForm) return NextResponse.redirect(new URL(redirect, req.url), 303);
   return NextResponse.json({ ok: true, redirect });

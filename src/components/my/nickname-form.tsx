@@ -3,10 +3,10 @@
 import * as React from 'react';
 import { Sparkles } from 'lucide-react';
 import { Button, Card, Field, Input, Notice } from '@/components/ui';
-import { updateDonorNickname, type DonorActionState } from '@/app/actions/donor';
-import { broadcastDonorName, checkDonorName, DONOR_NAME_MAX } from '@/lib/donor-name';
+import { updatePayerNickname, type PayerActionState } from '@/app/actions/payer';
+import { displayPayerName, checkPayerName, PAYER_NAME_MAX } from '@/lib/payer-name';
 
-const initial: DonorActionState = { ok: false };
+const initial: PayerActionState = { ok: false };
 
 /**
  * 결제 내역에 표시될 이름 수정 폼.
@@ -23,13 +23,13 @@ export function NicknameForm({
   /** 닉네임을 비웠을 때 쓰이는 이름 (예: 이용자5678) */
   defaultName: string;
 }) {
-  const [state, action, pending] = React.useActionState(updateDonorNickname, initial);
+  const [state, action, pending] = React.useActionState(updatePayerNickname, initial);
   const [value, setValue] = React.useState(current ?? '');
 
-  const check = checkDonorName(value);
+  const check = checkPayerName(value);
   const error = value.trim().length > 1 && !check.ok ? check.message : null;
   // 실제 송출과 같은 규칙을 거친다(자동 생성된 기본 이름은 끝 4자리로 불린다).
-  const preview = broadcastDonorName(check.ok && check.value.length > 0 ? check.value : defaultName);
+  const preview = displayPayerName(check.ok && check.value.length > 0 ? check.value : defaultName);
   const usingDefault = !current;
 
   return (
@@ -37,13 +37,13 @@ export function NicknameForm({
       <form action={action} className="space-y-3">
         <Field
           label="닉네임"
-          hint={`${DONOR_NAME_MAX}자 이내. 비워두면 번호 끝 4자리(${broadcastDonorName(defaultName)})로 표시됩니다.`}
+          hint={`${PAYER_NAME_MAX}자 이내. 비워두면 번호 끝 4자리(${displayPayerName(defaultName)})로 표시됩니다.`}
         >
           <Input
             name="nickname"
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            maxLength={DONOR_NAME_MAX + 4}
+            maxLength={PAYER_NAME_MAX + 4}
             placeholder="예: 밤톨이"
             aria-invalid={Boolean(error)}
           />

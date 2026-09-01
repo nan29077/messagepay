@@ -18,13 +18,13 @@ function readLimitFields(fd: FormData) {
   const defaultAmount = money(fd, 'defaultAmount', '기본 결제 금액', { min: 1n });
   const minAmount = money(fd, 'minAmount', '1회 최소', { min: 1n });
   const maxAmount = money(fd, 'maxAmount', '1회 최대', { min: 1n });
-  const donorDailyLimit = money(fd, 'donorDailyLimit', '이용자 일 한도', { min: 1n });
-  const donorMonthlyLimit = money(fd, 'donorMonthlyLimit', '이용자 월 한도', { min: 1n });
-  const perCreatorDailyLimit = money(fd, 'perCreatorDailyLimit', '가맹점별 일 한도', { min: 1n });
-  const newDonorFirstDayLimit = money(fd, 'newDonorFirstDayLimit', '신규 이용자 첫날 한도', { min: 1n });
+  const payerDailyLimit = money(fd, 'payerDailyLimit', '이용자 일 한도', { min: 1n });
+  const payerMonthlyLimit = money(fd, 'payerMonthlyLimit', '이용자 월 한도', { min: 1n });
+  const perMerchantDailyLimit = money(fd, 'perMerchantDailyLimit', '가맹점별 일 한도', { min: 1n });
+  const newPayerFirstDayLimit = money(fd, 'newPayerFirstDayLimit', '신규 이용자 첫날 한도', { min: 1n });
   const manualReviewAmount = money(fd, 'manualReviewAmount', '수동 검수 기준', { min: 1n });
 
-  const donorDailyMaxCount = int(fd, 'donorDailyMaxCount', { min: 1, max: 10000, label: '1인 1일 최대 건수' });
+  const payerDailyMaxCount = int(fd, 'payerDailyMaxCount', { min: 1, max: 10000, label: '1인 1일 최대 건수' });
   const velocityWindowSec = int(fd, 'velocityWindowSec', { min: 1, max: 86400, label: '속도 제한 구간(초)' });
   const velocityMaxCount = int(fd, 'velocityMaxCount', { min: 1, max: 1000, label: '속도 제한 건수' });
   const cooldownAfterCount = int(fd, 'cooldownAfterCount', { min: 1, max: 1000, label: '연속 결제 기준 건수' });
@@ -35,14 +35,14 @@ function readLimitFields(fd: FormData) {
   if (defaultAmount < minAmount || defaultAmount > maxAmount) {
     throw new Error('기본 결제 금액은 1회 최소~최대 범위 안에 있어야 합니다.');
   }
-  if (donorDailyLimit > donorMonthlyLimit) throw new Error('이용자 일 한도가 월 한도보다 클 수 없습니다.');
-  if (newDonorFirstDayLimit > donorDailyLimit) throw new Error('신규 이용자 첫날 한도가 일 한도보다 클 수 없습니다.');
+  if (payerDailyLimit > payerMonthlyLimit) throw new Error('이용자 일 한도가 월 한도보다 클 수 없습니다.');
+  if (newPayerFirstDayLimit > payerDailyLimit) throw new Error('신규 이용자 첫날 한도가 일 한도보다 클 수 없습니다.');
 
   return {
     defaultAmount, minAmount, maxAmount,
-    donorDailyLimit, donorMonthlyLimit, perCreatorDailyLimit, donorDailyMaxCount,
+    payerDailyLimit, payerMonthlyLimit, perMerchantDailyLimit, payerDailyMaxCount,
     velocityWindowSec, velocityMaxCount, cooldownAfterCount, cooldownSec,
-    failureLockThreshold, newDonorFirstDayLimit, manualReviewAmount,
+    failureLockThreshold, newPayerFirstDayLimit, manualReviewAmount,
   };
 }
 
@@ -54,25 +54,25 @@ export async function saveLimitPolicy(_prev: AdminActionState, fd: FormData): Pr
     const effectiveFrom = optDate(fd, 'effectiveFrom', '적용 시작일') ?? new Date();
 
     if (id) {
-      const before = await prisma.donationLimitPolicy.findUnique({ where: { id } });
+      const before = await prisma.chargeLimitPolicy.findUnique({ where: { id } });
       if (!before) throw new Error('한도 정책을 찾을 수 없습니다.');
 
-      await prisma.donationLimitPolicy.update({ where: { id }, data: { ...values, active, effectiveFrom } });
+      await prisma.chargeLimitPolicy.update({ where: { id }, data: { ...values, active, effectiveFrom } });
       await writeAudit({
         adminUserId: admin.id,
         action: 'LIMIT_POLICY_UPDATE',
-        targetType: 'DonationLimitPolicy',
+        targetType: 'ChargeLimitPolicy',
         targetId: id,
         before: {
           scope: before.scope,
           defaultAmount: before.defaultAmount, minAmount: before.minAmount, maxAmount: before.maxAmount,
-          donorDailyLimit: before.donorDailyLimit, donorMonthlyLimit: before.donorMonthlyLimit,
-          perCreatorDailyLimit: before.perCreatorDailyLimit,
-          donorDailyMaxCount: before.donorDailyMaxCount,
+          payerDailyLimit: before.payerDailyLimit, payerMonthlyLimit: before.payerMonthlyLimit,
+          perMerchantDailyLimit: before.perMerchantDailyLimit,
+          payerDailyMaxCount: before.payerDailyMaxCount,
           velocityWindowSec: before.velocityWindowSec, velocityMaxCount: before.velocityMaxCount,
           cooldownAfterCount: before.cooldownAfterCount, cooldownSec: before.cooldownSec,
           failureLockThreshold: before.failureLockThreshold,
-          newDonorFirstDayLimit: before.newDonorFirstDayLimit,
+          newPayerFirstDayLimit: before.newPayerFirstDayLimit,
           manualReviewAmount: before.manualReviewAmount,
           active: before.active,
         },
@@ -82,34 +82,34 @@ export async function saveLimitPolicy(_prev: AdminActionState, fd: FormData): Pr
       return '한도 정책을 저장했습니다.';
     }
 
-    const scope = enumValue(fd, 'scope', ['GLOBAL', 'CREATOR', 'DONOR'] as const, '적용 범위');
-    const creatorId = scope === 'CREATOR' ? requiredId(fd, 'creatorId', '가맹점') : null;
-    const donorId = scope === 'DONOR' ? requiredId(fd, 'donorId', '이용자') : null;
+    const scope = enumValue(fd, 'scope', ['GLOBAL', 'MERCHANT', 'PAYER'] as const, '적용 범위');
+    const merchantId = scope === 'MERCHANT' ? requiredId(fd, 'merchantId', '가맹점') : null;
+    const payerId = scope === 'PAYER' ? requiredId(fd, 'payerId', '이용자') : null;
 
     if (scope === 'GLOBAL') {
-      const existingGlobal = await prisma.donationLimitPolicy.count({ where: { scope: 'GLOBAL', active: true } });
+      const existingGlobal = await prisma.chargeLimitPolicy.count({ where: { scope: 'GLOBAL', active: true } });
       if (existingGlobal > 0 && active) {
         throw new Error('활성 전역 정책이 이미 있습니다. 기존 정책을 먼저 비활성화해 주세요.');
       }
     }
-    if (creatorId) {
-      const creator = await prisma.creatorProfile.findUnique({ where: { id: creatorId }, select: { id: true } });
-      if (!creator) throw new Error('가맹점을 찾을 수 없습니다.');
+    if (merchantId) {
+      const merchant = await prisma.merchantProfile.findUnique({ where: { id: merchantId }, select: { id: true } });
+      if (!merchant) throw new Error('가맹점을 찾을 수 없습니다.');
     }
-    if (donorId) {
-      const donor = await prisma.donorProfile.findUnique({ where: { id: donorId }, select: { id: true } });
-      if (!donor) throw new Error('이용자를 찾을 수 없습니다.');
+    if (payerId) {
+      const payer = await prisma.payerProfile.findUnique({ where: { id: payerId }, select: { id: true } });
+      if (!payer) throw new Error('이용자를 찾을 수 없습니다.');
     }
 
-    const created = await prisma.donationLimitPolicy.create({
-      data: { id: newId(), scope, creatorId, donorId, ...values, active, effectiveFrom },
+    const created = await prisma.chargeLimitPolicy.create({
+      data: { id: newId(), scope, merchantId, payerId, ...values, active, effectiveFrom },
     });
     await writeAudit({
       adminUserId: admin.id,
       action: 'LIMIT_POLICY_CREATE',
-      targetType: 'DonationLimitPolicy',
+      targetType: 'ChargeLimitPolicy',
       targetId: created.id,
-      after: { scope, creatorId, donorId, ...values, active, effectiveFrom },
+      after: { scope, merchantId, payerId, ...values, active, effectiveFrom },
     });
     revalidatePath('/admin/policies');
     return '새 한도 정책을 등록했습니다.';
@@ -119,21 +119,21 @@ export async function saveLimitPolicy(_prev: AdminActionState, fd: FormData): Pr
 export async function toggleLimitPolicy(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
     const id = requiredId(fd, 'id', '한도 정책');
-    const before = await prisma.donationLimitPolicy.findUnique({
+    const before = await prisma.chargeLimitPolicy.findUnique({
       where: { id },
       select: { id: true, active: true, scope: true },
     });
     if (!before) throw new Error('한도 정책을 찾을 수 없습니다.');
 
     const active = !before.active;
-    await prisma.donationLimitPolicy.update({
+    await prisma.chargeLimitPolicy.update({
       where: { id },
       data: { active, effectiveTo: active ? null : new Date() },
     });
     await writeAudit({
       adminUserId: admin.id,
       action: 'LIMIT_POLICY_TOGGLE',
-      targetType: 'DonationLimitPolicy',
+      targetType: 'ChargeLimitPolicy',
       targetId: id,
       before: { active: before.active, scope: before.scope },
       after: { active },

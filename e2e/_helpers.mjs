@@ -18,20 +18,20 @@ export const PASSWORD = 'munjapay1234!';
 
 export const ACCOUNTS = {
   admin: 'admin@munjapay.kr',
-  creator1: 'creator1@munjapay.kr',
-  creator2: 'creator2@munjapay.kr',
-  donor: 'donor@munjapay.kr',
+  merchant1: 'merchant1@munjapay.kr',
+  merchant2: 'merchant2@munjapay.kr',
+  payer: 'payer@munjapay.kr',
 };
 
 /** 시드 고정값 */
 export const SEED = {
-  creator1Code: 'MJP-8K2M',
-  creator2Code: 'MJP-3QP7',
-  creator1Name: '바람소리',
-  creator1Mo: '05051001001',
-  creator2Mo: '05059000000',
-  creator2Keyword: 'MJP3QP7',
-  donorPhone: '010-1234-5678',
+  merchant1Code: 'MJP-8K2M',
+  merchant2Code: 'MJP-3QP7',
+  merchant1Name: '바람소리',
+  merchant1Mo: '05051001001',
+  merchant2Mo: '05059000000',
+  merchant2Keyword: 'MJP3QP7',
+  payerPhone: '010-1234-5678',
 };
 
 const PREINSTALLED = '/opt/pw-browsers/chromium';
@@ -92,7 +92,7 @@ export async function login(page, email, { expectUrl = /\/(studio|admin|my|)$/ }
   ]);
 }
 
-export const loginCreator = (page) => login(page, ACCOUNTS.creator1, { expectUrl: /\/studio/ });
+export const loginMerchant = (page) => login(page, ACCOUNTS.merchant1, { expectUrl: /\/studio/ });
 export const loginAdmin = (page) => login(page, ACCOUNTS.admin, { expectUrl: /\/admin/ });
 
 /** 페이지 전체 텍스트 */

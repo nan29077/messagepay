@@ -40,7 +40,7 @@ export default async function AdminInquiryDetailPage({ params }: { params: Promi
     where: { id },
     select: {
       id: true, userId: true, guestName: true, contactMasked: true, status: true,
-      category: true, source: true, transactionNo: true, donationId: true, creatorId: true,
+      category: true, source: true, transactionNo: true, chargeId: true, merchantId: true,
       createdAt: true, lastMessageAt: true,
       messages: { orderBy: { createdAt: 'asc' }, take: 300, select: { id: true, sender: true, body: true, createdAt: true } },
     },
@@ -60,12 +60,12 @@ export default async function AdminInquiryDetailPage({ params }: { params: Promi
   const categoryLabel = SUPPORT_CATEGORIES.find((c) => c.value === inquiry.category)?.label ?? inquiry.category;
 
   // 거래번호로 연결된 결제가 있으면 처리 근거를 바로 볼 수 있게 요약을 함께 보여준다.
-  const donation = inquiry.donationId
-    ? await prisma.donation.findUnique({
-        where: { id: inquiry.donationId },
+  const charge = inquiry.chargeId
+    ? await prisma.charge.findUnique({
+        where: { id: inquiry.chargeId },
         select: {
           transactionNo: true, amount: true, status: true, receivedAt: true,
-          creator: { select: { displayName: true, code: true } },
+          merchant: { select: { displayName: true, code: true } },
         },
       })
     : null;
@@ -146,12 +146,12 @@ export default async function AdminInquiryDetailPage({ params }: { params: Promi
               <div className="mt-3 rounded-xl border border-ink-100 bg-ink-50 px-3.5 py-3">
                 <p className="text-[12px] font-bold text-ink-700">연결된 거래</p>
                 <DataRow label="입력 거래번호" value={<span className="font-mono text-[12px]">{inquiry.transactionNo}</span>} />
-                {donation ? (
+                {charge ? (
                   <>
-                    <DataRow label="결제 금액" value={`${formatNumber(donation.amount)}원`} />
-                    <DataRow label="거래 상태" value={donation.status} />
-                    <DataRow label="가맹점" value={`${donation.creator.displayName} (${donation.creator.code})`} />
-                    <DataRow label="수신 시각" value={formatKst(donation.receivedAt)} />
+                    <DataRow label="결제 금액" value={`${formatNumber(charge.amount)}원`} />
+                    <DataRow label="거래 상태" value={charge.status} />
+                    <DataRow label="가맹점" value={`${charge.merchant.displayName} (${charge.merchant.code})`} />
+                    <DataRow label="수신 시각" value={formatKst(charge.receivedAt)} />
                   </>
                 ) : (
                   <p className="mt-1 text-[12px] leading-relaxed text-ink-400">

@@ -31,8 +31,8 @@ export interface IssuedLink {
 export async function issueSecureLink(input: {
   purpose: SecureLinkPurpose;
   phoneHash: string;
-  creatorId?: string | null;
-  donationId?: string | null;
+  merchantId?: string | null;
+  chargeId?: string | null;
   payload?: Record<string, unknown>;
   ttlSec?: number;
 }): Promise<IssuedLink> {
@@ -46,8 +46,8 @@ export async function issueSecureLink(input: {
       tokenHash: tokenHash(token),
       purpose: input.purpose,
       phoneHash: input.phoneHash,
-      creatorId: input.creatorId ?? null,
-      donationId: input.donationId ?? null,
+      merchantId: input.merchantId ?? null,
+      chargeId: input.chargeId ?? null,
       payload: (input.payload ?? {}) as object,
       expiresAt,
     },

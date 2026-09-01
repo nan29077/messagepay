@@ -5,7 +5,7 @@
  * 같은 함수를 쓰는지가 핵심이다. 옛 계산식(3.3% 일괄)이 되살아나면 여기서 잡힌다.
  */
 import {
-  launch, createReporter, bodyText, missingOf, gotoReady, loginCreator,
+  launch, createReporter, bodyText, missingOf, gotoReady, loginMerchant,
   BASE, desktop, assertServerUp,
 } from './_helpers.mjs';
 
@@ -17,7 +17,7 @@ try {
   const ctx = await b.newContext(desktop);
   const p = await ctx.newPage();
   p.on('dialog', (d) => d.accept());
-  await loginCreator(p);
+  await loginMerchant(p);
 
   // ══════════════ 1. 정산 관리 탭 구조 ══════════════
   await gotoReady(p, `${BASE}/studio/settlement`);

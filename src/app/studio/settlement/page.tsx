@@ -1,18 +1,18 @@
 import Link from 'next/link';
 import { CalendarClock, ChevronLeft, ChevronRight } from 'lucide-react';
-import { Badge, Card, CardTitle, DataRow, EmptyState, Field, Input, Notice, SectionTitle, Select, StatTile, Table, Td, Textarea, Th, cx } from '@/components/ui';
+import { Badge, Card, CardTitle, DataRow, EmptyState, Field, Input, Notice, SectionTitle, Select, StatTile, Table, Td, Th, cx } from '@/components/ui';
 import { PageHeader } from '@/components/layout/console-shell';
 import { ActionForm } from '@/components/studio/action-form';
 import { BANKS } from '@/components/studio/banks';
 import { ResidentField } from '@/components/studio/resident-field';
-import { requestSettlementAction, saveSettlementAccountAction } from '@/app/actions/studio';
-import { requireCreator } from '@/server/auth';
+import { saveSettlementAccountAction, saveWithholdingResidentAction } from '@/app/actions/studio';
+import { requireMerchant } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { getSettlementSummary, resolveFeePolicy, calculateWithholding, computeFees } from '@/server/services/settlement';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst, kstDateKey, kstMonthKey } from '@/lib/datetime';
-import { settlementDateFor, toDateKey, formatDateKeyKo, SETTLEMENT_BUSINESS_DAYS } from '@/lib/business-day';
-import { loadHolidaysAround, buildScheduleNotice } from '@/server/services/settlement-schedule';
+import { settlementDateFor, toDateKey, formatDateKeyKo } from '@/lib/business-day';
+import { loadHolidaysAround, buildScheduleNotice, buildUpcomingPayouts } from '@/server/services/settlement-schedule';
 import { ledgerEntryLabel, settlementStatusLabel } from '@/lib/labels';
 import { PAID_STATUSES } from '@/components/studio/shared';
 
@@ -20,7 +20,7 @@ export const dynamic = 'force-dynamic';
 
 const TABS = [
   { key: 'overview', label: '정산 현황' },
-  { key: 'request', label: '정산 요청' },
+  { key: 'payout', label: '지급 내역' },
   { key: 'account', label: '정산 계좌' },
   { key: 'ledger', label: '정산 원장' },
 ] as const;
@@ -51,53 +51,53 @@ export default async function StudioSettlementPage({
 }: {
   searchParams: Promise<{ month?: string; tab?: string }>;
 }) {
-  const { creatorId } = await requireCreator();
+  const { merchantId } = await requireMerchant();
   const sp = await searchParams;
   const activeTab: SettlementTab = TABS.some((t) => t.key === sp.tab) ? (sp.tab as SettlementTab) : 'overview';
   const range = monthRange(sp.month ?? kstMonthKey());
 
-  const [summary, feePolicy, ledger, requests, account, monthDonations, monthPayouts, priorResident] = await Promise.all([
-    getSettlementSummary(creatorId),
-    resolveFeePolicy(creatorId),
+  const [summary, feePolicy, ledger, requests, account, monthCharges, monthPayouts, upcoming, profile] = await Promise.all([
+    getSettlementSummary(merchantId),
+    resolveFeePolicy(merchantId),
     prisma.settlementLedger.findMany({
-      where: { creatorId },
+      where: { merchantId },
       orderBy: { occurredAt: 'desc' },
       take: 50,
       select: { id: true, entryType: true, amount: true, memo: true, occurredAt: true, settlementKey: true },
     }),
     prisma.settlementRequest.findMany({
-      where: { creatorId },
+      where: { merchantId },
       orderBy: { requestedAt: 'desc' },
       take: 20,
     }),
     prisma.settlementAccount.findUnique({
-      where: { creatorId },
+      where: { merchantId },
       select: {
         bankCode: true, bankName: true, accountTail4: true, holderMasked: true,
-        verified: true, verifiedAt: true, updatedAt: true,
+        verified: true, verifiedAt: true, updatedAt: true, residentMasked: true,
       },
     }),
     // 정산 예정일은 결제일보다 뒤에 온다. 지난달 결제가 이번 달에 정산되므로
     // 캘린더에 "정산 예정" 을 채우려면 앞쪽으로 한 달 이상 더 읽어야 한다.
-    prisma.donation.findMany({
+    prisma.charge.findMany({
       where: {
-        creatorId,
+        merchantId,
         status: { in: PAID_STATUSES },
         paidAt: { gte: new Date(range.start.getTime() - 45 * 86_400_000), lt: range.end },
       },
       select: { paidAt: true, amount: true, netAmount: true },
     }),
     prisma.settlementRequest.findMany({
-      where: { creatorId, paidAt: { gte: range.start, lt: range.end } },
+      where: { merchantId, paidAt: { gte: range.start, lt: range.end } },
       select: { paidAt: true, payoutAmount: true },
     }),
-    // 파기 전 등록된 주민번호가 있으면 재입력 없이 진행할 수 있게 마스킹만 보여준다.
-    prisma.settlementRequest.findFirst({
-      where: { creatorId, residentEnc: { not: null } },
-      orderBy: { requestedAt: 'desc' },
-      select: { residentMasked: true },
-    }),
+    // 아직 지급되지 않은 결제의 지급 예정일별 집계 (자동 지급 안내용)
+    buildUpcomingPayouts(merchantId),
+    // 사업자 가맹점은 세금계산서 대상이라 원천징수하지 않는다.
+    prisma.merchantProfile.findUnique({ where: { id: merchantId }, select: { businessNo: true } }),
   ]);
+
+  const isBusinessMerchant = Boolean(profile?.businessNo);
 
   // 적용 중인 수수료 정책을 실제 정산 계산식에 넣은 예시(결제 1건 기준).
   const feeSample = computeFees(3_000n, {
@@ -121,10 +121,10 @@ export default async function StudioSettlementPage({
   const byDay = new Map<string, { amount: bigint; count: number; settlementDate: string }>();
   const scheduledByDay = new Map<string, { amount: bigint; count: number; from: string[] }>();
   let monthTotal = 0n;
-  for (const d of monthDonations) {
+  for (const d of monthCharges) {
     if (!d.paidAt) continue;
     const k = kstDateKey(d.paidAt);
-    const settlementDate = settlementDateFor(k, holidays);
+    const settlementDate = settlementDateFor(k, holidays, upcoming.settlementDays);
 
     // 이번 달 결제만 결제 집계·월합계에 넣는다(앞쪽 45일은 정산 예정 계산용).
     if (d.paidAt >= range.start) {
@@ -152,7 +152,7 @@ export default async function StudioSettlementPage({
   }
 
   // 상단 안내에 쓸 예시 (오늘 결제하면 언제, 금·토·일 결제는 언제)
-  const notice = await buildScheduleNotice();
+  const notice = await buildScheduleNotice(new Date(), merchantId);
 
   // ── 캘린더 격자 구성 ────────────────────────────────────────────
   const firstDow = new Date(range.start.getTime() + 9 * 3600_000).getUTCDay();
@@ -170,14 +170,16 @@ export default async function StudioSettlementPage({
   // 원천징수 미리보기는 실제 요청 시 계산과 **같은 함수**를 써야 한다.
   // 화면은 3.3% 단일 절사, 서버는 2단계 계산이면 요청 직후 금액이 달라져
   // 가맹점이 "표시된 금액과 다르다"고 느끼게 된다.
-  const previewWithholding = calculateWithholding(summary.available);
+  const previewWithholding = isBusinessMerchant
+    ? { incomeTax: 0n, localTax: 0n, total: 0n, exempt: true }
+    : calculateWithholding(summary.available);
   const isCurrentMonth = range.key === kstMonthKey();
 
   return (
     <>
       <PageHeader
         title="정산 관리"
-        description="일별 결제 현황과 정산 요청·계좌·원장을 탭으로 나눠 관리합니다."
+        description="일별 결제 현황과 자동 지급 예정·계좌·원장을 탭으로 나눠 관리합니다."
       />
 
       <nav
@@ -208,11 +210,11 @@ export default async function StudioSettlementPage({
               <div className="rounded-[22px] border border-brand-200/70 bg-[linear-gradient(135deg,#fffaf0_0%,#fff5e0_100%)] p-4 shadow-[0_8px_24px_rgba(237,166,0,0.10)] sm:p-5">
                 <p className="flex items-center gap-1.5 text-[14px] font-black tracking-[-0.01em] text-ink-900">
                   <CalendarClock size={16} strokeWidth={1.9} className="text-brand-700" />
-                  정산은 결제일로부터 <span className="text-brand-700">영업일 {SETTLEMENT_BUSINESS_DAYS}일 후</span>에 이루어집니다
+                  정산은 결제일로부터 <span className="text-brand-700">영업일 {notice.businessDays}일 후</span>에 자동 지급됩니다
                 </p>
                 <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-600">
                   영업일은 <strong>토요일·일요일과 공휴일(법정공휴일·대체공휴일·임시공휴일)을 뺀 날</strong>입니다.
-                  연휴가 끼면 그만큼 정산일이 뒤로 밀립니다.
+                  연휴가 끼면 그만큼 정산일이 뒤로 밀립니다. <strong>별도 출금 요청은 필요하지 않습니다.</strong>
                 </p>
 
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -227,7 +229,7 @@ export default async function StudioSettlementPage({
                   <div className="rounded-xl border border-brand-200/60 bg-white/80 px-3.5 py-3">
                     <p className="text-[11px] font-bold text-ink-400">금·토·일 결제분</p>
                     <p className="mt-1 text-[13.5px] font-extrabold text-ink-900">
-                      {formatDateKeyKo(notice.weekendDonationDate, false)} ~ 주말
+                      {formatDateKeyKo(notice.weekendChargeDate, false)} ~ 주말
                       <span className="mx-1.5 text-brand-500">→</span>
                       <span className="text-brand-700">{formatDateKeyKo(notice.weekendSettlement)} 정산</span>
                     </p>
@@ -402,97 +404,141 @@ export default async function StudioSettlementPage({
           </>
         ) : null}
 
-        {/* ───────────────────────── 정산 요청 ───────────────────────── */}
-        {activeTab === 'request' ? (
+        {/* ───────────────────────── 지급 내역 ───────────────────────── */}
+        {activeTab === 'payout' ? (
           <>
             <section>
-              <SectionTitle title="정산 요청" />
+              <SectionTitle
+                title="다음 지급 예정"
+                description="정산 요청은 필요하지 않습니다. 지급일이 되면 등록된 계좌로 자동 지급됩니다."
+              />
               <Card>
-                <div className="mb-3">
-                  <DataRow
-                    label="정산 계좌"
-                    value={
-                      account ? (
-                        <span>
-                          {account.bankName} ****{account.accountTail4} · {account.holderMasked}{' '}
-                          {account.verified ? <Badge tone="success">인증됨</Badge> : <Badge tone="warning">미인증</Badge>}
-                        </span>
-                      ) : (
-                        <Badge tone="warning">미등록</Badge>
-                      )
-                    }
-                  />
-                  <DataRow label="정산 가능금" value={formatWon(summary.available)} />
-                  <DataRow
-                    label="소득세 (3%)"
-                    value={formatWon(previewWithholding.incomeTax)}
-                  />
-                  <DataRow
-                    label="지방소득세 (소득세의 10%)"
-                    value={formatWon(previewWithholding.localTax)}
-                  />
-                  <DataRow
-                    label="원천징수 합계"
-                    value={
-                      previewWithholding.exempt
-                        ? '0원 (소액부징수)'
-                        : formatWon(previewWithholding.total)
-                    }
-                  />
-                  <DataRow label="실지급 예상" value={formatWon(summary.available - previewWithholding.total)} />
-                </div>
-
-                {!account || !account.verified ? (
-                  <Notice tone="warning" title="정산 계좌 인증이 필요합니다">
-                    계좌가 등록되지 않았거나 예금주 실명확인이 완료되지 않아 정산을 요청할 수 없습니다. 정산 계좌
-                    탭에서 계좌를 먼저 등록해 주세요.
-                  </Notice>
-                ) : summary.available <= 0n ? (
-                  <Notice tone="neutral">현재 정산 가능한 금액이 없습니다.</Notice>
+                <DataRow
+                  label="지급 주기"
+                  value={<span>결제일 + 영업일 {upcoming.settlementDays}일 <span className="text-ink-400">(D+{upcoming.settlementDays})</span></span>}
+                />
+                <DataRow
+                  label="정산 계좌"
+                  value={
+                    account ? (
+                      <span>
+                        {account.bankName} ****{account.accountTail4} · {account.holderMasked}{' '}
+                        {account.verified ? <Badge tone="success">인증됨</Badge> : <Badge tone="warning">미인증</Badge>}
+                      </span>
+                    ) : (
+                      <Badge tone="warning">미등록</Badge>
+                    )
+                  }
+                />
+                <DataRow label="정산 가능금" value={formatWon(summary.available)} />
+                {isBusinessMerchant ? (
+                  <DataRow label="원천징수" value="해당 없음 (사업자 · 세금계산서 대상)" />
                 ) : (
-                  <ActionForm action={requestSettlementAction} submitLabel="정산 요청">
-                    <Field label="요청 금액 (원)" hint={`정산 가능금 ${formatWon(summary.available)} 이하로 입력해 주세요.`}>
-                      <Input
-                        name="amount"
-                        inputMode="numeric"
-                        defaultValue={summary.available.toString()}
-                        className="tabular-nums"
-                      />
-                    </Field>
-
-                    <ResidentField priorMasked={priorResident?.residentMasked ?? null} />
-
-                    <Field label="메모 (선택)" hint="200자 이내">
-                      <Textarea name="memo" rows={2} maxLength={200} placeholder="정산 담당자에게 전달할 내용" />
-                    </Field>
-                  </ActionForm>
+                  <>
+                    <DataRow label="소득세 (3%)" value={formatWon(previewWithholding.incomeTax)} />
+                    <DataRow label="지방소득세 (소득세의 10%)" value={formatWon(previewWithholding.localTax)} />
+                    <DataRow
+                      label="원천징수 합계"
+                      value={previewWithholding.exempt ? '0원 (소액부징수)' : formatWon(previewWithholding.total)}
+                    />
+                  </>
                 )}
+                <DataRow label="실지급 예상" value={formatWon(summary.available - previewWithholding.total)} />
 
                 <div className="mt-3">
-                  <Notice tone="neutral" title="원천징수 계산 방식">
-                    사업소득 기준으로 <strong>소득세 3%(10원 미만 절사)</strong> 와{' '}
-                    <strong>지방소득세(소득세의 10%, 10원 미만 절사)</strong> 를 각각 산출해 더합니다. 소득세가
-                    1,000원 미만이면 <strong>소액부징수</strong>로 원천징수하지 않습니다(정산액 33,334원 미만).
-                    최종 세율은 세무 검토 후 확정되며, 사업자 등록 여부와 소득 구분에 따라 달라질 수 있습니다.
-                  </Notice>
+                  {!account ? (
+                    <Notice tone="warning" title="정산 계좌를 등록해 주세요">
+                      계좌가 등록되지 않아 자동 지급이 진행되지 않습니다. 정산 계좌 탭에서 등록해 주세요. 지급되지 않은
+                      금액은 사라지지 않고 다음 지급일로 이월됩니다.
+                    </Notice>
+                  ) : !account.verified ? (
+                    <Notice tone="warning" title="정산 계좌 인증 대기 중입니다">
+                      예금주 실명확인이 완료되기 전까지는 자동 지급이 보류됩니다. 인증이 완료되면 보류된 금액이 다음
+                      지급 회차에 함께 지급됩니다.
+                    </Notice>
+                  ) : upcoming.total <= 0n ? (
+                    <Notice tone="neutral">아직 지급 예정인 결제가 없습니다.</Notice>
+                  ) : null}
+                </div>
+
+                <div className="mt-3">
+                  {isBusinessMerchant ? (
+                    <Notice tone="neutral" title="사업자 가맹점은 원천징수하지 않습니다">
+                      사업자등록번호가 등록되어 있어 정산금 전액이 지급되며, 플랫폼 수수료는 세금계산서로 발행됩니다.
+                    </Notice>
+                  ) : !account?.residentMasked ? (
+                    <Notice tone="warning" title="원천징수 신고 정보를 등록해 주세요">
+                      개인 가맹점은 지급 시 사업소득 3.3%가 원천징수됩니다. 신고용 주민등록번호가 등록되어 있지 않으면
+                      지급명세서 신고가 불가능하니 정산 계좌 탭에서 먼저 등록해 주세요.
+                    </Notice>
+                  ) : (
+                    <Notice tone="neutral" title="원천징수 계산 방식">
+                      사업소득 기준으로 <strong>소득세 3%(10원 미만 절사)</strong> 와{' '}
+                      <strong>지방소득세(소득세의 10%, 10원 미만 절사)</strong> 를 각각 산출해 더합니다. 소득세가
+                      1,000원 미만이면 <strong>소액부징수</strong>로 원천징수하지 않습니다(정산액 33,334원 미만).
+                    </Notice>
+                  )}
                 </div>
               </Card>
             </section>
 
             <section>
-              <SectionTitle title="정산 요청 내역" description="최근 20건입니다." />
-              {requests.length === 0 ? (
-                <EmptyState title="정산 요청 내역이 없습니다" />
+              <SectionTitle
+                title="지급 예정 내역"
+                description="아직 지급되지 않은 결제를 지급 예정일별로 묶은 금액입니다. (수수료 차감 후)"
+              />
+              {upcoming.rows.length === 0 ? (
+                <EmptyState title="지급 예정 금액이 없습니다" description="결제가 완료되면 지급 예정일이 자동으로 계산됩니다." />
               ) : (
                 <Table className="min-w-full">
                   <thead>
                     <tr>
-                      <Th>요청일</Th>
+                      <Th>지급 예정일</Th>
+                      <Th className="text-right">건수</Th>
+                      <Th className="text-right">지급 예정액</Th>
                       <Th>상태</Th>
-                      <Th className="text-right">요청금</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {upcoming.rows.map((r) => (
+                      <tr key={r.settlementDate}>
+                        <Td className="whitespace-nowrap tabular-nums font-semibold text-ink-900">
+                          {formatDateKeyKo(r.settlementDate)}
+                        </Td>
+                        <Td className="text-right tabular-nums">{formatNumber(r.count)}건</Td>
+                        <Td className="text-right font-semibold tabular-nums text-ink-900">{formatWon(r.net)}</Td>
+                        <Td>
+                          {r.due ? (
+                            <Badge tone="warning">지급 처리 중</Badge>
+                          ) : (
+                            <Badge tone="neutral">지급 대기</Badge>
+                          )}
+                        </Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              )}
+              <p className="mt-2 text-[11.5px] leading-relaxed text-ink-400">
+                &ldquo;지급 처리 중&rdquo;은 지급일이 지났지만 아직 이체가 완료되지 않은 금액입니다. 지급 배치는
+                영업일에 하루 한 번 실행되며, 계좌 미인증·최소 지급 금액 미만인 경우 다음 회차로 이월됩니다.
+              </p>
+            </section>
+
+            <section>
+              <SectionTitle title="지급 이력" description="최근 20건입니다." />
+              {requests.length === 0 ? (
+                <EmptyState title="지급 이력이 없습니다" />
+              ) : (
+                <Table className="min-w-full">
+                  <thead>
+                    <tr>
+                      <Th>회차 생성일</Th>
+                      <Th>상태</Th>
+                      <Th className="text-right">정산금</Th>
                       <Th className="text-right">원천징수</Th>
                       <Th className="text-right">실지급액</Th>
-                      <Th>처리 메모</Th>
+                      <Th>비고</Th>
                       <Th>지급일</Th>
                     </tr>
                   </thead>
@@ -501,7 +547,10 @@ export default async function StudioSettlementPage({
                       const st = settlementStatusLabel[r.status];
                       return (
                         <tr key={r.id}>
-                          <Td className="whitespace-nowrap tabular-nums">{formatKst(r.requestedAt, false)}</Td>
+                          <Td className="whitespace-nowrap tabular-nums">
+                            {formatKst(r.requestedAt, false)}
+                            {r.auto ? <Badge tone="neutral" className="ml-1">자동</Badge> : null}
+                          </Td>
                           <Td>
                             <Badge tone={st.tone}>{st.text}</Badge>
                             {r.status === 'PAYOUT_FAILED' && r.payoutFailReason ? (
@@ -511,7 +560,6 @@ export default async function StudioSettlementPage({
                             ) : null}
                           </Td>
                           <Td className="text-right tabular-nums">{formatWon(r.amount)}</Td>
-                          {/* 공제액이라 음수로 보여주되, 소액부징수(0원)일 때 "-0원" 이 되지 않게 한다. */}
                           <Td
                             className={cx(
                               'text-right tabular-nums',
@@ -522,11 +570,8 @@ export default async function StudioSettlementPage({
                           </Td>
                           <Td className="text-right font-semibold tabular-nums text-ink-900">{formatWon(r.payoutAmount)}</Td>
                           <Td>
-                            {/* 관리자 반려/처리 메모를 가맹점이 볼 수 있게 노출한다. */}
                             {r.adminMemo ? (
                               <span className="max-w-[200px] break-words text-ink-700">{r.adminMemo}</span>
-                            ) : r.memo ? (
-                              <span className="max-w-[200px] break-words text-ink-400">내 메모: {r.memo}</span>
                             ) : (
                               '-'
                             )}
@@ -538,6 +583,10 @@ export default async function StudioSettlementPage({
                   </tbody>
                 </Table>
               )}
+              <p className="mt-2 text-[11.5px] leading-relaxed text-ink-400">
+                지급이 실패하면 사유가 함께 표시되고 통합 관리자에게 자동으로 알림이 갑니다. 계좌 정보 문제라면 정산
+                계좌 탭에서 계좌를 수정한 뒤 다음 지급 회차를 기다려 주세요.
+              </p>
             </section>
           </>
         ) : null}
@@ -608,6 +657,25 @@ export default async function StudioSettlementPage({
                 </div>
               </Card>
             </div>
+
+            {/* 개인 가맹점만: 자동 지급 시 원천징수 신고에 쓸 주민등록번호를 미리 등록한다. */}
+            {!isBusinessMerchant ? (
+              <div className="mt-4">
+                <SectionTitle
+                  title="원천징수 신고 정보"
+                  description="자동 지급은 별도 요청 단계가 없어, 신고용 주민등록번호를 미리 등록해 두어야 합니다."
+                />
+                <Card>
+                  {!account ? (
+                    <Notice tone="neutral">정산 계좌를 먼저 등록하면 원천징수 신고 정보를 등록할 수 있습니다.</Notice>
+                  ) : (
+                    <ActionForm action={saveWithholdingResidentAction} submitLabel="신고 정보 저장">
+                      <ResidentField priorMasked={account.residentMasked} />
+                    </ActionForm>
+                  )}
+                </Card>
+              </div>
+            ) : null}
           </section>
         ) : null}
 
@@ -619,7 +687,7 @@ export default async function StudioSettlementPage({
               <Card>
                 {feePolicy ? (
                   <div>
-                    <DataRow label="적용 범위" value={feePolicy.scope === 'CREATOR' ? '내 채널 전용 정책' : '플랫폼 공통 정책'} />
+                    <DataRow label="적용 범위" value={feePolicy.scope === 'MERCHANT' ? '내 채널 전용 정책' : '플랫폼 공통 정책'} />
                     <DataRow label="결제수수료율" value={ratePercent(feePolicy.pgFeeRate.toString())} />
                     <DataRow label="결제 건당 고정비" value={formatWon(feePolicy.pgFixedFee)} />
                     <DataRow label="플랫폼수수료율" value={ratePercent(feePolicy.platformFeeRate.toString())} />
@@ -704,7 +772,7 @@ export default async function StudioSettlementPage({
               <ol className="mt-2 space-y-1.5 text-[13px] leading-relaxed text-ink-500">
                 <li>1. 결제가 승인되면 결제 총액과 수수료가 정산 원장에 자동 기록됩니다.</li>
                 <li>2. 환불이 발생하면 반대 분개로 차감되고 플랫폼수수료는 환입됩니다.</li>
-                <li>3. 정산 가능금 범위에서 요청하면 통합 관리자 검토 후 지급대행으로 지급됩니다.</li>
+                <li>3. 관리자가 정한 지급일(결제일 + 영업일 {upcoming.settlementDays}일)이 되면 지급대행으로 자동 지급됩니다. 출금 요청은 필요하지 않습니다.</li>
                 <li>4. 지급이 완료되면 원장에 지급·원천징수 분개가 추가되고 캘린더에 지급일이 표시됩니다.</li>
               </ol>
             </Card>

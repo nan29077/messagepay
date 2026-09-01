@@ -1,13 +1,13 @@
 import Link from 'next/link';
 import { PageHeader } from '@/components/layout/console-shell';
 import { Badge, EmptyState, Notice, StatTile, Table, Td, Th } from '@/components/ui';
-import { AdminField, AdminInput, AdminSelect, CreatorOptions, FilterBar, Pager } from '@/components/admin/controls';
+import { AdminField, AdminInput, AdminSelect, MerchantOptions, FilterBar, Pager } from '@/components/admin/controls';
 import { shortId } from '@/components/admin/mask';
 import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
 import { prisma } from '@/server/db';
 import { formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
-import { moResultLabel, donationStatusLabel } from '@/lib/labels';
+import { moResultLabel, chargeStatusLabel } from '@/lib/labels';
 import type { Prisma } from '@/generated/prisma/client';
 import type { MoProcessResult } from '@/generated/prisma/enums';
 
@@ -27,13 +27,13 @@ export default async function AdminMoMessagesPage({
   searchParams,
 }: {
   searchParams: Promise<{
-    result?: string; creatorId?: string; from?: string; to?: string; number?: string; page?: string;
+    result?: string; merchantId?: string; from?: string; to?: string; number?: string; page?: string;
   }>;
 }) {
   const sp = await searchParams;
   const page = parsePage(sp.page);
   const result = RESULTS.includes(sp.result as MoProcessResult) ? (sp.result as MoProcessResult) : undefined;
-  const creatorId = (sp.creatorId ?? '').trim() || undefined;
+  const merchantId = (sp.merchantId ?? '').trim() || undefined;
   const receivedNumber = (sp.number ?? '').trim();
   const from = parseDate(sp.from);
   const toRaw = parseDate(sp.to);
@@ -41,12 +41,12 @@ export default async function AdminMoMessagesPage({
 
   const where: Prisma.MoInboundMessageWhereInput = {
     ...(result ? { result } : {}),
-    ...(creatorId ? { creatorId } : {}),
+    ...(merchantId ? { merchantId } : {}),
     ...(receivedNumber ? { receivedNumber: { contains: receivedNumber } } : {}),
     ...(from || to ? { receivedAt: { ...(from ? { gte: from } : {}), ...(to ? { lt: to } : {}) } } : {}),
   };
 
-  const [total, messages, grouped, creators] = await Promise.all([
+  const [total, messages, grouped, merchants] = await Promise.all([
     prisma.moInboundMessage.count({ where }),
     prisma.moInboundMessage.findMany({
       where,
@@ -57,12 +57,12 @@ export default async function AdminMoMessagesPage({
         id: true, providerMessageId: true, providerCode: true, receivedNumber: true, phoneMasked: true,
         messageType: true, contentFiltered: true, matchedKeyword: true, result: true, resultDetail: true,
         receivedAt: true, processedAt: true,
-        creator: { select: { id: true, displayName: true, code: true } },
-        donation: { select: { id: true, transactionNo: true, status: true } },
+        merchant: { select: { id: true, displayName: true, code: true } },
+        charge: { select: { id: true, transactionNo: true, status: true } },
       },
     }),
     prisma.moInboundMessage.groupBy({ by: ['result'], _count: { _all: true } }),
-    prisma.creatorProfile.findMany({ orderBy: { displayName: 'asc' }, select: { id: true, displayName: true, code: true } }),
+    prisma.merchantProfile.findMany({ orderBy: { displayName: 'asc' }, select: { id: true, displayName: true, code: true } }),
   ]);
 
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -94,8 +94,8 @@ export default async function AdminMoMessagesPage({
           </AdminSelect>
         </AdminField>
         <AdminField label="가맹점" className="w-52">
-          <AdminSelect name="creatorId" defaultValue={creatorId ?? ''}>
-            <CreatorOptions creators={creators} />
+          <AdminSelect name="merchantId" defaultValue={merchantId ?? ''}>
+            <MerchantOptions merchants={merchants} />
           </AdminSelect>
         </AdminField>
         <AdminField label="수신번호" className="w-40">
@@ -158,9 +158,9 @@ export default async function AdminMoMessagesPage({
                     </Td>
                     <Td>{m.matchedKeyword ?? '-'}</Td>
                     <Td>
-                      {m.creator ? (
-                        <Link href={`/admin/creators/${m.creator.id}`} className="font-semibold text-brand-700">
-                          {m.creator.displayName}
+                      {m.merchant ? (
+                        <Link href={`/admin/merchants/${m.merchant.id}`} className="font-semibold text-brand-700">
+                          {m.merchant.displayName}
                         </Link>
                       ) : (
                         <span className="text-ink-300">-</span>
@@ -168,11 +168,11 @@ export default async function AdminMoMessagesPage({
                     </Td>
                     <Td className="max-w-[240px] break-words">{m.contentFiltered ?? <span className="text-ink-300">표시 가능한 내용 없음</span>}</Td>
                     <Td>
-                      {m.donation ? (
+                      {m.charge ? (
                         <>
-                          <span className="block font-mono text-[12px]">{m.donation.transactionNo}</span>
-                          <Badge tone={donationStatusLabel[m.donation.status].tone}>
-                            {donationStatusLabel[m.donation.status].text}
+                          <span className="block font-mono text-[12px]">{m.charge.transactionNo}</span>
+                          <Badge tone={chargeStatusLabel[m.charge.status].tone}>
+                            {chargeStatusLabel[m.charge.status].text}
                           </Badge>
                         </>
                       ) : (
@@ -186,7 +186,7 @@ export default async function AdminMoMessagesPage({
             <Pager
               basePath="/admin/mo-messages"
               params={{
-                result: result ?? '', creatorId: creatorId ?? '', number: receivedNumber,
+                result: result ?? '', merchantId: merchantId ?? '', number: receivedNumber,
                 from: sp.from ?? '', to: sp.to ?? '',
               }}
               page={page}

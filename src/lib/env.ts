@@ -168,11 +168,13 @@ export const env = {
     },
   },
 
-  /** 충전 반영(가맹 서비스 포인트 적립) 연동 */
-  chargeReflect: {
-    provider: str('CHARGE_REFLECT_PROVIDER', 'mock') as ProviderMode,
-    apiBase: str('CHARGE_REFLECT_API_BASE'),
-    apiKey: str('CHARGE_REFLECT_API_KEY'),
+  /** 지급대행(정산금 이체) 연동 */
+  payout: {
+    provider: str('PAYOUT_PROVIDER', 'mock') as ProviderMode,
+    apiBase: str('PAYOUT_API_BASE'),
+    apiKey: str('PAYOUT_API_KEY'),
+    /** 자동 지급 최소 금액(원). 이보다 적으면 다음 회차로 이월한다. */
+    minAmount: num('PAYOUT_MIN_AMOUNT', 1000),
   },
 
   storage: {

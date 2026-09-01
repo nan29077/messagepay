@@ -36,6 +36,7 @@ const RATE_WINDOW_SEC = 600;
 const RATE_MAX = 10;
 
 const schema = z.object({
+  intent: z.enum(['SUPPORT', 'ONBOARDING']).default('SUPPORT'),
   category: z.string().refine((v) => SUPPORT_CATEGORY_VALUES.includes(v), '문의 유형을 선택해 주세요.'),
   content: z
     .string()
@@ -43,6 +44,12 @@ const schema = z.object({
     .min(10, '문의 내용을 10자 이상 입력해 주세요.')
     .max(2000, '문의 내용은 2,000자를 넘을 수 없습니다.'),
   transactionNo: z.string().trim().max(64, '거래번호를 확인해 주세요.'),
+  companyName: z.string().trim().max(80).optional().default(''),
+  serviceName: z.string().trim().max(80).optional().default(''),
+  contactName: z.string().trim().max(40).optional().default(''),
+  contact: z.string().trim().max(100).optional().default(''),
+  serviceUrl: z.string().trim().max(200).optional().default(''),
+  monthlyVolume: z.string().trim().max(40).optional().default(''),
 });
 
 export async function submitSupportRequest(
@@ -50,16 +57,41 @@ export async function submitSupportRequest(
   formData: FormData,
 ): Promise<SupportFormState> {
   const parsed = schema.safeParse({
+    intent: String(formData.get('intent') ?? 'SUPPORT'),
     category: String(formData.get('category') ?? ''),
     content: String(formData.get('content') ?? ''),
     transactionNo: String(formData.get('transactionNo') ?? ''),
+    companyName: String(formData.get('companyName') ?? ''),
+    serviceName: String(formData.get('serviceName') ?? ''),
+    contactName: String(formData.get('contactName') ?? ''),
+    contact: String(formData.get('contact') ?? ''),
+    serviceUrl: String(formData.get('serviceUrl') ?? ''),
+    monthlyVolume: String(formData.get('monthlyVolume') ?? ''),
   });
 
   if (!parsed.success) {
     return { ok: false, message: parsed.error.issues[0]?.message ?? '입력값을 확인해 주세요.' };
   }
 
-  const { category, content, transactionNo } = parsed.data;
+  const { category, content, transactionNo, intent, companyName, serviceName, contactName, contact, serviceUrl, monthlyVolume } = parsed.data;
+
+  if (intent === 'ONBOARDING' && (!companyName || !serviceName || !contactName || !contact)) {
+    return { ok: false, message: '회사·서비스·담당자·회신 연락처를 모두 입력해 주세요.' };
+  }
+
+  const inquiryContent = intent === 'ONBOARDING'
+    ? [
+        '[MessagePay 도입 상담]',
+        `회사·사업자명: ${companyName}`,
+        `서비스명: ${serviceName}`,
+        `담당자명: ${contactName}`,
+        `회신 연락처: ${contact}`,
+        `서비스 주소: ${serviceUrl || '미입력'}`,
+        `예상 월 결제 규모: ${monthlyVolume || '미정'}`,
+        '',
+        content,
+      ].join('\n')
+    : content;
 
   // 남용 방지: IP 단위 10분당 10건 (로그인 사용자는 계정 단위로도 함께 제한)
   const user = await getSessionUser().catch(() => null);
@@ -74,18 +106,18 @@ export async function submitSupportRequest(
     }
   }
 
-  let donationId: string | null = null;
-  let creatorId: string | null = null;
+  let chargeId: string | null = null;
+  let merchantId: string | null = null;
   let linkNote: string | undefined;
 
   if (transactionNo) {
-    const donation = await prisma.donation.findUnique({
+    const charge = await prisma.charge.findUnique({
       where: { transactionNo },
-      select: { id: true, creatorId: true },
+      select: { id: true, merchantId: true },
     });
-    if (donation) {
-      donationId = donation.id;
-      creatorId = donation.creatorId;
+    if (charge) {
+      chargeId = charge.id;
+      merchantId = charge.merchantId;
       linkNote = `거래번호 ${transactionNo} 건이 문의에 연결되었습니다.`;
     } else {
       linkNote = `거래번호 ${transactionNo} 에 해당하는 결제 내역을 찾지 못해 문의만 접수했습니다. 담당자가 직접 확인합니다.`;
@@ -95,11 +127,11 @@ export async function submitSupportRequest(
   // 로그인 사용자는 이용자 프로필의 phoneHash 로 문의자를 식별한다 (원문은 저장하지 않음)
   let reporterHash: string | null = null;
   if (user) {
-    const donor = await prisma.donorProfile.findUnique({
+    const payer = await prisma.payerProfile.findUnique({
       where: { userId: user.id },
       select: { phoneHash: true },
     });
-    reporterHash = donor?.phoneHash ?? null;
+    reporterHash = payer?.phoneHash ?? null;
   }
 
   const jar = await cookies();
@@ -130,8 +162,8 @@ export async function submitSupportRequest(
           source: 'FORM',
           lastMessageAt: now,
           ...(transactionNo ? { transactionNo } : {}),
-          ...(donationId ? { donationId } : {}),
-          ...(creatorId ? { creatorId } : {}),
+          ...(chargeId ? { chargeId } : {}),
+          ...(merchantId ? { merchantId } : {}),
         },
       });
     } else {
@@ -145,8 +177,8 @@ export async function submitSupportRequest(
           source: 'FORM',
           status: 'OPEN',
           transactionNo: transactionNo || null,
-          donationId,
-          creatorId,
+          chargeId,
+          merchantId,
           lastMessageAt: now,
         },
       });
@@ -154,7 +186,7 @@ export async function submitSupportRequest(
     }
 
     await prisma.supportMessage.create({
-      data: { id: newId(), inquiryId: inquiry.id, sender: 'USER', body: content },
+      data: { id: newId(), inquiryId: inquiry.id, sender: 'USER', body: inquiryContent },
     });
 
     if (issuedGuestToken) {
@@ -170,8 +202,8 @@ export async function submitSupportRequest(
 
     // 접수 즉시 통합 관리자에게 알린다. 위젯 문의만 알림이 가고 고객센터 폼은 조용히 쌓이던 문제를 막는다.
     await notifySuperAdmins({
-      title: '새 고객센터 문의가 접수되었습니다',
-      body: `[${category}] ${content.slice(0, 80)}`,
+      title: intent === 'ONBOARDING' ? '새 MessagePay 도입 상담이 접수되었습니다' : '새 고객센터 문의가 접수되었습니다',
+      body: `[${category}] ${inquiryContent.slice(0, 80)}`,
       linkUrl: `/admin/inquiries/${inquiry.id}`,
     }).catch(() => undefined);
 
@@ -181,10 +213,10 @@ export async function submitSupportRequest(
         data: {
           id: newId(),
           category,
-          content,
+          content: inquiryContent,
           status: 'OPEN',
-          donationId,
-          creatorId,
+          chargeId,
+          merchantId,
           reporterHash,
           reporterUserId: user?.id ?? null,
         },

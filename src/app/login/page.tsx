@@ -10,8 +10,8 @@ import { SOCIAL_LABEL, type SocialProvider } from '@/server/adapters/social';
 import { isLocal } from '@/lib/env';
 
 export const metadata: Metadata = {
-  title: '로그인 | 문자페이',
-  description: '문자페이 계정으로 로그인하고 결제 내역과 결제 설정을 확인하세요.',
+  title: '로그인 | 메시지페이',
+  description: '메시지페이 계정으로 로그인하고 결제 내역과 결제 설정을 확인하세요.',
 };
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -47,7 +47,7 @@ export default async function LoginPage({
     <PublicShell aside={<LoginAside />}>
       <PageHeader
         eyebrow="로그인"
-        title="문자페이 계정으로 로그인"
+        title="메시지페이 계정으로 로그인"
         description="결제 내역, 결제 수단, 한도 설정은 로그인 후 확인할 수 있습니다."
       />
 
@@ -118,7 +118,7 @@ export default async function LoginPage({
           <TestLoginPanel
             seedAccounts={[
               { email: 'admin@munjapay.kr', password: 'munjapay1234!' },
-              { email: 'creator1@munjapay.kr', password: 'munjapay1234!' },
+              { email: 'merchant1@munjapay.kr', password: 'munjapay1234!' },
             ]}
           />
         </div>
@@ -145,7 +145,7 @@ function LoginAside() {
         <p className="mt-2 text-[13px] leading-relaxed text-ink-500">
           가입 신청 후 승인되면 가맹점 콘솔에서 결제 수신번호와 충전 설정을 관리할 수 있습니다.
         </p>
-        <LinkButton href="/creator-apply" variant="secondary" size="md" className="mt-3 w-full">
+        <LinkButton href="/merchant-apply" variant="secondary" size="md" className="mt-3 w-full">
           가맹점 가입 신청
         </LinkButton>
       </Card>

@@ -154,17 +154,17 @@ export function JsonView({ value, maxLength = 1200 }: { value: unknown; maxLengt
 }
 
 /** 가맹점 선택용 Select 옵션 */
-export function CreatorOptions({
-  creators,
+export function MerchantOptions({
+  merchants,
   allLabel = '전체',
 }: {
-  creators: Array<{ id: string; displayName: string; code: string }>;
+  merchants: Array<{ id: string; displayName: string; code: string }>;
   allLabel?: string;
 }) {
   return (
     <>
       <option value="">{allLabel}</option>
-      {creators.map((c) => (
+      {merchants.map((c) => (
         <option key={c.id} value={c.id}>
           {c.displayName} ({c.code})
         </option>

@@ -3,9 +3,9 @@
 import * as React from 'react';
 import { BellRing, BellOff } from 'lucide-react';
 import { Button, Card, CardTitle, Badge, Notice } from '@/components/ui';
-import { setMarketingConsent, type DonorActionState } from '@/app/actions/donor';
+import { setMarketingConsent, type PayerActionState } from '@/app/actions/payer';
 
-const initial: DonorActionState = { ok: false };
+const initial: PayerActionState = { ok: false };
 
 /** 마케팅 수신 동의 상태 표시 + 동의/철회 토글 */
 export function MarketingConsentForm({ agreed }: { agreed: boolean }) {

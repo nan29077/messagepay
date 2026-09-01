@@ -79,8 +79,8 @@ export async function GET(req: Request) {
         r.amount.toString(),
         r.note,
         r.requestId,
-        r.creatorName,
-        r.creatorCode,
+        r.merchantName,
+        r.merchantCode,
       ]
         .map(csvCell)
         .join(','),

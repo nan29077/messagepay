@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/server/db';
-import { inboundAndPay, resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
-import { handleMoInbound } from '@/server/services/donation-flow';
+import { inboundAndPay, resetDb, seedBasics, seedRegisteredPayer, moPayload, type Fixture } from './helpers';
+import { handleMoInbound } from '@/server/services/charge-flow';
 import { mockMoAdapter } from '@/server/adapters/mo';
 import { bannedNeedle, containsBannedWord, filterContent } from '@/server/services/content-filter';
 import { scrubText } from '@/lib/logger';
@@ -15,7 +15,7 @@ import { kstDateKey } from '@/lib/datetime';
  */
 
 let fx: Fixture;
-const inbound = (p: Record<string, unknown>) => inboundAndPay(p, fx.creatorId);
+const inbound = (p: Record<string, unknown>) => inboundAndPay(p, fx.merchantId);
 
 // ───────────────────── 1. 금칙어 정규식 폭주(ReDoS) ─────────────────────
 
@@ -138,28 +138,28 @@ describe('결과 미확인 결제의 수동 대사', () => {
   beforeEach(async () => {
     await resetDb();
     fx = await seedBasics({ paymentMode: 'DIRECT_TRIGGER' });
-    await seedRegisteredDonor(fx.donorPhone);
+    await seedRegisteredPayer(fx.payerPhone);
   });
 
   it('동시에 두 번 취소해도 한도 집계는 한 번만 되돌린다', async () => {
     await inbound(moPayload({ to: fx.moNumber, text: '대사 테스트' }));
 
-    const donation = await prisma.donation.findFirstOrThrow();
-    const txn = await prisma.paymentTransaction.findFirstOrThrow({ where: { donationId: donation.id } });
+    const charge = await prisma.charge.findFirstOrThrow();
+    const txn = await prisma.paymentTransaction.findFirstOrThrow({ where: { chargeId: charge.id } });
 
     // 결과 미확인 상태를 만든다.
     await prisma.paymentTransaction.update({ where: { id: txn.id }, data: { status: 'UNKNOWN' } });
-    await prisma.donation.update({ where: { id: donation.id }, data: { status: 'PENDING_PAYMENT' } });
+    await prisma.charge.update({ where: { id: charge.id }, data: { status: 'PENDING_PAYMENT' } });
 
     const key = {
-      donorId_creatorId_periodType_periodKey: {
-        donorId: donation.donorId!,
-        creatorId: 'ALL',
+      payerId_merchantId_periodType_periodKey: {
+        payerId: charge.payerId!,
+        merchantId: 'ALL',
         periodType: 'DAY',
         periodKey: kstDateKey(txn.requestedAt),
       },
     };
-    const before = await prisma.donationCounter.findUniqueOrThrow({ where: key });
+    const before = await prisma.chargeCounter.findUniqueOrThrow({ where: key });
 
     // 관리자 두 명이 같은 건을 동시에 취소로 확정한 상황.
     const results = await Promise.allSettled([
@@ -170,18 +170,18 @@ describe('결과 미확인 결제의 수동 대사', () => {
     expect(ok).toHaveLength(1);
 
     // 되돌림이 두 번 돌면 집계가 실제보다 더 깎여, 그만큼 한도를 넘겨 결제할 수 있게 된다.
-    const after = await prisma.donationCounter.findUniqueOrThrow({ where: key });
+    const after = await prisma.chargeCounter.findUniqueOrThrow({ where: key });
     expect(after.count).toBe(before.count - 1);
-    expect(after.amount).toBe(before.amount - donation.amount);
+    expect(after.amount).toBe(before.amount - charge.amount);
   });
 
   it('이미 확정된 건은 다시 확정할 수 없다', async () => {
     await inbound(moPayload({ to: fx.moNumber, text: '대사 테스트' }));
-    const donation = await prisma.donation.findFirstOrThrow();
-    const txn = await prisma.paymentTransaction.findFirstOrThrow({ where: { donationId: donation.id } });
+    const charge = await prisma.charge.findFirstOrThrow();
+    const txn = await prisma.paymentTransaction.findFirstOrThrow({ where: { chargeId: charge.id } });
 
     await prisma.paymentTransaction.update({ where: { id: txn.id }, data: { status: 'UNKNOWN' } });
-    await prisma.donation.update({ where: { id: donation.id }, data: { status: 'PENDING_PAYMENT' } });
+    await prisma.charge.update({ where: { id: charge.id }, data: { status: 'PENDING_PAYMENT' } });
 
     await reconcileUnknownPayment(txn.id, 'CANCEL', '첫 처리');
     await expect(reconcileUnknownPayment(txn.id, 'CANCEL', '두 번째 처리')).rejects.toThrow();

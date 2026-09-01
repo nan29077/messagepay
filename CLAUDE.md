@@ -25,8 +25,9 @@
 | 후원 | 결제(돈을 내는 행위) / 충전(가맹 서비스에 반영되는 결과) |
 | 후원샵 | 결제 페이지 |
 | 방송 노출 | 충전 반영 |
+| Donation / DonorProfile / CreatorProfile | Charge / PayerProfile / MerchantProfile |
 
-DB 모델명(Donation, CreatorProfile 등)은 아직 옛 이름이다. 3단계에서 한 번에 개명한다.
+DB 모델·테이블·컬럼도 2026-08-31 에 같은 기준으로 개명했다: `Charge`(charge) · `MerchantProfile`(merchant_profile) · `PayerProfile`(payer_profile) · `merchantId` · `payerId` · `chargeId`. 라우트도 `/studio/charges` · `/admin/merchants` · `/admin/payers` · `/merchant-apply` 다.
 
 ## 기술 스택
 

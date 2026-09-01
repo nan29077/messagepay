@@ -4,24 +4,24 @@ import {
   MessageSquare, CreditCard, ShieldCheck, CircleAlert,
   Gauge, Flag, Phone, BellRing, Smartphone,
 } from 'lucide-react';
-import { CreatorCodeForm } from '@/components/creator-code-form';
+import { MerchantCodeForm } from '@/components/merchant-code-form';
 import { CopyButton } from '@/components/public/copy-button';
-import { WebDonationPanel } from '@/components/public/web-donation-panel';
-import { WebDonationPinPanel } from '@/components/public/web-donation-pin-panel';
+import { WebChargePanel } from '@/components/public/web-charge-panel';
+import { WebChargePinPanel } from '@/components/public/web-charge-pin-panel';
 import { defaultBannerFor } from '@/lib/banners';
 import { maskDisplayName } from '@/components/public/mask';
 import { Logo } from '@/components/brand/logo';
 import { ProfileAvatar } from '@/components/profile/generated-avatar';
 import { LinkButton } from '@/components/ui';
-import { normalizeCreatorCode } from '@/lib/id';
+import { normalizeMerchantCode } from '@/lib/id';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import { prisma } from '@/server/db';
 import { getSessionUser } from '@/server/auth';
-import { broadcastDonorName, defaultDonorName } from '@/lib/donor-name';
+import { displayPayerName, defaultPayerName } from '@/lib/payer-name';
 import { resolvePolicy } from '@/server/services/limits';
 import { getPaymentAdapter } from '@/server/adapters/payment';
-import { resolveWebDonationChannel } from '@/server/services/web-donation';
+import { resolveWebChargeChannel } from '@/server/services/web-charge';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,11 +58,11 @@ function formatMoNumber(raw: string) {
  * 로그인한 방문자의 이용자 프로필. 없으면 null.
  * 세션·프로필 조회 실패가 결제 페이지 자체를 막지 않도록 전부 흡수한다.
  */
-async function currentViewerDonor() {
+async function currentViewerPayer() {
   try {
     const user = await getSessionUser();
     if (!user) return null;
-    return await prisma.donorProfile.findUnique({
+    return await prisma.payerProfile.findUnique({
       where: { userId: user.id },
       select: { displayName: true, phoneMasked: true },
     });
@@ -71,15 +71,15 @@ async function currentViewerDonor() {
   }
 }
 
-async function findCreator(rawCode: string) {
-  const code = normalizeCreatorCode(rawCode);
+async function findMerchant(rawCode: string) {
+  const code = normalizeMerchantCode(rawCode);
   if (!/^MJP-[A-Z0-9]{2,10}$/.test(code)) return null;
-  return prisma.creatorProfile.findFirst({
+  return prisma.merchantProfile.findFirst({
     where: {
       code,
       status: 'APPROVED',
       // 계정 자체가 정지·탈퇴된 가맹점의 결제 페이지은 닫아야 한다.
-      // creatorProfile.status 만 보면 User 를 SUSPENDED 로 제재해도 샵이 계속 열려
+      // merchantProfile.status 만 보면 User 를 SUSPENDED 로 제재해도 샵이 계속 열려
       // 결제를 받고 정지 계정에 돈이 계속 쌓인다.
       user: { status: 'ACTIVE' },
     },
@@ -99,28 +99,28 @@ async function findCreator(rawCode: string) {
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { code } = await params;
-  const creator = await findCreator(code);
-  if (!creator) {
-    return { title: '가맹점을 찾을 수 없습니다 | 문자페이', robots: { index: false, follow: false } };
+  const merchant = await findMerchant(code);
+  if (!merchant) {
+    return { title: '가맹점을 찾을 수 없습니다 | 메시지페이', robots: { index: false, follow: false } };
   }
   return {
-    title: `${creator.displayName} 문자결제`,
-    description: `${creator.displayName} 님에게 문자 한 통으로 충전하세요. 충전 금액은 문자를 보낸 뒤 고릅니다.`,
+    title: `${merchant.displayName} 문자결제`,
+    description: `${merchant.displayName} 님에게 문자 한 통으로 충전하세요. 충전 금액은 문자를 보낸 뒤 고릅니다.`,
     robots: { index: false, follow: false },
   };
 }
 
-export default async function CreatorDonationPage({ params }: Params) {
+export default async function MerchantChargePage({ params }: Params) {
   const { code } = await params;
-  const creator = await findCreator(code);
+  const merchant = await findMerchant(code);
 
-  if (!creator) return <NotFoundView />;
+  if (!merchant) return <NotFoundView />;
 
-  const [policy, donations] = await Promise.all([
-    resolvePolicy(creator.id),
-    prisma.donation.findMany({
+  const [policy, charges] = await Promise.all([
+    resolvePolicy(merchant.id),
+    prisma.charge.findMany({
       where: {
-        creatorId: creator.id,
+        merchantId: merchant.id,
         status: { in: ['BROADCASTED', 'SETTLEMENT_PENDING', 'PARTIAL_DELIVERY_FAILED', 'SETTLED'] },
       },
       orderBy: { paidAt: 'desc' },
@@ -131,17 +131,17 @@ export default async function CreatorDonationPage({ params }: Params) {
 
   // 허용 범위 = 플랫폼 정책 ∩ 가맹점 설정 (결제 시 checkLimits 가 같은 교집합으로 판정한다).
   // 정책 범위만 보여 주면 본인인증까지 마친 뒤 금액 범위 오류로 거절된다.
-  const effMin = creator.minAmount > policy.minAmount ? creator.minAmount : policy.minAmount;
-  const effMax = creator.maxAmount < policy.maxAmount ? creator.maxAmount : policy.maxAmount;
+  const effMin = merchant.minAmount > policy.minAmount ? merchant.minAmount : policy.minAmount;
+  const effMax = merchant.maxAmount < policy.maxAmount ? merchant.maxAmount : policy.maxAmount;
 
   // 로그인한 이용자라면 결제 내역에 어떤 이름으로 남는지 알려준다.
   // 비로그인 방문자에게는 아무것도 보여주지 않는다(안내할 대상이 없다).
-  const viewerDonor = await currentViewerDonor();
+  const viewerPayer = await currentViewerPayer();
 
-  const route = creator.moRoutes[0] ?? null;
+  const route = merchant.moRoutes[0] ?? null;
   // 이용자가 고를 수 있는 충전 상품. 문자·PC 모두 같은 목록을 쓴다.
-  const products = creator.chargeProducts.map((p) => ({ id: p.id, name: p.name, amount: p.amount.toString() }));
-  const bannerUrl = creator.bannerUrl ?? defaultBannerFor(creator.id);
+  const products = merchant.chargeProducts.map((p) => ({ id: p.id, name: p.name, amount: p.amount.toString() }));
+  const bannerUrl = merchant.bannerUrl ?? defaultBannerFor(merchant.id);
 
   // 결제 연동이 mock 이면 결제 화면에 반드시 표시한다 (가짜 성공 처리 금지 원칙)
   let paymentMock = true;
@@ -167,24 +167,24 @@ export default async function CreatorDonationPage({ params }: Params) {
           {/* 아바타 */}
           <div className="mx-auto w-fit">
             <ProfileAvatar
-              seed={creator.code}
-              avatarIndex={creator.user.avatarIndex}
-              name={creator.displayName}
-              imageUrl={creator.avatarUrl}
+              seed={merchant.code}
+              avatarIndex={merchant.user.avatarIndex}
+              name={merchant.displayName}
+              imageUrl={merchant.avatarUrl}
               className="h-24 w-24 border-2 border-brand-400/70"
             />
           </div>
 
           <h1 className="mt-4 text-[26px] font-black leading-tight tracking-[-0.04em] text-white">
-            {creator.displayName}
+            {merchant.displayName}
           </h1>
-          {creator.channelName ? (
-            <p className="mt-1 text-[13.5px] font-semibold text-white/60">{creator.channelName}</p>
+          {merchant.channelName ? (
+            <p className="mt-1 text-[13.5px] font-semibold text-white/60">{merchant.channelName}</p>
           ) : null}
 
-          {creator.description ? (
+          {merchant.description ? (
             <p className="mx-auto mt-4 max-w-[440px] whitespace-pre-line text-[13px] leading-relaxed text-white/70">
-              {creator.description}
+              {merchant.description}
             </p>
           ) : null}
         </div>
@@ -205,25 +205,25 @@ export default async function CreatorDonationPage({ params }: Params) {
             {/* PC: 메모 + 금액 선택 웹 결제 (내통장결제 즉시 결제) */}
             <div className="hidden sm:block">
               <p className="mb-4 text-center text-[16px] font-black tracking-[-0.02em] text-ink-900">
-                {creator.displayName} 님에게 충전하기
+                {merchant.displayName} 님에게 충전하기
               </p>
               {/* 기본은 PIN 인증 흐름이다. 구 즉시결제 화면은 되돌림 플래그를 켰을 때만 쓴다. */}
-              {resolveWebDonationChannel() === 'PIN' ? (
-                <WebDonationPinPanel
-                  creatorId={creator.id}
-                  creatorName={creator.displayName}
+              {resolveWebChargeChannel() === 'PIN' ? (
+                <WebChargePinPanel
+                  merchantId={merchant.id}
+                  merchantName={merchant.displayName}
                   products={products}
-                  allowCustom={creator.allowCustomAmount}
+                  allowCustom={merchant.allowCustomAmount}
                   minAmount={effMin.toString()}
                   maxAmount={effMax.toString()}
                   paymentMock={paymentMock}
                 />
               ) : (
-                <WebDonationPanel
-                  creatorId={creator.id}
-                  creatorName={creator.displayName}
+                <WebChargePanel
+                  merchantId={merchant.id}
+                  merchantName={merchant.displayName}
                   products={products}
-                  allowCustom={creator.allowCustomAmount}
+                  allowCustom={merchant.allowCustomAmount}
                   minAmount={effMin.toString()}
                   maxAmount={effMax.toString()}
                   paymentMock={paymentMock}
@@ -247,7 +247,7 @@ export default async function CreatorDonationPage({ params }: Params) {
                   <CopyButton value={route.phoneNumber} label="번호 복사" />
                 </div>
                 <p className="mt-2.5 text-[11.5px] leading-relaxed text-ink-500">
-                  휴대폰에서 이 번호로 문자를 보내도 {creator.displayName} 님에게 결제됩니다.
+                  휴대폰에서 이 번호로 문자를 보내도 {merchant.displayName} 님에게 결제됩니다.
                 </p>
               </div>
             ) : null}
@@ -257,7 +257,7 @@ export default async function CreatorDonationPage({ params }: Params) {
               <div className="sm:hidden">
               <p className="flex items-center justify-center gap-1.5 text-[12px] font-bold text-brand-700">
                 <Phone size={14} strokeWidth={1.8} />
-                {creator.displayName} 전용 결제 수신번호
+                {merchant.displayName} 전용 결제 수신번호
               </p>
               <p className="mt-2 text-center font-mono text-[34px] font-extrabold leading-none tracking-tight text-ink-900">
                 {moNumberLabel}
@@ -271,7 +271,7 @@ export default async function CreatorDonationPage({ params }: Params) {
                 <p className="text-[13px] font-semibold text-ink-500">충전 금액</p>
                 {products.length === 0 ? (
                   <p className="mt-1 text-[13px] font-bold text-ink-900">
-                    {creator.allowCustomAmount ? '문자를 보낸 뒤 링크에서 직접 입력합니다.' : '준비 중입니다.'}
+                    {merchant.allowCustomAmount ? '문자를 보낸 뒤 링크에서 직접 입력합니다.' : '준비 중입니다.'}
                   </p>
                 ) : (
                   <>
@@ -284,7 +284,7 @@ export default async function CreatorDonationPage({ params }: Params) {
                           {p.name}
                         </span>
                       ))}
-                      {creator.allowCustomAmount ? (
+                      {merchant.allowCustomAmount ? (
                         <span className="rounded-full bg-white px-2.5 py-1 text-[12px] font-bold text-ink-500 shadow-sm">
                           직접 입력
                         </span>
@@ -330,25 +330,25 @@ export default async function CreatorDonationPage({ params }: Params) {
           로그인한 이용자에게만 보여준다. 닉네임을 정하지 않았으면 번호 끝 4자리로
           결제 내역에 남는다는 사실을 알려주고, 정했으면 지금 이름을 확인시켜 준다.
         */}
-        {viewerDonor ? (
+        {viewerPayer ? (
           <section className="mt-6">
             <div className="rounded-2xl border border-brand-200/70 bg-brand-50 px-4 py-3.5">
               <p className="flex items-center gap-1.5 text-[13px] font-bold text-ink-900">
                 <BellRing size={15} strokeWidth={1.8} className="shrink-0 text-brand-700" />
-                {viewerDonor.displayName
-                  ? `결제 내역에 ${viewerDonor.displayName} 님으로 표시됩니다`
+                {viewerPayer.displayName
+                  ? `결제 내역에 ${viewerPayer.displayName} 님으로 표시됩니다`
                   : '결제 내역에 휴대폰 번호로 표시됩니다'}
               </p>
               <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-700">
-                {viewerDonor.displayName
+                {viewerPayer.displayName
                   ? '결제하면 이 이름으로 결제 내역과 가맹점 화면에 표시됩니다.'
-                  : `닉네임을 정하지 않아 번호 끝 4자리(${broadcastDonorName(defaultDonorName(viewerDonor.phoneMasked))})로 표시됩니다. 닉네임을 정하면 가맹점이 누가 보냈는지 알아볼 수 있습니다.`}
+                  : `닉네임을 정하지 않아 번호 끝 4자리(${displayPayerName(defaultPayerName(viewerPayer.phoneMasked))})로 표시됩니다. 닉네임을 정하면 가맹점이 누가 보냈는지 알아볼 수 있습니다.`}
               </p>
               <Link
                 href="/my/account#nickname"
                 className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-bold text-brand-700 underline underline-offset-2"
               >
-                닉네임 {viewerDonor.displayName ? '변경하기' : '설정하기'}
+                닉네임 {viewerPayer.displayName ? '변경하기' : '설정하기'}
               </Link>
             </div>
           </section>
@@ -436,14 +436,14 @@ export default async function CreatorDonationPage({ params }: Params) {
             <h2 className="text-[15px] font-black tracking-[-0.02em] text-ink-900">최근 결제</h2>
             <span className="text-[11.5px] text-ink-400">결제 완료 건만 · 이름 일부 공개</span>
           </div>
-          {donations.length === 0 ? (
+          {charges.length === 0 ? (
             <div className="mt-2.5 rounded-2xl border border-dashed border-ink-200 bg-white/60 px-5 py-8 text-center">
               <p className="text-[13.5px] font-bold text-ink-700">아직 표시할 결제가 없습니다</p>
               <p className="mt-1 text-[12.5px] text-ink-400">첫 충전 문자를 보내보세요.</p>
             </div>
           ) : (
             <div className="mt-2.5 space-y-2">
-              {donations.map((d) => (
+              {charges.map((d) => (
                 <div key={d.id} className="rounded-2xl border border-ink-100 bg-white p-4">
                   <div className="flex items-center justify-between gap-3">
                     <span className="flex min-w-0 items-center gap-2">
@@ -476,8 +476,8 @@ export default async function CreatorDonationPage({ params }: Params) {
               이용 한도 안내
             </p>
             <ul className="mt-2 space-y-1.5 text-[12.5px] leading-relaxed text-ink-500">
-              <li>1일 {formatWon(policy.donorDailyLimit)} · 1개월 {formatWon(policy.donorMonthlyLimit)}까지 결제할 수 있습니다.</li>
-              <li>이 가맹점에는 1일 {formatWon(policy.perCreatorDailyLimit)}까지 결제할 수 있습니다.</li>
+              <li>1일 {formatWon(policy.payerDailyLimit)} · 1개월 {formatWon(policy.payerMonthlyLimit)}까지 결제할 수 있습니다.</li>
+              <li>이 가맹점에는 1일 {formatWon(policy.perMerchantDailyLimit)}까지 결제할 수 있습니다.</li>
               <li>{formatNumber(policy.velocityWindowSec)}초 내 {formatNumber(policy.velocityMaxCount)}건을 넘으면 잠시 대기해야 합니다.</li>
               <li>만 19세 미만은 이용할 수 없습니다.</li>
             </ul>
@@ -506,7 +506,7 @@ export default async function CreatorDonationPage({ params }: Params) {
         {/* 서비스 풋터 */}
         <footer className="mt-10 border-t border-ink-100 pt-6 text-center">
           <p className="text-[11.5px] leading-relaxed text-ink-400">
-            이 페이지는 <span className="font-bold text-ink-500">문자페이 문자결제</span>으로 운영됩니다.
+            이 페이지는 <span className="font-bold text-ink-500">메시지페이 문자결제</span>로 운영됩니다.
             <br />
             가맹 서비스와 제휴한 문자 결제 서비스입니다.
           </p>
@@ -515,7 +515,7 @@ export default async function CreatorDonationPage({ params }: Params) {
             <span aria-hidden className="h-3 w-px bg-ink-200" />
             <Link href="/support" className="transition-colors hover:text-ink-900">고객센터</Link>
             <span aria-hidden className="h-3 w-px bg-ink-200" />
-            <Link href="/" className="transition-colors hover:text-ink-900">문자페이 홈</Link>
+            <Link href="/" className="transition-colors hover:text-ink-900">메시지페이 홈</Link>
           </div>
         </footer>
       </main>
@@ -578,7 +578,7 @@ function NotFoundView() {
             가맹점의 코드도 조회되지 않습니다.
           </p>
           <div className="mt-4">
-            <CreatorCodeForm autoFocus />
+            <MerchantCodeForm autoFocus />
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <LinkButton href="/" variant="secondary" size="md" className="w-full">
@@ -590,7 +590,7 @@ function NotFoundView() {
           </div>
         </div>
         <div className="mt-5 flex justify-center opacity-70">
-          <Link href="/" aria-label="문자페이 홈으로">
+          <Link href="/" aria-label="메시지페이 홈으로">
             <Logo compact />
           </Link>
         </div>

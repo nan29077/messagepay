@@ -8,7 +8,7 @@ import { reconcilePaymentAction } from '@/app/actions/admin/transactions';
 import { prisma } from '@/server/db';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
-import { paymentTxStatusLabel, donationStatusLabel } from '@/lib/labels';
+import { paymentTxStatusLabel, chargeStatusLabel } from '@/lib/labels';
 import type { Prisma } from '@/generated/prisma/client';
 import type { PaymentTxStatus } from '@/generated/prisma/enums';
 
@@ -19,11 +19,11 @@ const STATUSES: PaymentTxStatus[] = ['REQUESTED', 'APPROVED', 'FAILED', 'CANCELE
 const txSelect = {
   id: true, orderNo: true, provider: true, providerTid: true, amount: true, status: true,
   resultCode: true, resultMessage: true, requestedAt: true, approvedAt: true, canceledAt: true,
-  donation: {
+  charge: {
     select: {
       id: true, transactionNo: true, status: true, paymentMode: true, channel: true,
-      creator: { select: { id: true, displayName: true } },
-      donor: { select: { id: true, phoneMasked: true } },
+      merchant: { select: { id: true, displayName: true } },
+      payer: { select: { id: true, phoneMasked: true } },
     },
   },
   attempts: {
@@ -43,14 +43,14 @@ function TxRows({ rows, reconcilable = false }: { rows: TxRow[]; reconcilable?: 
             {t.orderNo}
             <span className="mt-0.5 block text-[11px] text-ink-400">{t.provider}</span>
           </Td>
-          <Td className="font-mono text-[12px]">{t.donation.transactionNo}</Td>
+          <Td className="font-mono text-[12px]">{t.charge.transactionNo}</Td>
           <Td>
-            <Link href={`/admin/creators/${t.donation.creator.id}`} className="font-semibold text-brand-700">
-              {t.donation.creator.displayName}
+            <Link href={`/admin/merchants/${t.charge.merchant.id}`} className="font-semibold text-brand-700">
+              {t.charge.merchant.displayName}
             </Link>
-            {t.donation.donor ? (
-              <Link href={`/admin/donors/${t.donation.donor.id}`} className="mt-0.5 block text-[11px] text-ink-400">
-                {t.donation.donor.phoneMasked}
+            {t.charge.payer ? (
+              <Link href={`/admin/payers/${t.charge.payer.id}`} className="mt-0.5 block text-[11px] text-ink-400">
+                {t.charge.payer.phoneMasked}
               </Link>
             ) : null}
           </Td>
@@ -58,10 +58,10 @@ function TxRows({ rows, reconcilable = false }: { rows: TxRow[]; reconcilable?: 
           <Td>
             <Badge tone={paymentTxStatusLabel[t.status].tone}>{paymentTxStatusLabel[t.status].text}</Badge>
             <span className="mt-0.5 block text-[11px] text-ink-400">
-              {donationStatusLabel[t.donation.status].text}
+              {chargeStatusLabel[t.charge.status].text}
             </span>
             <span className="mt-0.5 block text-[11px] font-semibold text-ink-300">
-              {t.donation.channel === 'WEB' ? '웹(PC) 결제' : '문자(MO) 결제'}
+              {t.charge.channel === 'WEB' ? '웹(PC) 결제' : '문자(MO) 결제'}
             </span>
           </Td>
           <Td className="max-w-[200px] break-words">
@@ -186,7 +186,7 @@ export default async function AdminPaymentsPage({
           OR: [
             { orderNo: { contains: q, mode: 'insensitive' as const } },
             { providerTid: { contains: q, mode: 'insensitive' as const } },
-            { donation: { transactionNo: { contains: q, mode: 'insensitive' as const } } },
+            { charge: { transactionNo: { contains: q, mode: 'insensitive' as const } } },
           ],
         }
       : {}),

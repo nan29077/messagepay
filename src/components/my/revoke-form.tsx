@@ -3,9 +3,9 @@
 import * as React from 'react';
 import { ShieldOff } from 'lucide-react';
 import { Button, Notice, Checkbox } from '@/components/ui';
-import { revokeAutoWithdrawal, type DonorActionState } from '@/app/actions/donor';
+import { revokeAutoWithdrawal, type PayerActionState } from '@/app/actions/payer';
 
-const initial: DonorActionState = { ok: false };
+const initial: PayerActionState = { ok: false };
 
 /** 자동출금 동의 해지. 실수 방지를 위해 확인 체크 후에만 활성화된다. */
 export function RevokeForm() {

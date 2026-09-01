@@ -7,35 +7,39 @@ import { BannerStrip } from '@/components/public/banner-strip';
 import { Card, CardTitle, Notice, LinkButton } from '@/components/ui';
 
 export const metadata: Metadata = {
-  title: '고객센터 | 문자페이',
+  title: '고객센터 | 메시지페이',
   description: '결제 취소·환불, 계좌 등록, 결제 오류, 충전 반영 문제를 접수합니다.',
 };
 
 export default async function SupportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tx?: string }>;
+  searchParams: Promise<{ tx?: string; intent?: string }>;
 }) {
   const sp = await searchParams;
   const tx = (sp.tx ?? '').slice(0, 64);
+  const onboarding = sp.intent === 'onboarding';
 
   return (
     <PublicShell aside={<SupportAside />}>
       <PageHeader
-        eyebrow="고객센터"
-        title="문의 접수"
-        description="문의 유형과 내용을 남겨주시면 담당자가 확인 후 답변드립니다. 결제 관련 문의는 거래번호를 함께 적어주세요."
+        eyebrow={onboarding ? 'FOR BUSINESS' : '고객센터'}
+        title={onboarding ? 'MessagePay 도입 상담' : '문의 접수'}
+        description={onboarding
+          ? '문자 결제와 포인트 충전을 서비스에 연결해 보세요. 운영 환경과 필요한 연동 방식을 남겨주시면 담당자가 검토 후 안내드립니다.'
+          : '문의 유형과 내용을 남겨주시면 담당자가 확인 후 답변드립니다. 결제 관련 문의는 거래번호를 함께 적어주세요.'}
       />
 
       <BannerStrip position="SUPPORT_TOP" className="mb-4" />
 
-      <Notice tone="brand" title="문의 전에 확인해 주세요">
-        계좌 등록, 한도, 환불 조건은 이용방법과 자주 묻는 질문에 정리되어 있습니다. 급한 결제 오류는 거래번호와 함께
-        접수해 주시면 우선 확인합니다.
+      <Notice tone="brand" title={onboarding ? '이런 서비스를 위한 상담입니다' : '문의 전에 확인해 주세요'}>
+        {onboarding
+          ? '게임 캐시, 멤버십 포인트, 콘텐츠 크레딧, 생활 서비스 선불금처럼 반복 충전이 필요한 서비스에 MessagePay를 연동할 수 있습니다.'
+          : '계좌 등록, 한도, 환불 조건은 이용방법과 자주 묻는 질문에 정리되어 있습니다. 급한 결제 오류는 거래번호와 함께 접수해 주시면 우선 확인합니다.'}
       </Notice>
 
       <div className="mt-5">
-        <SupportForm defaultTransactionNo={tx || undefined} />
+        <SupportForm defaultTransactionNo={tx || undefined} mode={onboarding ? 'onboarding' : 'support'} />
       </div>
 
       <section className="mt-8 space-y-2.5">
@@ -47,7 +51,7 @@ export default async function SupportPage({
             <div>
               <CardTitle>개인정보 보호</CardTitle>
               <p className="mt-1 text-[12.5px] leading-relaxed text-ink-500">
-                문의 내용에는 계좌번호, 카드번호, 주민등록번호 등 민감정보를 절대 입력하지 마세요. 문자페이는 문의
+                문의 내용에는 계좌번호, 카드번호, 주민등록번호 등 민감정보를 절대 입력하지 마세요. 메시지페이는 문의
                 과정에서 이러한 정보를 요구하지 않습니다.
               </p>
             </div>

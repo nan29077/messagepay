@@ -1,0 +1,23 @@
+
+> munjapay-app@0.1.0 preview
+> node tools/preview.mjs
+
+[1/3] 내장 데이터베이스 기동 (기존 데이터 사용)
+      준비 완료 (127.0.0.1:5434)
+[2/3] 스키마 및 시드 데이터 확인
+[준비] 데이터베이스 마이그레이션을 확인합니다.
+Datasource "db": PostgreSQL database "postgres", schema "public" at "127.0.0.1:5434"
+
+41 migrations found in prisma/migrations
+
+
+No pending migrations to apply.
+[준비] 기존 미리보기 데이터를 사용합니다. (크리에이터 2명)
+[3/4] 이전 빌드 결과를 재사용합니다
+[4/4] 서버 시작 (http://localhost:3030)
+▲ Next.js 16.3.1
+- Local:         http://localhost:3030
+- Network:       http://172.30.1.46:3030
+✓ Ready in 226ms
+✓ Running next.config.ts took 53ms
+[env] APP_ENV=local / NODE_ENV=production 로 기동합니다.

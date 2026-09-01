@@ -1,19 +1,19 @@
 import Link from 'next/link';
 import { EmptyState, LinkButton, Badge, Card } from '@/components/ui';
 import { RefundRequestForm } from '@/components/my/refund-request-form';
-import { requireDonorContext, NO_DONOR_TITLE, NO_DONOR_DESC } from '@/components/my/donor';
+import { requirePayerContext, NO_DONOR_TITLE, NO_DONOR_DESC } from '@/components/my/payer';
 import { prisma } from '@/server/db';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
-import { donationStatusLabel, refundStatusLabel } from '@/lib/labels';
-import type { DonationStatus } from '@/generated/prisma/enums';
+import { chargeStatusLabel, refundStatusLabel } from '@/lib/labels';
+import type { ChargeStatus } from '@/generated/prisma/enums';
 
 export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 20;
 
 /** 결제가 완료되어 환불 요청이 가능한 상태 */
-const REFUNDABLE: DonationStatus[] = [
+const REFUNDABLE: ChargeStatus[] = [
   'PAYMENT_SUCCESS',
   'BROADCAST_PENDING',
   'BROADCASTED',
@@ -27,16 +27,16 @@ const REFUNDABLE: DonationStatus[] = [
  * 카드에는 서비스 / 결제 메시지 / 금액만 두고,
  * 거래번호·송출 상태·환불처럼 가끔 필요한 정보는 접어둔다.
  */
-export default async function MyDonationsPage({
+export default async function MyChargesPage({
   searchParams,
 }: {
   searchParams: Promise<{ page?: string }>;
 }) {
-  const { donorId } = await requireDonorContext('/my');
+  const { payerId } = await requirePayerContext('/my');
   const sp = await searchParams;
   const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1);
 
-  if (!donorId) {
+  if (!payerId) {
     return (
       <>
         <EmptyState title={NO_DONOR_TITLE} description={NO_DONOR_DESC} />
@@ -49,10 +49,10 @@ export default async function MyDonationsPage({
     );
   }
 
-  const [total, donations, paidAgg] = await Promise.all([
-    prisma.donation.count({ where: { donorId } }),
-    prisma.donation.findMany({
-      where: { donorId },
+  const [total, charges, paidAgg] = await Promise.all([
+    prisma.charge.count({ where: { payerId } }),
+    prisma.charge.findMany({
+      where: { payerId },
       orderBy: { receivedAt: 'desc' },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
@@ -62,9 +62,11 @@ export default async function MyDonationsPage({
         amount: true,
         message: true,
         status: true,
+        pointStatus: true,
+        pointGivenAt: true,
         receivedAt: true,
         paidAt: true,
-        creator: { select: { displayName: true, code: true } },
+        merchant: { select: { displayName: true, code: true } },
         refunds: {
           orderBy: { requestedAt: 'desc' },
           take: 1,
@@ -72,8 +74,8 @@ export default async function MyDonationsPage({
         },
       },
     }),
-    prisma.donation.aggregate({
-      where: { donorId, status: { in: REFUNDABLE } },
+    prisma.charge.aggregate({
+      where: { payerId, status: { in: REFUNDABLE } },
       _sum: { amount: true },
       _count: { _all: true },
     }),
@@ -96,15 +98,25 @@ export default async function MyDonationsPage({
         </p>
       </div>
 
-      {donations.length === 0 ? (
+      {charges.length === 0 ? (
         <EmptyState title="결제 내역이 없습니다" description="서비스에 안내된 번호로 문자를 보내 결제하면 이곳에 표시됩니다." />
       ) : (
         <ul className="space-y-2">
-          {donations.map((d) => {
-            const status = donationStatusLabel[d.status];
+          {charges.map((d) => {
+            const status = chargeStatusLabel[d.status];
             const refund = d.refunds[0] ?? null;
             const refundOpen = refund ? ['REQUESTED', 'APPROVED', 'DONE'].includes(refund.status) : false;
             const canRefund = REFUNDABLE.includes(d.status) && !refundOpen;
+            // 포인트는 가맹점이 발행·지급한다. 문자페이는 결제와 정산만 담당하므로
+            // "가맹점이 지급 처리를 했는지"만 그대로 보여준다.
+            const paidCharge = REFUNDABLE.includes(d.status);
+            const point = !paidCharge
+              ? null
+              : d.pointStatus === 'SENT'
+                ? { text: '포인트 지급 완료', tone: 'success' as const }
+                : d.pointStatus === 'FAILED'
+                  ? { text: '포인트 지급 보류', tone: 'warning' as const }
+                  : { text: '포인트 지급 대기', tone: 'neutral' as const };
 
             return (
               <li key={d.id}>
@@ -113,10 +125,10 @@ export default async function MyDonationsPage({
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <Link
-                          href={`/c/${d.creator.code}`}
+                          href={`/c/${d.merchant.code}`}
                           className="text-[14.5px] font-bold text-ink-900 hover:text-brand-700"
                         >
-                          {d.creator.displayName}
+                          {d.merchant.displayName}
                         </Link>
                         <Badge tone={status.tone}>{status.text}</Badge>
                         {refund && d.status !== 'REFUND_REQUESTED' && d.status !== 'REFUNDED' ? (
@@ -124,6 +136,7 @@ export default async function MyDonationsPage({
                             환불 {refundStatusLabel[refund.status].text}
                           </Badge>
                         ) : null}
+                        {point ? <Badge tone={point.tone}>{point.text}</Badge> : null}
                       </div>
                       <p className="mt-2 break-words text-[13.5px] leading-relaxed text-ink-700">
                         {d.message || '(내용 없음)'}
@@ -151,10 +164,28 @@ export default async function MyDonationsPage({
                         <dt className="text-ink-400">결제 일시</dt>
                         <dd className="tabular-nums text-ink-700">{d.paidAt ? formatKst(d.paidAt, false) : '-'}</dd>
                       </div>
+                      {point ? (
+                        <div className="flex items-center justify-between gap-3">
+                          <dt className="text-ink-400">포인트 지급</dt>
+                          <dd className="tabular-nums text-ink-700">
+                            {d.pointStatus === 'SENT'
+                              ? d.pointGivenAt
+                                ? formatKst(d.pointGivenAt, false)
+                                : '완료'
+                              : point.text}
+                          </dd>
+                        </div>
+                      ) : null}
                     </dl>
+                    {point && d.pointStatus !== 'SENT' ? (
+                      <p className="mt-2 rounded-lg bg-ink-50 px-2.5 py-2 text-[11.5px] leading-relaxed text-ink-500">
+                        포인트는 <strong className="text-ink-700">{d.merchant.displayName}</strong>가 직접 지급합니다.
+                        결제는 정상 완료되었으며, 지급이 늦어지면 해당 서비스 고객센터로 문의해 주세요.
+                      </p>
+                    ) : null}
                     <div className="mt-3 space-y-2">
                       <RefundRequestForm
-                        donationId={d.id}
+                        chargeId={d.id}
                         disabled={!canRefund}
                         disabledReason={
                           refundOpen

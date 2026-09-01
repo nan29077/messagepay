@@ -5,7 +5,7 @@
  * 화면 클릭만으로 끝까지 확인한다.
  */
 import {
-  launch, createReporter, bodyText, missingOf, gotoReady, login, loginAdmin, loginCreator,
+  launch, createReporter, bodyText, missingOf, gotoReady, login, loginAdmin, loginMerchant,
   ACCOUNTS, BASE, SEED, desktop, mobile, assertServerUp,
 } from './_helpers.mjs';
 
@@ -25,7 +25,7 @@ try {
     await gotoReady(p, BASE);
     r.ok('비로그인 메인에는 알림 버튼이 없다', (await bellOf(p).count()) === 0);
 
-    await login(p, ACCOUNTS.donor, { expectUrl: /\/(my|)$/ });
+    await login(p, ACCOUNTS.payer, { expectUrl: /\/(my|)$/ });
     await gotoReady(p, BASE);
     r.ok('로그인하면 메인 우측 상단에 알림 버튼이 생긴다', (await bellOf(p).count()) === 1);
     r.ok('알림 버튼이 보인다', await bellOf(p).isVisible());
@@ -52,7 +52,7 @@ try {
   {
     const ctx = await b.newContext(mobile);
     const p = await ctx.newPage();
-    await login(p, ACCOUNTS.donor, { expectUrl: /\/(my|)$/ });
+    await login(p, ACCOUNTS.payer, { expectUrl: /\/(my|)$/ });
     await gotoReady(p, BASE);
     const bell = bellOf(p);
     r.ok('모바일: 알림 버튼이 보인다', (await bell.count()) === 1 && (await bell.isVisible()));
@@ -71,7 +71,7 @@ try {
   {
     const ctx = await b.newContext(desktop);
     const p = await ctx.newPage();
-    await login(p, ACCOUNTS.donor, { expectUrl: /\/(my|)$/ });
+    await login(p, ACCOUNTS.payer, { expectUrl: /\/(my|)$/ });
 
     await gotoReady(p, `${BASE}/my/account`);
     const acc = await bodyText(p);
@@ -102,7 +102,7 @@ try {
     r.ok('10자 초과는 화면에서 막힌다', (await bodyText(p)).includes('10자 이내'));
 
     // 결제 페이지 안내 배너
-    await gotoReady(p, `${BASE}/c/${SEED.creator1Code}`);
+    await gotoReady(p, `${BASE}/c/${SEED.merchant1Code}`);
     const shop = await bodyText(p);
     r.ok('결제 페이지에 닉네임 안내가 뜬다', shop.includes(`방송에 ${NICK} 님으로 표시됩니다`), shop.slice(0, 200));
     r.ok('닉네임 변경 링크', (await p.locator('a[href="/my/account#nickname"]').count()) > 0);
@@ -110,7 +110,7 @@ try {
     // 비로그인 방문자에게는 안내하지 않는다
     const anon = await b.newContext(desktop);
     const ap = await anon.newPage();
-    await gotoReady(ap, `${BASE}/c/${SEED.creator1Code}`);
+    await gotoReady(ap, `${BASE}/c/${SEED.merchant1Code}`);
     const anonText = await bodyText(ap);
     r.ok('비로그인 방문자에게는 닉네임 안내가 없다', !anonText.includes('닉네임 설정하기') && !anonText.includes('님으로 표시됩니다'));
     await anon.close();
@@ -122,7 +122,7 @@ try {
   const cctx = await b.newContext(desktop);
   const c = await cctx.newPage();
   c.on('dialog', (d) => d.accept());
-  await loginCreator(c);
+  await loginMerchant(c);
 
   r.ok('스튜디오 헤더에도 알림 버튼이 있다', (await bellOf(c).count()) === 1);
 
@@ -248,7 +248,7 @@ try {
   const octx = await b.newContext(desktop);
   const o = await octx.newPage();
   o.on('dialog', (d) => d.accept());
-  await loginCreator(o);
+  await loginMerchant(o);
   await gotoReady(o, `${BASE}/studio/overlay`);
   const ot = await bodyText(o);
 
@@ -262,12 +262,12 @@ try {
 
   const previewHref = await o.locator('a:has-text("새 탭에서 미리보기")').first().getAttribute('href');
   r.ok('미리보기 링크가 있다', Boolean(previewHref), previewHref ?? '');
-  const creatorId = (previewHref ?? '').match(/\/overlay\/([A-Za-z0-9]+)/)?.[1] ?? null;
-  r.ok('오버레이 주소에서 가맹점 ID 를 얻는다', Boolean(creatorId), creatorId ?? '');
+  const merchantId = (previewHref ?? '').match(/\/overlay\/([A-Za-z0-9]+)/)?.[1] ?? null;
+  r.ok('오버레이 주소에서 가맹점 ID 를 얻는다', Boolean(merchantId), merchantId ?? '');
 
-  if (creatorId) {
+  if (merchantId) {
     const ov2 = await octx.newPage();
-    await ov2.goto(`${BASE}/overlay/${creatorId}?preview=1&debug=1`, { waitUntil: 'domcontentloaded' });
+    await ov2.goto(`${BASE}/overlay/${merchantId}?preview=1&debug=1`, { waitUntil: 'domcontentloaded' });
     await ov2.waitForTimeout(4000);
     const dbg = await bodyText(ov2);
     r.ok('오버레이 화면이 SSE 로 연결된다', dbg.includes('연결됨'), dbg.slice(0, 120));
@@ -286,7 +286,7 @@ try {
 
     // 토큰 없이 접근하면 막힌다
     const bad = await octx.newPage();
-    await bad.goto(`${BASE}/overlay/${creatorId}`, { waitUntil: 'domcontentloaded' });
+    await bad.goto(`${BASE}/overlay/${merchantId}`, { waitUntil: 'domcontentloaded' });
     await bad.waitForTimeout(800);
     r.ok('토큰 없는 오버레이 접근은 차단된다', (await bodyText(bad)).includes('접근 권한이 없습니다'));
     await bad.close();

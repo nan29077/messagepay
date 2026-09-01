@@ -1,28 +1,28 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
-import { inboundAndPay, resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
-import { handleMoInbound, loadBannedWords } from '@/server/services/donation-flow';
+import { inboundAndPay, resetDb, seedBasics, seedRegisteredPayer, moPayload, type Fixture } from './helpers';
+import { handleMoInbound, loadBannedWords } from '@/server/services/charge-flow';
 import { mockMoAdapter } from '@/server/adapters/mo';
 import { filterContent } from '@/server/services/content-filter';
 
 /** 가맹점 금칙어·차단 기능 검수 */
 
 let fx: Fixture;
-const inbound = (p: Record<string, unknown>) => inboundAndPay(p, fx.creatorId);
+const inbound = (p: Record<string, unknown>) => inboundAndPay(p, fx.merchantId);
 
 beforeEach(async () => {
   await resetDb();
   fx = await seedBasics();
-  await seedRegisteredDonor(fx.donorPhone);
+  await seedRegisteredPayer(fx.payerPhone);
 });
 
-async function addWord(word: string, action: 'BLOCK' | 'MASK' | 'FLAG', creatorId: string | null) {
+async function addWord(word: string, action: 'BLOCK' | 'MASK' | 'FLAG', merchantId: string | null) {
   return prisma.bannedWord.create({
     data: {
       id: newId(),
-      scope: creatorId ? 'CREATOR' : 'GLOBAL',
-      creatorId,
+      scope: merchantId ? 'MERCHANT' : 'GLOBAL',
+      merchantId,
       word,
       action,
       active: true,
@@ -32,23 +32,23 @@ async function addWord(word: string, action: 'BLOCK' | 'MASK' | 'FLAG', creatorI
 
 describe('가맹점 금칙어', () => {
   it('BLOCK 단어가 남아 있어도 결제를 막지 않고 마스킹만 한다', async () => {
-    await addWord('검수차단어', 'BLOCK', fx.creatorId);
+    await addWord('검수차단어', 'BLOCK', fx.merchantId);
 
     const res = await inbound(moPayload({ to: fx.moNumber, text: '검수차단어 포함된 문자' }));
     expect(res.status).not.toBe('CONTENT_BLOCKED');
 
-    const d = await prisma.donation.findUniqueOrThrow({ where: { id: res.donationId! } });
+    const d = await prisma.charge.findUniqueOrThrow({ where: { id: res.chargeId! } });
     expect(d.message).not.toContain('검수차단어');
     expect(d.message).toContain('*****');
   });
 
   it('MASK 단어는 별표로 가려서 노출하고 원문은 암호화 보관한다', async () => {
-    await addWord('검수마스킹어', 'MASK', fx.creatorId);
+    await addWord('검수마스킹어', 'MASK', fx.merchantId);
 
     const res = await inbound(moPayload({ to: fx.moNumber, text: '검수마스킹어 캐시 충전합니다' }));
     expect(res.status).not.toBe('CONTENT_BLOCKED');
 
-    const d = await prisma.donation.findUniqueOrThrow({ where: { id: res.donationId! } });
+    const d = await prisma.charge.findUniqueOrThrow({ where: { id: res.chargeId! } });
     expect(d.message).not.toContain('검수마스킹어');
     expect(d.message).toContain('******');
     expect(d.message).toContain('캐시 충전합니다');
@@ -57,15 +57,15 @@ describe('가맹점 금칙어', () => {
   });
 
   it('FLAG 단어는 노출은 그대로 두고 기록만 남긴다', async () => {
-    await addWord('검수표시어', 'FLAG', fx.creatorId);
+    await addWord('검수표시어', 'FLAG', fx.merchantId);
 
     const res = await inbound(moPayload({ to: fx.moNumber, text: '검수표시어 화이팅' }));
-    const d = await prisma.donation.findUniqueOrThrow({ where: { id: res.donationId! } });
+    const d = await prisma.charge.findUniqueOrThrow({ where: { id: res.chargeId! } });
     expect(d.message).toContain('검수표시어');
   });
 
   it('사용 중지(active=false)한 단어는 적용되지 않는다', async () => {
-    const w = await addWord('검수차단어', 'BLOCK', fx.creatorId);
+    const w = await addWord('검수차단어', 'BLOCK', fx.merchantId);
     await prisma.bannedWord.update({ where: { id: w.id }, data: { active: false } });
 
     const res = await inbound(moPayload({ to: fx.moNumber, text: '검수차단어 다시 보냅니다' }));
@@ -73,16 +73,16 @@ describe('가맹점 금칙어', () => {
   });
 
   it('내 금칙어는 다른 가맹점에 적용되지 않는다 (스코프 격리)', async () => {
-    await addWord('내단어만', 'BLOCK', fx.creatorId);
+    await addWord('내단어만', 'BLOCK', fx.merchantId);
 
     const otherUser = await prisma.user.create({
-      data: { id: newId(), email: `other-${newId()}@test.kr`, name: '다른가맹점', role: 'CREATOR' },
+      data: { id: newId(), email: `other-${newId()}@test.kr`, name: '다른가맹점', role: 'MERCHANT' },
     });
-    const other = await prisma.creatorProfile.create({
+    const other = await prisma.merchantProfile.create({
       data: { id: newId(), userId: otherUser.id, displayName: '다른채널', code: `MJP-${newId().slice(-4)}`, status: 'APPROVED' },
     });
 
-    const mine = await loadBannedWords(fx.creatorId);
+    const mine = await loadBannedWords(fx.merchantId);
     const theirs = await loadBannedWords(other.id);
     expect(mine.some((r) => r.word === '내단어만')).toBe(true);
     expect(theirs.some((r) => r.word === '내단어만')).toBe(false);
@@ -90,9 +90,9 @@ describe('가맹점 금칙어', () => {
 
   it('전역 금칙어와 내 금칙어가 함께 적용된다', async () => {
     await addWord('전역차단어', 'BLOCK', null);
-    await addWord('내차단어', 'BLOCK', fx.creatorId);
+    await addWord('내차단어', 'BLOCK', fx.merchantId);
 
-    const rules = await loadBannedWords(fx.creatorId);
+    const rules = await loadBannedWords(fx.merchantId);
     expect(rules.some((r) => r.word === '전역차단어')).toBe(true);
     expect(rules.some((r) => r.word === '내차단어')).toBe(true);
   });
@@ -117,9 +117,9 @@ describe('가맹점 금칙어', () => {
 
 describe('이용자 차단', () => {
   it('차단한 이용자의 문자는 접수되지 않는다', async () => {
-    const donor = await prisma.donorProfile.findFirstOrThrow();
-    await prisma.blockedDonor.create({
-      data: { id: newId(), creatorId: fx.creatorId, donorId: donor.id, reason: '검수' },
+    const payer = await prisma.payerProfile.findFirstOrThrow();
+    await prisma.blockedPayer.create({
+      data: { id: newId(), merchantId: fx.merchantId, payerId: payer.id, reason: '검수' },
     });
 
     const res = await inbound(moPayload({ to: fx.moNumber, text: '차단된 이용자 메시지' }));
@@ -128,27 +128,27 @@ describe('이용자 차단', () => {
   });
 
   it('이용자가 건 차단은 가맹점 차단과 분리되어 있다', async () => {
-    const donor = await prisma.donorProfile.findFirstOrThrow();
+    const payer = await prisma.payerProfile.findFirstOrThrow();
     // 이용자 -> 가맹점 방향 차단 (내 정보 > 차단 관리)
-    await prisma.donorCreatorLink.create({
-      data: { id: newId(), donorId: donor.id, creatorId: fx.creatorId, donorBlockedAt: new Date() },
+    await prisma.payerMerchantLink.create({
+      data: { id: newId(), payerId: payer.id, merchantId: fx.merchantId, payerBlockedAt: new Date() },
     });
 
     const res = await inbound(moPayload({ to: fx.moNumber, text: '이용자가 차단한 가맹점' }));
     expect(res.status).toBe('LIMIT_BLOCKED');
     expect(await prisma.paymentTransaction.count()).toBe(0);
 
-    // 가맹점가 차단했다가 해제해도(blocked_donor 행 생성 후 삭제)
+    // 가맹점가 차단했다가 해제해도(blocked_payer 행 생성 후 삭제)
     // 이용자가 건 차단은 그대로 남아야 한다. 예전에는 한 컬럼을 공유해 함께 풀렸다.
-    await prisma.blockedDonor.create({
-      data: { id: newId(), creatorId: fx.creatorId, donorId: donor.id, reason: '검수' },
+    await prisma.blockedPayer.create({
+      data: { id: newId(), merchantId: fx.merchantId, payerId: payer.id, reason: '검수' },
     });
-    await prisma.blockedDonor.deleteMany({ where: { creatorId: fx.creatorId, donorId: donor.id } });
+    await prisma.blockedPayer.deleteMany({ where: { merchantId: fx.merchantId, payerId: payer.id } });
 
-    const link = await prisma.donorCreatorLink.findUniqueOrThrow({
-      where: { donorId_creatorId: { donorId: donor.id, creatorId: fx.creatorId } },
+    const link = await prisma.payerMerchantLink.findUniqueOrThrow({
+      where: { payerId_merchantId: { payerId: payer.id, merchantId: fx.merchantId } },
     });
-    expect(link.donorBlockedAt).not.toBeNull();
+    expect(link.payerBlockedAt).not.toBeNull();
 
     const after = await inbound(moPayload({ to: fx.moNumber, text: '해제 후에도 차단 유지' }));
     expect(after.status).toBe('LIMIT_BLOCKED');

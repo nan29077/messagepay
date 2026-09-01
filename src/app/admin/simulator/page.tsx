@@ -11,7 +11,7 @@ import { env, isLocal } from '@/lib/env';
 import { maskPhone } from '@/lib/crypto';
 import { formatWon } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
-import { moResultLabel, donationStatusLabel } from '@/lib/labels';
+import { moResultLabel, chargeStatusLabel } from '@/lib/labels';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,12 +30,12 @@ export default async function AdminSimulatorPage() {
   }
 
   const [numbers, recent] = await Promise.all([
-    prisma.creatorMoNumber.findMany({
+    prisma.merchantMoNumber.findMany({
       where: { status: 'ASSIGNED' },
       orderBy: { phoneNumber: 'asc' },
       select: {
         id: true, phoneNumber: true, keyword: true, mode: true,
-        creator: { select: { id: true, displayName: true, code: true, _count: { select: { chargeProducts: true } } } },
+        merchant: { select: { id: true, displayName: true, code: true, _count: { select: { chargeProducts: true } } } },
       },
     }),
     prisma.moInboundMessage.findMany({
@@ -44,8 +44,8 @@ export default async function AdminSimulatorPage() {
       select: {
         id: true, providerMessageId: true, receivedNumber: true, phoneMasked: true, result: true,
         contentFiltered: true, receivedAt: true,
-        creator: { select: { displayName: true } },
-        donation: { select: { transactionNo: true, status: true, amount: true } },
+        merchant: { select: { displayName: true } },
+        charge: { select: { transactionNo: true, status: true, amount: true } },
       },
     }),
   ]);
@@ -90,7 +90,7 @@ export default async function AdminSimulatorPage() {
             confirm="실제 결제 거래가 생성됩니다. 계속할까요?"
             detailLabels={{
               result: '처리 결과',
-              donationStatus: '결제 상태',
+              chargeStatus: '결제 상태',
               transactionNo: '거래번호',
               moMessageId: '수신 메시지 ID',
               providerMessageId: '사업자 메시지 ID',
@@ -103,7 +103,7 @@ export default async function AdminSimulatorPage() {
                 {numbers.map((n) => (
                   <option key={n.id} value={n.phoneNumber}>
                     {n.phoneNumber}
-                    {n.keyword ? ` (${n.keyword})` : ''} · {n.creator?.displayName ?? '미배정'}
+                    {n.keyword ? ` (${n.keyword})` : ''} · {n.merchant?.displayName ?? '미배정'}
                   </option>
                 ))}
               </AdminSelect>
@@ -149,16 +149,16 @@ export default async function AdminSimulatorPage() {
                       <Td>{n.keyword ?? '-'}</Td>
                       <Td>{n.mode === 'DEDICATED' ? '전용번호' : '대표번호 공유'}</Td>
                       <Td>
-                        {n.creator ? (
-                          <Link href={`/admin/creators/${n.creator.id}`} className="font-semibold text-brand-700">
-                            {n.creator.displayName}
+                        {n.merchant ? (
+                          <Link href={`/admin/merchants/${n.merchant.id}`} className="font-semibold text-brand-700">
+                            {n.merchant.displayName}
                           </Link>
                         ) : (
                           '-'
                         )}
                       </Td>
                       <Td className="text-right tabular-nums">
-                        {n.creator ? `${n.creator._count.chargeProducts}개` : '-'}
+                        {n.merchant ? `${n.merchant._count.chargeProducts}개` : '-'}
                       </Td>
                     </tr>
                   ))}
@@ -223,19 +223,19 @@ export default async function AdminSimulatorPage() {
                   <Td className="font-mono text-[11px]">{shortId(m.providerMessageId, 10, 4)}</Td>
                   <Td className="font-mono text-[12px]">{m.receivedNumber}</Td>
                   <Td>{m.phoneMasked}</Td>
-                  <Td>{m.creator?.displayName ?? '-'}</Td>
+                  <Td>{m.merchant?.displayName ?? '-'}</Td>
                   <Td>
                     <Badge tone={moResultLabel[m.result].tone}>{moResultLabel[m.result].text}</Badge>
                   </Td>
                   <Td className="max-w-[200px] break-words">{m.contentFiltered ?? '-'}</Td>
                   <Td>
-                    {m.donation ? (
+                    {m.charge ? (
                       <>
-                        <span className="block font-mono text-[11px]">{m.donation.transactionNo}</span>
-                        <Badge tone={donationStatusLabel[m.donation.status].tone}>
-                          {donationStatusLabel[m.donation.status].text}
+                        <span className="block font-mono text-[11px]">{m.charge.transactionNo}</span>
+                        <Badge tone={chargeStatusLabel[m.charge.status].tone}>
+                          {chargeStatusLabel[m.charge.status].text}
                         </Badge>
-                        <span className="mt-0.5 block text-[11px] text-ink-400">{formatWon(m.donation.amount)}</span>
+                        <span className="mt-0.5 block text-[11px] text-ink-400">{formatWon(m.charge.amount)}</span>
                       </>
                     ) : (
                       '-'

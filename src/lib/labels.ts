@@ -1,16 +1,16 @@
 import type {
-  DonationStatus,
+  ChargeStatus,
   DeliveryStatus,
   MoProcessResult,
   PaymentTxStatus,
   RefundStatus,
-  CreatorStatus,
+  MerchantStatus,
   MoNumberStatus,
   SettlementRequestStatus,
   LedgerEntryType,
   RiskLevel,
   RiskType,
-  DonorOnboardingStatus,
+  PayerOnboardingStatus,
   HolidayKind,
   PaymentMethodKind,
 } from '@/generated/prisma/enums';
@@ -23,7 +23,7 @@ export const paymentMethodKindLabel: Record<PaymentMethodKind, string> = {
   CARD: '신용카드',
 };
 
-export const donorOnboardingStatusLabel: Record<DonorOnboardingStatus, { text: string; tone: Tone }> = {
+export const payerOnboardingStatusLabel: Record<PayerOnboardingStatus, { text: string; tone: Tone }> = {
   UNREGISTERED: { text: '최초 안내 전', tone: 'neutral' },
   LINK_SENT: { text: '가입 링크 발송', tone: 'warning' },
   REGISTERED: { text: '가입 완료', tone: 'success' },
@@ -31,7 +31,7 @@ export const donorOnboardingStatusLabel: Record<DonorOnboardingStatus, { text: s
   WITHDRAWN: { text: '탈퇴', tone: 'neutral' },
 };
 
-export const donationStatusLabel: Record<DonationStatus, { text: string; tone: Tone }> = {
+export const chargeStatusLabel: Record<ChargeStatus, { text: string; tone: Tone }> = {
   RECEIVED: { text: '수신', tone: 'neutral' },
   PENDING_AMOUNT: { text: '금액선택대기', tone: 'brand' },
   UNREGISTERED: { text: '미등록', tone: 'warning' },
@@ -85,7 +85,7 @@ export const refundStatusLabel: Record<RefundStatus, { text: string; tone: Tone 
   FAILED: { text: '실패', tone: 'danger' },
 };
 
-export const creatorStatusLabel: Record<CreatorStatus, { text: string; tone: Tone }> = {
+export const merchantStatusLabel: Record<MerchantStatus, { text: string; tone: Tone }> = {
   PENDING: { text: '심사대기', tone: 'warning' },
   APPROVED: { text: '승인', tone: 'success' },
   REJECTED: { text: '반려', tone: 'danger' },
@@ -110,7 +110,7 @@ export const settlementStatusLabel: Record<SettlementRequestStatus, { text: stri
 };
 
 export const ledgerEntryLabel: Record<LedgerEntryType, string> = {
-  DONATION_GROSS: '결제 총액',
+  CHARGE_GROSS: '결제 총액',
   PG_FEE: '결제수수료',
   PLATFORM_FEE: '플랫폼수수료',
   REFUND: '환불',

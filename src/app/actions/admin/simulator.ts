@@ -6,8 +6,8 @@ import { writeAudit } from '@/server/auth';
 import { env, isLocal } from '@/lib/env';
 import { normalizePhone } from '@/lib/crypto';
 import { mockMoAdapter } from '@/server/adapters/mo';
-import { handleMoInbound } from '@/server/services/donation-flow';
-import { moResultLabel, donationStatusLabel } from '@/lib/labels';
+import { handleMoInbound } from '@/server/services/charge-flow';
+import { moResultLabel, chargeStatusLabel } from '@/lib/labels';
 import type { AdminActionState } from '@/components/admin/state';
 import { run, text, optText } from './shared';
 
@@ -45,9 +45,9 @@ export async function runMoSimulation(_prev: AdminActionState, fd: FormData): Pr
 
     const result = await handleMoInbound(inbound);
 
-    const donation = result.donationId
-      ? await prisma.donation.findUnique({
-          where: { id: result.donationId },
+    const charge = result.chargeId
+      ? await prisma.charge.findUnique({
+          where: { id: result.chargeId },
           select: { transactionNo: true, amount: true, status: true },
         })
       : null;
@@ -61,7 +61,7 @@ export async function runMoSimulation(_prev: AdminActionState, fd: FormData): Pr
         providerMessageId: messageId,
         receivedNumber: to,
         result: result.result,
-        donationId: result.donationId ?? null,
+        chargeId: result.chargeId ?? null,
         appEnv: env.appEnv,
       },
     });
@@ -76,8 +76,8 @@ export async function runMoSimulation(_prev: AdminActionState, fd: FormData): Pr
         result: `${moResultLabel[result.result].text} (${result.result})`,
         providerMessageId: messageId,
         moMessageId: result.moMessageId ?? '-',
-        transactionNo: donation?.transactionNo ?? '-',
-        donationStatus: result.status ? `${donationStatusLabel[result.status].text} (${result.status})` : '-',
+        transactionNo: charge?.transactionNo ?? '-',
+        chargeStatus: result.status ? `${chargeStatusLabel[result.status].text} (${result.status})` : '-',
         systemMessage: result.message,
       },
     };

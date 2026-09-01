@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
-import { inboundAndPay, resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
-import { handleMoInbound } from '@/server/services/donation-flow';
+import { inboundAndPay, resetDb, seedBasics, seedRegisteredPayer, moPayload, type Fixture } from './helpers';
+import { handleMoInbound } from '@/server/services/charge-flow';
 import { mockMoAdapter } from '@/server/adapters/mo';
 import {
   createSettlementRequest,
@@ -22,12 +22,12 @@ import { buildSettlementSchedule } from '@/server/services/settlement-schedule';
  */
 
 let fx: Fixture;
-const inbound = (p: Record<string, unknown>) => inboundAndPay(p, fx.creatorId);
+const inbound = (p: Record<string, unknown>) => inboundAndPay(p, fx.merchantId);
 
 async function accumulate(times = 4) {
-  await seedRegisteredDonor(fx.donorPhone);
-  await prisma.donationLimitPolicy.updateMany({
-    data: { velocityMaxCount: 100, cooldownAfterCount: 100, newDonorFirstDayLimit: 10_000_000n },
+  await seedRegisteredPayer(fx.payerPhone);
+  await prisma.chargeLimitPolicy.updateMany({
+    data: { velocityMaxCount: 100, cooldownAfterCount: 100, newPayerFirstDayLimit: 10_000_000n },
   });
   for (let i = 0; i < times; i += 1) {
     await inbound(moPayload({ to: fx.moNumber, text: `적립 ${i}` }));
@@ -42,7 +42,7 @@ describe('정산 프로세스 — 요청부터 지급까지', () => {
 
   it('가맹점 요청이 최고관리자 알림함과 관리자 목록에 모두 들어온다', async () => {
     await accumulate();
-    const summary = await getSettlementSummary(fx.creatorId);
+    const summary = await getSettlementSummary(fx.merchantId);
     expect(summary.available).toBeGreaterThan(0n);
 
     // 최고관리자 계정 준비
@@ -53,7 +53,7 @@ describe('정산 프로세스 — 요청부터 지급까지', () => {
       data: { id: newId(), userId: adminUser.id, permission: 'SUPER_ADMIN' },
     });
 
-    const req = await createSettlementRequest(fx.creatorId, summary.available, { resident: '9010101234560' });
+    const req = await createSettlementRequest(fx.merchantId, summary.available, { resident: '9010101234560' });
 
     // 액션이 하는 알림을 동일하게 재현한다.
     await notifySuperAdmins({
@@ -73,25 +73,25 @@ describe('정산 프로세스 — 요청부터 지급까지', () => {
     const adminList = await prisma.settlementRequest.findMany({
       where: { status: { in: ['REQUESTED', 'REVIEWING', 'APPROVED', 'PAID', 'PAYOUT_FAILED', 'REJECTED'] } },
       orderBy: [{ status: 'asc' }, { requestedAt: 'asc' }],
-      include: { creator: { select: { displayName: true, code: true } } },
+      include: { merchant: { select: { displayName: true, code: true } } },
     });
     expect(adminList.map((r) => r.id)).toContain(req.id);
     // 관리자 화면이 가맹점 이름·코드를 함께 보여줄 수 있어야 한다.
     const listed = adminList.find((r) => r.id === req.id)!;
-    expect(listed.creator.displayName).toBeTruthy();
-    expect(listed.creator.code).toBeTruthy();
+    expect(listed.merchant.displayName).toBeTruthy();
+    expect(listed.merchant.code).toBeTruthy();
 
     // (3) 요청 즉시 잔액이 보류로 잡혀 이중 요청이 불가능한가
-    const after = await getSettlementSummary(fx.creatorId);
+    const after = await getSettlementSummary(fx.merchantId);
     expect(after.pending).toBe(req.amount);
     expect(after.available).toBe(0n);
-    await expect(createSettlementRequest(fx.creatorId, 1000n)).rejects.toThrow(/초과/);
+    await expect(createSettlementRequest(fx.merchantId, 1000n)).rejects.toThrow(/초과/);
   });
 
   it('승인 전에는 이체파일에 들어가지 않는다', async () => {
     await accumulate();
-    const summary = await getSettlementSummary(fx.creatorId);
-    const req = await createSettlementRequest(fx.creatorId, summary.available, { resident: '9010101234560' });
+    const summary = await getSettlementSummary(fx.merchantId);
+    const req = await createSettlementRequest(fx.merchantId, summary.available, { resident: '9010101234560' });
 
     // REQUESTED 상태는 이체 대상이 아니다
     expect(await buildPayoutRows([req.id])).toEqual([]);
@@ -107,8 +107,8 @@ describe('정산 프로세스 — 요청부터 지급까지', () => {
 
   it('요청→승인→이체파일→지급 전 구간에서 원장과 잔액이 맞아떨어진다', async () => {
     await accumulate();
-    const before = await getSettlementSummary(fx.creatorId);
-    const req = await createSettlementRequest(fx.creatorId, before.available, { resident: '9010101234560' });
+    const before = await getSettlementSummary(fx.merchantId);
+    const req = await createSettlementRequest(fx.merchantId, before.available, { resident: '9010101234560' });
     const wh = calculateWithholding(before.available);
     expect(req.withholding).toBe(wh.total);
 
@@ -124,7 +124,7 @@ describe('정산 프로세스 — 요청부터 지급까지', () => {
     const sum = entries.reduce((a, e) => a + e.amount, 0n);
     expect(-sum).toBe(before.available); // 지급+원천징수 = 요청금 전액
 
-    const after = await getSettlementSummary(fx.creatorId);
+    const after = await getSettlementSummary(fx.merchantId);
     expect(after.balance).toBe(0n);
     expect(after.available).toBe(0n);
     expect(after.pending).toBe(0n);
@@ -137,13 +137,13 @@ describe('정산 프로세스 — 요청부터 지급까지', () => {
   it('결제일별 정산 예정일이 계산되어 캘린더 데이터로 나온다', async () => {
     await accumulate(2);
     const rows = await buildSettlementSchedule(
-      fx.creatorId,
+      fx.merchantId,
       new Date(Date.now() - 40 * 86_400_000),
       new Date(Date.now() + 86_400_000),
     );
     expect(rows.length).toBeGreaterThan(0);
     for (const r of rows) {
-      expect(r.settlementDate > r.donationDate).toBe(true);
+      expect(r.settlementDate > r.chargeDate).toBe(true);
       expect(r.count).toBeGreaterThan(0);
       expect(r.gross).toBeGreaterThan(0n);
     }

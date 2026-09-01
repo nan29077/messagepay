@@ -7,8 +7,8 @@ import { prisma } from '@/server/db';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '서비스 이용약관 | 문자페이',
-  description: '문자페이 문자결제 서비스 이용약관입니다.',
+  title: '서비스 이용약관 | 메시지페이',
+  description: '메시지페이 문자결제 서비스 이용약관입니다.',
 };
 
 export default async function TermsPage() {
@@ -19,7 +19,7 @@ export default async function TermsPage() {
 
   return (
     <PublicShell>
-      <PageHeader eyebrow="약관" title="서비스 이용약관" description="문자페이 문자결제 서비스의 이용조건과 절차입니다." />
+      <PageHeader eyebrow="약관" title="서비스 이용약관" description="메시지페이 문자결제 서비스의 이용조건과 절차입니다." />
       <TermsNav current="terms" />
       <TermsArticle doc={doc} />
     </PublicShell>

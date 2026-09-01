@@ -3,26 +3,26 @@ import { Badge, Card, CardTitle, DataRow, EmptyState, Field, Input, Notice, Sect
 import { PageHeader } from '@/components/layout/console-shell';
 import { ActionForm } from '@/components/studio/action-form';
 import { ImageUploadField } from '@/components/studio/image-upload-field';
-import { updateCreatorProfileAction } from '@/app/actions/studio';
-import { requireCreator } from '@/server/auth';
+import { updateMerchantProfileAction } from '@/app/actions/studio';
+import { requireMerchant } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { formatKst } from '@/lib/datetime';
-import { creatorStatusLabel } from '@/lib/labels';
+import { merchantStatusLabel } from '@/lib/labels';
 import { ProfileAvatar } from '@/components/profile/generated-avatar';
 
 export const dynamic = 'force-dynamic';
 
 export default async function StudioSettingsProfilePage() {
-  const { creatorId, email, avatarIndex } = await requireCreator();
+  const { merchantId, email, avatarIndex } = await requireMerchant();
 
-  const creator = await prisma.creatorProfile.findUnique({
-    where: { id: creatorId },
+  const merchant = await prisma.merchantProfile.findUnique({
+    where: { id: merchantId },
     include: { codes: { orderBy: { issuedAt: 'desc' }, take: 10 } },
   });
 
-  if (!creator) notFound();
+  if (!merchant) notFound();
 
-  const status = creatorStatusLabel[creator.status];
+  const status = merchantStatusLabel[merchant.status];
 
   return (
     <>
@@ -33,14 +33,14 @@ export default async function StudioSettingsProfilePage() {
           <SectionTitle title="채널 상태" />
           <Card>
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <CardTitle>{creator.displayName}</CardTitle>
+              <CardTitle>{merchant.displayName}</CardTitle>
               <Badge tone={status.tone}>{status.text}</Badge>
             </div>
             <DataRow label="로그인 계정" value={email ?? '-'} />
-            <DataRow label="가맹점 코드" value={<span className="font-mono">{creator.code}</span>} />
-            <DataRow label="승인 시각" value={formatKst(creator.approvedAt)} />
-            <DataRow label="가입 시각" value={formatKst(creator.createdAt)} />
-            {creator.suspendedAt ? <DataRow label="정지 시각" value={formatKst(creator.suspendedAt)} /> : null}
+            <DataRow label="가맹점 코드" value={<span className="font-mono">{merchant.code}</span>} />
+            <DataRow label="승인 시각" value={formatKst(merchant.approvedAt)} />
+            <DataRow label="가입 시각" value={formatKst(merchant.createdAt)} />
+            {merchant.suspendedAt ? <DataRow label="정지 시각" value={formatKst(merchant.suspendedAt)} /> : null}
           </Card>
         </section>
 
@@ -49,10 +49,10 @@ export default async function StudioSettingsProfilePage() {
           <Card>
             <div className="mb-5 flex items-center gap-3 rounded-2xl border border-brand-100 bg-brand-50/60 p-4">
               <ProfileAvatar
-                seed={creator.code}
+                seed={merchant.code}
                 avatarIndex={avatarIndex}
-                name={creator.displayName}
-                imageUrl={creator.avatarUrl}
+                name={merchant.displayName}
+                imageUrl={merchant.avatarUrl}
                 className="h-16 w-16"
               />
               <div>
@@ -62,20 +62,20 @@ export default async function StudioSettingsProfilePage() {
                 </p>
               </div>
             </div>
-            <ActionForm action={updateCreatorProfileAction} submitLabel="프로필 저장">
+            <ActionForm action={updateMerchantProfileAction} submitLabel="프로필 저장">
               <div className="grid gap-3 md:grid-cols-2">
                 <Field label="표시명" hint="1~30자" required>
-                  <Input name="displayName" maxLength={30} defaultValue={creator.displayName} />
+                  <Input name="displayName" maxLength={30} defaultValue={merchant.displayName} />
                 </Field>
                 <Field label="채널명" hint="50자 이내. 비워두면 표시하지 않습니다.">
-                  <Input name="channelName" maxLength={50} defaultValue={creator.channelName ?? ''} />
+                  <Input name="channelName" maxLength={50} defaultValue={merchant.channelName ?? ''} />
                 </Field>
               </div>
               <ImageUploadField
                 name="avatarUrl"
                 label="아바타(프로필 캐릭터)"
                 aspect="square"
-                defaultValue={creator.avatarUrl ?? ''}
+                defaultValue={merchant.avatarUrl ?? ''}
                 hint="파일을 올리거나 이미지 URL 을 입력하세요. 비워두면 자동 배정된 캐릭터가 표시됩니다."
               />
             </ActionForm>
@@ -84,7 +84,7 @@ export default async function StudioSettingsProfilePage() {
 
         <section>
           <SectionTitle title="코드 이력" description="코드 발급과 회수는 통합 관리자가 처리합니다." />
-          {creator.codes.length === 0 ? (
+          {merchant.codes.length === 0 ? (
             <EmptyState title="코드 이력이 없습니다" />
           ) : (
             <Table>
@@ -97,7 +97,7 @@ export default async function StudioSettingsProfilePage() {
                 </tr>
               </thead>
               <tbody>
-                {creator.codes.map((c) => (
+                {merchant.codes.map((c) => (
                   <tr key={c.id}>
                     <Td className="font-mono font-semibold text-ink-900">{c.code}</Td>
                     <Td>

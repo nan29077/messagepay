@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Badge, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
 import { PageHeader } from '@/components/layout/console-shell';
-import { requireCreator } from '@/server/auth';
+import { requireMerchant } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
@@ -17,22 +17,22 @@ const REPORT_STATUS: Record<ReportStatus, { text: string; tone: 'neutral' | 'bra
 };
 
 export default async function StudioReportsPage() {
-  const { creatorId } = await requireCreator();
+  const { merchantId } = await requireMerchant();
 
   const reports = await prisma.report.findMany({
-    where: { creatorId },
+    where: { merchantId },
     orderBy: { createdAt: 'desc' },
     take: 100,
   });
 
-  const donationIds = reports.map((r) => r.donationId).filter((v): v is string => Boolean(v));
-  const donations = donationIds.length
-    ? await prisma.donation.findMany({
-        where: { id: { in: donationIds }, creatorId },
+  const chargeIds = reports.map((r) => r.chargeId).filter((v): v is string => Boolean(v));
+  const charges = chargeIds.length
+    ? await prisma.charge.findMany({
+        where: { id: { in: chargeIds }, merchantId },
         select: { id: true, transactionNo: true },
       })
     : [];
-  const donationMap = new Map(donations.map((d) => [d.id, d.transactionNo]));
+  const chargeMap = new Map(charges.map((d) => [d.id, d.transactionNo]));
 
   const counts = {
     OPEN: reports.filter((r) => r.status === 'OPEN').length,
@@ -77,7 +77,7 @@ export default async function StudioReportsPage() {
               <tbody>
                 {reports.map((r) => {
                   const st = REPORT_STATUS[r.status];
-                  const txNo = r.donationId ? donationMap.get(r.donationId) : null;
+                  const txNo = r.chargeId ? chargeMap.get(r.chargeId) : null;
                   return (
                     <tr key={r.id}>
                       <Td className="whitespace-nowrap tabular-nums">{formatKst(r.createdAt, false)}</Td>
@@ -86,9 +86,9 @@ export default async function StudioReportsPage() {
                         <span className="line-clamp-3">{r.content}</span>
                       </Td>
                       <Td>
-                        {r.donationId && txNo ? (
+                        {r.chargeId && txNo ? (
                           <Link
-                            href={`/studio/donations/${r.donationId}`}
+                            href={`/studio/charges/${r.chargeId}`}
                             className="font-mono text-[12px] font-semibold text-brand-700 underline-offset-2 hover:underline"
                           >
                             {txNo}

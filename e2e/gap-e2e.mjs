@@ -12,7 +12,7 @@ import {
 await assertServerUp();
 const r = createReporter('격차 — 기기별 안내 · 모의 고지 · 공개 페이지');
 const b = await launch();
-const SHOP = `${BASE}/c/${SEED.creator1Code}`;
+const SHOP = `${BASE}/c/${SEED.merchant1Code}`;
 
 try {
   // ══════════════ 1. PC 결제 페이지 ══════════════
@@ -56,9 +56,9 @@ try {
   // ══════════════ 3. 번호 미배정 가맹점(모바일) ══════════════
   const m2ctx = await b.newContext(mobile);
   const m2 = await m2ctx.newPage();
-  await gotoReady(m2, `${BASE}/c/${SEED.creator2Code}`);
+  await gotoReady(m2, `${BASE}/c/${SEED.merchant2Code}`);
   const m2T = await bodyText(m2);
-  const assigned = m2T.includes('전용 결제 수신번호') || m2T.includes(SEED.creator2Mo);
+  const assigned = m2T.includes('전용 결제 수신번호') || m2T.includes(SEED.merchant2Mo);
   if (assigned) {
     r.ok('모바일: 대표번호+키워드 가맹점도 결제 안내가 나온다', true);
   } else {

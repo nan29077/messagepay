@@ -15,7 +15,7 @@ import { ProfileAvatar } from '@/components/profile/generated-avatar';
 
 export const dynamic = 'force-dynamic';
 
-const roleLabel: Record<UserRole, string> = { DONOR: '이용자', CREATOR: '가맹점', ADMIN: '관리자' };
+const roleLabel: Record<UserRole, string> = { PAYER: '이용자', MERCHANT: '가맹점', ADMIN: '관리자' };
 const statusLabel: Record<UserStatus, { text: string; tone: 'success' | 'warning' | 'neutral' }> = {
   ACTIVE: { text: '활성', tone: 'success' },
   SUSPENDED: { text: '정지', tone: 'warning' },
@@ -57,8 +57,8 @@ export default async function AdminUsersPage({
       select: {
         id: true, email: true, name: true, role: true, status: true, avatarIndex: true,
         phoneMasked: true, lastLoginAt: true, createdAt: true,
-        creatorProfile: { select: { id: true, displayName: true, code: true, avatarUrl: true } },
-        donorProfile: { select: { id: true } },
+        merchantProfile: { select: { id: true, displayName: true, code: true, avatarUrl: true } },
+        payerProfile: { select: { id: true } },
         adminProfile: { select: { permission: true } },
       },
     }),
@@ -151,25 +151,25 @@ export default async function AdminUsersPage({
                     <Td>
                       <div className="flex min-w-[150px] items-center gap-2.5">
                         <ProfileAvatar
-                          seed={u.creatorProfile?.code ?? u.id}
+                          seed={u.merchantProfile?.code ?? u.id}
                           avatarIndex={u.avatarIndex}
-                          imageUrl={u.creatorProfile?.avatarUrl}
+                          imageUrl={u.merchantProfile?.avatarUrl}
                           name={u.name}
                           className="h-9 w-9"
                         />
                         <div className="min-w-0">
                       <span className="block truncate font-semibold text-ink-900">{u.name ?? '-'}</span>
-                      {u.creatorProfile ? (
+                      {u.merchantProfile ? (
                         <Link
-                          href={`/admin/creators/${u.creatorProfile.id}`}
+                          href={`/admin/merchants/${u.merchantProfile.id}`}
                           className="mt-0.5 block text-[11px] font-semibold text-brand-700"
                         >
-                          {u.creatorProfile.displayName} ({u.creatorProfile.code})
+                          {u.merchantProfile.displayName} ({u.merchantProfile.code})
                         </Link>
                       ) : null}
-                      {u.donorProfile ? (
+                      {u.payerProfile ? (
                         <Link
-                          href={`/admin/donors/${u.donorProfile.id}`}
+                          href={`/admin/payers/${u.payerProfile.id}`}
                           className="mt-0.5 block text-[11px] font-semibold text-brand-700"
                         >
                           이용자 상세

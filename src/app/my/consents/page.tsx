@@ -2,7 +2,7 @@ import Link from 'next/link';
 import {FileText, Check, X, ChevronLeft } from 'lucide-react';
 import { Card, CardTitle, Badge, EmptyState, Notice, LinkButton } from '@/components/ui';
 import { MarketingConsentForm } from '@/components/my/marketing-consent-form';
-import { requireDonorContext } from '@/components/my/donor';
+import { requirePayerContext } from '@/components/my/payer';
 import { prisma } from '@/server/db';
 import { formatKst } from '@/lib/datetime';
 import type { ConsentType } from '@/generated/prisma/enums';
@@ -25,14 +25,14 @@ const CONSENT_LINK: Partial<Record<ConsentType, string>> = {
 };
 
 export default async function MyConsentsPage() {
-  const { user, donorId } = await requireDonorContext('/my/consents');
+  const { user, payerId } = await requirePayerContext('/my/consents');
 
-  const donor = donorId
-    ? await prisma.donorProfile.findUnique({ where: { id: donorId }, select: { phoneHash: true } })
+  const payer = payerId
+    ? await prisma.payerProfile.findUnique({ where: { id: payerId }, select: { phoneHash: true } })
     : null;
 
   const or: Array<{ userId: string } | { phoneHash: string }> = [{ userId: user.id }];
-  if (donor?.phoneHash) or.push({ phoneHash: donor.phoneHash });
+  if (payer?.phoneHash) or.push({ phoneHash: payer.phoneHash });
 
   const records = await prisma.consentRecord.findMany({
     where: { OR: or },

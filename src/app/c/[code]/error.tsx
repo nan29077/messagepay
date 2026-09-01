@@ -8,7 +8,7 @@ import { CircleAlert } from 'lucide-react';
  * 서버 오류(DB 연결 실패, 렌더 오류 등)가 발생할 때 루트 error.tsx 대신
  * 결제 페이지 디자인과 어울리는 화면을 보여준다.
  */
-export default function CreatorDonationError({
+export default function MerchantChargeError({
   error,
   reset,
 }: {

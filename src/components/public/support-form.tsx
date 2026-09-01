@@ -8,8 +8,15 @@ import { submitSupportRequest, type SupportFormState } from '@/app/actions/suppo
 
 const initial: SupportFormState = { ok: false };
 
-export function SupportForm({ defaultTransactionNo }: { defaultTransactionNo?: string }) {
+export function SupportForm({
+  defaultTransactionNo,
+  mode = 'support',
+}: {
+  defaultTransactionNo?: string;
+  mode?: 'support' | 'onboarding';
+}) {
   const [state, formAction, pending] = React.useActionState(submitSupportRequest, initial);
+  const onboarding = mode === 'onboarding';
 
   if (state.ok && state.ticketId) {
     return (
@@ -54,6 +61,8 @@ export function SupportForm({ defaultTransactionNo }: { defaultTransactionNo?: s
 
   return (
     <form action={formAction} className="space-y-4">
+      <input type="hidden" name="intent" value={onboarding ? 'ONBOARDING' : 'SUPPORT'} />
+      {onboarding ? <input type="hidden" name="category" value="MERCHANT" /> : (
       <Field label="문의 유형" required>
         <Select name="category" defaultValue="" required>
           <option value="" disabled>
@@ -66,7 +75,36 @@ export function SupportForm({ defaultTransactionNo }: { defaultTransactionNo?: s
           ))}
         </Select>
       </Field>
+      )}
 
+      {onboarding ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="회사·사업자명" required>
+            <Input name="companyName" placeholder="예: 메시지게임즈" maxLength={80} required />
+          </Field>
+          <Field label="서비스명" required>
+            <Input name="serviceName" placeholder="예: 게임 캐시 충전" maxLength={80} required />
+          </Field>
+          <Field label="담당자명" required>
+            <Input name="contactName" placeholder="담당자 이름" maxLength={40} required />
+          </Field>
+          <Field label="회신 연락처" required>
+            <Input name="contact" placeholder="이메일 또는 휴대전화번호" maxLength={100} required />
+          </Field>
+          <Field label="서비스 주소 (선택)">
+            <Input name="serviceUrl" placeholder="https://" maxLength={200} inputMode="url" />
+          </Field>
+          <Field label="예상 월 결제 규모 (선택)">
+            <Select name="monthlyVolume" defaultValue="">
+              <option value="">아직 정해지지 않음</option>
+              <option value="1천만원 미만">1천만원 미만</option>
+              <option value="1천만~5천만원">1천만~5천만원</option>
+              <option value="5천만~1억원">5천만~1억원</option>
+              <option value="1억원 이상">1억원 이상</option>
+            </Select>
+          </Field>
+        </div>
+      ) : (
       <Field
         label="거래번호 (선택)"
         hint="결제 결과 문자나 마이페이지 결제 내역에서 확인할 수 있습니다. 예: TRD-20260819-XXXXXXXX"
@@ -79,19 +117,31 @@ export function SupportForm({ defaultTransactionNo }: { defaultTransactionNo?: s
           defaultValue={defaultTransactionNo ?? ''}
         />
       </Field>
+      )}
 
       <Field
-        label="문의 내용"
+        label={onboarding ? '도입 희망 내용' : '문의 내용'}
         required
-        hint="10자 이상 2,000자 이내로 입력해 주세요. 계좌번호, 카드번호, 주민등록번호는 입력하지 마세요."
+        hint={onboarding
+          ? '충전 대상, 원하는 문자 결제 흐름, 연동 방식과 도입 희망 시기를 알려주세요.'
+          : '10자 이상 2,000자 이내로 입력해 주세요. 계좌번호, 카드번호, 주민등록번호는 입력하지 마세요.'}
       >
-        <Textarea name="content" rows={8} required minLength={10} maxLength={2000} placeholder="발생한 상황과 시점을 함께 적어주시면 확인이 빨라집니다." />
+        <Textarea
+          name="content"
+          rows={8}
+          required
+          minLength={10}
+          maxLength={2000}
+          placeholder={onboarding
+            ? '예: 게임 포인트 충전에 적용하려고 합니다. 문자 수신 후 결제 승인과 포인트 지급 API 연동이 필요합니다.'
+            : '발생한 상황과 시점을 함께 적어주시면 확인이 빨라집니다.'}
+        />
       </Field>
 
       {state.message ? <Notice tone="warning">{state.message}</Notice> : null}
 
       <Button type="submit" size="lg" disabled={pending}>
-        {pending ? '접수 중' : '문의 접수하기'}
+        {pending ? '접수 중' : onboarding ? '도입 상담 신청하기' : '문의 접수하기'}
         <Send size={16} strokeWidth={1.7} />
       </Button>
     </form>

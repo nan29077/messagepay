@@ -2,17 +2,17 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/server/db';
 import { mockMoAdapter } from '@/server/adapters/mo';
 import { readMockOutbox } from '@/server/adapters/mt';
-import { handleMoInbound } from '@/server/services/donation-flow';
-import { startRegistration, completeRegistration } from '@/server/services/donor-registration';
+import { handleMoInbound } from '@/server/services/charge-flow';
+import { startRegistration, completeRegistration } from '@/server/services/payer-registration';
 import { computeFees, getSettlementSummary } from '@/server/services/settlement';
-import { tplDonationSuccess, tplRegisterGuide } from '@/server/services/mt-templates';
-import { inboundAndPay, resetDb, seedBasics, seedRegisteredDonor, moPayload, type Fixture } from './helpers';
+import { tplChargeSuccess, tplRegisterGuide } from '@/server/services/mt-templates';
+import { inboundAndPay, resetDb, seedBasics, seedRegisteredPayer, moPayload, type Fixture } from './helpers';
 import { generateToken, tokenHash } from '@/lib/crypto';
 
 let fx: Fixture;
 
 async function inbound(payload: Record<string, unknown>) {
-  return inboundAndPay(payload, fx.creatorId);
+  return inboundAndPay(payload, fx.merchantId);
 }
 
 /** 전역 수수료 정책을 이 테스트에서 쓰는 값으로 바꾼다. */
@@ -88,37 +88,37 @@ describe('부가세가 실제 결제·정산에 반영된다', () => {
 
   it('부가세 별도 정책이면 결제 1건의 정산금과 원장 잔액이 2,670원이 된다', async () => {
     await setGlobalFee({ pg: '0', platform: '0.10', vatIncluded: false });
-    await seedRegisteredDonor(fx.donorPhone);
+    await seedRegisteredPayer(fx.payerPhone);
 
     const res = await inbound(moPayload({ to: fx.moNumber }));
-    const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
+    const charge = await prisma.charge.findFirstOrThrow({ where: { id: res.chargeId } });
 
-    expect(donation.platformFee).toBe(330n); // 300 + 부가세 30
-    expect(donation.feeVat).toBe(30n);
-    expect(donation.netAmount).toBe(2_670n);
+    expect(charge.platformFee).toBe(330n); // 300 + 부가세 30
+    expect(charge.feeVat).toBe(30n);
+    expect(charge.netAmount).toBe(2_670n);
 
-    const summary = await getSettlementSummary(fx.creatorId);
+    const summary = await getSettlementSummary(fx.merchantId);
     expect(summary.totalGross).toBe(3_000n);
     expect(summary.totalPlatformFee).toBe(330n);
     expect(summary.balance).toBe(2_670n);
 
     // 부가세 금액은 수수료 분개 메모에 남아 사후 대사가 가능하다.
     const platformEntry = await prisma.settlementLedger.findFirstOrThrow({
-      where: { donationId: donation.id, entryType: 'PLATFORM_FEE' },
+      where: { chargeId: charge.id, entryType: 'PLATFORM_FEE' },
     });
     expect(platformEntry.memo).toContain('부가세 30원');
   });
 
   it('부가세 포함 정책이면 종전과 같이 요율만큼만 차감된다', async () => {
     await setGlobalFee({ pg: '0', platform: '0.10', vatIncluded: true });
-    await seedRegisteredDonor(fx.donorPhone);
+    await seedRegisteredPayer(fx.payerPhone);
 
     const res = await inbound(moPayload({ to: fx.moNumber }));
-    const donation = await prisma.donation.findFirstOrThrow({ where: { id: res.donationId } });
+    const charge = await prisma.charge.findFirstOrThrow({ where: { id: res.chargeId } });
 
-    expect(donation.platformFee).toBe(300n);
-    expect(donation.feeVat).toBe(0n);
-    expect(donation.netAmount).toBe(2_700n);
+    expect(charge.platformFee).toBe(300n);
+    expect(charge.feeVat).toBe(0n);
+    expect(charge.netAmount).toBe(2_700n);
   });
 });
 
@@ -129,7 +129,7 @@ describe('가맹점 감사 문자 커스터마이즈', () => {
   });
 
   it('설정이 없으면 기본 문구로 발송된다', async () => {
-    await seedRegisteredDonor(fx.donorPhone);
+    await seedRegisteredPayer(fx.payerPhone);
     await inbound(moPayload({ to: fx.moNumber, text: '화이팅' }));
 
     const success = readMockOutbox(10).find((m) => m.text.includes('충전되었습니다'));
@@ -137,41 +137,41 @@ describe('가맹점 감사 문자 커스터마이즈', () => {
   });
 
   it('설정한 본문의 치환자가 실제 값으로 바뀌어 발송된다', async () => {
-    await prisma.creatorProfile.update({
-      where: { id: fx.creatorId },
+    await prisma.merchantProfile.update({
+      where: { id: fx.merchantId },
       data: { thanksMtMessage: '{이용자}님 고마워요! {금액} 잘 받았습니다. 남겨주신 말: {메시지}' },
     });
-    await seedRegisteredDonor(fx.donorPhone);
+    await seedRegisteredPayer(fx.payerPhone);
     await inbound(moPayload({ to: fx.moNumber, text: '오늘도 화이팅' }));
 
     const success = readMockOutbox(10).find((m) => m.text.includes('고마워요'));
     expect(success).toBeDefined();
     expect(success!.text).toBe(
-      '[문자페이] 테스트이용자님 고마워요! 3,000원 잘 받았습니다. 남겨주신 말: 오늘도 화이팅',
+      '[메시지페이] 테스트이용자님 고마워요! 3,000원 잘 받았습니다. 남겨주신 말: 오늘도 화이팅',
     );
     // 발신 주체 표기는 설정과 무관하게 항상 붙는다.
-    expect(success!.text.startsWith('[문자페이] ')).toBe(true);
+    expect(success!.text.startsWith('[메시지페이] ')).toBe(true);
     // 기본 문구는 더 이상 쓰이지 않는다.
     expect(success!.text).not.toContain('누적 충전');
   });
 
   it('치환값에 정규식 특수문자가 있어도 본문이 깨지지 않는다', () => {
     const dollar = '$';
-    const out = tplDonationSuccess({
-      donorName: `${dollar}&test`,
-      creatorName: '문자페이',
+    const out = tplChargeSuccess({
+      payerName: `${dollar}&test`,
+      merchantName: '메시지페이',
       amount: 3_000n,
       message: `${dollar}1`,
       cumulative: 3_000n,
       custom: '{이용자} / {메시지}',
     });
-    expect(out.text).toBe(`[문자페이] ${dollar}&test / ${dollar}1`);
+    expect(out.text).toBe(`[메시지페이] ${dollar}&test / ${dollar}1`);
   });
 
   it('설정이 공백뿐이면 기본 문구로 되돌아간다', () => {
-    const out = tplDonationSuccess({
-      donorName: '홍길동',
-      creatorName: '문자페이',
+    const out = tplChargeSuccess({
+      payerName: '홍길동',
+      merchantName: '메시지페이',
       amount: 3_000n,
       message: '안녕',
       cumulative: 3_000n,
@@ -208,7 +208,7 @@ describe('카드 빌링키 구조', () => {
     expect(done.method).toBe('CARD');
     expect(done.cardTail4).toBe('9876');
 
-    const token = await prisma.paymentMethodToken.findFirstOrThrow({ where: { donorId: done.donorId } });
+    const token = await prisma.paymentMethodToken.findFirstOrThrow({ where: { payerId: done.payerId } });
     expect(token.method).toBe('CARD');
     expect(token.cardIssuer).toBe('테스트카드');
     expect(token.cardTail4).toBe('9876');
@@ -219,8 +219,8 @@ describe('카드 빌링키 구조', () => {
     // (3) 등록 후 문자는 결제수단 종류와 무관하게 결제으로 접수·결제된다.
     const second = await inbound(moPayload({ to: fx.moNumber, text: '카드로 결제합니다' }));
     expect(second.result).toBe('ROUTED');
-    const donation = await prisma.donation.findFirstOrThrow({ where: { id: second.donationId } });
-    expect(donation.paidAt).not.toBeNull();
+    const charge = await prisma.charge.findFirstOrThrow({ where: { id: second.chargeId } });
+    expect(charge.paidAt).not.toBeNull();
 
     // (4) 감사 문자도 동일하게 발송된다.
     expect(readMockOutbox(10).some((m) => m.text.includes('충전되었습니다'))).toBe(true);
@@ -239,13 +239,13 @@ describe('카드 빌링키 구조', () => {
     expect(done.method).toBe('ACCOUNT');
     expect(done.accountTail4).toBe('4455');
 
-    const token = await prisma.paymentMethodToken.findFirstOrThrow({ where: { donorId: done.donorId } });
+    const token = await prisma.paymentMethodToken.findFirstOrThrow({ where: { payerId: done.payerId } });
     expect(token.method).toBe('ACCOUNT');
     expect(token.cardTail4).toBeNull();
   });
 
   it('등록 안내 문자는 결제수단에 따라 문구만 달라진다', () => {
-    expect(tplRegisterGuide('문자페이', 'https://x.test/r/abc').text).toContain('계좌 등록과 이용 동의');
-    expect(tplRegisterGuide('문자페이', 'https://x.test/r/abc', 'CARD').text).toContain('카드 등록과 이용 동의');
+    expect(tplRegisterGuide('메시지페이', 'https://x.test/r/abc').text).toContain('계좌 등록과 이용 동의');
+    expect(tplRegisterGuide('메시지페이', 'https://x.test/r/abc', 'CARD').text).toContain('카드 등록과 이용 동의');
   });
 });

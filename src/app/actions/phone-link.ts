@@ -12,10 +12,10 @@ import { env, isLocal } from '@/lib/env';
 import { logger } from '@/lib/logger';
 
 /**
- * 휴대폰 번호 인증 → DonorProfile 연결.
+ * 휴대폰 번호 인증 → PayerProfile 연결.
  *
  * 문자결제의 이용자 식별 기준은 휴대전화 번호(phoneHash)다. 회원가입은 이메일만 받으므로,
- * 웹 계정에서 결제/결제 내역을 보려면 본인 휴대폰 번호를 인증해 DonorProfile 과 연결해야 한다.
+ * 웹 계정에서 결제/결제 내역을 보려면 본인 휴대폰 번호를 인증해 PayerProfile 과 연결해야 한다.
  *
  * 보안 설계
  *  - 인증 상태(코드 검증값·시도 횟수)는 전부 서버측 KV(Redis, 개발 환경은 인메모리 폴백)에만 둔다.
@@ -93,7 +93,7 @@ export async function requestPhoneVerification(
   }
 
   // 이미 다른 계정에 연결된 번호는 발송 전에 차단한다.
-  const existing = await prisma.donorProfile.findUnique({
+  const existing = await prisma.payerProfile.findUnique({
     where: { phoneHash: ph },
     select: { userId: true },
   });
@@ -168,7 +168,7 @@ export async function confirmPhoneVerification(
   await kv.del(stateKey(user.id));
 
   // 연결 시점에 한 번 더 소유권을 검증한다 (발송~확인 사이의 상태 변화 대비).
-  const existing = await prisma.donorProfile.findUnique({
+  const existing = await prisma.payerProfile.findUnique({
     where: { phoneHash: record.ph },
     select: { id: true, userId: true },
   });
@@ -178,14 +178,14 @@ export async function confirmPhoneVerification(
 
   // 기존 연결 해제 + 새 연결을 하나의 트랜잭션으로 처리한다 (부분 실패 방지).
   await prisma.$transaction([
-    prisma.donorProfile.updateMany({
+    prisma.payerProfile.updateMany({
       where: { userId: user.id, ...(existing ? { NOT: { id: existing.id } } : {}) },
       data: { userId: null },
     }),
     existing
-      ? prisma.donorProfile.update({ where: { id: existing.id }, data: { userId: user.id } })
+      ? prisma.payerProfile.update({ where: { id: existing.id }, data: { userId: user.id } })
       : // 문자결제 이력이 없는 번호도 미리 연결해 두면 이후 결제가 자동으로 이 계정에 표시된다.
-        prisma.donorProfile.create({
+        prisma.payerProfile.create({
           data: {
             id: newId(),
             userId: user.id,
@@ -210,7 +210,7 @@ export async function unlinkPhone(_prev: PhoneLinkState, _fd: FormData): Promise
   const user = await getSessionUser();
   if (!user) return { ok: false, message: '로그인이 필요합니다.' };
 
-  const updated = await prisma.donorProfile.updateMany({
+  const updated = await prisma.payerProfile.updateMany({
     where: { userId: user.id },
     data: { userId: null },
   });

@@ -3,9 +3,9 @@
 import * as React from 'react';
 import { Save } from 'lucide-react';
 import { Button, Field, Input, Notice } from '@/components/ui';
-import { updateDonorLimits, type DonorActionState } from '@/app/actions/donor';
+import { updatePayerLimits, type PayerActionState } from '@/app/actions/payer';
 
-const initial: DonorActionState = { ok: false };
+const initial: PayerActionState = { ok: false };
 
 /**
  * 이용자 한도 설정.
@@ -26,7 +26,7 @@ export function LimitsForm({
   maxDailyText: string;
   maxMonthlyText: string;
 }) {
-  const [state, formAction, pending] = React.useActionState(updateDonorLimits, initial);
+  const [state, formAction, pending] = React.useActionState(updatePayerLimits, initial);
 
   return (
     <form action={formAction} className="space-y-4">

@@ -4,7 +4,7 @@ import { safeEqual } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
 import { kv } from '@/server/redis';
 import { expireStalePinSessions } from '@/server/services/pin-authorization';
-import { expireStaleConfirmations } from '@/server/services/donation-confirm';
+import { expireStaleConfirmations } from '@/server/services/charge-confirm';
 import { purgeExpiredIdempotencyKeys } from '@/server/services/idempotency';
 import { purgeExpiredResetTokens } from '@/server/services/password-reset';
 

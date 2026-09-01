@@ -1,0 +1,16 @@
+Loaded Prisma config from prisma.config.mjs.
+
+Prisma schema loaded from prisma\schema.prisma.
+{"ts":"2026-09-01T01:54:05.618Z","level":"warn","message":"redis error","meta":{"message":"connect ECONNREFUSED 127.0.0.1:6379"}}
+{"ts":"2026-09-01T01:54:05.787Z","level":"warn","message":"Redis 명령 실패. 인메모리 폴백으로 전환합니다(개발 전용).","meta":{"message":"Stream isn't writeable and enableOfflineQueue options is false"}}
+{"ts":"2026-09-01T01:54:05.924Z","level":"warn","message":"redis error","meta":{"message":"connect ECONNREFUSED 127.0.0.1:6379"}}
+{"ts":"2026-09-01T01:54:06.532Z","level":"warn","message":"redis error","meta":{"message":"connect ECONNREFUSED 127.0.0.1:6379"}}
+{"ts":"2026-09-01T01:54:07.440Z","level":"warn","message":"redis error","meta":{"message":"connect ECONNREFUSED 127.0.0.1:6379"}}
+{"ts":"2026-09-01T01:54:08.646Z","level":"warn","message":"redis error","meta":{"message":"connect ECONNREFUSED 127.0.0.1:6379"}}
+{"ts":"2026-09-01T01:54:09.623Z","level":"warn","message":"redis error","meta":{"message":"connect ECONNREFUSED 127.0.0.1:6379"}}
+{"ts":"2026-09-01T01:54:09.939Z","level":"warn","message":"redis error","meta":{"message":"connect ECONNREFUSED 127.0.0.1:6379"}}
+{"ts":"2026-09-01T01:54:10.319Z","level":"warn","message":"redis error","meta":{"message":"connect ECONNREFUSED 127.0.0.1:6379"}}
+{"ts":"2026-09-01T01:54:10.550Z","level":"warn","message":"redis error","meta":{"message":"connect ECONNREFUSED 127.0.0.1:6379"}}
+{"ts":"2026-09-01T01:54:11.478Z","level":"warn","message":"redis error","meta":{"message":"connect ECONNREFUSED 127.0.0.1:6379"}}
+{"ts":"2026-09-01T01:54:12.691Z","level":"warn","message":"redis error","meta":{"message":"connect ECONNREFUSED 127.0.0.1:6379"}}
+{"ts":"2026-09-01T01:54:14.195Z","level":"warn","message":"redis error","meta":{"message":"connect ECONNREFUSED 127.0.0.1:6379"}}

@@ -13,14 +13,14 @@ import { submitMockPinAction, type MockPinResult } from '@/app/actions/pin';
 
 export function MockPinForm({
   sessionId,
-  creatorName,
+  merchantName,
   amountText,
   message,
   status,
   expiresAtIso,
 }: {
   sessionId: string;
-  creatorName: string;
+  merchantName: string;
   amountText: string;
   message: string;
   status: string;
@@ -62,7 +62,7 @@ export function MockPinForm({
           <p className="text-[16px] font-extrabold text-ink-900">결제가 완료되었습니다</p>
         </div>
         <div className="mt-3">
-          <DataRow label="가맹점" value={result.creatorName ?? creatorName} />
+          <DataRow label="가맹점" value={result.merchantName ?? merchantName} />
           <DataRow label="결제 금액" value={result.amountText ?? amountText} />
           {result.transactionNo ? <DataRow label="거래번호" value={result.transactionNo} /> : null}
         </div>
@@ -96,7 +96,7 @@ export function MockPinForm({
         </div>
         <p className="mt-2 text-[22px] font-extrabold tracking-tight text-ink-900">{amountText}</p>
         <div className="mt-3">
-          <DataRow label="가맹점" value={creatorName} />
+          <DataRow label="가맹점" value={merchantName} />
           <DataRow label="메시지" value={message || '(내용 없음)'} />
         </div>
       </Card>

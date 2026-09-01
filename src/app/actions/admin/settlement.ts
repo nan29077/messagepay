@@ -10,6 +10,7 @@ import {
   fileWithholdingAndPurgeResident,
   purgeResidentIfNotFilable,
 } from '@/server/services/settlement';
+import { runScheduledPayouts, retryPayout } from '@/server/services/auto-settlement';
 import { notifyUser } from '@/server/services/notifications';
 import { formatWon } from '@/lib/money';
 import type { AdminActionState } from '@/components/admin/state';
@@ -20,15 +21,15 @@ import { run, text, optText, money, rate, enumValue, requiredId, optDate } from 
  * 정산 원장(SettlementLedger)은 append-only 이므로 여기서 수정/삭제하지 않는다.
  */
 
-async function creatorUserId(creatorId: string): Promise<string | null> {
-  const c = await prisma.creatorProfile.findUnique({ where: { id: creatorId }, select: { userId: true } });
+async function merchantUserId(merchantId: string): Promise<string | null> {
+  const c = await prisma.merchantProfile.findUnique({ where: { id: merchantId }, select: { userId: true } });
   return c?.userId ?? null;
 }
 
 /** 정산 상태 변경을 가맹점 알림함에 남긴다. */
-async function notifySettlement(creatorId: string, title: string, body: string) {
-  const uid = await creatorUserId(creatorId);
-  if (uid) await notifyUser({ userId: uid, title, body, linkUrl: '/studio/settlement?tab=request' }).catch(() => undefined);
+async function notifySettlement(merchantId: string, title: string, body: string) {
+  const uid = await merchantUserId(merchantId);
+  if (uid) await notifyUser({ userId: uid, title, body, linkUrl: '/studio/settlement?tab=payout' }).catch(() => undefined);
 }
 
 export async function updateSettlementRequestStatus(
@@ -43,7 +44,7 @@ export async function updateSettlementRequestStatus(
 
     const before = await prisma.settlementRequest.findUnique({
       where: { id: requestId },
-      select: { id: true, status: true, amount: true, payoutAmount: true, creatorId: true, payoutIssuedAt: true },
+      select: { id: true, status: true, amount: true, payoutAmount: true, merchantId: true, payoutIssuedAt: true },
     });
     if (!before) throw new Error('정산 요청을 찾을 수 없습니다.');
     if (before.status === 'PAID' && status !== 'PAYOUT_FAILED') throw new Error('이미 지급 완료된 요청입니다.');
@@ -63,10 +64,10 @@ export async function updateSettlementRequestStatus(
     if (status === 'PAID') {
       if (before.status !== 'APPROVED') throw new Error('승인된 요청만 지급 완료 처리할 수 있습니다.');
       await markSettlementPaid(requestId, admin.id);
-      await notifySettlement(before.creatorId, '정산 지급이 완료되었습니다', `${formatWon(before.payoutAmount)}이 지급 처리되었습니다.`);
+      await notifySettlement(before.merchantId, '정산 지급이 완료되었습니다', `${formatWon(before.payoutAmount)}이 지급 처리되었습니다.`);
     } else if (status === 'PAYOUT_FAILED') {
       await markSettlementPayoutFailed(requestId, memo!, admin.id);
-      await notifySettlement(before.creatorId, '정산 지급이 실패했습니다', `사유: ${memo}. 계좌를 확인하고 다시 요청해 주세요.`);
+      await notifySettlement(before.merchantId, '정산 지급이 실패했습니다', `사유: ${memo}. 계좌를 확인하고 다시 요청해 주세요.`);
     } else {
       const data =
         status === 'APPROVED'
@@ -75,8 +76,8 @@ export async function updateSettlementRequestStatus(
             ? { status, rejectedAt: now, adminId: admin.id, adminMemo: memo ?? undefined }
             : { status, adminId: admin.id, adminMemo: memo ?? undefined };
       await prisma.settlementRequest.update({ where: { id: requestId }, data });
-      if (status === 'APPROVED') await notifySettlement(before.creatorId, '정산 요청이 승인되었습니다', '지급대행을 통해 곧 지급됩니다.');
-      if (status === 'REJECTED') await notifySettlement(before.creatorId, '정산 요청이 반려되었습니다', `사유: ${memo}`);
+      if (status === 'APPROVED') await notifySettlement(before.merchantId, '정산 요청이 승인되었습니다', '지급대행을 통해 곧 지급됩니다.');
+      if (status === 'REJECTED') await notifySettlement(before.merchantId, '정산 요청이 반려되었습니다', `사유: ${memo}`);
     }
 
     // 반려·지급실패 건은 원천징수 신고 대상이 아니므로 주민등록번호를 보관할 근거가 없다.
@@ -125,7 +126,7 @@ export async function bulkUpdateSettlementAction(
       try {
         const req = await prisma.settlementRequest.findUnique({
           where: { id },
-          select: { id: true, status: true, creatorId: true, payoutAmount: true, payoutIssuedAt: true },
+          select: { id: true, status: true, merchantId: true, payoutAmount: true, payoutIssuedAt: true },
         });
         if (!req) continue;
 
@@ -138,7 +139,7 @@ export async function bulkUpdateSettlementAction(
             where: { id },
             data: { status: 'APPROVED', approvedAt: now, adminId: admin.id, adminMemo: memo ?? undefined },
           });
-          await notifySettlement(req.creatorId, '정산 요청이 승인되었습니다', '지급대행을 통해 곧 지급됩니다.');
+          await notifySettlement(req.merchantId, '정산 요청이 승인되었습니다', '지급대행을 통해 곧 지급됩니다.');
         } else if (action === 'REJECT') {
           if (req.status === 'PAID' || req.status === 'REJECTED') {
             errors.push(`${id.slice(-6)}: 반려 불가 상태(${req.status})`);
@@ -152,13 +153,13 @@ export async function bulkUpdateSettlementAction(
             where: { id },
             data: { status: 'REJECTED', rejectedAt: now, adminId: admin.id, adminMemo: memo },
           });
-          await notifySettlement(req.creatorId, '정산 요청이 반려되었습니다', `사유: ${memo}`);
+          await notifySettlement(req.merchantId, '정산 요청이 반려되었습니다', `사유: ${memo}`);
           // 반려 건은 원천징수 신고 대상이 아니므로 주민등록번호를 즉시 파기한다.
           await purgeResidentIfNotFilable(id);
         } else {
           // PAY: 승인 건만 지급 완료. 잠금·재검증은 markSettlementPaid 내부에서 처리.
           await markSettlementPaid(id, admin.id);
-          await notifySettlement(req.creatorId, '정산 지급이 완료되었습니다', `${formatWon(req.payoutAmount)}이 지급 처리되었습니다.`);
+          await notifySettlement(req.merchantId, '정산 지급이 완료되었습니다', `${formatWon(req.payoutAmount)}이 지급 처리되었습니다.`);
         }
         done += 1;
       } catch (e) {
@@ -210,7 +211,7 @@ export async function applyPayoutResultsAction(
         const req = await prisma.settlementRequest.findUnique({
           where: { id },
           select: {
-            creatorId: true, payoutAmount: true, status: true,
+            merchantId: true, payoutAmount: true, status: true,
             payoutBatchNo: true, payoutIssuedAt: true,
           },
         });
@@ -234,12 +235,12 @@ export async function applyPayoutResultsAction(
         if (up === 'SUCCESS' || up === 'OK' || up === '성공') {
           if (req.status === 'PAID') { ok += 1; continue; } // 이미 반영됨 (멱등)
           await markSettlementPaid(id, admin.id, reason || undefined);
-          await notifySettlement(req.creatorId, '정산 지급이 완료되었습니다', `${formatWon(req.payoutAmount)}이 지급 처리되었습니다.`);
+          await notifySettlement(req.merchantId, '정산 지급이 완료되었습니다', `${formatWon(req.payoutAmount)}이 지급 처리되었습니다.`);
           ok += 1;
         } else if (up === 'FAIL' || up === 'ERROR' || up === '실패') {
           if (req.status === 'PAYOUT_FAILED') { failed += 1; continue; } // 이미 반영됨 (멱등)
           await markSettlementPayoutFailed(id, reason || '지급대행 실패', admin.id);
-          await notifySettlement(req.creatorId, '정산 지급이 실패했습니다', `사유: ${reason || '지급대행 실패'}. 계좌를 확인하고 다시 요청해 주세요.`);
+          await notifySettlement(req.merchantId, '정산 지급이 실패했습니다', `사유: ${reason || '지급대행 실패'}. 계좌를 확인하고 다시 요청해 주세요.`);
           // 지급 실패 건도 신고 대상이 아니므로 주민등록번호를 파기한다.
           await purgeResidentIfNotFilable(id);
           failed += 1;
@@ -306,13 +307,19 @@ export async function fileWithholdingAction(
 export async function createFeePolicy(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
     if (admin.adminPermission === 'SUPPORT') throw new Error('수수료 정책 변경은 재무/운영 권한에서만 가능합니다.');
-    const scope = enumValue(fd, 'scope', ['GLOBAL', 'CREATOR'] as const, '적용 범위');
-    const creatorId = scope === 'CREATOR' ? requiredId(fd, 'creatorId', '가맹점') : null;
+    const scope = enumValue(fd, 'scope', ['GLOBAL', 'MERCHANT'] as const, '적용 범위');
+    const merchantId = scope === 'MERCHANT' ? requiredId(fd, 'merchantId', '가맹점') : null;
     const pgFeeRate = rate(fd, 'pgFeeRate', '결제');
     const platformFeeRate = rate(fd, 'platformFeeRate', '플랫폼');
     const pgFixedFee = money(fd, 'pgFixedFee', '결제 건당 고정비');
     const smsCost = money(fd, 'smsCost', '문자 원가');
     const vatIncluded = text(fd, 'vatIncluded') === 'on';
+    // 지급일: 결제일 + N영업일. 전역 정책으로 일괄 지정하고 가맹점 정책으로 개별 조정한다.
+    const settlementDaysRaw = Number(text(fd, 'settlementDays') || '5');
+    if (!Number.isInteger(settlementDaysRaw) || settlementDaysRaw < 0 || settlementDaysRaw > 60) {
+      throw new Error('지급일(영업일)은 0~60 사이의 정수로 입력해 주세요.');
+    }
+    const settlementDays = settlementDaysRaw;
     const effectiveFrom = optDate(fd, 'effectiveFrom', '적용 시작일') ?? new Date();
 
     // 각 요율만 0~1 로 보면 0.95 + 0.1 같은 조합이 통과한다.
@@ -323,32 +330,33 @@ export async function createFeePolicy(_prev: AdminActionState, fd: FormData): Pr
       throw new Error('결제 수수료와 플랫폼 수수료의 합이 100% 이상입니다. 요율을 다시 확인해 주세요.');
     }
 
-    if (creatorId) {
-      const creator = await prisma.creatorProfile.findUnique({ where: { id: creatorId }, select: { id: true } });
-      if (!creator) throw new Error('가맹점을 찾을 수 없습니다.');
+    if (merchantId) {
+      const merchant = await prisma.merchantProfile.findUnique({ where: { id: merchantId }, select: { id: true } });
+      if (!merchant) throw new Error('가맹점을 찾을 수 없습니다.');
     }
 
     const previous = await prisma.feePolicy.findMany({
-      where: { active: true, scope, creatorId },
+      where: { active: true, scope, merchantId },
       select: { id: true, pgFeeRate: true, platformFeeRate: true },
     });
 
     const created = await prisma.$transaction(async (tx) => {
       // 이력 보존: 기존 정책은 삭제하지 않고 마감한다.
       await tx.feePolicy.updateMany({
-        where: { active: true, scope, creatorId },
+        where: { active: true, scope, merchantId },
         data: { active: false, effectiveTo: effectiveFrom },
       });
       return tx.feePolicy.create({
         data: {
           id: newId(),
           scope,
-          creatorId,
+          merchantId,
           pgFeeRate,
           pgFixedFee,
           platformFeeRate,
           smsCost,
           vatIncluded,
+          settlementDays,
           active: true,
           effectiveFrom,
         },
@@ -361,10 +369,10 @@ export async function createFeePolicy(_prev: AdminActionState, fd: FormData): Pr
       targetType: 'FeePolicy',
       targetId: created.id,
       before: { closed: previous.map((p) => ({ id: p.id, pgFeeRate: p.pgFeeRate.toString(), platformFeeRate: p.platformFeeRate.toString() })) },
-      after: { scope, creatorId, pgFeeRate, pgFixedFee, platformFeeRate, smsCost, vatIncluded, effectiveFrom },
+      after: { scope, merchantId, pgFeeRate, pgFixedFee, platformFeeRate, smsCost, vatIncluded, settlementDays, effectiveFrom },
     });
     revalidatePath('/admin/fees');
-    return '새 수수료 정책을 등록했습니다. 기존 정책은 마감 처리되었습니다.';
+    return `새 정산 정책을 등록했습니다(지급일 결제일 + ${settlementDays}영업일). 기존 정책은 마감 처리되었습니다.`;
   });
 }
 
@@ -382,10 +390,63 @@ export async function deactivateFeePolicy(_prev: AdminActionState, fd: FormData)
       action: 'FEE_POLICY_DEACTIVATE',
       targetType: 'FeePolicy',
       targetId: id,
-      before: { active: true, scope: before.scope, creatorId: before.creatorId },
+      before: { active: true, scope: before.scope, merchantId: before.merchantId },
       after: { active: false },
     });
     revalidatePath('/admin/fees');
     return '수수료 정책을 마감했습니다.';
+  });
+}
+
+// ===========================================================================
+// 자동 정산 (지급대행)
+// ===========================================================================
+
+/**
+ * 자동 지급 배치를 수동으로 한 번 더 실행한다.
+ *
+ * 배치는 하루 한 번 크론으로 돈다. 이 액션은 크론이 실패했거나 계좌 인증을
+ * 뒤늦게 끝낸 가맹점을 그날 안에 지급하기 위한 보조 수단이다.
+ * 같은 날 이미 처리된 가맹점은 멱등키로 걸러지므로 이중 지급되지 않는다.
+ */
+export async function runPayoutBatchAction(_prev: AdminActionState, _fd: FormData): Promise<AdminActionState> {
+  return run(async (admin) => {
+    if (admin.adminPermission === 'SUPPORT') throw new Error('지급 실행은 재무/운영 권한에서만 가능합니다.');
+    const result = await runScheduledPayouts();
+    await writeAudit({
+      adminUserId: admin.id,
+      action: 'PAYOUT_BATCH_RUN',
+      targetType: 'SettlementRequest',
+      targetId: result.dateKey,
+      after: {
+        checked: result.checked,
+        paid: result.paid,
+        failed: result.failed,
+        totalPaid: result.totalPaid.toString(),
+      },
+    });
+    revalidatePath('/admin/settlements');
+    return {
+      message: `자동 지급 실행 완료 — 대상 ${result.checked}곳 중 지급 ${result.paid}건(${formatWon(result.totalPaid)}), 실패 ${result.failed}건, 건너뜀 ${result.skipped}곳`,
+    };
+  });
+}
+
+/** 지급 실패 회차 재시도. 재이체 전에 대행사 조회로 이중 지급을 막는다. */
+export async function retryPayoutAction(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
+  return run(async (admin) => {
+    if (admin.adminPermission === 'SUPPORT') throw new Error('지급 실행은 재무/운영 권한에서만 가능합니다.');
+    const requestId = requiredId(fd, 'requestId', '정산 회차');
+    const result = await retryPayout(requestId);
+    await writeAudit({
+      adminUserId: admin.id,
+      action: 'PAYOUT_RETRY',
+      targetType: 'SettlementRequest',
+      targetId: requestId,
+      after: { ok: result.ok, message: result.message },
+    });
+    revalidatePath('/admin/settlements');
+    if (!result.ok) throw new Error(result.message);
+    return { message: result.message };
   });
 }

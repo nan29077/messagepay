@@ -4,7 +4,7 @@ import * as React from 'react';
 import { ChevronRight, ShieldCheck } from 'lucide-react';
 import { Button, Card, Checkbox, Input, Notice, cx } from '@/components/ui';
 import { startRegistrationAction } from '@/app/actions/registration';
-import { broadcastDonorName, checkDonorName, DONOR_NAME_MAX } from '@/lib/donor-name';
+import { displayPayerName, checkPayerName, PAYER_NAME_MAX } from '@/lib/payer-name';
 import { SNS_PLATFORMS, type SnsPlatform, SnsPlatformSelector } from '@/components/shared/sns-platform-selector';
 
 /**
@@ -42,7 +42,7 @@ export function RegisterForm({
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
 
-  const nameCheck = checkDonorName(nickname);
+  const nameCheck = checkPayerName(nickname);
   // 입력 도중(1글자)에는 빨간 경고를 띄우지 않는다. 지우고 다시 쓰는 중일 수 있다.
   const nameError = nickname.trim().length > 1 && !nameCheck.ok ? nameCheck.message : null;
 
@@ -81,7 +81,7 @@ export function RegisterForm({
 
   // 결제 내역에서는 자동 생성된 기본 이름을 끝 4자리로 줄여 부른다.
   // 미리보기도 같은 함수를 거쳐야 화면에서 약속한 이름과 실제 기록이 어긋나지 않는다.
-  const preview = broadcastDonorName(
+  const preview = displayPayerName(
     nameCheck.ok && nameCheck.value.length > 0 ? nameCheck.value : defaultName,
   );
 
@@ -104,7 +104,7 @@ export function RegisterForm({
           <Input
             value={nickname}
             onChange={(e) => setNickname(e.target.value)}
-            maxLength={DONOR_NAME_MAX + 4}
+            maxLength={PAYER_NAME_MAX + 4}
             placeholder={snsPlatform ? `${SNS_PLATFORMS.find(p => p.value === snsPlatform)?.label ?? ''} 닉네임` : '예: 밤톨이'}
             aria-label="결제 내역에 표시될 이름"
             aria-invalid={Boolean(nameError)}
@@ -114,8 +114,8 @@ export function RegisterForm({
           <p className="mt-1.5 text-[12px] font-semibold text-danger-500">{nameError}</p>
         ) : (
           <p className="mt-1.5 text-[12px] text-ink-400">
-            {DONOR_NAME_MAX}자 이내. 비워두면 번호 끝 4자리(
-            <b className="font-bold text-ink-700">{broadcastDonorName(defaultName)}</b>)로 표시됩니다.
+            {PAYER_NAME_MAX}자 이내. 비워두면 번호 끝 4자리(
+            <b className="font-bold text-ink-700">{displayPayerName(defaultName)}</b>)로 표시됩니다.
           </p>
         )}
         <div className="mt-2.5 rounded-xl bg-brand-50 px-3.5 py-2.5">

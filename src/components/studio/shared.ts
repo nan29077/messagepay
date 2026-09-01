@@ -1,4 +1,4 @@
-import type { DonationStatus } from '@/generated/prisma/enums';
+import type { ChargeStatus } from '@/generated/prisma/enums';
 
 /**
  * 가맹점 관리자 공용 상수/헬퍼.
@@ -6,7 +6,7 @@ import type { DonationStatus } from '@/generated/prisma/enums';
  */
 
 /** 결제가 승인되어 정산 대상이 되는 결제 상태 */
-export const PAID_STATUSES: DonationStatus[] = [
+export const PAID_STATUSES: ChargeStatus[] = [
   'PAYMENT_SUCCESS',
   'BROADCAST_PENDING',
   'BROADCASTED',

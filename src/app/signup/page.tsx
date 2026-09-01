@@ -7,7 +7,7 @@ import { Card, CardTitle, Notice, LinkButton } from '@/components/ui';
 import { SocialAuthButtons } from '@/components/public/social-auth';
 
 export const metadata: Metadata = {
-  title: '이용자 회원가입 | 문자페이',
+  title: '이용자 회원가입 | 메시지페이',
   description: '결제 내역과 결제 수단, 이용 한도를 웹에서 관리하려면 이용자 계정을 만들어 주세요.',
 };
 
@@ -71,7 +71,7 @@ function SignupAside() {
         <p className="mt-2 text-[13px] leading-relaxed text-ink-500">
           결제 수신번호를 받으려면 가맹점 가입 신청이 필요합니다.
         </p>
-        <LinkButton href="/creator-apply" variant="secondary" size="md" className="mt-3 w-full">
+        <LinkButton href="/merchant-apply" variant="secondary" size="md" className="mt-3 w-full">
           가맹점 가입 신청
         </LinkButton>
       </Card>

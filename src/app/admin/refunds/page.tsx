@@ -8,7 +8,7 @@ import { approveRefundAction, rejectRefundAction, createAdminRefund } from '@/ap
 import { prisma } from '@/server/db';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
-import { refundStatusLabel, donationStatusLabel } from '@/lib/labels';
+import { refundStatusLabel, chargeStatusLabel } from '@/lib/labels';
 import type { Prisma } from '@/generated/prisma/client';
 import type { RefundStatus } from '@/generated/prisma/enums';
 
@@ -28,7 +28,7 @@ export default async function AdminRefundsPage({
 
   const where: Prisma.RefundWhereInput = {
     ...(status ? { status } : {}),
-    ...(q ? { donation: { transactionNo: { contains: q, mode: 'insensitive' as const } } } : {}),
+    ...(q ? { charge: { transactionNo: { contains: q, mode: 'insensitive' as const } } } : {}),
   };
 
   const [total, refunds, grouped, waiting] = await Promise.all([
@@ -41,11 +41,11 @@ export default async function AdminRefundsPage({
       select: {
         id: true, amount: true, reason: true, status: true, requestedAt: true, processedAt: true,
         resultCode: true, resultMessage: true,
-        donation: {
+        charge: {
           select: {
             id: true, transactionNo: true, status: true, paidAt: true, settledAt: true,
-            creator: { select: { id: true, displayName: true } },
-            donor: { select: { id: true, phoneMasked: true } },
+            merchant: { select: { id: true, displayName: true } },
+            payer: { select: { id: true, phoneMasked: true } },
           },
         },
       },
@@ -150,14 +150,14 @@ export default async function AdminRefundsPage({
                         <span className="mt-0.5 block text-[11px] text-ink-400">처리 {formatKst(r.processedAt, false)}</span>
                       ) : null}
                     </Td>
-                    <Td className="font-mono text-[12px]">{r.donation.transactionNo}</Td>
+                    <Td className="font-mono text-[12px]">{r.charge.transactionNo}</Td>
                     <Td>
-                      <Link href={`/admin/creators/${r.donation.creator.id}`} className="font-semibold text-brand-700">
-                        {r.donation.creator.displayName}
+                      <Link href={`/admin/merchants/${r.charge.merchant.id}`} className="font-semibold text-brand-700">
+                        {r.charge.merchant.displayName}
                       </Link>
-                      {r.donation.donor ? (
-                        <Link href={`/admin/donors/${r.donation.donor.id}`} className="mt-0.5 block text-[11px] text-ink-400">
-                          {r.donation.donor.phoneMasked}
+                      {r.charge.payer ? (
+                        <Link href={`/admin/payers/${r.charge.payer.id}`} className="mt-0.5 block text-[11px] text-ink-400">
+                          {r.charge.payer.phoneMasked}
                         </Link>
                       ) : null}
                     </Td>
@@ -173,10 +173,10 @@ export default async function AdminRefundsPage({
                       ) : null}
                     </Td>
                     <Td>
-                      <Badge tone={donationStatusLabel[r.donation.status].tone}>
-                        {donationStatusLabel[r.donation.status].text}
+                      <Badge tone={chargeStatusLabel[r.charge.status].tone}>
+                        {chargeStatusLabel[r.charge.status].text}
                       </Badge>
-                      {r.donation.settledAt ? (
+                      {r.charge.settledAt ? (
                         <span className="mt-0.5 block text-[11px] text-warning-500">
                           지급 완료분 · 다음 정산 차감
                         </span>
