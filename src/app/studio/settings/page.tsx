@@ -381,7 +381,7 @@ export default async function StudioSettingsPage({
 
             <div className="mt-4">
               <Notice tone="warning" title="링크는 직접 넣을 수 없습니다">
-                안내 문자에는 링크(http, www)나 전화번호·계좌번호를 넣을 수 없습니다. 결제 링크는 문자페이가 본문 끝에
+                안내 문자에는 링크(http, www)나 전화번호·계좌번호를 넣을 수 없습니다. 결제 링크는 메시지페이가 본문 끝에
                 자동으로 붙이며, <strong>&ldquo;아직 결제되지 않았습니다&rdquo;</strong> 고지도 시스템이 함께 붙입니다.
                 이 고지는 오인 결제 민원을 막기 위한 것이라 가맹점이 지울 수 없습니다.
               </Notice>
@@ -504,8 +504,8 @@ export default async function StudioSettingsPage({
             <CardTitle>이 API 가 필요한 경우</CardTitle>
             <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-500">
               가맹점 사이트에서 <strong>포인트를 자동으로 적립</strong>하고 싶을 때만 사용합니다. 가맹점 서버가 충전
-              내역을 주기적으로 가져가(pull) 회원에게 적립한 뒤, 처리 결과를 문자페이에 알려주는 방식입니다.
-              문자페이가 가맹점 서버를 호출하지 않으므로 가맹점 쪽에 별도 수신 서버를 두지 않아도 됩니다.
+              내역을 주기적으로 가져가(pull) 회원에게 적립한 뒤, 처리 결과를 메시지페이에 알려주는 방식입니다.
+              메시지페이가 가맹점 서버를 호출하지 않으므로 가맹점 쪽에 별도 수신 서버를 두지 않아도 됩니다.
             </p>
             <div className="mt-3">
               <DataRow label="조회" value={<code className="font-mono text-[12px]">GET /api/partner/v1/charges?status=pending</code>} />

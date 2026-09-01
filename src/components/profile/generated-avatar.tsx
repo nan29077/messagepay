@@ -17,7 +17,7 @@ export function avatarIndexFromSeed(seed: string) {
 export function normalizeAvatarIndex(index: number | null | undefined, seed: string) {
   return typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < 50
     ? index
-    : avatarIndexFromSeed(seed || 'munjapay');
+    : avatarIndexFromSeed(seed || 'messagepay');
 }
 
 export function GeneratedAvatar({
@@ -32,7 +32,7 @@ export function GeneratedAvatar({
   className?: string;
 }) {
   const index = normalizeAvatarIndex(avatarIndex, seed);
-  const avatarSrc = `/avatars/munjapay-v2/avatar-${String(index + 1).padStart(2, '0')}.png`;
+  const avatarSrc = `/avatars/messagepay-v2/avatar-${String(index + 1).padStart(2, '0')}.png`;
 
   return (
     // eslint-disable-next-line @next/next/no-img-element
@@ -48,7 +48,16 @@ export function GeneratedAvatar({
   );
 }
 
-const CHARACTER_SHEETS = ['/avatars-munjapay-a-v1.png', '/avatars-munjapay-b-v1.png'];
+// 과거 데이터에 남아 있는 값이라 브랜드명을 바꾸면 안 된다.
+// (파일 자체는 더 이상 없고, 이 목록은 "잘못 저장된 avatarUrl" 을 걸러내는 용도다)
+const CHARACTER_SHEETS = [
+  '/avatars-donaido-a-v1.png',
+  '/avatars-donaido-b-v1.png',
+  '/avatars-munjapay-a-v1.png',
+  '/avatars-munjapay-b-v1.png',
+  '/avatars-messagepay-a-v1.png',
+  '/avatars-messagepay-b-v1.png',
+];
 
 /**
  * 앱 전역 프로필 표시 컴포넌트.

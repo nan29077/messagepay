@@ -9,7 +9,7 @@ import { ProfileAvatar } from '@/components/profile/generated-avatar';
 
 /**
  * 가맹점 검색.
- * 코드(MJP-8K2M)뿐 아니라 가맹점 이름·서비스명으로도 찾을 수 있다.
+ * 코드(MSG-8K2M)뿐 아니라 가맹점 이름·서비스명으로도 찾을 수 있다.
  * 검색 버튼은 결과 목록만 열고, 사용자가 결과를 선택했을 때만 결제 페이지로 이동한다.
  */
 export function MerchantCodeForm({ autoFocus = false }: { autoFocus?: boolean }) {
@@ -58,7 +58,7 @@ export function MerchantCodeForm({ autoFocus = false }: { autoFocus?: boolean })
         </Button>
       </div>
       <p className="text-center text-[11.5px] text-ink-400">
-        가맹점 코드(MJP-8K2M), 서비스명으로 검색할 수 있습니다.
+        가맹점 코드(MSG-8K2M), 서비스명으로 검색할 수 있습니다.
       </p>
 
       {error ? <Notice tone="warning">{error}</Notice> : null}

@@ -94,7 +94,7 @@ export async function GET(req: Request) {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
       // 파일명에 배치번호를 넣어 어떤 파일이 어떤 배치인지 사람이 바로 구분할 수 있게 한다.
-      'Content-Disposition': `attachment; filename="munjapay-payout-${issue.batchNo}-${rows.length}.csv"`,
+      'Content-Disposition': `attachment; filename="messagepay-payout-${issue.batchNo}-${rows.length}.csv"`,
       'Cache-Control': 'no-store',
       // 재발급 건이 섞여 있으면 헤더로도 알린다(운영자 스크립트 대응).
       'X-Payout-Reissued': String(issue.reissued.length),

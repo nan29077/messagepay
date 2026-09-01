@@ -2,14 +2,14 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-title 문자페이 - 개발 서버 (포트 3030)
+title 메시지페이 - 개발 서버 (포트 3030)
 
 set APP_PORT=3030
 set APP_URL=http://localhost:%APP_PORT%
 
 echo.
 echo ==========================================
-echo   문자페이 BASIC - 개발 서버
+echo   메시지페이 BASIC - 개발 서버
 echo   %APP_URL%
 echo ==========================================
 echo.
@@ -74,8 +74,8 @@ echo        서버를 끄려면 이 창에서 Ctrl+C 를 누르거나 창을 닫
 echo        (창을 닫으면 서버도 함께 종료됩니다)
 echo.
 echo   메인        %APP_URL%
-echo   크리에이터  %APP_URL%/studio   creator1@munjapay.kr / munjapay1234!
-echo   관리자      %APP_URL%/admin    admin@munjapay.kr / munjapay1234!
+echo   크리에이터  %APP_URL%/studio   creator1@messagepay.kr / messagepay1234!
+echo   관리자      %APP_URL%/admin    admin@messagepay.kr / messagepay1234!
 echo.
 
 start "" powershell -NoProfile -ExecutionPolicy Bypass -Command "$u='%APP_URL%/api/health'; for($i=0;$i -lt 150;$i++){ try{ $r=Invoke-WebRequest -Uri $u -UseBasicParsing -TimeoutSec 5; if($r.StatusCode -eq 200){ Start-Process '%APP_URL%'; exit } }catch{}; Start-Sleep -Seconds 2 }"

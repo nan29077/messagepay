@@ -9,7 +9,7 @@ import { prisma } from '@/server/db';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '공지사항 | 메시지페이',
+  title: '공지사항',
   description: '메시지페이 서비스 운영 공지와 점검, 정책 변경 안내를 확인하세요.',
 };
 

@@ -157,7 +157,7 @@ describe('충전 금액 선택', () => {
       data: {
         id: `c-${Date.now()}`,
         userId: otherUser.id,
-        code: `MJP-${Date.now().toString().slice(-4)}`,
+        code: `MSG-${Date.now().toString().slice(-4)}`,
         displayName: '다른가맹점',
         status: 'APPROVED',
       },
@@ -238,7 +238,7 @@ describe('충전 금액 선택', () => {
 
     const paid = await prisma.charge.findUniqueOrThrow({ where: { id: res.chargeId! } });
     expect(paid.paidAt).not.toBeNull();
-    // 문자페이는 가맹점 서버를 호출하지 않는다. 지급 여부는 가맹점이 콘솔에서 표시한다.
+    // 메시지페이는 가맹점 서버를 호출하지 않는다. 지급 여부는 가맹점이 콘솔에서 표시한다.
     expect(paid.pointStatus).toBe('PENDING');
     expect(paid.pointGivenAt).toBeNull();
   });

@@ -114,9 +114,9 @@ export async function isTestLoginAllowed(): Promise<boolean> {
 }
 
 const TEST_ACCOUNTS = {
-  admin: { email: 'admin@munjapay.kr', label: '최고관리자', redirect: '/admin' },
-  merchant: { email: 'merchant1@munjapay.kr', label: '가맹점', redirect: '/studio' },
-  payer: { email: 'payer@munjapay.kr', label: '이용자', redirect: '/my' },
+  admin: { email: 'admin@messagepay.kr', label: '최고관리자', redirect: '/admin' },
+  merchant: { email: 'merchant1@messagepay.kr', label: '가맹점', redirect: '/studio' },
+  payer: { email: 'payer@messagepay.kr', label: '이용자', redirect: '/my' },
 } as const;
 
 export type TestAccountKey = keyof typeof TEST_ACCOUNTS;
@@ -137,7 +137,7 @@ export async function testLogin(_prev: TestLoginState, formData: FormData): Prom
 
   if (!user) {
     return {
-      message: `${account.label} 시드 계정(${account.email})이 없습니다. 도구_DB초기화.bat 으로 시드를 다시 생성해 주세요.`,
+      message: `${account.label} 시드 계정(${account.email})이 없습니다. 미리보기(1_미리보기실행.bat)라면 도구_미리보기초기화.bat 으로, 도커 DB 를 쓰면 도구_DB초기화.bat 으로 시드를 다시 만들어 주세요.`,
     };
   }
   if (user.status !== 'ACTIVE') {

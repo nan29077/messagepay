@@ -55,7 +55,7 @@ export async function seedBasics(options: { paymentMode?: 'CONFIRM_LINK' | 'DIRE
   });
   const merchant = await prisma.merchantProfile.create({
     data: {
-      id: newId(), userId: user.id, code: `MJP-${newId().slice(-4)}`, displayName: '테스트가맹점',
+      id: newId(), userId: user.id, code: `MSG-${newId().slice(-4)}`, displayName: '테스트가맹점',
       status: 'APPROVED',
       paymentMode: options.paymentMode ?? 'DIRECT_TRIGGER',
     },

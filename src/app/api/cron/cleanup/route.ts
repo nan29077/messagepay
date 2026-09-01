@@ -12,7 +12,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * 정리 배치 (외부 스케줄러 → 문자페이).
+ * 정리 배치 (외부 스케줄러 → 메시지페이).
  *
  * AWS EventBridge Scheduler 등에서 **1분 간격**으로 호출한다.
  *   GET /api/cron/cleanup

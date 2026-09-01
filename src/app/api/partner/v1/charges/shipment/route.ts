@@ -21,7 +21,7 @@ interface ShipBody {
  * POST /api/partner/v1/charges/shipment
  *
  * 실물 주문의 배송 상태와 송장번호를 등록한다.
- * 가맹점이 자기 물류 시스템에서 출고 처리한 결과를 문자페이에 반영하는 용도다.
+ * 가맹점이 자기 물류 시스템에서 출고 처리한 결과를 메시지페이에 반영하는 용도다.
  *
  * body
  *  { "transactionNo": "MP...", "status": "SHIPPED", "carrier": "CJ대한통운", "trackingNo": "123456789012" }

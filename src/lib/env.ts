@@ -200,7 +200,7 @@ export const env = {
 } as const;
 
 /**
- * 구(舊) CONFIRM_LINK 경로(문자페이 자체 확인 페이지)를 계속 쓸지 여부. **deprecated**
+ * 구(舊) CONFIRM_LINK 경로(메시지페이 자체 확인 페이지)를 계속 쓸지 여부. **deprecated**
  *
  * 기본값 false — CONFIRM_LINK 모드는 결제사 PIN 인증 링크를 사용한다.
  * 되돌림(롤백)이 필요할 때만 ALLOW_LEGACY_CONFIRM_LINK=true 로 연다.

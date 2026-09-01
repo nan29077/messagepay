@@ -1,4 +1,4 @@
-﻿# 문자페이 미리보기 복구 실행기
+﻿# 메시지페이 미리보기 복구 실행기
 #
 # 핵심: .next(빌드 폴더)가 잠겨서 지워지지 않으면, 그 위에 새 빌드가 덧씌워지며
 # "client reference manifest" 오류로 서버가 죽는다. 그래서 지우지 못하면 빌드하지 않고 멈춘다.
@@ -17,7 +17,7 @@ Remove-Item -Force -ErrorAction SilentlyContinue $log
 function Say([string]$m) { $m | Tee-Object -FilePath $log -Append }
 
 Say "================================================"
-Say " 문자페이 미리보기 복구 실행"
+Say " 메시지페이 미리보기 복구 실행"
 Say " 시작 $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 Say " 폴더 $root"
 Say "================================================"
@@ -40,7 +40,7 @@ if ($nodes) {
 } else {
   Say "  없음"
 }
-Remove-Item -Force -ErrorAction SilentlyContinue '.munjapay-server.lock'
+Remove-Item -Force -ErrorAction SilentlyContinue '.messagepay-server.lock'
 
 Say ""
 Say "--- [3] 빌드 폴더(.next) 삭제 ---"
@@ -63,7 +63,7 @@ if (-not $deleted) {
   Say ""
   Say " 아래를 순서대로 해주세요."
   Say "   1) VS Code / Cursor / 편집기를 완전히 종료"
-  Say "   2) 탐색기에서 문자페이 폴더 창을 모두 닫기"
+  Say "   2) 탐색기에서 메시지페이 폴더 창을 모두 닫기"
   Say "   3) 이 배치 파일을 다시 실행"
   Say ""
   Say " 그래도 안 되면 PC를 재부팅한 뒤 다시 실행해 주세요."

@@ -1,5 +1,5 @@
 
-> munjapay-app@0.1.0 preview
+> messagepay-app@0.1.0 preview
 > node tools/preview.mjs
 
 [1/3] 내장 데이터베이스 기동 (기존 데이터 사용)

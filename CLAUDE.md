@@ -1,8 +1,19 @@
-# 문자페이(MUNJAPAY) — 개발 가이드
+# 메시지페이(MESSAGEPAY) — 개발 가이드
 
 문자 한 통으로 끝나는 결제·충전 서비스(문자PG). 가맹 서비스의 포인트·캐시를 문자로 충전한다. 이 문서는 이 저장소에서 작업할 때의 규칙입니다.
 
-토네이도/도네이도 저장소를 복사해 만들었고 지금은 완전히 분리되어 있다(원격: `github.com/nan29077/munjapay`). 브랜드 표기는 한글 **문자페이**, 영문 **MUNJAPAY**, 식별자 슬러그 `munjapay` 로 통일한다. 코드·자산·시드에 `tornado` / `donaido` / `도네이도` 를 다시 만들지 않는다. 다만 `prisma/migrations/20260819100000_init_tornado` 폴더명과 그 안의 SQL 은 적용 이력이라 그대로 둔다.
+로컬 작업 폴더는 `E:\프로젝트\메시지페이`, 원격은 `github.com/nan29077/messagepay` 다.
+
+브랜드 표기는 한글 **메시지페이**, 영문 **MESSAGEPAY**, 식별자 슬러그 `messagepay` 로 통일한다. 코드·자산·시드·문서에 `tornado` / `donaido` / `도네이도` / `토네이도` / `munjapay` / `MUNJAPAY` / `문자페이` / `MJP` 를 다시 만들지 않는다.
+
+식별자 체계: 시드 계정 도메인 `@messagepay.kr`, 시드 비밀번호 `messagepay1234!`, 가맹점 코드 `MSG-XXXX`, PG 주문번호 접두 `MSG`, 거래번호 `TRD-`(브랜드 무관, 유지), 쿠키 `messagepay_inquiry`·`messagepay_session`·`messagepay_social_*`, 서명 헤더 `x-messagepay-signature`, 잠금 파일 `.messagepay-server.lock`, 도커 프로젝트/컨테이너/DB/볼륨 `messagepay*`.
+
+구브랜드가 남아 있는 예외 두 곳은 적용 이력이라 그대로 둔다:
+- `prisma/migrations/20260819100000_init_tornado` 폴더명과 그 안의 SQL.
+- `prisma/migrations/**/*.sql` 안의 `munjapay_block_ledger_mutation` 트리거 함수명 등 구브랜드 식별자. 바꾸려면 기존 SQL 을 고치지 말고 새 마이그레이션을 추가한다.
+- `prisma/seed-version.mjs` 의 시드 버전 이력 주석(8번 줄). 지난 버전이 무엇이었는지 남기는 기록이다.
+
+`public/_legacy-munjapay/` 는 코드에서 참조하지 않는 구브랜드 이미지 보관함이다. 새 코드에서 참조하지 않는다.
 
 ## 절대 규칙
 
@@ -58,7 +69,7 @@ docs/              분석·설계 보고서, 운영 문서
 - **`3_서버종료.bat`** — 창을 닫아도 남아 있는 서버를 정리한다. 창을 정상적으로 닫으면 서버도 함께 종료된다.
 - **`도구_수정즉시반영.bat`** — 저장하면 서버 재시작 없이 화면에 바로 반영된다(HMR). 코드를 고치는 동안에는 이쪽을 쓴다. `1_미리보기실행.bat` 과 같은 실행기에 `PREVIEW_MODE=dev` 를 준 것이다.
 - 문제가 생기면 `도구_환경점검.bat` 으로 원인을 먼저 점검하고, 로그가 필요하면 `도구_상세진단.bat` 을 쓴다.
-- 그 밖의 도구: `도구_설치복구.bat`(node_modules 복구), `도구_미리보기복구.bat`(`.next` 잠김 복구), `도구_DB초기화.bat`, `도구_테스트실행.bat`.
+- 그 밖의 도구: `도구_설치복구.bat`(node_modules 복구), `도구_미리보기복구.bat`(`.next` 잠김 복구), `도구_미리보기초기화.bat`(미리보기 `.pglite`+`.next` 삭제 후 시드 재생성), `도구_DB초기화.bat`, `도구_테스트실행.bat`.
 - 공통 의존성 점검기는 `tools/ensure-deps.bat` 이다. 각 배치 파일이 `call` 로 부르므로 이름과 위치를 바꾸지 않는다.
 - `.env` 에 `NODE_ENV` 를 넣지 않는다. 빌드/실행 모드가 뒤섞여 React 오류가 난다.
 - `src/app/error.tsx` 등 에러 바운더리에서 훅(useEffect 등)을 쓰지 않는다. `/_global-error` 프리렌더가 실패한다.

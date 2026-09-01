@@ -17,7 +17,7 @@ const slides = [
     cta: '이용방법 보기',
   },
   {
-    image: '/assets/munjapay-banner-secure-v1.png',
+    image: '/assets/messagepay-banner-secure-v1.png',
     mascotOverlay: true,
     eyebrow: 'SAFE BY DESIGN',
     title: '확인하고 결제하니\n더 안심할 수 있습니다',
@@ -26,7 +26,7 @@ const slides = [
     cta: '안전한 결제 알아보기',
   },
   {
-    image: '/assets/munjapay-banner-business-v1.png',
+    image: '/assets/messagepay-banner-business-v1.png',
     mascotOverlay: true,
     eyebrow: 'BUILT FOR YOUR SERVICE',
     title: '충전이 필요한 서비스에\n메시지페이를 연결하세요',

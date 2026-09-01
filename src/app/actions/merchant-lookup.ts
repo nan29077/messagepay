@@ -8,7 +8,7 @@ import { clientIpFrom } from '@/server/rate-limit';
 
 /**
  * 가맹점 검색 / 코드 조회.
- * - 코드(MJP-XXXX)뿐 아니라 가맹점 이름·서비스명으로도 검색할 수 있다.
+ * - 코드(MSG-XXXX)뿐 아니라 가맹점 이름·서비스명으로도 검색할 수 있다.
  * - 무차별 탐색을 막기 위해 IP 단위 요청 제한을 유지하고, 결과는 최대 8건까지만 반환한다.
  * - 승인(APPROVED)된 가맹점만 노출한다.
  */
@@ -75,7 +75,7 @@ export async function lookupMerchantCode(input: string): Promise<LookupResult> {
 
   // 1) 코드 형태면 코드 우선 조회
   const code = normalizeMerchantCode(raw);
-  if (/^MJP-[A-Z0-9]{4,8}$/.test(code)) {
+  if (/^MSG-[A-Z0-9]{4,8}$/.test(code)) {
     const byCode = await prisma.merchantProfile.findFirst({
       where: { code, status: 'APPROVED' },
       select: merchantSearchSelect,
@@ -105,7 +105,7 @@ export async function lookupMerchantCode(input: string): Promise<LookupResult> {
   if (matches.length === 0) {
     return {
       ok: false,
-      message: '검색 결과가 없습니다. 가맹점 코드(예: MJP-8K2M) 또는 정확한 채널명·이름으로 다시 검색해 주세요.',
+      message: '검색 결과가 없습니다. 가맹점 코드(예: MSG-8K2M) 또는 정확한 채널명·이름으로 다시 검색해 주세요.',
     };
   }
   return { ok: true, matches: matches.map(toSearchItem) };

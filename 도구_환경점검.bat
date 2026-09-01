@@ -2,11 +2,11 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-title 문자페이 - 환경 점검
+title 메시지페이 - 환경 점검
 
 echo.
 echo ==========================================
-echo   문자페이 BASIC - 환경 점검
+echo   메시지페이 BASIC - 환경 점검
 echo ==========================================
 echo.
 
@@ -31,8 +31,8 @@ where docker >nul 2>nul
 if errorlevel 1 (
   echo     설치되지 않음 ^(직접 설치한 PostgreSQL 을 쓰신다면 무시^)
 ) else (
-  docker ps --filter "name=munjapay-postgres" --format "     컨테이너: {{.Names}} {{.Status}}" 2>nul
-  docker ps --filter "name=munjapay-redis" --format "     컨테이너: {{.Names}} {{.Status}}" 2>nul
+  docker ps --filter "name=messagepay-postgres" --format "     컨테이너: {{.Names}} {{.Status}}" 2>nul
+  docker ps --filter "name=messagepay-redis" --format "     컨테이너: {{.Names}} {{.Status}}" 2>nul
 )
 
 echo.

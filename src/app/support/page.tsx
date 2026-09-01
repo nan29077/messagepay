@@ -7,7 +7,7 @@ import { BannerStrip } from '@/components/public/banner-strip';
 import { Card, CardTitle, Notice, LinkButton } from '@/components/ui';
 
 export const metadata: Metadata = {
-  title: '고객센터 | 메시지페이',
+  title: '고객센터',
   description: '결제 취소·환불, 계좌 등록, 결제 오류, 충전 반영 문제를 접수합니다.',
 };
 

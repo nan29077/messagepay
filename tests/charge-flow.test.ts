@@ -355,7 +355,7 @@ describe('대표번호 + 키워드 라우팅', () => {
     fx = await seedBasics({ paymentMode: 'DIRECT_TRIGGER' });
     await prisma.merchantMoNumber.create({
       data: {
-        id: newId(), phoneNumber: '15889000', keyword: 'MJP3QP7', mode: 'SHARED_PREFIX',
+        id: newId(), phoneNumber: '15889000', keyword: 'MSG3QP7', mode: 'SHARED_PREFIX',
         status: 'ASSIGNED', merchantId: fx.merchantId, providerId: 'mock', assignedAt: new Date(),
       },
     });
@@ -363,7 +363,7 @@ describe('대표번호 + 키워드 라우팅', () => {
 
   it('키워드로 가맹점를 식별하고 키워드는 메시지에서 제거된다', async () => {
     await seedRegisteredPayer(fx.payerPhone);
-    const res = await inbound(moPayload({ to: '15889000', text: 'MJP3QP7 응원합니다' }));
+    const res = await inbound(moPayload({ to: '15889000', text: 'MSG3QP7 응원합니다' }));
 
     expect(res.result).toBe('ROUTED');
     const charge = await prisma.charge.findFirstOrThrow({ where: { id: res.chargeId } });

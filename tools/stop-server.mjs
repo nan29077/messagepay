@@ -1,5 +1,5 @@
 /**
- * 실행 중인 문자페이 서버 종료.
+ * 실행 중인 메시지페이 서버 종료.
  *
  * 3_서버종료.bat 이 호출한다. 창을 닫아도 남아 있는 서버(고아 프로세스)를 정리한다.
  *  - 3030 : 앱 서버 (Next.js)
@@ -25,7 +25,7 @@ for (const t of targets) {
 
 if (running.length === 0) {
   clearLock();
-  console.log('[안내] 실행 중인 문자페이 서버가 없습니다.');
+  console.log('[안내] 실행 중인 메시지페이 서버가 없습니다.');
   process.exit(0);
 }
 
@@ -38,7 +38,7 @@ for (const t of running) {
     failed = true;
     const who = (res.blockedBy ?? []).map((p) => `${p.name}(PID ${p.pid})`).join(', ');
     console.error(`[경고] ${t.label} 를 종료하지 못했습니다.`);
-    if (who) console.error(`       문자페이가 아닌 다른 프로그램이 사용 중입니다: ${who}`);
+    if (who) console.error(`       메시지페이가 아닌 다른 프로그램이 사용 중입니다: ${who}`);
     else console.error('       작업 관리자에서 Node.js 프로세스를 직접 종료해 주세요.');
   }
 }

@@ -280,7 +280,7 @@ try {
     r.ok('금액이 표시된다', shown.includes('3,000원'));
     r.ok('테스트 배지가 붙는다', shown.includes('테스트'));
     r.ok('메시지가 표시된다', shown.includes('오늘 방송 재미있어요'));
-    r.ok('오버레이 브랜드 표기', shown.includes('MUNJAPAY'));
+    r.ok('오버레이 브랜드 표기', shown.includes('MESSAGEPAY'));
 
     r.ok('스튜디오에 테스트 결제 안내가 뜬다', (await bodyText(o)).includes('실제 결제와 정산에는 반영되지 않습니다'));
 

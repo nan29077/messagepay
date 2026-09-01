@@ -40,7 +40,7 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 
   const metadataBase = new URL(siteUrl);
-  const shareImage = new URL('/assets/munjapay-og-v1.png', metadataBase).toString();
+  const shareImage = new URL('/assets/messagepay-og-v2.png', metadataBase).toString();
 
   return {
     metadataBase,
@@ -49,9 +49,9 @@ export async function generateMetadata(): Promise<Metadata> {
     keywords: ['메시지페이', 'MessagePay', '문자결제', '포인트 충전', '간편결제', 'SMS 결제', '선불 충전'],
     icons: {
       icon: [
-        { url: '/munjapay-mark.svg?v=1', type: 'image/svg+xml', sizes: 'any' },
+        { url: '/messagepay-mark.svg?v=1', type: 'image/svg+xml', sizes: 'any' },
       ],
-      shortcut: '/munjapay-mark.svg?v=1',
+      shortcut: '/messagepay-mark.svg?v=1',
     },
     openGraph: {
       title: shareTitle,
@@ -60,7 +60,7 @@ export async function generateMetadata(): Promise<Metadata> {
       url: metadataBase,
       siteName: 'MessagePay(메시지페이)',
       locale: 'ko_KR',
-      images: [{ url: shareImage, width: 1200, height: 630, alt: '메시지페이 쉽고 빠른 문자결제' }],
+      images: [{ url: shareImage, width: 1200, height: 630, alt: '메시지페이 - 문자 한 통으로, 결제와 충전이 끝납니다' }],
     },
     twitter: {
       card: 'summary_large_image',

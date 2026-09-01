@@ -20,7 +20,7 @@ export { mockPinUrl } from './mock-pin';
  *   7) 취소/환불                            → cancel
  *
  * 주의: 헥토 공식 제약상 결제인증 완료 후 10분 이내에 승인 API 를 호출해야 한다.
- *       문자페이는 CONFIRM_LINK 유효시간을 그보다 짧게(기본 300초) 운용한다.
+ *       메시지페이는 CONFIRM_LINK 유효시간을 그보다 짧게(기본 300초) 운용한다.
  */
 
 /**
@@ -201,7 +201,7 @@ export const mockPaymentAdapter: PaymentAdapter = {
 
   /**
    * Mock PIN 링크 발급.
-   * 실제 결제사에 아무것도 보내지 않으며, 문자페이 내부의 모의 PIN 화면 주소를 돌려준다.
+   * 실제 결제사에 아무것도 보내지 않으며, 메시지페이 내부의 모의 PIN 화면 주소를 돌려준다.
    */
   async requestPinLink(chargeId, amount, _phone, method = 'ACCOUNT') {
     if (Number(amount % 1000n) === 555) {

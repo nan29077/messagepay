@@ -79,7 +79,7 @@ describe('가맹점 금칙어', () => {
       data: { id: newId(), email: `other-${newId()}@test.kr`, name: '다른가맹점', role: 'MERCHANT' },
     });
     const other = await prisma.merchantProfile.create({
-      data: { id: newId(), userId: otherUser.id, displayName: '다른채널', code: `MJP-${newId().slice(-4)}`, status: 'APPROVED' },
+      data: { id: newId(), userId: otherUser.id, displayName: '다른채널', code: `MSG-${newId().slice(-4)}`, status: 'APPROVED' },
     });
 
     const mine = await loadBannedWords(fx.merchantId);

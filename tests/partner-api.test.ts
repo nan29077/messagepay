@@ -38,8 +38,8 @@ function signedPost(path: string, body: unknown, secret = key.signingSecret, ts?
     headers: {
       authorization: `Bearer ${key.apiKey}`,
       'content-type': 'application/json',
-      'x-munjapay-timestamp': stamp,
-      'x-munjapay-signature': signPartnerRequest(secret, stamp, 'POST', path, raw),
+      'x-messagepay-timestamp': stamp,
+      'x-messagepay-signature': signPartnerRequest(secret, stamp, 'POST', path, raw),
     },
     body: raw,
   });
@@ -157,8 +157,8 @@ describe('서명', () => {
         method: 'POST',
         headers: {
           authorization: `Bearer ${key.apiKey}`,
-          'x-munjapay-timestamp': stamp,
-          'x-munjapay-signature': sig,
+          'x-messagepay-timestamp': stamp,
+          'x-messagepay-signature': sig,
         },
         body: raw,
       });

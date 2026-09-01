@@ -1,14 +1,14 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import sharp from 'sharp';
 
-const source = await readFile(new URL('../public/munjapay-mark-v4.svg', import.meta.url));
+const source = await readFile(new URL('../public/messagepay-mark-v4.svg', import.meta.url));
 
 async function transparentMark(size) {
   return sharp(source).resize(size, size, { fit: 'contain' }).png().toBuffer();
 }
 
 const icon512 = await transparentMark(512);
-await writeFile(new URL('../public/munjapay-icon-v4.png', import.meta.url), icon512);
+await writeFile(new URL('../public/messagepay-icon-v4.png', import.meta.url), icon512);
 await writeFile(new URL('../src/app/icon.png', import.meta.url), icon512);
 
 const appleMark = await sharp(source).resize(372, 372, { fit: 'contain' }).png().toBuffer();

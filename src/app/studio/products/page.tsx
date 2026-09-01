@@ -141,7 +141,7 @@ export default async function StudioProductsPage({
                 description="포인트 · 상품권 · 이용권처럼 배송이 없는 상품입니다. 지급은 가맹점이 직접 처리합니다."
               />
               <Notice tone="neutral" title="포인트는 가맹점이 발행합니다">
-                문자페이는 결제와 정산만 대행하고, 포인트·상품권·이용권의 발행과 지급은 가맹점이 합니다. 결제 완료
+                메시지페이는 결제와 정산만 대행하고, 포인트·상품권·이용권의 발행과 지급은 가맹점이 합니다. 결제 완료
                 건은 <Link href="/studio/charges" className="font-bold text-brand-700">결제 내역</Link> 에서 지급 처리하거나
                 연동 API 로 자동 적립할 수 있습니다.
               </Notice>

@@ -35,14 +35,14 @@ try {
   await p.waitForTimeout(2000);
   const consent = await bodyText(p);
   r.ok('모의 동의 화면으로 이동한다', consent.includes('테스트용 모의 동의 화면입니다'), p.url());
-  r.ok('요청 권한이 안내된다', consent.includes('문자페이가 요청하는 권한'));
+  r.ok('요청 권한이 안내된다', consent.includes('메시지페이가 요청하는 권한'));
   r.ok('허용/거부 선택지가 있다', (await p.locator('a:has-text("채널 연결 허용")').count()) > 0 && (await p.locator('a:has-text("거부")').count()) > 0);
 
   await p.locator('a:has-text("채널 연결 허용")').click();
   await p.waitForTimeout(3000);
   yt = await bodyText(p);
   r.ok('채널이 연결된다', yt.includes('유튜브 채널을 연결했습니다.'), yt.slice(0, 160));
-  r.ok('연결된 채널명이 보인다', yt.includes('문자페이 테스트 채널'));
+  r.ok('연결된 채널명이 보인다', yt.includes('메시지페이 테스트 채널'));
   r.ok('연결 상태 배지', yt.includes('연결됨'));
   r.ok('채널 ID 가 표시된다', yt.includes('채널 ID'));
 
@@ -94,7 +94,7 @@ try {
   }
   r.ok('테마 섹션', ov.includes('테마'));
   {
-    const miss = missingOf(ov, ['문자페이 기본', '미니멀', '네온']);
+    const miss = missingOf(ov, ['메시지페이 기본', '미니멀', '네온']);
     r.ok('테마 3종', miss.length === 0, miss.join(','));
   }
   r.ok('TTS 섹션', ov.includes('TTS 읽어주기'));

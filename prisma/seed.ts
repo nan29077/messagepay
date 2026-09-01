@@ -7,7 +7,7 @@ import { encrypt, phoneHash, maskPhone, generateToken, tokenHash, maskSecret } f
 import { SEED_VERSION, SEED_VERSION_KEY } from './seed-version.mjs';
 import { SEED_TERMS, TERMS_VERSION, TERMS_EFFECTIVE_FROM } from './terms-content';
 
-// 운영 환경 가드: 시드는 테스트 계정(admin@munjapay.kr 등)과 샘플 데이터를 만들므로
+// 운영 환경 가드: 시드는 테스트 계정(admin@messagepay.kr 등)과 샘플 데이터를 만들므로
 // 운영 DB 에서는 절대 실행하지 않는다. (APP_ENV 별칭 규칙은 src/lib/env.ts 와 동일하게 prod/production 을 본다)
 const appEnv = (process.env.APP_ENV ?? '').trim().toLowerCase();
 const isProd = appEnv === 'prod' || appEnv === 'production' || process.env.NODE_ENV === 'production';
@@ -86,10 +86,10 @@ async function main() {
 
   // ---------------------------------------------------------------- 관리자
   const adminUser = await prisma.user.upsert({
-    where: { email: 'admin@munjapay.kr' },
+    where: { email: 'admin@messagepay.kr' },
     create: {
-      id: newId(), email: 'admin@munjapay.kr', name: '메시지페이 관리자',
-      role: 'ADMIN', passwordHash: await bcrypt.hash('munjapay1234!', 10),
+      id: newId(), email: 'admin@messagepay.kr', name: '메시지페이 관리자',
+      role: 'ADMIN', passwordHash: await bcrypt.hash('messagepay1234!', 10),
     },
     update: { role: 'ADMIN' },
   });
@@ -101,8 +101,8 @@ async function main() {
 
   // ---------------------------------------------------------------- 가맹점
   const merchantSeeds = [
-    { email: 'merchant1@munjapay.kr', name: '바람소리', code: 'MJP-8K2M', mo: '05051001001', mode: 'DEDICATED' as const, keyword: null },
-    { email: 'merchant2@munjapay.kr', name: '별하늘', code: 'MJP-3QP7', mo: '05059000000', mode: 'SHARED_PREFIX' as const, keyword: 'MJP3QP7' },
+    { email: 'merchant1@messagepay.kr', name: '바람소리', code: 'MSG-8K2M', mo: '05051001001', mode: 'DEDICATED' as const, keyword: null },
+    { email: 'merchant2@messagepay.kr', name: '별하늘', code: 'MSG-3QP7', mo: '05059000000', mode: 'SHARED_PREFIX' as const, keyword: 'MSG3QP7' },
   ];
 
   for (const c of merchantSeeds) {
@@ -110,7 +110,7 @@ async function main() {
       where: { email: c.email },
       create: {
         id: newId(), email: c.email, name: c.name, role: 'MERCHANT',
-        passwordHash: await bcrypt.hash('munjapay1234!', 10),
+        passwordHash: await bcrypt.hash('messagepay1234!', 10),
       },
       update: { role: 'MERCHANT' },
     });
@@ -259,10 +259,10 @@ async function main() {
 
   // 이용자 웹 계정 (테스트 로그인용) — PayerProfile 과 휴대폰 번호 기준으로 연결한다.
   const payerUser = await prisma.user.upsert({
-    where: { email: 'payer@munjapay.kr' },
+    where: { email: 'payer@messagepay.kr' },
     create: {
-      id: newId(), email: 'payer@munjapay.kr', name: '테스트이용자',
-      role: 'PAYER', passwordHash: await bcrypt.hash('munjapay1234!', 10),
+      id: newId(), email: 'payer@messagepay.kr', name: '테스트이용자',
+      role: 'PAYER', passwordHash: await bcrypt.hash('messagepay1234!', 10),
     },
     update: { role: 'PAYER' },
   });
@@ -400,7 +400,7 @@ async function main() {
     },
   });
   await prisma.contentPost.deleteMany({
-    where: { type: 'NOTICE', title: { in: ['문자페이 베타 서비스 안내', '도네이도 베타 서비스 안내', '토네이도 베타 서비스 안내'] } },
+    where: { type: 'NOTICE', title: { in: ['메시지페이 베타 서비스 안내', '도네이도 베타 서비스 안내', '토네이도 베타 서비스 안내'] } },
   });
 
   // ---------------------------------------------------------------- 050 번호 전환
@@ -409,7 +409,7 @@ async function main() {
   await prisma.merchantMoNumber.updateMany({ where: { phoneNumber: '15889000' }, data: { phoneNumber: '05059000000' } });
 
   // ---------------------------------------------------------------- 브랜드명 정리
-  // 브랜드명이 문자페이로 바뀌기 전(토네이도 · 도네이도)에 만들어진 시드 데이터가 남아 있으면
+  // 브랜드명이 메시지페이로 바뀌기 전(토네이도 · 도네이도)에 만들어진 시드 데이터가 남아 있으면
   // 계정 이메일과 가맹점 코드 체계까지 달라지므로 `npm run db:reset` 으로 새로 만든다.
 
   // 시드 버전 기록. 다음 실행 때 이 값으로 보충 시드 필요 여부를 판단한다.
@@ -420,10 +420,10 @@ async function main() {
   });
 
   console.log('시드 완료');
-  console.log('  관리자     : admin@munjapay.kr / munjapay1234!');
-  console.log('  가맹점 : merchant1@munjapay.kr / munjapay1234! (코드 MJP-8K2M, MO 0505-100-1001)');
-  console.log('  가맹점 : merchant2@munjapay.kr / munjapay1234! (코드 MJP-3QP7, MO 0505-900-0000 + 키워드 MJP3QP7)');
-  console.log('  이용자     : payer@munjapay.kr / munjapay1234! (010-1234-5678, 계좌 등록·계정 연결 완료)');
+  console.log('  관리자     : admin@messagepay.kr / messagepay1234!');
+  console.log('  가맹점 : merchant1@messagepay.kr / messagepay1234! (코드 MSG-8K2M, MO 0505-100-1001)');
+  console.log('  가맹점 : merchant2@messagepay.kr / messagepay1234! (코드 MSG-3QP7, MO 0505-900-0000 + 키워드 MSG3QP7)');
+  console.log('  이용자     : payer@messagepay.kr / messagepay1234! (010-1234-5678, 계좌 등록·계정 연결 완료)');
 }
 
 main()

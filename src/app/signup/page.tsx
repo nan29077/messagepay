@@ -7,7 +7,7 @@ import { Card, CardTitle, Notice, LinkButton } from '@/components/ui';
 import { SocialAuthButtons } from '@/components/public/social-auth';
 
 export const metadata: Metadata = {
-  title: '이용자 회원가입 | 메시지페이',
+  title: '이용자 회원가입',
   description: '결제 내역과 결제 수단, 이용 한도를 웹에서 관리하려면 이용자 계정을 만들어 주세요.',
 };
 

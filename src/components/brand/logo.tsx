@@ -1,7 +1,7 @@
 import * as React from 'react';
 
 /** 메시지 말풍선과 결제 완료 체크를 결합한 message pay 브랜드 심볼. */
-export function MunjaPayMark({
+export function MessagePayMark({
   size = 32,
   className,
   onDark = false,
@@ -28,12 +28,12 @@ export function MunjaPayMark({
 }
 
 /** 이전 화면의 import 호환을 유지하되 실제 표시는 message pay 심볼로 통일한다. */
-export const MunjapayMark = MunjaPayMark;
+export const MessagepayMark = MessagePayMark;
 
 export function Logo({ compact = false, onDark = false }: { compact?: boolean; onDark?: boolean }) {
   return (
     <span className="inline-flex items-center gap-2">
-      <MunjaPayMark size={compact ? 30 : 34} onDark={onDark} />
+      <MessagePayMark size={compact ? 30 : 34} onDark={onDark} />
       {!compact ? (
         <span aria-label="MessagePay 메시지페이" className="text-[19px] font-black leading-none tracking-[-0.045em]">
           <span className={onDark ? 'text-white' : 'text-ink-900'}>Message</span>

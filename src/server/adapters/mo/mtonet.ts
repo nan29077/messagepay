@@ -89,7 +89,7 @@ export const mtonetMoAdapter: MoAdapter = {
     const base = verifyMoRequest(rawBody, headers, ip, [
       'x-mtonet-signature',
       'x-signature',
-      'x-munjapay-signature',
+      'x-messagepay-signature',
     ]);
     if (!base.ok) return base;
 

@@ -69,7 +69,7 @@ try {
   // ══════════════ 1. 로그인 ══════════════
   await loginAdmin(p);
   r.ok('관리자 로그인', p.url().includes('/admin'), p.url());
-  r.ok('통합 관리자 셸', (await bodyText(p)).includes('문자페이 통합 관리자'));
+  r.ok('통합 관리자 셸', (await bodyText(p)).includes('메시지페이 통합 관리자'));
   {
     const nav = await p.locator('aside').first().innerText();
     const miss = missingOf(nav, MENU_GROUPS);

@@ -75,7 +75,7 @@ try {
   const p = await pctx.newPage();
 
   const PUBLIC = [
-    ['/', '문자페이'],
+    ['/', '메시지페이'],
     ['/how-it-works', '이용방법'],
     ['/faq', null],
     ['/support', '문의 접수'],

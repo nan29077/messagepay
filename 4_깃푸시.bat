@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul
-title 문자페이 - 깃 푸시
+title 메시지페이 - 깃 푸시
 cd /d "%~dp0"
 
 echo.
-echo ================= 문자페이 깃 푸시 =================
+echo ================= 메시지페이 깃 푸시 =================
 echo.
 
 rem 남아 있는 잠금 파일 정리 (이것 때문에 커밋/푸시가 막히는 경우가 있다)
@@ -18,9 +18,9 @@ echo [푸시 대기 중인 커밋]
 git log --oneline origin/main..main
 echo.
 
-git rev-list --count origin/main..main > "%TEMP%\_munjapay_ahead.txt" 2>nul
-set /p AHEAD=<"%TEMP%\_munjapay_ahead.txt"
-del /f /q "%TEMP%\_munjapay_ahead.txt" >nul 2>nul
+git rev-list --count origin/main..main > "%TEMP%\_messagepay_ahead.txt" 2>nul
+set /p AHEAD=<"%TEMP%\_messagepay_ahead.txt"
+del /f /q "%TEMP%\_messagepay_ahead.txt" >nul 2>nul
 
 if "%AHEAD%"=="0" (
   echo 푸시할 커밋이 없습니다. 이미 최신입니다.

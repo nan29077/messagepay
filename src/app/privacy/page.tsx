@@ -8,7 +8,7 @@ import { prisma } from '@/server/db';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '개인정보처리방침 | 메시지페이',
+  title: '개인정보처리방침',
   description: '메시지페이가 수집하는 개인정보 항목과 이용 목적, 보유 기간을 안내합니다.',
 };
 

@@ -8,7 +8,7 @@ import { logger } from '@/lib/logger';
 /**
  * 가맹점 연동 API 인증.
  *
- * 문자페이는 가맹점에 API 연동을 **요구하지 않는다.** 가맹점은 문자페이 관리자
+ * 메시지페이는 가맹점에 API 연동을 **요구하지 않는다.** 가맹점은 메시지페이 관리자
  * 화면에서 충전 내역을 확인하고 포인트 지급 처리를 할 수 있다.
  * 이 API 는 자기 사이트에서 포인트를 자동 적립하려는 가맹점을 위한 선택 기능이다.
  *
@@ -27,8 +27,8 @@ export const SIGNATURE_SKEW_SEC = 300;
 const RATE_LIMIT_PER_MIN = 300;
 
 export const PARTNER_HEADERS = {
-  timestamp: 'x-munjapay-timestamp',
-  signature: 'x-munjapay-signature',
+  timestamp: 'x-messagepay-timestamp',
+  signature: 'x-messagepay-signature',
 } as const;
 
 export interface PartnerAuthOk {

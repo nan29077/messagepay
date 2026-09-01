@@ -9,7 +9,7 @@ import { isLegacyDonationContent } from '@/lib/public-content';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '자주 묻는 질문 | 메시지페이',
+  title: '자주 묻는 질문',
   description: '문자결제 이용, 계좌 등록, 한도, 환불, 충전 반영에 대해 자주 묻는 질문을 모았습니다.',
 };
 

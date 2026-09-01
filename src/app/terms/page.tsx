@@ -7,7 +7,7 @@ import { prisma } from '@/server/db';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '서비스 이용약관 | 메시지페이',
+  title: '서비스 이용약관',
   description: '메시지페이 문자결제 서비스 이용약관입니다.',
 };
 

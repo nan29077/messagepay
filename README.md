@@ -1,6 +1,6 @@
-# 문자페이 (MUNJAPAY)
+# 메시지페이 (MESSAGEPAY)
 
-문자 한 통으로 크리에이터를 후원하는 플랫폼. 시청자가 크리에이터별 MO 수신번호로 문자를 보내면 문자페이가 이를 수신해 후원 거래로 만들고, 결제가 완료된 건만 유튜브 라이브 채팅 · OBS/PRISM 오버레이 · TTS 로 방송에 노출합니다.
+문자 한 통으로 크리에이터를 후원하는 플랫폼. 시청자가 크리에이터별 MO 수신번호로 문자를 보내면 메시지페이가 이를 수신해 후원 거래로 만들고, 결제가 완료된 건만 유튜브 라이브 채팅 · OBS/PRISM 오버레이 · TTS 로 방송에 노출합니다.
 
 > **현재 상태: 1단계 Mock MVP.** 결제(헥토파이낸셜 내통장결제), MO/MT 문자, 유튜브, TTS, RTMPS 는 모두 **어댑터 인터페이스 + mock 구현**입니다. 실제 출금·문자 발송·유튜브 전송은 일어나지 않습니다.
 
@@ -46,6 +46,7 @@
 | `도구_상세진단.bat` | 상세 진단 로그 생성 (`logs\diag.log`) |
 | `도구_설치복구.bat` | 깨진 node_modules 복구 (npm ci + 무결성 검사) |
 | `도구_미리보기복구.bat` | `.next` 빌드 폴더가 잠겨 미리보기가 죽을 때 복구 실행 |
+| `도구_미리보기초기화.bat` | 미리보기 내장 DB(`.pglite`)와 빌드(`.next`) 삭제 — 시드 계정이 안 맞을 때 |
 | `도구_DB초기화.bat` | 정식 개발 환경 DB 초기화 + 시드 |
 | `도구_테스트실행.bat` | 통합 테스트 27개 실행 후 시드 재생성 |
 
@@ -56,7 +57,7 @@
 ```bash
 npm install
 cp .env.example .env
-docker compose -p munjapay up -d   # PostgreSQL + Redis
+docker compose -p messagepay up -d   # PostgreSQL + Redis
 npm run db:deploy
 npm run db:seed
 npm run dev                       # http://localhost:3030
@@ -66,9 +67,9 @@ npm run dev                       # http://localhost:3030
 
 | 구분 | 계정 | 비밀번호 |
 |---|---|---|
-| 통합 관리자 | `admin@munjapay.kr` | `munjapay1234!` |
-| 크리에이터 | `creator1@munjapay.kr` | `munjapay1234!` (코드 `MJP-8K2M`, 전용번호 `15881001`) |
-| 크리에이터 | `creator2@munjapay.kr` | `munjapay1234!` (코드 `MJP-3QP7`, 대표번호 `15889000` + 키워드 `MJP3QP7`) |
+| 통합 관리자 | `admin@messagepay.kr` | `messagepay1234!` |
+| 크리에이터 | `creator1@messagepay.kr` | `messagepay1234!` (코드 `MSG-8K2M`, 전용번호 `15881001`) |
+| 크리에이터 | `creator2@messagepay.kr` | `messagepay1234!` (코드 `MSG-3QP7`, 대표번호 `15889000` + 키워드 `MSG3QP7`) |
 | 테스트 후원자 | `010-1234-5678` | 계좌 등록 완료 상태 |
 
 ---
@@ -77,7 +78,7 @@ npm run dev                       # http://localhost:3030
 
 가장 쉬운 방법은 **관리자 → MO 시뮬레이터** (`/admin/simulator`) 입니다.
 
-1. `admin@munjapay.kr` 로 로그인 → `/admin/simulator`
+1. `admin@messagepay.kr` 로 로그인 → `/admin/simulator`
 2. 수신번호 `15881001`, 발신번호 아무 번호, 문자 내용 입력 후 실행
 3. 미등록 번호라면 계좌 등록 안내가 발송됩니다. 로컬에서는 `GET /api/dev/outbox` 로 발송된 문자와 보안링크 원문을 확인할 수 있습니다 (`APP_ENV=local` 에서만 동작).
 4. 등록 링크 → 동의 → 모의 결제창에서 계좌 등록
@@ -91,7 +92,7 @@ BODY='{"messageId":"MO-1","to":"15881001","from":"01012345678","text":"오늘 �
 SIG=$(node -e "const c=require('crypto');process.stdout.write(c.createHmac('sha256',process.env.MO_WEBHOOK_SECRET).update(process.argv[1]).digest('hex'))" "$BODY")
 curl -X POST http://localhost:3030/api/webhooks/mo \
   -H 'Content-Type: application/json' \
-  -H "x-munjapay-signature: sha256=$SIG" \
+  -H "x-messagepay-signature: sha256=$SIG" \
   -d "$BODY"
 ```
 

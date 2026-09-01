@@ -12,7 +12,7 @@ import { resolvePolicy } from '@/server/services/limits';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '문자결제 이용방법 | 메시지페이',
+  title: '문자결제 이용방법',
   description: '문자 한 통으로 충전하는 방법과 계좌 등록, 결제, 충전 반영 절차를 안내합니다.',
 };
 

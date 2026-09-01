@@ -188,7 +188,7 @@ async function previewSafeText(merchantId: string, payerName: string, message: s
 
 /**
  * 포인트 지급은 가맹점이 자기 서비스에서 한다.
- * 문자페이는 "이 결제 건을 처리했는가" 만 기록해, 빠뜨린 건과 환불 회수 대상을 알 수 있게 한다.
+ * 메시지페이는 "이 결제 건을 처리했는가" 만 기록해, 빠뜨린 건과 환불 회수 대상을 알 수 있게 한다.
  *
  * 지급 대상은 결제가 완료된 건뿐이다. 결제되지 않은 건을 지급 완료로 표시하면
  * 가맹점이 받지도 않은 돈에 포인트를 주게 된다.
@@ -781,7 +781,7 @@ export async function updateMoGuideMessageAction(
       return { ok: false, message: `안내 문자는 ${MO_GUIDE_MAX_LENGTH}자 이내로 입력해 주세요. (현재 ${raw.length}자) 결제 링크가 뒤에 붙으므로 여유를 두세요.` };
     }
     if (/https?:\/\/|www\./i.test(raw)) {
-      return { ok: false, message: '안내 문자에는 링크를 넣을 수 없습니다. 결제 링크는 문자페이가 본문 끝에 자동으로 붙입니다.' };
+      return { ok: false, message: '안내 문자에는 링크를 넣을 수 없습니다. 결제 링크는 메시지페이가 본문 끝에 자동으로 붙입니다.' };
     }
 
     const unknown = [...raw.matchAll(/\{([^{}]*)\}/g)]

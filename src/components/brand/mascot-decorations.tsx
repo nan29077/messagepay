@@ -33,7 +33,7 @@ export function PublicMarginMascots() {
 export function ConsoleCornerMascot() {
   return (
     <span className="console-corner-mascot pointer-events-none select-none" aria-hidden="true">
-      <Image src="/munjapay-mark.svg" alt="" width={170} height={170} sizes="170px" />
+      <Image src="/messagepay-mark.svg" alt="" width={170} height={170} sizes="170px" />
     </span>
   );
 }

@@ -14,23 +14,23 @@ import fs from 'node:fs';
 import { chromium } from 'playwright';
 
 export const BASE = process.env.E2E_BASE ?? 'http://localhost:3030';
-export const PASSWORD = 'munjapay1234!';
+export const PASSWORD = 'messagepay1234!';
 
 export const ACCOUNTS = {
-  admin: 'admin@munjapay.kr',
-  merchant1: 'merchant1@munjapay.kr',
-  merchant2: 'merchant2@munjapay.kr',
-  payer: 'payer@munjapay.kr',
+  admin: 'admin@messagepay.kr',
+  merchant1: 'merchant1@messagepay.kr',
+  merchant2: 'merchant2@messagepay.kr',
+  payer: 'payer@messagepay.kr',
 };
 
 /** 시드 고정값 */
 export const SEED = {
-  merchant1Code: 'MJP-8K2M',
-  merchant2Code: 'MJP-3QP7',
+  merchant1Code: 'MSG-8K2M',
+  merchant2Code: 'MSG-3QP7',
   merchant1Name: '바람소리',
   merchant1Mo: '05051001001',
   merchant2Mo: '05059000000',
-  merchant2Keyword: 'MJP3QP7',
+  merchant2Keyword: 'MSG3QP7',
   payerPhone: '010-1234-5678',
 };
 

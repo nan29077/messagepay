@@ -2,11 +2,11 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-title 문자페이 - 최초 설치
+title 메시지페이 - 최초 설치
 
 echo.
 echo ==========================================
-echo   문자페이 BASIC - 최초 설치
+echo   메시지페이 BASIC - 최초 설치
 echo   서비스 포트: 3030
 echo ==========================================
 echo.
@@ -74,8 +74,8 @@ echo   2_개발서버실행.bat 을 실행하면 앱이 열립니다.
 echo ==========================================
 echo.
 echo   주소       http://localhost:3030
-echo   관리자     admin@munjapay.kr / munjapay1234!
-echo   크리에이터 creator1@munjapay.kr / munjapay1234!
+echo   관리자     admin@messagepay.kr / messagepay1234!
+echo   크리에이터 creator1@messagepay.kr / messagepay1234!
 echo.
 pause
 exit /b 0

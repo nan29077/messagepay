@@ -1,9 +1,9 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import sharp from 'sharp';
 
-const artwork = new URL('../public/assets/munjapay-og-share-art-v4.png', import.meta.url);
-const markSource = new URL('../public/munjapay-mark-v4.svg', import.meta.url);
-const output = new URL('../public/assets/munjapay-og-share-v4.png', import.meta.url);
+const artwork = new URL('../public/assets/messagepay-og-share-art-v4.png', import.meta.url);
+const markSource = new URL('../public/messagepay-mark-v4.svg', import.meta.url);
+const output = new URL('../public/assets/messagepay-og-share-v4.png', import.meta.url);
 
 const escapeXml = (value) => value
   .replaceAll('&', '&amp;')
@@ -21,7 +21,7 @@ const copy = {
 const overlay = Buffer.from(`
   <svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
     <rect x="58" y="55" width="660" height="520" rx="36" fill="#fffdf7" fill-opacity="0.88" stroke="#ddb980" stroke-opacity="0.58"/>
-    <text x="196" y="126" fill="#17161a" font-family="Arial, sans-serif" font-size="52" font-weight="900" letter-spacing="-2">MUNJAPAY</text>
+    <text x="196" y="126" fill="#17161a" font-family="Arial, sans-serif" font-size="52" font-weight="900" letter-spacing="-2">MESSAGEPAY</text>
     <text x="92" y="208" fill="#a86f25" font-family="Arial, sans-serif" font-size="18" font-weight="800" letter-spacing="3.5">${escapeXml(copy.eyebrow)}</text>
     <text x="90" y="286" fill="#17161a" font-family="Malgun Gothic, Arial, sans-serif" font-size="48" font-weight="900" letter-spacing="-2">${escapeXml(copy.titleA)}</text>
     <text x="90" y="352" fill="#17161a" font-family="Malgun Gothic, Arial, sans-serif" font-size="48" font-weight="900" letter-spacing="-2">${escapeXml(copy.titleB)}</text>
@@ -49,4 +49,4 @@ const card = await sharp(await readFile(artwork))
   .toBuffer();
 
 await writeFile(output, card);
-console.log('Generated public/assets/munjapay-og-share-v4.png (1200x630)');
+console.log('Generated public/assets/messagepay-og-share-v4.png (1200x630)');

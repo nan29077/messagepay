@@ -7,7 +7,7 @@ import { getSessionUser, requireMerchant } from '@/server/auth';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '가맹점 관리자 | 메시지페이',
+  title: '가맹점 관리자',
   robots: { index: false, follow: false },
 };
 

@@ -2,14 +2,14 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-title 문자페이 - 개발 모드 미리보기 (수정 즉시 반영)
+title 메시지페이 - 개발 모드 미리보기 (수정 즉시 반영)
 
 set APP_URL=http://localhost:3030
 set PREVIEW_MODE=dev
 
 echo.
 echo ==========================================
-echo   문자페이 BASIC - 개발 모드 미리보기
+echo   메시지페이 BASIC - 개발 모드 미리보기
 echo   %APP_URL%
 echo ==========================================
 echo.
@@ -63,9 +63,9 @@ echo        이후에는 파일을 저장할 때마다 화면이 자동으로 �
 echo        종료하려면 이 창에서 Ctrl+C 를 누르거나 창을 닫으세요.
 echo.
 echo   메인        %APP_URL%
-echo   크리에이터  %APP_URL%/studio   creator1@munjapay.kr / munjapay1234!
-echo   관리자      %APP_URL%/admin    admin@munjapay.kr / munjapay1234!
-echo   후원자      %APP_URL%/my       donor@munjapay.kr / munjapay1234!
+echo   크리에이터  %APP_URL%/studio   creator1@messagepay.kr / messagepay1234!
+echo   관리자      %APP_URL%/admin    admin@messagepay.kr / messagepay1234!
+echo   후원자      %APP_URL%/my       donor@messagepay.kr / messagepay1234!
 echo.
 
 call npm run preview

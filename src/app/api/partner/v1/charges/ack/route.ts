@@ -26,7 +26,7 @@ interface AckBody {
  *
  * - 서명 헤더 필수(쓰기 요청).
  * - 같은 건을 여러 번 보내도 결과가 같다(멱등).
- * - 이미 SENT 인 건은 다시 바꾸지 않는다. 되돌려야 하면 문자페이 관리자에게 문의한다.
+ * - 이미 SENT 인 건은 다시 바꾸지 않는다. 되돌려야 하면 메시지페이 관리자에게 문의한다.
  */
 export async function POST(req: Request) {
   const rawBody = await req.text();

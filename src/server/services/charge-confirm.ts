@@ -6,7 +6,7 @@ import { executePayment, setStatus } from './charge-flow';
 /**
  * **deprecated — 구(舊) CONFIRM_LINK 경로.**
  *
- * 이용자가 MT 로 받은 문자페이 자체 확인 링크에서 버튼을 누르면 빌키로 곧바로 승인한다.
+ * 이용자가 MT 로 받은 메시지페이 자체 확인 링크에서 버튼을 누르면 빌키로 곧바로 승인한다.
  * 현재 기본 경로는 결제사 PIN 인증(`pin-authorization.ts`)이며, 이 경로는
  * `ALLOW_LEGACY_CONFIRM_LINK=true` 일 때만 새 링크가 발급된다
  * (발급 지점: charge-flow.ts 의 resolveConfirmChannel).

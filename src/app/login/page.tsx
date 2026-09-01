@@ -10,7 +10,7 @@ import { SOCIAL_LABEL, type SocialProvider } from '@/server/adapters/social';
 import { isLocal } from '@/lib/env';
 
 export const metadata: Metadata = {
-  title: '로그인 | 메시지페이',
+  title: '로그인',
   description: '메시지페이 계정으로 로그인하고 결제 내역과 결제 설정을 확인하세요.',
 };
 
@@ -77,7 +77,7 @@ export default async function LoginPage({
               required
               autoComplete="email"
               inputMode="email"
-              placeholder="munjapay@example.com"
+              placeholder="messagepay@example.com"
             />
           </Field>
           <Field label="비밀번호" required>
@@ -117,8 +117,8 @@ export default async function LoginPage({
         <div className="mt-4">
           <TestLoginPanel
             seedAccounts={[
-              { email: 'admin@munjapay.kr', password: 'munjapay1234!' },
-              { email: 'merchant1@munjapay.kr', password: 'munjapay1234!' },
+              { email: 'admin@messagepay.kr', password: 'messagepay1234!' },
+              { email: 'merchant1@messagepay.kr', password: 'messagepay1234!' },
             ]}
           />
         </div>

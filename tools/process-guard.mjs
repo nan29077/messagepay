@@ -244,7 +244,7 @@ export function guardOrphan(serverPid) {
  * 살아 있는 실행이 있으면 새 실행을 막기 위해 잠금 파일을 쓴다.
  */
 function lockPath() {
-  return path.resolve(process.cwd(), '.munjapay-server.lock');
+  return path.resolve(process.cwd(), '.messagepay-server.lock');
 }
 
 export function readLock() {

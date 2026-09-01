@@ -10,7 +10,7 @@ import { GeneratedAvatar } from '@/components/profile/generated-avatar';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '마이페이지 | 메시지페이',
+  title: '마이페이지',
   robots: { index: false, follow: false },
 };
 

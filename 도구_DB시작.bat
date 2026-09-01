@@ -2,7 +2,7 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-title 문자페이 - 데이터베이스 시작
+title 메시지페이 - 데이터베이스 시작
 
 echo.
 echo ==========================================
@@ -30,7 +30,7 @@ if errorlevel 1 (
 )
 
 rem 폴더명이 한글이면 Compose 가 프로젝트 이름을 자동 생성하지 못하므로 -p 로 지정한다.
-docker compose -p munjapay up -d
+docker compose -p messagepay up -d
 if errorlevel 1 (
   echo.
   echo [오류] 컨테이너를 시작하지 못했습니다.
@@ -43,7 +43,7 @@ if errorlevel 1 (
 echo.
 echo [대기] 데이터베이스가 준비될 때까지 확인합니다.
 for /l %%i in (1,1,30) do (
-  docker exec munjapay-postgres pg_isready -U munjapay -d munjapay >nul 2>nul
+  docker exec messagepay-postgres pg_isready -U messagepay -d messagepay >nul 2>nul
   if not errorlevel 1 goto :ready
   timeout /t 2 >nul
 )
@@ -55,7 +55,7 @@ echo [완료] PostgreSQL(5432), Redis(6379) 준비 완료
 
 :done
 echo.
-echo   컨테이너를 내리려면: docker compose -p munjapay down
+echo   컨테이너를 내리려면: docker compose -p messagepay down
 echo   다음 단계: 도구_최초설치.bat 실행
 echo.
 pause

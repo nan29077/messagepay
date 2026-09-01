@@ -167,7 +167,7 @@ export async function runMerchantPayout(
       accountNo: decrypt(account.accountEnc),
       holderName: account.holderMasked ?? merchant.displayName,
       amount: request.payoutAmount,
-      memo: `문자페이 정산 ${dateKey}`,
+      memo: `메시지페이 정산 ${dateKey}`,
     });
 
     // 결과 미확인은 재이체하지 않고 조회로 확정한다.
@@ -321,7 +321,7 @@ export async function retryPayout(
       accountNo: decrypt(account.accountEnc),
       holderName: account.holderMasked ?? merchant.displayName,
       amount: request.payoutAmount,
-      memo: `문자페이 정산 재시도 ${toDateKey(now)}`,
+      memo: `메시지페이 정산 재시도 ${toDateKey(now)}`,
     });
     if (result.unknown) result = await adapter.inquire(requestId);
   }

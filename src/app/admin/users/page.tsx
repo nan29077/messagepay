@@ -97,7 +97,7 @@ export default async function AdminUsersPage({
 
       <FilterBar action="/admin/users" resetHref="/admin/users">
         <AdminField label="검색 (이메일/이름)" className="w-56">
-          <AdminInput name="q" defaultValue={q} placeholder="example@munjapay.kr" />
+          <AdminInput name="q" defaultValue={q} placeholder="example@messagepay.kr" />
         </AdminField>
         <AdminField label="회원 유형" className="w-36">
           <AdminSelect name="role" defaultValue={role ?? ''}>

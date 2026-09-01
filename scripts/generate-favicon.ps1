@@ -1,5 +1,5 @@
 param(
-  [string]$Source = (Join-Path $PSScriptRoot '..\public\munjapay-icon-v3.png'),
+  [string]$Source = (Join-Path $PSScriptRoot '..\public\messagepay-icon-v3.png'),
   [string]$Destination = (Join-Path $PSScriptRoot '..\src\app\favicon.ico')
 )
 

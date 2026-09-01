@@ -153,7 +153,7 @@ describe('헥토 EzAuth - 서명/암호화', () => {
       ordNo: 'ORD-1',
       trDay: '20260820',
       trTime: '153012',
-      callbackUrlHost: 'munjapay.kr',
+      callbackUrlHost: 'messagepay.kr',
       hashKey: 'HASHKEY',
     };
     const plain = authWindowHash({ ...base, trPricePlain: '3000' });
@@ -163,7 +163,7 @@ describe('헥토 EzAuth - 서명/암호화', () => {
   });
 
   it('콜백 URL 에서 호스트만 뽑는다', () => {
-    expect(callbackHost('https://munjapay.kr/api/payments/hecto/return')).toBe('munjapay.kr');
+    expect(callbackHost('https://messagepay.kr/api/payments/hecto/return')).toBe('messagepay.kr');
     expect(callbackHost('http://localhost:3030/x')).toBe('localhost:3030');
     expect(callbackHost('not-a-url')).toBe('');
   });

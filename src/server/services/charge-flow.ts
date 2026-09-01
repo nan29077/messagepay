@@ -288,7 +288,7 @@ export function resolvePaymentMode(
  *
  *  - `PIN`(기본): 결제사(헥토/카드)가 발급한 PIN 입력 링크를 보낸다.
  *                 PIN 을 입력해야 결제사가 콜백을 보내고 그때 승인이 실행된다.
- *  - `LEGACY_LINK`(**deprecated**): 문자페이 자체 확인 페이지 링크를 보낸다.
+ *  - `LEGACY_LINK`(**deprecated**): 메시지페이 자체 확인 페이지 링크를 보낸다.
  *                 확인 버튼을 누르면 빌키로 곧바로 승인한다.
  *                 되돌림이 필요한 경우에만 ALLOW_LEGACY_CONFIRM_LINK=true 로 연다.
  */
@@ -1182,7 +1182,7 @@ export async function executePayment(chargeId: string): Promise<PaymentOutcome> 
     charge.merchantId,
   );
 
-  // 포인트 지급은 가맹점이 한다. 문자페이는 결제·정산까지만 책임지고,
+  // 포인트 지급은 가맹점이 한다. 메시지페이는 결제·정산까지만 책임지고,
   // 가맹점이 콘솔(또는 조회 API)에서 이 결제 건을 보고 자기 서비스에 포인트를 넣는다.
   // 그래서 여기서 외부를 호출하지 않는다. 지급 여부는 charge.pointStatus 로 추적한다.
 

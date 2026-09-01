@@ -55,7 +55,7 @@ export function ChargePageShare({ url, merchantName }: { url: string; merchantNa
     if (!qrDataUrl) return;
     const anchor = document.createElement('a');
     anchor.href = qrDataUrl;
-    anchor.download = `munjapay-${merchantName.replace(/[^a-zA-Z0-9가-힣_-]/g, '-')}-qr.png`;
+    anchor.download = `messagepay-${merchantName.replace(/[^a-zA-Z0-9가-힣_-]/g, '-')}-qr.png`;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();

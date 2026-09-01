@@ -266,7 +266,7 @@ export default async function AdminPaymentsPage({
 
       <FilterBar action="/admin/payments" resetHref="/admin/payments">
         <AdminField label="주문번호·거래번호·PG TID" className="w-64">
-          <AdminInput name="q" defaultValue={q} placeholder="MJP2026... 또는 TRD-2026..." />
+          <AdminInput name="q" defaultValue={q} placeholder="MSG2026... 또는 TRD-2026..." />
         </AdminField>
         <AdminField label="상태" className="w-40">
           <AdminSelect name="status" defaultValue={status ?? ''}>

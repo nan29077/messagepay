@@ -65,7 +65,7 @@ export default async function AdminCodesPage({
         <StatTile label="활성 코드" value={formatNumber(activeCount)} tone="success" />
         <StatTile label="폐기 코드" value={formatNumber(revokedCount)} />
         <StatTile label="현재 조건 결과" value={formatNumber(total)} />
-        <StatTile label="코드 형식" value="MJP-XXXX" sub="혼동 문자 제외 32진 알파벳" />
+        <StatTile label="코드 형식" value="MSG-XXXX" sub="혼동 문자 제외 32진 알파벳" />
       </div>
 
       <Notice tone="warning" title="재발급 시 주의">
@@ -77,7 +77,7 @@ export default async function AdminCodesPage({
       <div className="mt-4">
         <FilterBar action="/admin/codes" resetHref="/admin/codes">
           <AdminField label="검색 (코드/가맹점)" className="w-56">
-            <AdminInput name="q" defaultValue={q} placeholder="MJP-8K2M" />
+            <AdminInput name="q" defaultValue={q} placeholder="MSG-8K2M" />
           </AdminField>
           <AdminField label="상태" className="w-36">
             <AdminSelect name="state" defaultValue={state}>

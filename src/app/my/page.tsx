@@ -107,7 +107,7 @@ export default async function MyChargesPage({
             const refund = d.refunds[0] ?? null;
             const refundOpen = refund ? ['REQUESTED', 'APPROVED', 'DONE'].includes(refund.status) : false;
             const canRefund = REFUNDABLE.includes(d.status) && !refundOpen;
-            // 포인트는 가맹점이 발행·지급한다. 문자페이는 결제와 정산만 담당하므로
+            // 포인트는 가맹점이 발행·지급한다. 메시지페이는 결제와 정산만 담당하므로
             // "가맹점이 지급 처리를 했는지"만 그대로 보여준다.
             const paidCharge = REFUNDABLE.includes(d.status);
             const point = !paidCharge

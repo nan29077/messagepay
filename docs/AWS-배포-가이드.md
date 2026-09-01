@@ -1,4 +1,4 @@
-# 문자페이 AWS 실서버 배포 가이드
+# 메시지페이 AWS 실서버 배포 가이드
 
 - 대상: Amazon RDS / Aurora PostgreSQL 16 + ECS(Fargate) 또는 Elastic Beanstalk + ElastiCache(Redis) + S3
 - 전제: 2026-08-21 검수 반영 이후 코드 기준
@@ -25,7 +25,7 @@
 
 ```bash
 # 운영 배포 시 (풀러를 거치지 않는 직결 엔드포인트로 실행할 것)
-DIRECT_DATABASE_URL="postgresql://...rds.amazonaws.com:5432/munjapay?sslmode=require" \
+DIRECT_DATABASE_URL="postgresql://...rds.amazonaws.com:5432/messagepay?sslmode=require" \
   npx prisma migrate deploy
 ```
 
@@ -36,7 +36,7 @@ DDL + advisory lock 조합이 트랜잭션 풀링과 충돌해 실패하거나 �
 ### 배포 전 드리프트 검사 (CI 에 넣을 것)
 
 ```bash
-SHADOW_DATABASE_URL="postgresql://user:pw@host:5432/munjapay_shadow" \
+SHADOW_DATABASE_URL="postgresql://user:pw@host:5432/messagepay_shadow" \
   npx prisma migrate diff \
     --from-migrations prisma/migrations \
     --to-schema prisma/schema.prisma \
@@ -59,24 +59,24 @@ RDS 에서 아래처럼 분리하십시오. (감사 대응에도 이 분리가 �
 
 ```sql
 -- 1) 마이그레이션 전용 롤 (스키마 소유자). CI/배포 파이프라인만 사용
-CREATE ROLE munjapay_migrate LOGIN PASSWORD '...';
-GRANT ALL ON SCHEMA public TO munjapay_migrate;
-ALTER SCHEMA public OWNER TO munjapay_migrate;
+CREATE ROLE messagepay_migrate LOGIN PASSWORD '...';
+GRANT ALL ON SCHEMA public TO messagepay_migrate;
+ALTER SCHEMA public OWNER TO messagepay_migrate;
 
 -- 2) 앱 런타임 롤 (DML 만). 애플리케이션이 사용
-CREATE ROLE munjapay_app LOGIN PASSWORD '...';
-GRANT USAGE ON SCHEMA public TO munjapay_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO munjapay_app;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO munjapay_app;
-ALTER DEFAULT PRIVILEGES FOR ROLE munjapay_migrate IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO munjapay_app;
+CREATE ROLE messagepay_app LOGIN PASSWORD '...';
+GRANT USAGE ON SCHEMA public TO messagepay_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO messagepay_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO messagepay_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE messagepay_migrate IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO messagepay_app;
 
 -- 3) 원장은 앱 롤에서 INSERT/SELECT 만 허용 (트리거와 이중 방어)
-REVOKE UPDATE, DELETE ON settlement_ledger FROM munjapay_app;
+REVOKE UPDATE, DELETE ON settlement_ledger FROM messagepay_app;
 ```
 
-- `DATABASE_URL` → `munjapay_app`
-- `DIRECT_DATABASE_URL` → `munjapay_migrate`
+- `DATABASE_URL` → `messagepay_app`
+- `DIRECT_DATABASE_URL` → `messagepay_migrate`
 
 ---
 
@@ -89,9 +89,9 @@ REVOKE UPDATE, DELETE ON settlement_ledger FROM munjapay_app;
 
 ```bash
 STORAGE_DRIVER=s3
-S3_BUCKET=munjapay-media-prod
+S3_BUCKET=messagepay-media-prod
 S3_PREFIX=uploads
-S3_PUBLIC_BASE=https://media.munjapay.kr   # CloudFront 도메인 (선택, 없으면 /api/media 경유)
+S3_PUBLIC_BASE=https://media.messagepay.kr   # CloudFront 도메인 (선택, 없으면 /api/media 경유)
 AWS_REGION=ap-northeast-2
 ```
 

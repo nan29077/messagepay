@@ -2,7 +2,7 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-title 문자페이 - 테스트
+title 메시지페이 - 테스트
 
 echo.
 echo ==========================================

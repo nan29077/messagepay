@@ -11,7 +11,7 @@ import { merchantStatusLabel } from '@/lib/labels';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: '가맹점 가입 신청 | 메시지페이',
+  title: '가맹점 가입 신청',
   description: '문자결제 수신번호를 배정받고 내 서비스에 충전을 연결하려면 가맹점 가입을 신청하세요.',
 };
 

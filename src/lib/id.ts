@@ -24,19 +24,19 @@ export function newTransactionNo(now = new Date()): string {
 export function newOrderNo(now = new Date()): string {
   const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
   const stamp = kst.toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
-  return `MJP${stamp}${ulid().slice(-6)}`;
+  return `MSG${stamp}${ulid().slice(-6)}`;
 }
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 혼동 문자 제외
 
-/** 가맹점 코드: MJP-8K2M */
+/** 가맹점 코드: MSG-8K2M */
 export function newMerchantCode(): string {
   // 예측 가능한 코드는 타인의 결제 페이지 코드 추측으로 이어지므로 CSPRNG 를 쓴다.
-  return `MJP-${randomCodeString(CODE_ALPHABET, 4)}`;
+  return `MSG-${randomCodeString(CODE_ALPHABET, 4)}`;
 }
 
 export function normalizeMerchantCode(input: string): string {
   const v = (input || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (v.startsWith('MJP')) return `MJP-${v.slice(3)}`;
-  return `MJP-${v}`;
+  if (v.startsWith('MSG')) return `MSG-${v.slice(3)}`;
+  return `MSG-${v}`;
 }

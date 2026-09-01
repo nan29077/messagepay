@@ -113,7 +113,7 @@ describe('MO 번호 라우팅', () => {
         userId: (await prisma.user.create({
           data: { id: newId(), email: `x${newId()}@t.kr`, passwordHash: 'x', role: 'MERCHANT', status: 'ACTIVE' },
         })).id,
-        code: `MJP-${newId().slice(-5).toUpperCase()}`,
+        code: `MSG-${newId().slice(-5).toUpperCase()}`,
         displayName: '충돌 가맹점',
         status: 'APPROVED',
       },

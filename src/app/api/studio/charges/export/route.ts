@@ -108,7 +108,7 @@ export async function GET(req: Request) {
   return new Response(body, {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="munjapay-charges-${today}.csv"`,
+      'Content-Disposition': `attachment; filename="messagepay-charges-${today}.csv"`,
       'Cache-Control': 'no-store',
     },
   });

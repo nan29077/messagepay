@@ -9,7 +9,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * 자동 정산 배치 (외부 스케줄러 → 문자페이).
+ * 자동 정산 배치 (외부 스케줄러 → 메시지페이).
  *
  *   GET /api/cron/payout
  *   Authorization: Bearer ${CRON_SECRET}

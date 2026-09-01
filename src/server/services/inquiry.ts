@@ -8,7 +8,7 @@ import { prisma } from '@/server/db';
  */
 
 /** 게스트 문의 스레드를 식별하는 httpOnly 쿠키 이름. */
-export const INQUIRY_GUEST_COOKIE = 'munjapay_inquiry';
+export const INQUIRY_GUEST_COOKIE = 'messagepay_inquiry';
 
 /** 문의를 읽음 처리한다 (관리자 상세 화면 진입 시 사용). 호출부에서 관리자 인증을 보장해야 한다. */
 export async function markInquiryRead(inquiryId: string): Promise<void> {

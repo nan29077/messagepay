@@ -5,11 +5,11 @@
  */
 
 export const DEFAULT_BANNERS = [
-  '/banners/munjapay-live-banner-01-v2.png',
-  '/banners/munjapay-live-banner-02-v2.png',
-  '/banners/munjapay-live-banner-03-v2.png',
-  '/banners/munjapay-live-banner-04-v2.png',
-  '/banners/munjapay-live-banner-05-v2.png',
+  '/banners/messagepay-live-banner-01-v2.png',
+  '/banners/messagepay-live-banner-02-v2.png',
+  '/banners/messagepay-live-banner-03-v2.png',
+  '/banners/messagepay-live-banner-04-v2.png',
+  '/banners/messagepay-live-banner-05-v2.png',
 ] as const;
 
 export function defaultBannerFor(merchantId: string): string {

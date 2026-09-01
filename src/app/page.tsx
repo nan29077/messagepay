@@ -136,7 +136,7 @@ export default function HomePage() {
       </section>
 
       <section id="for-business" className="relative mt-12 scroll-mt-24 overflow-hidden rounded-[28px] border border-[#dbe4ee] p-5 sm:p-6">
-        <Image src="/assets/munjapay-banner-business-v1.png" alt="" fill sizes="640px" className="scale-110 object-cover opacity-20 blur-[5px]" />
+        <Image src="/assets/messagepay-banner-business-v1.png" alt="" fill sizes="640px" className="scale-110 object-cover opacity-20 blur-[5px]" />
         <span className="absolute inset-0 bg-white/88" aria-hidden />
         <Image src="/assets/messagepay-mascot-v1.png" alt="" width={210} height={210} sizes="180px" className="absolute -bottom-8 -right-7 h-auto w-[180px] rotate-6 object-contain opacity-[0.16]" />
         <div className="relative">
@@ -185,7 +185,7 @@ export default function HomePage() {
       </section>
 
       <section className="relative mt-12 overflow-hidden rounded-[28px] bg-[#071426] px-5 py-6 text-white sm:px-7 sm:py-8">
-        <Image src="/assets/munjapay-banner-secure-v1.png" alt="" fill sizes="640px" className="scale-110 object-cover opacity-30 blur-[3px]" />
+        <Image src="/assets/messagepay-banner-secure-v1.png" alt="" fill sizes="640px" className="scale-110 object-cover opacity-30 blur-[3px]" />
         <span className="absolute inset-0 bg-[#071426]/62" aria-hidden />
         <Image src="/assets/messagepay-mascot-v1.png" alt="" width={220} height={220} sizes="190px" className="absolute -bottom-10 -right-7 h-auto w-[190px] -rotate-6 object-contain opacity-[0.28]" />
         <div className="relative">

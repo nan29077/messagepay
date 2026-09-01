@@ -7,7 +7,7 @@ import {
   Bell, Building2, CircleHelp, CircleUserRound, CreditCard, House, LayoutDashboard,
   LifeBuoy, LogIn, LogOut, Map, Menu, X,
 } from 'lucide-react';
-import { Logo, MunjaPayMark } from '@/components/brand/logo';
+import { Logo, MessagePayMark } from '@/components/brand/logo';
 import { PublicMarginMascots } from '@/components/brand/mascot-decorations';
 import { NotificationBell } from '@/components/notifications/notification-bell';
 import { ProfileAvatar } from '@/components/profile/generated-avatar';
@@ -181,7 +181,7 @@ export function PublicShellClient({
               aria-label="메시지페이 홈"
               className="mb-2 grid h-10 w-10 place-items-center rounded-[14px] bg-[#071426] text-[#b7f34a] shadow-[0_8px_18px_rgba(7,20,38,0.24)] ring-1 ring-white/10 transition-transform hover:-translate-y-0.5"
             >
-              <MunjaPayMark size={38} onDark />
+              <MessagePayMark size={38} onDark />
             </Link>
             {nav.map((item) => {
               const Icon = item.icon;
