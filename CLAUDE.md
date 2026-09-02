@@ -24,6 +24,11 @@
 5. **정산 원장(`settlement_ledger`)은 append-only.** DB 트리거로 UPDATE/DELETE 가 차단되어 있다. 정정은 반대분개로 처리한다.
 6. **개인정보/금융정보는 해시 + 암호화 + 마스킹 3분리 저장.** 화면과 로그에는 마스킹된 값만 노출한다.
 7. `DIRECT_TRIGGER`(MO 수신 즉시 결제)는 `ALLOW_DIRECT_TRIGGER=true` 이면서 금융사 서면승인이 등록된 경우에만 사용한다. 기본값은 `CONFIRM_LINK`.
+8. **수수료는 부가세 포함 요율로 운영하고, 공급가액과 부가세는 항상 분리해 기록한다.**
+   - 운영 기본은 `vatIncluded = true` — 입력한 요율이 부가세까지 포함한 최종 차감률이다. (예: 5.5% -> 5.5% 차감)
+   - 어느 방식이든 원장에는 공급가액과 부가세를 나눠 남긴다. 부가세를 0원으로 기록하면 세금계산서 근거가 사라진다.
+   - 관리자 화면의 요율 입력·표시 단위는 **퍼센트**다. 저장은 소수 문자열(`percentRate` / `percentToDecimalString`).
+   - 정책의 적용 여부는 `active` 플래그가 아니라 `effectiveFrom` / `effectiveTo` 로 판단한다. `active` 는 "수동 마감 여부"만 뜻한다.
 
 ## 용어
 

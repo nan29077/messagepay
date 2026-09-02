@@ -14,7 +14,7 @@ import { runScheduledPayouts, retryPayout } from '@/server/services/auto-settlem
 import { notifyUser } from '@/server/services/notifications';
 import { formatWon } from '@/lib/money';
 import type { AdminActionState } from '@/components/admin/state';
-import { run, text, optText, money, rate, enumValue, requiredId, optDate } from './shared';
+import { run, text, optText, money, percentRate, enumValue, requiredId, optDate } from './shared';
 
 /**
  * 정산 요청 처리 / 수수료 정책 관리 / 지급대행(쿠콘) 운영.
@@ -328,8 +328,9 @@ export async function createFeePolicy(_prev: AdminActionState, fd: FormData): Pr
     if (admin.adminPermission === 'SUPPORT') throw new Error('수수료 정책 변경은 재무/운영 권한에서만 가능합니다.');
     const scope = enumValue(fd, 'scope', ['GLOBAL', 'MERCHANT'] as const, '적용 범위');
     const merchantId = scope === 'MERCHANT' ? requiredId(fd, 'merchantId', '가맹점') : null;
-    const pgFeeRate = rate(fd, 'pgFeeRate', '결제');
-    const platformFeeRate = rate(fd, 'platformFeeRate', '플랫폼');
+    // 입력은 퍼센트("5.5"), 저장은 소수("0.055").
+    const pgFeeRate = percentRate(fd, 'pgFeeRate', '결제');
+    const platformFeeRate = percentRate(fd, 'platformFeeRate', '플랫폼');
     const pgFixedFee = money(fd, 'pgFixedFee', '결제 건당 고정비');
     const smsCost = money(fd, 'smsCost', '문자 원가');
     const vatIncluded = text(fd, 'vatIncluded') === 'on';
@@ -363,10 +364,23 @@ export async function createFeePolicy(_prev: AdminActionState, fd: FormData): Pr
     });
 
     const created = await prisma.$transaction(async (tx) => {
-      // 이력 보존: 기존 정책은 삭제하지 않고 마감한다.
+      // 아직 시행되지 않은 예약 정책은 새 정책이 대체한다. 적용된 적이 없으므로 바로 마감한다.
       await tx.feePolicy.updateMany({
-        where: { active: true, scope, merchantId },
+        where: { active: true, scope, merchantId, effectiveFrom: { gte: effectiveFrom } },
         data: { active: false, effectiveTo: effectiveFrom },
+      });
+      // 시행 중인 정책은 새 정책의 시행일까지 그대로 살려 둔다(이력 보존 + 공백 방지).
+      //
+      // 예전에는 여기서 active 를 즉시 false 로 내렸다. 그러면 시행일을 미래로 잡았을 때
+      // 오늘~시행일 사이에 적용 가능한 정책이 하나도 없어져 resolveFeePolicy 가 null 을
+      // 돌려주고 코드 기본 요율(1.8% / 15%)이 조용히 적용됐다. 화면에 경고도 뜨지 않아
+      // 그 기간의 가맹점 정산금이 어긋난 채로 지나간다.
+      //
+      // active 는 "관리자가 수동으로 마감했는가" 만 뜻하고, 실제 적용 여부는
+      // effectiveFrom / effectiveTo 로 판단한다(resolveFeePolicy 와 같은 기준).
+      await tx.feePolicy.updateMany({
+        where: { active: true, scope, merchantId, effectiveFrom: { lt: effectiveFrom } },
+        data: { effectiveTo: effectiveFrom },
       });
       return tx.feePolicy.create({
         data: {

@@ -74,7 +74,7 @@ echo        서버를 끄려면 이 창에서 Ctrl+C 를 누르거나 창을 닫
 echo        (창을 닫으면 서버도 함께 종료됩니다)
 echo.
 echo   메인        %APP_URL%
-echo   크리에이터  %APP_URL%/studio   creator1@messagepay.kr / messagepay1234!
+echo   가맹점      %APP_URL%/studio   merchant1@messagepay.kr / messagepay1234!
 echo   관리자      %APP_URL%/admin    admin@messagepay.kr / messagepay1234!
 echo.
 

@@ -3,7 +3,7 @@ import { PageHeader } from '@/components/layout/console-shell';
 import { Badge, EmptyState, Notice, StatTile, Table, Td, Th } from '@/components/ui';
 import { AdminField, AdminInput, AdminSelect, FilterBar, Pager } from '@/components/admin/controls';
 import { ActionButton, ActionForm } from '@/components/admin/action-form';
-import { PAGE_SIZE, parsePage, PAID_DONATION_STATUSES } from '@/components/admin/constants';
+import { PAGE_SIZE, parsePage, PAID_CHARGE_STATUSES } from '@/components/admin/constants';
 import { bankLabel } from '@/components/admin/mask';
 import { unlockPayer, setPayerBlock, updatePayerLimitsByAdmin } from '@/app/actions/admin/accounts';
 import { prisma } from '@/server/db';
@@ -66,7 +66,7 @@ export default async function AdminPayersPage({
   const totals = payerIds.length
     ? await prisma.charge.groupBy({
         by: ['payerId'],
-        where: { payerId: { in: payerIds }, status: { in: PAID_DONATION_STATUSES } },
+        where: { payerId: { in: payerIds }, status: { in: PAID_CHARGE_STATUSES } },
         _sum: { amount: true },
         _count: { _all: true },
       })

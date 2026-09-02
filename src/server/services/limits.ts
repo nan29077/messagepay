@@ -33,7 +33,6 @@ export interface EffectivePolicy {
   failureLockThreshold: number;
   newPayerFirstDayLimit: bigint;
   manualReviewAmount: bigint;
-  ttsMinAmount: bigint;
 }
 
 export const FALLBACK_POLICY: EffectivePolicy = {
@@ -51,14 +50,13 @@ export const FALLBACK_POLICY: EffectivePolicy = {
   failureLockThreshold: 3,
   newPayerFirstDayLimit: 30000n,
   manualReviewAmount: 200000n,
-  ttsMinAmount: 3000n,
 };
 
 type PolicyRow = {
   defaultAmount: bigint; minAmount: bigint; maxAmount: bigint;
   payerDailyLimit: bigint; payerMonthlyLimit: bigint; perMerchantDailyLimit: bigint;
   payerDailyMaxCount: number; velocityWindowSec: number; velocityMaxCount: number; cooldownAfterCount: number; cooldownSec: number;
-  failureLockThreshold: number; newPayerFirstDayLimit: bigint; manualReviewAmount: bigint; ttsMinAmount: bigint;
+  failureLockThreshold: number; newPayerFirstDayLimit: bigint; manualReviewAmount: bigint;
 };
 
 function pick(row: PolicyRow): EffectivePolicy {
@@ -77,7 +75,6 @@ function pick(row: PolicyRow): EffectivePolicy {
     failureLockThreshold: row.failureLockThreshold,
     newPayerFirstDayLimit: row.newPayerFirstDayLimit,
     manualReviewAmount: row.manualReviewAmount,
-    ttsMinAmount: row.ttsMinAmount,
   };
 }
 

@@ -65,8 +65,8 @@ COMMIT;
 - `settlement_ledger` **append-only 트리거** (UPDATE/DELETE 차단)
 - 금칙어 전역/크리에이터 **부분 유니크 인덱스** (NULL 우회 방지)
 - 크리에이터당 활성 코드 1개, 활성 스트림 키 1개
-- 후원자당 활성 결제수단 1개
-- 후원 거래당 승인 결제 1건 (`payment_transaction_approved_uniq`)
+- 이용자당 활성 결제수단 1개
+- 결제 건당 승인 결제 1건 (`payment_transaction_approved_uniq`)
 - 금액 양수 CHECK 제약
 
 ---

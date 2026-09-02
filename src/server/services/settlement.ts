@@ -125,31 +125,53 @@ export const FALLBACK_FEE_RATES: FeeRates = {
 };
 
 /**
- * 수수료 계산 (부가세 포함).
+ * 부가세 포함 금액에서 공급가액을 역산한다.
  *
- *   공급가액  = 결제 금액 x 요율            (원 미만 버림)
- *   부가세    = 공급가액 x 10%           (원 미만 버림)
- *   차감액    = 공급가액 + 부가세
- *   정산금    = 결제 금액 - 결제수수료 차감액 - 플랫폼수수료 차감액
+ *   공급가액 = 총액 ÷ 1.1   (원 미만 버림)
  *
- * `vatIncluded = true` 이면 요율 자체에 부가세가 이미 포함된 것으로 보고
- * **부가세를 추가로 차감하지 않는다.** (요율 10% = 부가세 포함 10%)
+ * BigInt 나눗셈은 내림이므로 x10/11 로 그대로 계산한다.
+ */
+function supplyOfInclusive(total: bigint): bigint {
+  return (total * 10n) / 11n;
+}
+
+/**
+ * 수수료 계산.
  *
- * 예) 3,000원 결제 / 플랫폼 10% / vatIncluded=false / 결제수수료 0%
- *     공급가액 300원 + 부가세 30원 = 330원 차감 -> 가맹점 정산 2,670원
+ * 어느 방식이든 **차감액(= 공급가액 + 부가세)** 이 실제로 가맹점 정산금에서 빠지는 금액이고,
+ * 공급가액과 부가세는 세금계산서 발행을 위해 항상 분리해서 기록한다.
  *
- * 예) 같은 조건에 vatIncluded=true
- *     300원만 차감 -> 가맹점 정산 2,700원
+ * `vatIncluded = false` (부가세 별도 요율)
+ *   공급가액 = 결제 금액 x 요율      (원 미만 버림)
+ *   부가세   = 공급가액 x 10%       (원 미만 버림)
+ *   차감액   = 공급가액 + 부가세
+ *   예) 3,000원 결제 / 플랫폼 5% -> 공급가 150 + 부가세 15 = 165원 차감
+ *
+ * `vatIncluded = true` (부가세 포함 요율 — 운영 기본)
+ *   차감액   = 결제 금액 x 요율      (원 미만 버림)
+ *   공급가액 = 차감액 ÷ 1.1         (원 미만 버림)
+ *   부가세   = 차감액 - 공급가액
+ *   예) 3,000원 결제 / 플랫폼 5.5% -> 차감 165원 = 공급가 150 + 부가세 15
+ *
+ * 예전에는 vatIncluded=true 일 때 부가세를 0원으로 기록했다. 차감액은 맞지만
+ * 세금계산서의 공급가액·세액 근거가 장부에 남지 않아 사후 신고를 뒷받침할 수 없었다.
+ * 두 방식의 차감액과 정산금은 위 예처럼 동일하며, 기록만 정확해진다.
  */
 export function computeFees(amount: bigint, rates: FeeRates): FeeBreakdown {
   const pgRate = String(rates.pgFeeRate);
   const platformRate = String(rates.platformFeeRate);
 
-  const pgFeeSupply = applyRate(amount, pgRate, rates.pgFixedFee ?? 0n);
-  const platformFeeSupply = applyRate(amount, platformRate);
+  const pgApplied = applyRate(amount, pgRate, rates.pgFixedFee ?? 0n);
+  const platformApplied = applyRate(amount, platformRate);
 
-  const pgFeeVat = rates.vatIncluded ? 0n : applyRate(pgFeeSupply, VAT_RATE);
-  const platformFeeVat = rates.vatIncluded ? 0n : applyRate(platformFeeSupply, VAT_RATE);
+  // 포함 요율이면 요율을 곱한 값이 이미 차감액이므로 공급가액을 역산한다.
+  const pgFeeSupply = rates.vatIncluded ? supplyOfInclusive(pgApplied) : pgApplied;
+  const platformFeeSupply = rates.vatIncluded ? supplyOfInclusive(platformApplied) : platformApplied;
+
+  const pgFeeVat = rates.vatIncluded ? pgApplied - pgFeeSupply : applyRate(pgFeeSupply, VAT_RATE);
+  const platformFeeVat = rates.vatIncluded
+    ? platformApplied - platformFeeSupply
+    : applyRate(platformFeeSupply, VAT_RATE);
 
   const pgFee = pgFeeSupply + pgFeeVat;
   const platformFeeRaw = platformFeeSupply + platformFeeVat;

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import {Gauge, ChevronLeft } from 'lucide-react';
 import { Card, CardTitle, EmptyState, Notice, DataRow, SectionTitle, StatTile } from '@/components/ui';
 import { LimitsForm } from '@/components/my/limits-form';
-import { requirePayerContext, NO_DONOR_TITLE, NO_DONOR_DESC } from '@/components/my/payer';
+import { requirePayerContext, NO_PAYER_TITLE, NO_PAYER_DESC } from '@/components/my/payer';
 import { prisma } from '@/server/db';
 import { resolvePolicy } from '@/server/services/limits';
 import { formatWon, formatNumber } from '@/lib/money';
@@ -14,7 +14,7 @@ const ALL = 'ALL';
 
 export default async function MyLimitsPage() {
   const { payerId } = await requirePayerContext('/my/limits');
-  if (!payerId) return <EmptyState title={NO_DONOR_TITLE} description={NO_DONOR_DESC} />;
+  if (!payerId) return <EmptyState title={NO_PAYER_TITLE} description={NO_PAYER_DESC} />;
 
   const [payer, policy] = await Promise.all([
     prisma.payerProfile.findUnique({

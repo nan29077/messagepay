@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/server/db';
 import { readMockOutbox } from '@/server/adapters/mt';
 import { startRegistration, completeRegistration } from '@/server/services/payer-registration';
-import { computeFees, getSettlementSummary } from '@/server/services/settlement';
+import { computeFees, getSettlementSummary, resolveFeePolicy } from '@/server/services/settlement';
+import { percentToDecimalString } from '@/app/actions/admin/shared';
+import { newId } from '@/lib/id';
 import { tplChargeSuccess, tplRegisterGuide } from '@/server/services/mt-templates';
 import { inboundAndPay, resetDb, seedBasics, seedRegisteredPayer, moPayload, type Fixture } from './helpers';
 import { generateToken, tokenHash } from '@/lib/crypto';
@@ -44,13 +46,41 @@ describe('수수료 부가세 계산', () => {
     expect(fees.net).toBe(2_670n); // 가맹점 정산금
   });
 
-  it('부가세 포함(vatIncluded=true)이면 요율만큼만 차감한다', () => {
+  it('부가세 포함(vatIncluded=true)이면 요율만큼만 차감하되 공급가액과 부가세를 분리 기록한다', () => {
     const fees = computeFees(3_000n, { pgFeeRate: '0', platformFeeRate: '0.10', vatIncluded: true });
 
+    // 차감 총액과 정산금은 요율 그대로다(부가세를 더 떼지 않는다).
     expect(fees.platformFee).toBe(300n);
-    expect(fees.platformFeeVat).toBe(0n);
-    expect(fees.vat).toBe(0n);
     expect(fees.net).toBe(2_700n);
+    // 그 300원 안에서 공급가액과 부가세를 역산해 기록한다. 세금계산서 발행 근거가 된다.
+    expect(fees.platformFeeSupply).toBe(272n); // 300 / 1.1 = 272.7 -> 272 (원 미만 버림)
+    expect(fees.platformFeeVat).toBe(28n); // 300 - 272
+    expect(fees.platformFeeSupply + fees.platformFeeVat).toBe(fees.platformFee);
+    expect(fees.vat).toBe(28n);
+  });
+
+  it('부가세 포함 5.5% 와 부가세 별도 5% 는 차감액·정산금·부가세가 모두 같다', () => {
+    const included = computeFees(3_000n, { pgFeeRate: '0', platformFeeRate: '0.055', vatIncluded: true });
+    const separate = computeFees(3_000n, { pgFeeRate: '0', platformFeeRate: '0.05', vatIncluded: false });
+
+    expect(included.platformFee).toBe(165n);
+    expect(included.platformFeeSupply).toBe(150n);
+    expect(included.platformFeeVat).toBe(15n);
+
+    expect(separate.platformFee).toBe(included.platformFee);
+    expect(separate.platformFeeSupply).toBe(included.platformFeeSupply);
+    expect(separate.platformFeeVat).toBe(included.platformFeeVat);
+    expect(separate.net).toBe(included.net);
+  });
+
+  it('부가세 포함 요율에서도 공급가액 + 부가세 = 차감액 이 항상 성립한다', () => {
+    for (const amount of [1_000n, 3_000n, 7_777n, 10_000n, 33_333n, 50_000n]) {
+      const fees = computeFees(amount, { pgFeeRate: '0.018', platformFeeRate: '0.15', vatIncluded: true });
+      expect(fees.pgFeeSupply + fees.pgFeeVat).toBe(fees.pgFee);
+      expect(fees.platformFeeSupply + fees.platformFeeVat).toBe(fees.platformFee);
+      expect(fees.vat).toBe(fees.pgFeeVat + fees.platformFeeVat);
+      expect(fees.net).toBe(amount - fees.pgFee - fees.platformFee);
+    }
   });
 
   it('결제수수료에도 같은 규칙이 적용되고 정산금은 두 수수료의 차액이다', () => {
@@ -75,6 +105,98 @@ describe('수수료 부가세 계산', () => {
     expect(fees.pgFeeSupply).toBe(100n);
     expect(fees.pgFeeVat).toBe(10n);
     expect(fees.net).toBe(2_890n);
+  });
+});
+
+describe('퍼센트 요율 입력 변환', () => {
+  it('퍼센트 문자열을 부동소수 오차 없이 소수 문자열로 바꾼다', () => {
+    expect(percentToDecimalString('5.5')).toBe('0.055');
+    expect(percentToDecimalString('1.8')).toBe('0.018');
+    expect(percentToDecimalString('15')).toBe('0.15');
+    expect(percentToDecimalString('0.5')).toBe('0.005');
+    expect(percentToDecimalString('100')).toBe('1');
+    expect(percentToDecimalString('0')).toBe('0');
+    // Decimal(10,6) 한계인 퍼센트 소수점 4자리까지 정확히 보존한다.
+    expect(percentToDecimalString('0.0001')).toBe('0.000001');
+  });
+
+  it('Number 나눗셈과 달리 이진 부동소수 오차가 섞이지 않는다', () => {
+    // 1.8 / 100 === 0.018000000000000002 (Decimal 컬럼에 그대로 들어가면 요율이 틀어진다)
+    expect(String(1.8 / 100)).not.toBe('0.018');
+    expect(percentToDecimalString('1.8')).toBe('0.018');
+    expect(String(0.7 / 100)).not.toBe('0.007');
+    expect(percentToDecimalString('0.7')).toBe('0.007');
+  });
+});
+
+describe('수수료 정책 시행 기간', () => {
+  beforeEach(async () => {
+    await resetDb();
+    fx = await seedBasics();
+  });
+
+  /**
+   * 시행일을 미래로 잡은 정책을 등록하면, 기존 정책은 그 시행일까지 살아 있어야 한다.
+   *
+   * 예전에는 새 정책을 등록하는 순간 기존 정책의 active 를 false 로 내렸다. 그래서
+   * 오늘~시행일 사이에는 적용 가능한 정책이 하나도 없었고, resolveFeePolicy 가 null 을
+   * 돌려주면서 코드 기본 요율(1.8% / 15%)이 조용히 적용됐다.
+   */
+  it('시행 예정 정책은 시행일 전까지 적용되지 않고, 기존 정책이 그때까지 유지된다', async () => {
+    const now = new Date();
+    const startsAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    // 기존 전역 정책 — active 를 유지한 채 종료일만 새 정책 시행일로 맞춘다.
+    await prisma.feePolicy.updateMany({
+      where: { scope: 'GLOBAL' },
+      data: { platformFeeRate: '0.15', active: true, effectiveTo: startsAt },
+    });
+    // 새 정책 — 아직 시행 전.
+    await prisma.feePolicy.create({
+      data: {
+        id: newId(),
+        scope: 'GLOBAL',
+        pgFeeRate: '0.018',
+        platformFeeRate: '0.055',
+        vatIncluded: true,
+        settlementDays: 5,
+        active: true,
+        effectiveFrom: startsAt,
+      },
+    });
+
+    const today = await resolveFeePolicy(fx.merchantId, now);
+    expect(today).not.toBeNull();
+    expect(Number(today!.platformFeeRate)).toBe(0.15);
+
+    const afterStart = await resolveFeePolicy(fx.merchantId, new Date(startsAt.getTime() + 60_000));
+    expect(afterStart).not.toBeNull();
+    expect(Number(afterStart!.platformFeeRate)).toBe(0.055);
+  });
+
+  it('가맹점 개별 정책이 전역 정책보다 우선한다', async () => {
+    const now = new Date();
+    await prisma.feePolicy.updateMany({
+      where: { scope: 'GLOBAL' },
+      data: { platformFeeRate: '0.15', active: true, effectiveTo: null },
+    });
+    await prisma.feePolicy.create({
+      data: {
+        id: newId(),
+        scope: 'MERCHANT',
+        merchantId: fx.merchantId,
+        pgFeeRate: '0.018',
+        platformFeeRate: '0.055',
+        vatIncluded: true,
+        settlementDays: 5,
+        active: true,
+        effectiveFrom: new Date(now.getTime() - 60_000),
+      },
+    });
+
+    const resolved = await resolveFeePolicy(fx.merchantId, now);
+    expect(resolved?.scope).toBe('MERCHANT');
+    expect(Number(resolved!.platformFeeRate)).toBe(0.055);
   });
 });
 
@@ -107,16 +229,23 @@ describe('부가세가 실제 결제·정산에 반영된다', () => {
     expect(platformEntry.memo).toContain('부가세 30원');
   });
 
-  it('부가세 포함 정책이면 종전과 같이 요율만큼만 차감된다', async () => {
+  it('부가세 포함 정책이면 요율만큼만 차감하되 그 안의 부가세가 결제 건에 기록된다', async () => {
     await setGlobalFee({ pg: '0', platform: '0.10', vatIncluded: true });
     await seedRegisteredPayer(fx.payerPhone);
 
     const res = await inbound(moPayload({ to: fx.moNumber }));
     const charge = await prisma.charge.findFirstOrThrow({ where: { id: res.chargeId } });
 
+    // 차감액과 정산금은 부가세 별도 정책과 달리 요율 그대로다.
     expect(charge.platformFee).toBe(300n);
-    expect(charge.feeVat).toBe(0n);
     expect(charge.netAmount).toBe(2_700n);
+    // 그 300원 안에 들어 있는 부가세를 역산해 기록한다(세금계산서 근거).
+    expect(charge.feeVat).toBe(28n);
+
+    const platformEntry = await prisma.settlementLedger.findFirstOrThrow({
+      where: { chargeId: charge.id, entryType: 'PLATFORM_FEE' },
+    });
+    expect(platformEntry.memo).toContain('부가세 28원');
   });
 });
 

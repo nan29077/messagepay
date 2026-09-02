@@ -75,7 +75,7 @@ echo ==========================================
 echo.
 echo   주소       http://localhost:3030
 echo   관리자     admin@messagepay.kr / messagepay1234!
-echo   크리에이터 creator1@messagepay.kr / messagepay1234!
+echo   가맹점     merchant1@messagepay.kr / messagepay1234!
 echo.
 pause
 exit /b 0

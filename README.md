@@ -68,9 +68,9 @@ npm run dev                       # http://localhost:3030
 | 구분 | 계정 | 비밀번호 |
 |---|---|---|
 | 통합 관리자 | `admin@messagepay.kr` | `messagepay1234!` |
-| 크리에이터 | `creator1@messagepay.kr` | `messagepay1234!` (코드 `MSG-8K2M`, 전용번호 `15881001`) |
-| 크리에이터 | `creator2@messagepay.kr` | `messagepay1234!` (코드 `MSG-3QP7`, 대표번호 `15889000` + 키워드 `MSG3QP7`) |
-| 테스트 후원자 | `010-1234-5678` | 계좌 등록 완료 상태 |
+| 가맹점 | `merchant1@messagepay.kr` | `messagepay1234!` (코드 `MSG-8K2M`, 전용번호 `0505-100-1001`) |
+| 가맹점 | `merchant2@messagepay.kr` | `messagepay1234!` (코드 `MSG-3QP7`, 대표번호 `0505-900-0000` + 키워드 `MSG3QP7`) |
+| 테스트 이용자 | `payer@messagepay.kr` | `messagepay1234!` (`010-1234-5678`, 계좌 등록·계정 연결 완료) |
 
 ---
 

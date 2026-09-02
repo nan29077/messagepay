@@ -82,13 +82,39 @@ export function optMoney(fd: FormData, key: string, label: string): bigint | nul
   return BigInt(raw);
 }
 
-/** 요율. 0 ~ 1 사이 소수 문자열을 Decimal 컬럼에 그대로 넣는다. */
-export function rate(fd: FormData, key: string, label: string): string {
-  const raw = text(fd, key);
-  if (!/^\d(\.\d{1,6})?$/.test(raw)) throw new Error(`${label} 요율은 0 ~ 1 사이 소수로 입력해 주세요. (예: 0.018)`);
+/**
+ * 퍼센트 문자열("5.5")을 Decimal 컬럼용 소수 문자열("0.055")로 바꾼다.
+ *
+ * 소수점을 두 칸 옮기는 계산을 문자열로 한다. Number 로 나누면 5.5/100 처럼
+ * 이진 부동소수 오차가 그대로 Decimal 컬럼에 들어간다(0.055000000000000006).
+ */
+export function percentToDecimalString(raw: string): string {
+  const [intPart, fracPart = ''] = raw.split('.');
+  const digits = `${intPart}${fracPart}`;
+  const pointFromRight = fracPart.length + 2;
+  const padded = digits.padStart(pointFromRight + 1, '0');
+  const cut = padded.length - pointFromRight;
+  const joined = `${padded.slice(0, cut)}.${padded.slice(cut)}`;
+  // 뒤쪽 0 과 남은 소수점을 정리한다. ("1.00" -> "1", "0.055" -> 그대로)
+  return joined.replace(/0+$/, '').replace(/\.$/, '') || '0';
+}
+
+/**
+ * 요율을 **퍼센트로** 입력받는다. (예: 5.5 = 5.5%)
+ *
+ * 운영에서 쓰는 단위가 퍼센트인데 소수(0.055)로 입력받으면 자릿수를 한 칸 잘못 찍기 쉽다.
+ * 0.55 를 0.055 로 착각하면 요율이 10배가 되고, 그대로 정산이 나간다.
+ *
+ * 저장은 기존과 같이 소수 문자열로 한다. Decimal(10,6) 이므로 퍼센트 소수점은 4자리까지.
+ */
+export function percentRate(fd: FormData, key: string, label: string): string {
+  const raw = text(fd, key).replace(/[\s%,]/g, '');
+  if (!/^\d{1,3}(\.\d{1,4})?$/.test(raw)) {
+    throw new Error(`${label} 수수료율은 퍼센트로 입력해 주세요. (예: 5.5 = 5.5%, 소수점 4자리까지)`);
+  }
   const n = Number(raw);
-  if (!(n >= 0 && n <= 1)) throw new Error(`${label} 요율은 0 ~ 1 사이여야 합니다.`);
-  return raw;
+  if (!(n >= 0 && n <= 100)) throw new Error(`${label} 수수료율은 0 ~ 100% 사이여야 합니다.`);
+  return percentToDecimalString(raw);
 }
 
 export function enumValue<T extends string>(fd: FormData, key: string, allowed: readonly T[], label: string): T {

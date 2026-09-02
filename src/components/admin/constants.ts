@@ -1,7 +1,7 @@
 import type { ChargeStatus } from '@/generated/prisma/enums';
 
 /** 결제가 실제로 승인된(=매출로 잡히는) 결제 상태 */
-export const PAID_DONATION_STATUSES: ChargeStatus[] = [
+export const PAID_CHARGE_STATUSES: ChargeStatus[] = [
   'PAYMENT_SUCCESS',
   'BROADCAST_PENDING',
   'BROADCASTED',

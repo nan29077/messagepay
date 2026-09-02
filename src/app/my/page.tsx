@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { EmptyState, LinkButton, Badge, Card } from '@/components/ui';
 import { RefundRequestForm } from '@/components/my/refund-request-form';
-import { requirePayerContext, NO_DONOR_TITLE, NO_DONOR_DESC } from '@/components/my/payer';
+import { requirePayerContext, NO_PAYER_TITLE, NO_PAYER_DESC } from '@/components/my/payer';
 import { prisma } from '@/server/db';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
@@ -39,7 +39,7 @@ export default async function MyChargesPage({
   if (!payerId) {
     return (
       <>
-        <EmptyState title={NO_DONOR_TITLE} description={NO_DONOR_DESC} />
+        <EmptyState title={NO_PAYER_TITLE} description={NO_PAYER_DESC} />
         <div className="mt-4">
           <LinkButton href="/my/account#phone-link" size="md" className="w-full">
             휴대폰 번호 연결하기

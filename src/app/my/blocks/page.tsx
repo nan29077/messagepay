@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { Card, CardTitle, Badge, EmptyState, Notice, LinkButton } from '@/components/ui';
 import { BlockToggle } from '@/components/my/block-toggle';
-import { requirePayerContext, NO_DONOR_TITLE, NO_DONOR_DESC } from '@/components/my/payer';
+import { requirePayerContext, NO_PAYER_TITLE, NO_PAYER_DESC } from '@/components/my/payer';
 import { prisma } from '@/server/db';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function MyBlocksPage() {
   const { payerId } = await requirePayerContext('/my/blocks');
-  if (!payerId) return <EmptyState title={NO_DONOR_TITLE} description={NO_DONOR_DESC} />;
+  if (!payerId) return <EmptyState title={NO_PAYER_TITLE} description={NO_PAYER_DESC} />;
 
   // 이용자가 건 차단(payerBlockedAt)과 가맹점이 건 차단(blockedPayer)은 별개다.
   // 이 화면에서 해제할 수 있는 것은 이용자 본인이 건 차단뿐이다.

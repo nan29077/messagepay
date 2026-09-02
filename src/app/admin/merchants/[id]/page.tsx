@@ -11,7 +11,7 @@ import { prisma } from '@/server/db';
 import { getSettlementSummary } from '@/server/services/settlement';
 import { resolveFeePolicy } from '@/server/services/settlement';
 import { env } from '@/lib/env';
-import { formatWon, formatNumber } from '@/lib/money';
+import { formatWon, formatNumber, ratePercent } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import { merchantStatusLabel, chargeStatusLabel, paymentModeLabel, moNumberStatusLabel } from '@/lib/labels';
 import { AdminField, AdminInput } from '@/components/admin/controls';
@@ -181,17 +181,42 @@ export default async function AdminMerchantDetailPage({ params }: { params: Prom
             ) : null}
 
             <div className="mt-4">
-              <CardTitle>수수료 정책</CardTitle>
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle>수수료 정책</CardTitle>
+                <Link
+                  href={`/admin/fees?merchantId=${merchant.id}`}
+                  className="text-[12.5px] font-bold text-brand-700 hover:underline"
+                >
+                  이 가맹점 수수료 변경
+                </Link>
+              </div>
               <div className="mt-2">
-                <DataRow label="적용 범위" value={feePolicy ? feePolicy.scope : '기본값(정책 미등록)'} />
-                <DataRow label="결제 수수료" value={feePolicy ? `${feePolicy.pgFeeRate.toString()} + ${formatWon(feePolicy.pgFixedFee)}` : '0.018'} />
-                <DataRow label="플랫폼 수수료" value={feePolicy ? feePolicy.platformFeeRate.toString() : '0.15'} />
+                <DataRow
+                  label="적용 범위"
+                  value={
+                    feePolicy
+                      ? feePolicy.scope === 'MERCHANT'
+                        ? '이 가맹점 개별 정책'
+                        : '전역 정책'
+                      : '코드 기본값 (정책 미등록)'
+                  }
+                />
+                <DataRow
+                  label="결제 수수료"
+                  value={`${ratePercent(feePolicy ? feePolicy.pgFeeRate.toString() : '0.018')}${
+                    feePolicy && feePolicy.pgFixedFee > 0n ? ` + ${formatWon(feePolicy.pgFixedFee)}` : ''
+                  }`}
+                />
+                <DataRow
+                  label="플랫폼 수수료"
+                  value={ratePercent(feePolicy ? feePolicy.platformFeeRate.toString() : '0.15')}
+                />
                 <DataRow
                   label="부가세"
                   value={
                     (feePolicy ? feePolicy.vatIncluded : true)
-                      ? '요율에 포함 (추가 차감 없음)'
-                      : '별도 (수수료의 10% 추가 차감)'
+                      ? '요율에 포함 (요율 안에서 공급가액·부가세 분리 기록)'
+                      : '별도 (공급가액의 10% 추가 차감)'
                   }
                 />
                 <DataRow label="문자 원가" value={feePolicy ? formatWon(feePolicy.smsCost) : '-'} />

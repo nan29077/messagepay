@@ -4,7 +4,7 @@ import { PageHeader } from '@/components/layout/console-shell';
 import { Card, CardTitle, SectionTitle, StatTile, Table, Th, Td, Badge, EmptyState, LinkButton } from '@/components/ui';
 import { SafetyBanner } from '@/components/admin/safety-banner';
 import { BannerStrip } from '@/components/public/banner-strip';
-import { PAID_DONATION_STATUSES } from '@/components/admin/constants';
+import { PAID_CHARGE_STATUSES } from '@/components/admin/constants';
 import { prisma } from '@/server/db';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst, kstStartOfDay, kstStartOfMonth } from '@/lib/datetime';
@@ -31,12 +31,12 @@ export default async function AdminDashboardPage() {
     recentCharges,
   ] = await Promise.all([
     prisma.charge.aggregate({
-      where: { status: { in: PAID_DONATION_STATUSES }, paidAt: { gte: todayStart } },
+      where: { status: { in: PAID_CHARGE_STATUSES }, paidAt: { gte: todayStart } },
       _count: { _all: true },
       _sum: { amount: true },
     }),
     prisma.charge.aggregate({
-      where: { status: { in: PAID_DONATION_STATUSES }, paidAt: { gte: monthStart } },
+      where: { status: { in: PAID_CHARGE_STATUSES }, paidAt: { gte: monthStart } },
       _count: { _all: true },
       _sum: { amount: true },
     }),

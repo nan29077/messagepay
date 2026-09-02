@@ -1043,7 +1043,7 @@ export async function saveSettlementAccountAction(
  * 이미지 주소 검증(폼 파서용).
  * http(s) 절대주소 또는 사이트 내 경로(/로 시작)만 허용한다.
  */
-export function safeImageUrl(value: string, label: string): string | null {
+function safeImageUrl(value: string, label: string): string | null {
   const v = value.trim();
   if (!v) return null;
   if (v.startsWith('/') && !v.startsWith('//')) return v;

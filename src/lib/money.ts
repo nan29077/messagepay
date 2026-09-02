@@ -38,6 +38,18 @@ export function applyRate(amount: bigint, rate: string | number, fixed: bigint =
   return fee > amount ? amount : fee;
 }
 
+/**
+ * 소수 요율("0.055")을 화면용 퍼센트 문자열("5.50%")로 바꾼다.
+ *
+ * 관리자 화면에서 요율은 항상 퍼센트로 보여준다. 소수를 그대로 노출하면
+ * 0.055 와 0.55 를 눈으로 구분하기 어렵고, 열 배 차이를 못 알아챈다.
+ */
+export function ratePercent(value: string | number): string {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  return `${(n * 100).toFixed(2)}%`;
+}
+
 /** BigInt 를 JSON 으로 직렬화하기 위한 안전 변환 */
 export function serializeBigInt<T>(value: T): T {
   return JSON.parse(

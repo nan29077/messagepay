@@ -36,7 +36,7 @@ async function currentPayer() {
   return { user, payer };
 }
 
-const NO_DONOR = '문자결제 이용 내역이 없어 처리할 수 없습니다.';
+const NO_PAYER = '문자결제 이용 내역이 없어 처리할 수 없습니다.';
 const NO_SESSION = '로그인이 필요합니다.';
 
 // ---------------------------------------------------------------- 자동출금 해지
@@ -46,7 +46,7 @@ export async function revokeAutoWithdrawal(
   _formData: FormData,
 ): Promise<PayerActionState> {
   const ctx = await currentPayer();
-  if (!ctx) return { ok: false, message: NO_DONOR };
+  if (!ctx) return { ok: false, message: NO_PAYER };
 
   try {
     const revoked = await revokePaymentMethod(ctx.payer.id);
@@ -80,7 +80,7 @@ export async function updatePayerLimits(
   formData: FormData,
 ): Promise<PayerActionState> {
   const ctx = await currentPayer();
-  if (!ctx) return { ok: false, message: NO_DONOR };
+  if (!ctx) return { ok: false, message: NO_PAYER };
 
   const parsed = limitSchema.safeParse({
     dailyLimit: String(formData.get('dailyLimit') ?? ''),
@@ -131,7 +131,7 @@ export async function updatePayerNickname(
   formData: FormData,
 ): Promise<PayerActionState> {
   const ctx = await currentPayer();
-  if (!ctx) return { ok: false, message: NO_DONOR };
+  if (!ctx) return { ok: false, message: NO_PAYER };
 
   const raw = String(formData.get('nickname') ?? '');
   const checked = await validatePayerName(raw);
@@ -159,7 +159,7 @@ export async function toggleMerchantBlock(
   formData: FormData,
 ): Promise<PayerActionState> {
   const ctx = await currentPayer();
-  if (!ctx) return { ok: false, message: NO_DONOR };
+  if (!ctx) return { ok: false, message: NO_PAYER };
 
   const linkId = String(formData.get('linkId') ?? '').trim();
   const next = String(formData.get('next') ?? '');
@@ -198,7 +198,7 @@ export async function requestChargeRefund(
   const user = await getSessionUser();
   if (!user) return { ok: false, message: NO_SESSION };
   const ctx = await currentPayer();
-  if (!ctx) return { ok: false, message: NO_DONOR };
+  if (!ctx) return { ok: false, message: NO_PAYER };
 
   const chargeId = String(formData.get('chargeId') ?? '').trim();
   const reason = String(formData.get('reason') ?? '').trim();

@@ -7,7 +7,7 @@ import {
 import { ActionButton, ActionForm } from '@/components/admin/action-form';
 import { AdminField, AdminInput } from '@/components/admin/controls';
 import { bankLabel } from '@/components/admin/mask';
-import { PAID_DONATION_STATUSES } from '@/components/admin/constants';
+import { PAID_CHARGE_STATUSES } from '@/components/admin/constants';
 import { unlockPayer, setPayerBlock, updatePayerLimitsByAdmin } from '@/app/actions/admin/accounts';
 import { prisma } from '@/server/db';
 import { formatWon, formatNumber } from '@/lib/money';
@@ -95,7 +95,7 @@ export default async function AdminPayerDetailPage({ params }: { params: Promise
       select: { id: true, type: true, level: true, resolved: true, createdAt: true, resolvedAt: true, detail: true },
     }),
     prisma.charge.aggregate({
-      where: { payerId: id, status: { in: PAID_DONATION_STATUSES } },
+      where: { payerId: id, status: { in: PAID_CHARGE_STATUSES } },
       _sum: { amount: true },
       _count: { _all: true },
     }),
@@ -133,7 +133,17 @@ export default async function AdminPayerDetailPage({ params }: { params: Promise
               <DataRow label="연락처" value={payer.phoneMasked} />
               <DataRow label="표시 이름" value={payer.displayName ?? '-'} />
               <DataRow label="연결 회원" value={payer.user ? `${payer.user.email ?? '-'} (${payer.user.status})` : '비회원(문자 결제)'} />
-              <DataRow label="성인 확인" value={payer.ageVerified ? '완료' : '미확인'} />
+              {/*
+                이 값은 결제수단 등록을 마치면 무조건 true 로 기록된다. PG(헥토) 결제창에서
+                계좌·카드 본인확인이 수행되지만, 그 결과값(CI/DI·성인여부)은 우리 서버로
+                내려오지 않아 저장된 근거가 없다. 근거 없이 "성인 확인 완료" 로 표기하면
+                미성년 결제 분쟁에서 입증할 수 없는 주장을 화면이 대신 하게 된다.
+                PG 연동에서 성인여부를 받게 되면 그 값으로 바꾸고 라벨을 되돌린다.
+              */}
+              <DataRow
+                label="PG 본인확인"
+                value={payer.ageVerified ? 'PG 등록 완료 (결과값 미수신)' : '미등록'}
+              />
               <DataRow label="최초 수신" value={formatKst(payer.firstSeenAt)} />
               <DataRow
                 label="내통장결제 가입 상태"

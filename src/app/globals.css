@@ -348,16 +348,6 @@ a {
   box-shadow: var(--shadow-soft);
 }
 
-/* 크리에이터 유도 배너: 검은 바탕에 꿀빛 광원 (꿀벌 대비) */
-.creator-cta {
-  background:
-    radial-gradient(circle at 86% 18%, rgba(255, 205, 77, 0.28), transparent 8rem),
-    radial-gradient(circle at 8% 110%, rgba(237, 166, 0, 0.35), transparent 9rem),
-    linear-gradient(135deg, #2a2823 0%, #1c1a18 58%, #101010 100%) !important;
-  border-color: rgba(255, 205, 77, 0.22) !important;
-  box-shadow: 0 18px 44px rgba(23, 22, 26, 0.3) !important;
-}
-
 @media (min-width: 640px) {
   .public-content > section:not(.hero-slider) {
     scroll-margin-top: 88px;
@@ -408,31 +398,12 @@ a {
 ::-webkit-scrollbar-thumb { background: var(--color-ink-200); border-radius: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* 방송중(온에어) 프로필 두근두근 효과 */
-@keyframes heartbeat {
-  0%, 100% { transform: scale(1); }
-  12% { transform: scale(1.07); }
-  24% { transform: scale(1); }
-  36% { transform: scale(1.07); }
-  60% { transform: scale(1); }
-}
-.animate-heartbeat { animation: heartbeat 1.6s ease-in-out infinite; }
-
 /* 바텀시트 등장 */
 @keyframes sheet-up {
   from { transform: translateY(24px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
 .animate-sheet-up { animation: sheet-up 260ms cubic-bezier(0.16, 1, 0.3, 1) both; }
-
-
-/* 오버레이 감사 파티클 (하트/별 떠오름) */
-@keyframes thanks-float {
-  0% { transform: translate(0, 0) scale(0.4) rotate(0deg); opacity: 0; }
-  12% { opacity: 1; }
-  100% { transform: translate(var(--drift, 0px), -150px) scale(1) rotate(24deg); opacity: 0; }
-}
-.animate-thanks-float { animation: thanks-float 2.4s ease-out infinite; }
 
 /* 감사 스티커 바운스 */
 @keyframes thanks-bounce {
@@ -442,44 +413,6 @@ a {
   72% { transform: translateY(-2px); }
 }
 .animate-thanks-bounce { animation: thanks-bounce 1.4s ease-in-out infinite; }
-
-/* ---------------------------------------------------------------------------
-   오버레이 금액 구간 효과 (OBS/PRISM 브라우저 소스)
-   --drift  : 좌우로 흩어지는 거리
-   --rise   : 떠오르는 높이
-   --spin   : 회전각
-   --dx/--dy: 폭죽이 터져 나가는 방향
-   --------------------------------------------------------------------------- */
-
-/* 하트 / 별 / 동전: 화면 아래에서 위로 떠오른다 */
-@keyframes messagepay-particle-rise {
-  0%   { transform: translate(0, 0) scale(0.35) rotate(0deg); opacity: 0; }
-  10%  { opacity: 1; }
-  80%  { opacity: 1; }
-  100% { transform: translate(var(--drift, 0px), calc(-1 * var(--rise, calc(var(--ovh, 100vh) * 0.6)))) scale(1) rotate(var(--spin, 30deg)); opacity: 0; }
-}
-.animate-particle-rise { animation: messagepay-particle-rise 2.6s ease-out infinite; }
-
-/* 꽃가루: 화면 위에서 아래로 떨어진다
-   --ovh 는 오버레이 기준 높이다. 방송용은 화면 높이(100vh),
-   스튜디오 미리보기는 축소 전 캔버스 높이(1080px)를 내려준다.
-   vh 를 그대로 쓰면 축소된 미리보기에서 이동 거리가 실제 화면 높이(180px 등) 기준으로
-   계산돼 꽃가루가 화면 안에서 멈춘다. */
-@keyframes messagepay-confetti-fall {
-  0%   { transform: translate(0, calc(var(--ovh, 100vh) * -0.12)) rotate(0deg); opacity: 0; }
-  8%   { opacity: 1; }
-  88%  { opacity: 1; }
-  100% { transform: translate(var(--drift, 0px), calc(var(--ovh, 100vh) * 1.08)) rotate(var(--spin, 720deg)); opacity: 0; }
-}
-.animate-confetti-fall { animation: messagepay-confetti-fall 3.2s linear infinite; }
-
-/* 폭죽: 한 점에서 사방으로 터진다 */
-@keyframes messagepay-firework-burst {
-  0%   { transform: translate(0, 0) scale(0.2); opacity: 0; }
-  14%  { opacity: 1; }
-  100% { transform: translate(var(--dx, 0px), var(--dy, 0px)) scale(1); opacity: 0; }
-}
-.animate-firework-burst { animation: messagepay-firework-burst 1.6s cubic-bezier(0.2, 0.7, 0.3, 1) infinite; }
 
 /* 메시지페이 전용 캐릭터 스티커 */
 @keyframes messagepay-sticker-cheer {
