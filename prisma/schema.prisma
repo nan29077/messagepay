@@ -93,6 +93,8 @@ enum DigitalProductType {
   VOUCHER
   /// 이용권·구독 (기간제)
   PASS
+  /// 디지털 컨텐츠 (파일·영상·이미지 등). 지급 방식은 fulfillment 로 정한다.
+  CONTENT
 
   @@map("digital_product_type")
 }
@@ -103,8 +105,30 @@ enum ShipmentStatus {
   SHIPPED
   DELIVERED
   CANCELED
+  /// 반품 접수 (이용자 요청을 가맹점이 받은 상태)
+  RETURN_REQUESTED
+  /// 회수중 (반품 상품이 가맹점으로 이동 중)
+  RETURNING
+  /// 반품 완료 (환불은 별도 절차)
+  RETURNED
+  /// 교환 접수
+  EXCHANGE_REQUESTED
+  /// 교환품 재발송
+  EXCHANGE_SHIPPED
 
   @@map("shipment_status")
+}
+
+/// 비실물 상품을 이용자에게 넘기는 방식.
+enum FulfillmentMode {
+  /// 가맹점이 판매 내역 화면에서 직접 지급 처리한다.
+  MANUAL
+  /// 가맹점 서버가 연동 API 로 가져가 자동 지급한다.
+  API
+  /// 결제 완료 즉시 지급 코드·링크를 문자로 보낸다.
+  INSTANT
+
+  @@map("fulfillment_mode")
 }
 
 enum MoProcessResult {
@@ -521,6 +545,13 @@ model MerchantProfile {
   allowCustomAmount Boolean        @default(true) @map("allow_custom_amount")
   minAmount         BigInt         @default(1000) @map("min_amount")
   maxAmount         BigInt         @default(50000) @map("max_amount")
+  /// 직접 입력 금액의 가맹점 자체 하한. null 이면 정책 하한을 그대로 쓴다.
+  /// (관리자 지정 범위·한도 정책보다 넓어질 수는 없다 — 좁히는 용도)
+  customMinAmount   BigInt?        @map("custom_min_amount")
+  /// 직접 입력 금액의 가맹점 자체 상한.
+  customMaxAmount   BigInt?        @map("custom_max_amount")
+  /// 직접 입력 금액의 배수 단위(원). null 이나 1 이면 제한 없음.
+  customAmountStep  Int?           @map("custom_amount_step")
   /// 크리에이터별 결제 모드 오버라이드 (null 이면 전역 설정)
   paymentMode       PaymentMode?   @map("payment_mode")
   /// 후원 감사 MT 문자 본문. null/빈 값이면 기본 템플릿을 사용한다.
@@ -538,7 +569,7 @@ model MerchantProfile {
 
   // 하드 삭제로 정산계좌·결제 이력까지 함께 사라지면 안 된다.
   // 탈퇴는 status=WITHDRAWN 소프트 삭제로 처리하므로 삭제 자체를 막는다.
-  user               User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  user               User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
   codes              MerchantCode[]
   moRoutes           MerchantMoNumber[]
   charges            Charge[]
@@ -555,6 +586,7 @@ model MerchantProfile {
   shipments          ChargeShipment[]
   moMessages         MoInboundMessage[]
   chargeProducts     ChargeProduct[]
+  apiCallLogs        MerchantApiCallLog[]
 
   @@index([status])
   @@map("merchant_profile")
@@ -588,6 +620,13 @@ model ChargeProduct {
   /// 상품 설명 (결제 링크에 노출)
   description String?
   imageUrl    String?             @map("image_url")
+  /// 대표 이미지 외 추가 이미지 URL 배열. ["https://...", ...] 최대 5장.
+  images      Json?
+  /// 면세 상품 여부. 정산 부가세 계산과 세금계산서 근거로 남긴다.
+  taxFree     Boolean             @default(false) @map("tax_free")
+  /// 전자상거래 상품정보 제공 고시.
+  /// { "category": "의류", "items": [{ "label": "제품 소재", "value": "면 100%" }] }
+  noticeInfo  Json?               @map("notice_info")
   sortOrder   Int                 @default(0) @map("sort_order")
   active      Boolean             @default(true)
   archivedAt  DateTime?           @map("archived_at") @db.Timestamptz(3)
@@ -598,17 +637,33 @@ model ChargeProduct {
   /// 차감은 결제 승인 시점에 상품 단위 잠금 안에서 한다.
   stock        Int?
   /// 재고가 이 값 이하면 화면·알림에서 경고한다.
-  stockAlert   Int?     @map("stock_alert")
+  stockAlert   Int?    @map("stock_alert")
   /// 이 상품 전용 배송비. null 이면 가맹점 기본 배송정책을 따른다.
-  shippingFee  BigInt?  @map("shipping_fee")
+  shippingFee  BigInt? @map("shipping_fee")
   /// 이 금액 이상이면 배송비 무료(조건부 무료). null 이면 가맹점 기본 정책을 따른다.
-  freeShipOver BigInt?  @map("free_ship_over")
+  freeShipOver BigInt? @map("free_ship_over")
   /// 항상 무료배송. 위 두 값보다 우선한다.
-  freeShipping Boolean  @default(false) @map("free_shipping")
+  freeShipping Boolean @default(false) @map("free_shipping")
   /// 1회 주문 최대 수량. null 이면 결제 한도까지.
-  maxPerOrder  Int?     @map("max_per_order")
-  /// 옵션 정의. [{ "name": "사이즈", "values": ["S","M","L"] }]
+  maxPerOrder  Int?    @map("max_per_order")
+  /// 옵션 정의.
+  /// 신규 형식: [{ "name": "사이즈", "values": [{ "label": "S", "addPrice": "0", "stock": null }] }]
+  /// 구 형식(문자열 배열)도 읽을 수 있게 파서가 둘 다 받는다.
   options      Json?
+  /// 결제 후 출고까지 걸리는 영업일. null 이면 기본 배송정책을 따른다.
+  dispatchDays Int?    @map("dispatch_days")
+  /// 이 상품 반품 배송비(편도). null 이면 기본 배송정책.
+  returnFee    BigInt? @map("return_fee")
+  /// 이 상품 교환 배송비(왕복). null 이면 기본 배송정책.
+  exchangeFee  BigInt? @map("exchange_fee")
+
+  // ── 비실물 상품 전용 ───────────────────────────────────────────
+  /// 비실물 지급 방식. INSTANT 는 결제 완료 즉시 지급 코드를 문자로 보낸다.
+  fulfillment      FulfillmentMode @default(MANUAL)
+  /// INSTANT 지급에 쓸 코드·링크 안내 문구. 지급 문자 본문에 그대로 들어간다.
+  fulfillmentNote  String?         @map("fulfillment_note")
+  /// 청약철회 제한 안내(디지털 콘텐츠 특례). 결제 화면에 그대로 노출한다.
+  withdrawalNotice String?         @map("withdrawal_notice")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -623,17 +678,28 @@ model ChargeProduct {
 
 /// 가맹점 기본 배송정책. 상품별 값이 없으면 이 값을 쓴다.
 model MerchantShippingPolicy {
-  id         String  @id
-  merchantId String  @unique @map("merchant_id")
+  id             String  @id
+  merchantId     String  @unique @map("merchant_id")
   /// 기본 배송비
-  baseFee    BigInt  @default(3000) @map("base_fee")
+  baseFee        BigInt  @default(3000) @map("base_fee")
   /// 이 금액 이상 주문이면 배송비 무료(조건부 무료). null 이면 조건부 무료 없음.
-  freeOver   BigInt? @map("free_over")
+  freeOver       BigInt? @map("free_over")
   /// 도서산간 추가 배송비
-  remoteFee  BigInt  @default(0) @map("remote_fee")
-  carrier    String?
+  remoteFee      BigInt  @default(0) @map("remote_fee")
+  carrier        String?
   /// 배송 안내 문구(발송 소요일 등). 결제 링크에 그대로 보여준다.
-  guide      String?
+  guide          String?
+  /// 결제 후 출고까지 걸리는 기본 영업일.
+  dispatchDays   Int     @default(2) @map("dispatch_days")
+  /// 기본 반품 배송비(편도).
+  returnFee      BigInt  @default(0) @map("return_fee")
+  /// 기본 교환 배송비(왕복).
+  exchangeFee    BigInt  @default(0) @map("exchange_fee")
+  /// 반품·교환품을 받을 주소. 가맹점 사업장 정보라 평문으로 둔다.
+  returnReceiver String? @map("return_receiver")
+  returnPhone    String? @map("return_phone")
+  returnZipCode  String? @map("return_zip_code")
+  returnAddress  String? @map("return_address")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -664,11 +730,19 @@ model ChargeShipment {
   /// 도서산간 추가배송비가 붙은 주문인지
   remote         Boolean @default(false)
 
-  status      ShipmentStatus @default(PREPARING)
-  carrier     String?
-  trackingNo  String?        @map("tracking_no")
-  shippedAt   DateTime?      @map("shipped_at") @db.Timestamptz(3)
-  deliveredAt DateTime?      @map("delivered_at") @db.Timestamptz(3)
+  status            ShipmentStatus @default(PREPARING)
+  carrier           String?
+  trackingNo        String?        @map("tracking_no")
+  shippedAt         DateTime?      @map("shipped_at") @db.Timestamptz(3)
+  deliveredAt       DateTime?      @map("delivered_at") @db.Timestamptz(3)
+  /// 반품·교환 접수 사유
+  returnReason      String?        @map("return_reason")
+  /// 반품·교환을 접수한 시각(최초 1회)
+  returnRequestedAt DateTime?      @map("return_requested_at") @db.Timestamptz(3)
+  /// 회수 송장번호
+  returnTrackingNo  String?        @map("return_tracking_no")
+  /// 반품·교환이 끝난 시각
+  returnClosedAt    DateTime?      @map("return_closed_at") @db.Timestamptz(3)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -922,17 +996,17 @@ model Charge {
   /// 지급 처리한 가맹점 사용자 ID
   pointBy     String?        @map("point_by")
 
-  receivedAt   DateTime  @default(now()) @map("received_at") @db.Timestamptz(3)
-  paidAt       DateTime? @map("paid_at") @db.Timestamptz(3)
+  receivedAt          DateTime  @default(now()) @map("received_at") @db.Timestamptz(3)
+  paidAt              DateTime? @map("paid_at") @db.Timestamptz(3)
   /// 가맹점이 포인트를 지급했다고 표시한 시각
-  pointGivenAt DateTime? @map("point_given_at") @db.Timestamptz(3)
-  refundedAt   DateTime? @map("refunded_at") @db.Timestamptz(3)
-  settledAt    DateTime? @map("settled_at") @db.Timestamptz(3)
+  pointGivenAt        DateTime? @map("point_given_at") @db.Timestamptz(3)
+  refundedAt          DateTime? @map("refunded_at") @db.Timestamptz(3)
+  settledAt           DateTime? @map("settled_at") @db.Timestamptz(3)
   /// 이 결제 건이 묶인 정산 회차. 회차 생성 시점에 찍고 지급 실패로 남아도 유지한다.
   /// 풀어 주면 배치가 같은 건을 새 회차로 다시 잡아 이중 지급이 된다. 회차를 버릴 때만 null 로 되돌린다.
-  settlementRequestId String? @map("settlement_request_id")
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  settlementRequestId String?   @map("settlement_request_id")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   merchant      MerchantProfile      @relation(fields: [merchantId], references: [id])
   payer         PayerProfile?        @relation(fields: [payerId], references: [id])
@@ -1230,23 +1304,23 @@ model FeePolicy {
 }
 
 model SettlementAccount {
-  id            String    @id
-  merchantId    String    @unique @map("merchant_id")
-  bankCode      String    @map("bank_code")
-  bankName      String    @map("bank_name")
-  accountEnc    String    @map("account_enc")
-  accountTail4  String    @map("account_tail4")
-  holderNameEnc String    @map("holder_name_enc")
-  holderMasked  String    @map("holder_masked")
+  id             String    @id
+  merchantId     String    @unique @map("merchant_id")
+  bankCode       String    @map("bank_code")
+  bankName       String    @map("bank_name")
+  accountEnc     String    @map("account_enc")
+  accountTail4   String    @map("account_tail4")
+  holderNameEnc  String    @map("holder_name_enc")
+  holderMasked   String    @map("holder_masked")
   /// 원천징수 신고용 주민등록번호(암호화). 사업자등록번호가 없는 개인 가맹점만 등록한다.
   /// 자동 지급은 가맹점이 요청하는 단계가 없으므로, 회차 생성 시점에 여기서 읽어 회차에 복사한다.
   residentEnc    String?   @map("resident_enc")
   /// 마스킹 표기(예: 901010-1******). 원문은 화면에 노출하지 않는다.
   residentMasked String?   @map("resident_masked")
-  verified      Boolean   @default(false)
-  verifiedAt    DateTime? @map("verified_at") @db.Timestamptz(3)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  verified       Boolean   @default(false)
+  verifiedAt     DateTime? @map("verified_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   merchant MerchantProfile @relation(fields: [merchantId], references: [id], onDelete: Cascade)
 
@@ -1502,6 +1576,8 @@ model MerchantApiKey {
   keyHash    String    @unique @map("key_hash")
   /// 요청 서명(HMAC-SHA256)에 쓰는 비밀키. 암호화 저장하며 발급 시 1회만 노출한다.
   signingEnc String    @map("signing_enc")
+  /// 이 키로 호출을 허용할 IP 목록(쉼표 구분). 비우면 제한 없음.
+  allowedIps String?   @map("allowed_ips")
   lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(3)
   revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -1510,6 +1586,29 @@ model MerchantApiKey {
 
   @@index([merchantId, revokedAt])
   @@map("merchant_api_key")
+}
+
+/// 가맹점 연동 API 호출 기록.
+///
+/// 연동을 붙이는 동안 무엇이 왜 실패했는지 가맹점이 스스로 볼 수 있어야 한다.
+/// 응답 본문은 남기지 않고(개인정보), 상태 코드와 오류 코드만 남긴다.
+model MerchantApiCallLog {
+  id         String   @id
+  merchantId String   @map("merchant_id")
+  /// 사용된 키. 키를 지워도 기록은 남기므로 관계를 걸지 않는다.
+  keyId      String?  @map("key_id")
+  method     String
+  path       String
+  status     Int
+  errorCode  String?  @map("error_code")
+  message    String?
+  ip         String?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  merchant MerchantProfile @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId, createdAt])
+  @@map("merchant_api_call_log")
 }
 
 model WebhookLog {

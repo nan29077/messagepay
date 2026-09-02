@@ -1,7 +1,7 @@
 import { requireMerchant } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { formatKst } from '@/lib/datetime';
-import { chargeStatusLabel, deliveryStatusLabel } from '@/lib/labels';
+import { chargeStatusLabel, pointStatusLabel } from '@/lib/labels';
 import { PAID_STATUSES } from '@/components/studio/shared';
 import type { ChargeStatus, Prisma } from '@/generated/prisma/client';
 
@@ -62,7 +62,11 @@ export async function GET(req: Request) {
       pointStatus: true,
       pointGivenAt: true,
       pointNote: true,
+      quantity: true,
+      optionText: true,
+      shippingFee: true,
       payer: { select: { phoneMasked: true } },
+      product: { select: { name: true, sku: true, kind: true } },
     },
   });
 
@@ -72,13 +76,19 @@ export async function GET(req: Request) {
     '결제시각',
     '금액',
     '결제상태',
+    '상품종류',
+    '상품명',
+    'SKU',
+    '옵션',
+    '수량',
+    '배송비',
     '표시이름',
     '연락처(마스킹)',
     '메모',
-    '포인트지급',
+    '지급상태',
     '지급시각',
     '지급메모',
-    '지급대상여부',
+    '정산대상여부',
   ];
 
   const lines = [header.map(csvCell).join(',')];
@@ -90,10 +100,18 @@ export async function GET(req: Request) {
         csvCell(r.paidAt ? formatKst(r.paidAt) : ''),
         csvCell(r.amount.toString()),
         csvCell(chargeStatusLabel[r.status].text),
+        csvCell(r.product ? (r.product.kind === 'PHYSICAL' ? '실물' : '비실물(컨텐츠)') : '직접입력'),
+        csvCell(r.product?.name ?? ''),
+        csvCell(r.product?.sku ?? ''),
+        csvCell(r.optionText ?? ''),
+        csvCell(String(r.quantity)),
+        csvCell(r.shippingFee.toString()),
         csvCell(r.displayName),
         csvCell(r.payer?.phoneMasked ?? ''),
         csvCell(r.message),
-        csvCell(deliveryStatusLabel[r.pointStatus].text),
+        // 화면과 같은 문구를 쓴다. deliveryStatusLabel(대기/성공/실패)을 쓰면
+        // 같은 값이 화면에서는 "지급 대기", 엑셀에서는 "대기" 로 갈린다.
+        csvCell(pointStatusLabel[r.pointStatus].text),
         csvCell(r.pointGivenAt ? formatKst(r.pointGivenAt) : ''),
         csvCell(r.pointNote ?? ''),
         csvCell(PAID_STATUSES.includes(r.status) ? 'Y' : 'N'),

@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ConsoleShell, type NavGroup } from '@/components/layout/console-shell';
 import { getSessionUser, requireMerchant } from '@/server/auth';
+import { prisma } from '@/server/db';
+import { PAID_STATUSES } from '@/components/studio/shared';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,36 +13,51 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const groups: NavGroup[] = [
-  {
-    title: '현황',
-    items: [
-      { href: '/studio', label: '대시보드', icon: 'dashboard' },
-      { href: '/studio/charges', label: '결제 내역', icon: 'charges' },
-      { href: '/studio/messages', label: '문자 관리', icon: 'messages' },
-    ],
-  },
-  {
-    title: '운영',
-    items: [
-      { href: '/studio/products', label: '상품 설정', icon: 'products' },
-      { href: '/studio/orders', label: '주문·배송', icon: 'orders' },
-      { href: '/studio/settings', label: '결제 설정', icon: 'settings' },
-      { href: '/studio/moderation', label: '금칙어·차단', icon: 'moderation' },
-      { href: '/studio/reports', label: '신고', icon: 'reports' },
-    ],
-  },
-  {
-    title: '정산',
-    items: [
-      { href: '/studio/settlement', label: '정산 관리', icon: 'settlement' },
-    ],
-  },
-  {
-    title: '계정',
-    items: [{ href: '/studio/profile', label: '프로필 설정', icon: 'profile' }],
-  },
-];
+/**
+ * 가맹점 메뉴.
+ *
+ * 판매 업무를 흐름대로 묶는다: 무엇을 파는가(상품 관리) → 어떻게 처리하는가(주문·판매)
+ * → 어떤 조건으로 파는가(판매 설정). 배송 정책은 상품이 아니라 판매 설정에 있다.
+ *
+ * 처리 대기 건수는 매 요청마다 세어 뱃지로 붙인다.
+ */
+function buildGroups(pending: { orders: number; points: number; reports: number }): NavGroup[] {
+  return [
+    {
+      title: '현황',
+      items: [
+        { href: '/studio', label: '대시보드', icon: 'dashboard' },
+        { href: '/studio/charges', label: '결제 내역', icon: 'charges' },
+        { href: '/studio/messages', label: '문자 관리', icon: 'messages' },
+      ],
+    },
+    {
+      title: '판매',
+      items: [
+        { href: '/studio/products', label: '상품 관리', icon: 'products' },
+        {
+          href: '/studio/orders',
+          label: '주문·판매',
+          icon: 'orders',
+          badge: pending.orders + pending.points,
+        },
+        { href: '/studio/settings', label: '판매 설정', icon: 'settings' },
+        { href: '/studio/moderation', label: '금칙어·차단', icon: 'moderation' },
+        { href: '/studio/reports', label: '신고', icon: 'reports', badge: pending.reports },
+      ],
+    },
+    {
+      title: '정산',
+      items: [
+        { href: '/studio/settlement', label: '정산 관리', icon: 'settlement' },
+      ],
+    },
+    {
+      title: '계정',
+      items: [{ href: '/studio/profile', label: '프로필 설정', icon: 'profile' }],
+    },
+  ];
+}
 
 const STATUS_NOTICE: Record<string, { title: string; body: string }> = {
   PENDING: {
@@ -85,10 +102,26 @@ export default async function StudioLayout({ children }: { children: React.React
   const user = await requireMerchant().catch(() => null);
   if (!user) redirect('/login?next=/studio');
 
+  // 밀린 일을 메뉴에서 바로 보이게 한다. 세 번의 count 는 인덱스가 있어 가볍다.
+  const [ordersPending, pointsPending, reportsOpen] = await Promise.all([
+    prisma.chargeShipment.count({
+      where: { merchantId: user.merchantId, status: 'PREPARING', charge: { status: { in: PAID_STATUSES } } },
+    }),
+    prisma.charge.count({
+      where: {
+        merchantId: user.merchantId,
+        status: { in: PAID_STATUSES },
+        pointStatus: 'PENDING',
+        product: { kind: 'DIGITAL' },
+      },
+    }),
+    prisma.report.count({ where: { merchantId: user.merchantId, status: 'OPEN' } }),
+  ]);
+
   return (
     <ConsoleShell
       title="가맹점 관리자"
-      groups={groups}
+      groups={buildGroups({ orders: ordersPending, points: pointsPending, reports: reportsOpen })}
       user={{
         id: user.id,
         name: user.name ?? '가맹점',

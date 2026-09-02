@@ -3,7 +3,8 @@ import { resolveSecureLink, consumeSecureLink } from './secure-link';
 import { checkLimits, resolvePolicy } from './limits';
 import { startPinAuthorization, setStatus } from './charge-flow';
 import {
-  buildOptionText, giveText, loadShippingPolicy, parseOptions, quoteShipping,
+  buildOptionText, effectiveDelivery, giveText, loadShippingPolicy, optionAddPrice, parseImages,
+  parseOptions, quoteShipping,
   type ProductOption, type ShippingPolicyView,
 } from './products';
 import { encrypt, maskName, maskPhone, normalizePhone } from '@/lib/crypto';
@@ -37,8 +38,12 @@ export interface ChargeProductOption {
   amount: bigint;
   description: string | null;
   imageUrl: string | null;
+  /** 대표 이미지 외 추가 이미지 */
+  images: string[];
   /** 지급 안내 문구 (비실물만) */
   give: string | null;
+  /** 청약철회 제한 안내(디지털 콘텐츠 특례). 비실물에만 쓴다. */
+  withdrawalNotice: string | null;
   // ── 실물 전용 ──
   /** 남은 재고. null 이면 무제한 */
   stock: number | null;
@@ -51,6 +56,12 @@ export interface ChargeProductOption {
   freeReason: string | null;
   /** 조건부 무료까지 남은 금액 */
   freeShortfall: bigint | null;
+  /** 결제 후 출고까지 걸리는 영업일 */
+  dispatchDays: number;
+  /** 반품 배송비(편도) */
+  returnFee: bigint;
+  /** 교환 배송비(왕복) */
+  exchangeFee: bigint;
   /** 이 상품을 1개라도 살 수 있는지 (한도 안에 들어오는지) */
   payable: boolean;
 }
@@ -125,6 +136,7 @@ export async function loadSelectAmountContext(
     // 실물은 목록에 남기되 고를 수 없게 표시한다 — 사라지면 가맹점이 원인을 못 찾는다.
     if (p.kind === 'DIGITAL' && !payable) continue;
 
+    const delivery = effectiveDelivery(p, shipping);
     products.push({
       id: p.id,
       kind: p.kind,
@@ -133,7 +145,9 @@ export async function loadSelectAmountContext(
       amount: p.amount,
       description: p.description,
       imageUrl: p.imageUrl,
+      images: parseImages(p.images),
       give: giveText(p),
+      withdrawalNotice: p.kind === 'DIGITAL' ? p.withdrawalNotice : null,
       stock: p.stock,
       soldOut: p.kind === 'PHYSICAL' && p.stock !== null && p.stock <= 0,
       maxPerOrder: p.maxPerOrder,
@@ -141,6 +155,9 @@ export async function loadSelectAmountContext(
       shippingFee: quote.fee,
       freeReason: quote.freeReason,
       freeShortfall: quote.freeShortfall,
+      dispatchDays: delivery.dispatchDays,
+      returnFee: delivery.returnFee,
+      exchangeFee: delivery.exchangeFee,
       payable,
     });
   }
@@ -268,7 +285,9 @@ export async function confirmChargeAmount(input: {
       });
       if (!row) return { ok: false, message: '선택한 상품을 찾을 수 없습니다.' };
 
-      const quote = quoteShipping(row, quantity, ctx.shipping, remote);
+      // 옵션 추가금도 화면 값을 믿지 않고 상품 정의로 다시 계산한다.
+      const addPrice = optionAddPrice(product.options as unknown, input.optionValues ?? {});
+      const quote = quoteShipping(row, quantity, ctx.shipping, remote, addPrice);
       amount = quote.total;
       shippingFee = quote.fee;
     } else {
@@ -336,6 +355,10 @@ export async function confirmChargeAmount(input: {
   if (!consumed) return { ok: false, message: '이미 처리된 요청입니다.' };
 
   // 금액 확정. PENDING_AMOUNT 일 때만 바뀌므로 동시 요청이 두 번 확정하지 못한다.
+  //
+  // pointStatus 는 여기서 정한다. 실물 주문은 포인트·상품권을 주는 거래가 아니므로
+  // SKIPPED 로 둔다. 이걸 기본값(PENDING)으로 두면 실물 주문이 "지급 대기" 목록과
+  // 연동 API 의 pending 응답에 섞여 들어가 가맹점이 실물 주문에 포인트를 또 준다.
   const claimed = await prisma.charge.updateMany({
     where: { id: charge.id, status: 'PENDING_AMOUNT' },
     data: {
@@ -346,6 +369,7 @@ export async function confirmChargeAmount(input: {
       quantity,
       optionText,
       shippingFee,
+      pointStatus: selected?.kind === 'PHYSICAL' ? 'SKIPPED' : 'PENDING',
     },
   });
   if (claimed.count === 0) return { ok: false, message: '이미 처리된 결제입니다.' };

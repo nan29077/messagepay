@@ -27,7 +27,18 @@ import { cx } from '@/components/ui';
 
 export interface NavGroup {
   title: string;
-  items: Array<{ href: string; label: string; icon?: ConsoleIconName }>;
+  items: Array<{
+    href: string;
+    label: string;
+    icon?: ConsoleIconName;
+    /**
+     * 처리 대기 건수.
+     *
+     * 0 이면 그리지 않는다. 메뉴에 숫자가 없으면 가맹점은 매일 모든 화면을 한 번씩
+     * 열어 봐야 밀린 일이 있는지 알 수 있다.
+     */
+    badge?: number;
+  }>;
 }
 
 export type ConsoleIconName =
@@ -168,7 +179,15 @@ export function ConsoleShell({
                       >
                         <ItemIcon size={16} strokeWidth={active ? 2 : 1.7} />
                       </span>
-                      <span className="min-w-0 truncate">{item.label}</span>
+                      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                      {item.badge && item.badge > 0 ? (
+                        <span
+                          className="shrink-0 rounded-full bg-danger-500 px-1.5 py-0.5 text-[10px] font-black tabular-nums text-white"
+                          aria-label={`처리 대기 ${item.badge}건`}
+                        >
+                          {item.badge > 99 ? '99+' : item.badge}
+                        </span>
+                      ) : null}
                     </Link>
                   );
                 })}

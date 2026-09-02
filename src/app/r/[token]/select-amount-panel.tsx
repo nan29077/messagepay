@@ -19,21 +19,34 @@ import { confirmChargeAmountAction, type SelectAmountState } from '@/app/actions
 
 const initial: SelectAmountState = { ok: false };
 
+export interface PanelOptionValue {
+  label: string;
+  /** 이 값을 고르면 상품 1개 가격에 더해지는 금액(원, 문자열) */
+  addPrice: string;
+  soldOut: boolean;
+}
+
 export interface PanelProduct {
   id: string;
   kind: 'DIGITAL' | 'PHYSICAL';
-  digitalType: 'POINT' | 'VOUCHER' | 'PASS' | null;
+  digitalType: 'POINT' | 'VOUCHER' | 'PASS' | 'CONTENT' | null;
   name: string;
   amount: string;
   description: string | null;
+  imageUrl: string | null;
+  images: string[];
   give: string | null;
+  withdrawalNotice: string | null;
   stock: number | null;
   soldOut: boolean;
   maxPerOrder: number | null;
-  options: Array<{ name: string; values: string[] }>;
+  options: Array<{ name: string; values: PanelOptionValue[] }>;
   shippingFee: string;
   freeReason: string | null;
   freeShortfall: string | null;
+  dispatchDays: number;
+  returnFee: string;
+  exchangeFee: string;
   payable: boolean;
 }
 
@@ -41,6 +54,7 @@ const KIND_BADGE: Record<string, string> = {
   POINT: '포인트',
   VOUCHER: '상품권',
   PASS: '이용권',
+  CONTENT: '컨텐츠',
 };
 
 export function SelectAmountPanel({
@@ -126,11 +140,23 @@ export function SelectAmountPanel({
     return Math.max(1, Math.min(...limits));
   }, [selected]);
 
+  /** 고른 옵션값의 추가금 합계(1개당). 서버가 같은 값을 다시 계산한다. */
+  const optionAdd = React.useMemo(() => {
+    if (!selected) return 0n;
+    let sum = 0n;
+    for (const o of selected.options) {
+      const picked = o.values.find((v) => v.label === (opts[o.name] ?? ''));
+      if (picked) sum += BigInt(picked.addPrice);
+    }
+    return sum;
+  }, [selected, opts]);
+
   /** 화면에 보여줄 금액. 서버가 같은 규칙으로 다시 계산한다. */
   const preview = React.useMemo(() => {
     if (mode === 'custom') return { goods: customAmount, fee: 0n, total: customAmount };
     if (!selected) return { goods: null, fee: 0n, total: null };
-    const goods = BigInt(selected.amount) * BigInt(qty);
+    const unit = BigInt(selected.amount) + optionAdd;
+    const goods = unit * BigInt(qty);
     if (selected.kind !== 'PHYSICAL') return { goods, fee: 0n, total: goods };
     // 수량이 늘면 조건부 무료 기준을 넘을 수 있다. 1개 기준 배송비에서 다시 판단한다.
     const shortfall = selected.freeShortfall !== null ? BigInt(selected.freeShortfall) : null;
@@ -138,10 +164,14 @@ export function SelectAmountPanel({
     const free = selected.freeReason !== null || (shortfall !== null && goods >= oneGoods + shortfall);
     const fee = free ? 0n : BigInt(selected.shippingFee);
     return { goods, fee, total: goods + fee };
-  }, [mode, selected, qty, customAmount]);
+  }, [mode, selected, qty, customAmount, optionAdd]);
 
   const optionsFilled =
-    !isPhysical || (selected?.options ?? []).every((o) => (opts[o.name] ?? '').length > 0);
+    !isPhysical ||
+    (selected?.options ?? []).every((o) => {
+      const picked = o.values.find((v) => v.label === (opts[o.name] ?? ''));
+      return Boolean(picked) && !picked!.soldOut;
+    });
   const addressFilled =
     !isPhysical ||
     (addr.receiver.trim().length >= 2 &&
@@ -203,8 +233,15 @@ export function SelectAmountPanel({
                       : 'bg-ink-50 text-ink-800 hover:bg-ink-100',
                 )}
               >
-                <span className="flex items-center gap-1.5">
-                  {p.kind === 'PHYSICAL' ? (
+                <span className="flex items-center gap-2">
+                  {p.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.imageUrl}
+                      alt=""
+                      className={cx('h-10 w-10 shrink-0 rounded-lg object-cover', disabled && 'opacity-40')}
+                    />
+                  ) : p.kind === 'PHYSICAL' ? (
                     <Package size={13} strokeWidth={2} className="shrink-0 opacity-70" />
                   ) : null}
                   <span className="block text-[13.5px] font-bold leading-tight">{p.name}</span>
@@ -247,10 +284,42 @@ export function SelectAmountPanel({
           ) : null}
         </div>
 
-        {mode === 'preset' && selected?.description ? (
-          <p className="mt-2 rounded-xl bg-ink-50 px-3.5 py-2 text-[12px] leading-relaxed text-ink-600">
-            {selected.description}
-          </p>
+        {mode === 'preset' && selected ? (
+          <div className="mt-2 space-y-2">
+            {selected.imageUrl ? (
+              <div className="overflow-hidden rounded-2xl bg-ink-50">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={selected.imageUrl} alt={selected.name} className="h-auto w-full object-cover" />
+              </div>
+            ) : null}
+
+            {selected.images.length > 0 ? (
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {selected.images.map((src) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={src}
+                    src={src}
+                    alt=""
+                    className="h-20 w-20 shrink-0 rounded-xl object-cover"
+                  />
+                ))}
+              </div>
+            ) : null}
+
+            {selected.description ? (
+              <p className="whitespace-pre-wrap rounded-xl bg-ink-50 px-3.5 py-2 text-[12px] leading-relaxed text-ink-600">
+                {selected.description}
+              </p>
+            ) : null}
+
+            {selected.kind === 'DIGITAL' && selected.withdrawalNotice ? (
+              // 디지털 콘텐츠는 사용을 시작하면 청약철회가 제한된다. 결제 전에 반드시 보여야 한다.
+              <p className="rounded-xl border border-warning-500/30 bg-warning-50 px-3.5 py-2 text-[12px] leading-relaxed text-ink-700">
+                {selected.withdrawalNotice}
+              </p>
+            ) : null}
+          </div>
         ) : null}
 
         {mode === 'custom' ? (
@@ -334,8 +403,10 @@ export function SelectAmountPanel({
               >
                 <option value="">선택해 주세요</option>
                 {o.values.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
+                  <option key={v.label} value={v.label} disabled={v.soldOut}>
+                    {v.label}
+                    {BigInt(v.addPrice) > 0n ? ` (+${formatWon(BigInt(v.addPrice))})` : ''}
+                    {v.soldOut ? ' - 품절' : ''}
                   </option>
                 ))}
               </select>
@@ -388,12 +459,22 @@ export function SelectAmountPanel({
             ) : null}
           </div>
 
-          {shippingGuide || carrier ? (
-            <p className="text-[11.5px] leading-relaxed text-ink-400">
-              {carrier ? `${carrier} · ` : ''}
-              {shippingGuide ?? '발송 일정은 가맹점 안내를 따릅니다.'}
+          <div className="space-y-1 text-[11.5px] leading-relaxed text-ink-400">
+            {shippingGuide || carrier ? (
+              <p>
+                {carrier ? `${carrier} · ` : ''}
+                {shippingGuide ?? '발송 일정은 가맹점 안내를 따릅니다.'}
+              </p>
+            ) : null}
+            <p>
+              결제 후 영업일 기준 {selected.dispatchDays}일 이내 출고됩니다.
+              {' '}반품 배송비 {BigInt(selected.returnFee) === 0n ? '무료' : formatWon(BigInt(selected.returnFee))}
+              {' · '}교환 배송비 {BigInt(selected.exchangeFee) === 0n ? '무료' : formatWon(BigInt(selected.exchangeFee))}
             </p>
-          ) : null}
+            <p>
+              단순 변심 반품은 수령 후 7일 이내에 가맹점으로 신청할 수 있습니다(상품 훼손 시 제한).
+            </p>
+          </div>
         </div>
       ) : null}
 

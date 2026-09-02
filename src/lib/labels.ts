@@ -13,6 +13,7 @@ import type {
   PayerOnboardingStatus,
   HolidayKind,
   PaymentMethodKind,
+  ShipmentStatus,
 } from '@/generated/prisma/enums';
 
 export type Tone = 'neutral' | 'brand' | 'success' | 'warning' | 'danger';
@@ -63,6 +64,45 @@ export const chargeStatusLabel: Record<ChargeStatus, { text: string; tone: Tone 
 export const SELECTABLE_CHARGE_STATUSES = (Object.keys(chargeStatusLabel) as ChargeStatus[]).filter(
   (s) => s !== 'BROADCAST_PENDING' && s !== 'BROADCASTED' && s !== 'PARTIAL_DELIVERY_FAILED' && s !== 'PENDING_CONFIRM',
 );
+
+/**
+ * 비실물 상품의 지급 처리 상태.
+ *
+ * DeliveryStatus enum 을 재사용하지만 화면 문구는 "지급" 기준이어야 한다.
+ * 이 라벨을 안 쓰고 deliveryStatusLabel 을 그대로 쓰면 목록은 "지급 대기",
+ * 내려받은 엑셀은 "대기" 로 나와 같은 값이 두 이름을 갖는다.
+ */
+export const pointStatusLabel: Record<DeliveryStatus, { text: string; tone: Tone }> = {
+  PENDING: { text: '지급 대기', tone: 'warning' },
+  SENT: { text: '지급 완료', tone: 'success' },
+  FAILED: { text: '지급 보류', tone: 'danger' },
+  SKIPPED: { text: '지급 대상 아님', tone: 'neutral' },
+};
+
+/** 실물 주문의 배송·반품 상태. 목록 필터와 상세 뱃지가 같은 값을 본다. */
+export const shipmentStatusLabel: Record<ShipmentStatus, { text: string; tone: Tone }> = {
+  PREPARING: { text: '배송 준비', tone: 'warning' },
+  SHIPPED: { text: '발송 완료', tone: 'brand' },
+  DELIVERED: { text: '배송 완료', tone: 'success' },
+  CANCELED: { text: '배송 취소', tone: 'neutral' },
+  RETURN_REQUESTED: { text: '반품 접수', tone: 'warning' },
+  RETURNING: { text: '회수중', tone: 'warning' },
+  RETURNED: { text: '반품 완료', tone: 'danger' },
+  EXCHANGE_REQUESTED: { text: '교환 접수', tone: 'warning' },
+  EXCHANGE_SHIPPED: { text: '교환 발송', tone: 'brand' },
+};
+
+/** 반품·교환 흐름에 속한 상태. 목록 탭을 나눌 때 쓴다. */
+export const RETURN_SHIPMENT_STATUSES: ShipmentStatus[] = [
+  'RETURN_REQUESTED',
+  'RETURNING',
+  'RETURNED',
+  'EXCHANGE_REQUESTED',
+  'EXCHANGE_SHIPPED',
+];
+
+/** 배송 흐름(반품 제외)에 속한 상태. */
+export const DELIVERY_SHIPMENT_STATUSES: ShipmentStatus[] = ['PREPARING', 'SHIPPED', 'DELIVERED', 'CANCELED'];
 
 export const deliveryStatusLabel: Record<DeliveryStatus, { text: string; tone: Tone }> = {
   PENDING: { text: '대기', tone: 'neutral' },

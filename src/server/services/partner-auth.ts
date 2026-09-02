@@ -4,6 +4,7 @@ import { decrypt, encrypt, generateToken, safeEqual, tokenHash } from '@/lib/cry
 import { newId } from '@/lib/id';
 import { kv } from '@/server/redis';
 import { logger } from '@/lib/logger';
+import { clientIpFromRequest } from '@/server/rate-limit';
 
 /**
  * 가맹점 연동 API 인증.
@@ -42,12 +43,60 @@ export interface PartnerAuthFail {
   status: number;
   code: string;
   message: string;
+  /**
+   * 키까지는 확인됐지만 그 다음 단계에서 막힌 경우의 소속 가맹점.
+   * 이 값이 있어야 실패한 호출도 가맹점의 연동 로그에 남길 수 있다.
+   */
+  merchantId?: string;
+  keyId?: string;
 }
 
 export type PartnerAuthResult = PartnerAuthOk | PartnerAuthFail;
 
-function fail(status: number, code: string, message: string): PartnerAuthFail {
-  return { ok: false, status, code, message };
+function fail(
+  status: number,
+  code: string,
+  message: string,
+  owner?: { merchantId: string; keyId: string },
+): PartnerAuthFail {
+  return { ok: false, status, code, message, ...owner };
+}
+
+/** 점 4개짜리 IPv4 를 32비트 정수로. 형식이 아니면 null. */
+function ipv4ToInt(ip: string): number | null {
+  const parts = ip.trim().split('.');
+  if (parts.length !== 4) return null;
+  let out = 0;
+  for (const part of parts) {
+    if (!/^\d{1,3}$/.test(part)) return null;
+    const n = Number(part);
+    if (n > 255) return null;
+    out = out * 256 + n;
+  }
+  return out >>> 0;
+}
+
+/**
+ * 요청 IP 가 허용목록(쉼표 구분, IPv4 또는 CIDR)에 드는지.
+ * IPv6 로 들어오는 요청은 허용목록을 쓴 순간 막힌다 — 허용목록은 명시적 opt-in 이므로 그게 맞다.
+ */
+export function ipAllowed(ip: string, allowed: string): boolean {
+  const target = ipv4ToInt(ip);
+  if (target === null) return false;
+  for (const entry of allowed.split(',').map((v) => v.trim()).filter(Boolean)) {
+    const [addr, bitsRaw] = entry.split('/');
+    const base = ipv4ToInt(addr ?? '');
+    if (base === null) continue;
+    if (bitsRaw === undefined) {
+      if (base === target) return true;
+      continue;
+    }
+    const bits = Number(bitsRaw);
+    if (!Number.isInteger(bits) || bits < 0 || bits > 32) continue;
+    const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+    if ((base & mask) === (target & mask)) return true;
+  }
+  return false;
 }
 
 /** 서명 원문: `{timestamp}.{METHOD}.{path}.{rawBody}` */
@@ -109,14 +158,24 @@ export async function authenticatePartner(
   const key = await prisma.merchantApiKey.findUnique({
     where: { keyHash: tokenHash(presented) },
     select: {
-      id: true, merchantId: true, revokedAt: true, signingEnc: true,
+      id: true, merchantId: true, revokedAt: true, signingEnc: true, allowedIps: true,
       merchant: { select: { status: true } },
     },
   });
   if (!key) return fail(401, 'INVALID_KEY', 'API 키가 올바르지 않습니다.');
-  if (key.revokedAt) return fail(401, 'REVOKED_KEY', '폐기된 API 키입니다.');
+  const owner = { merchantId: key.merchantId, keyId: key.id };
+  if (key.revokedAt) return fail(401, 'REVOKED_KEY', '폐기된 API 키입니다.', owner);
   if (key.merchant.status !== 'APPROVED') {
-    return fail(403, 'MERCHANT_NOT_ACTIVE', '이용할 수 없는 가맹점 상태입니다.');
+    return fail(403, 'MERCHANT_NOT_ACTIVE', '이용할 수 없는 가맹점 상태입니다.', owner);
+  }
+
+  // IP 허용목록. 키가 유출되어도 등록한 서버 밖에서는 쓸 수 없게 한다.
+  // 값이 없으면 제한하지 않는다(기존 연동을 끊지 않기 위해서다).
+  if (key.allowedIps) {
+    const ip = clientIpFromRequest(req);
+    if (!ip || !ipAllowed(ip, key.allowedIps)) {
+      return fail(403, 'IP_NOT_ALLOWED', '허용되지 않은 IP 에서의 요청입니다.', owner);
+    }
   }
 
   // 분당 요청 제한 (키 단위)
@@ -127,10 +186,10 @@ export async function authenticatePartner(
   } catch (e) {
     // 예전에는 .catch(() => 0) 으로 통과시켰다. 저장소가 죽으면 제한이 통째로 사라진다.
     logger.error('파트너 API 속도 제한 저장소 오류 — 요청을 거절합니다', { message: (e as Error).message });
-    return fail(503, 'RATE_LIMIT_UNAVAILABLE', '요청 처리가 일시적으로 지연되고 있습니다. 잠시 후 다시 시도해 주세요.');
+    return fail(503, 'RATE_LIMIT_UNAVAILABLE', '요청 처리가 일시적으로 지연되고 있습니다. 잠시 후 다시 시도해 주세요.', owner);
   }
   if (used > RATE_LIMIT_PER_MIN) {
-    return fail(429, 'RATE_LIMITED', `분당 요청 한도(${RATE_LIMIT_PER_MIN}회)를 초과했습니다.`);
+    return fail(429, 'RATE_LIMITED', `분당 요청 한도(${RATE_LIMIT_PER_MIN}회)를 초과했습니다.`, owner);
   }
 
   const method = req.method.toUpperCase();
@@ -140,21 +199,21 @@ export async function authenticatePartner(
   const writeMethod = method !== 'GET' && method !== 'HEAD';
 
   if (writeMethod && (!ts || !sig)) {
-    return fail(401, 'SIGNATURE_REQUIRED', '상태를 바꾸는 요청에는 서명 헤더가 필요합니다.');
+    return fail(401, 'SIGNATURE_REQUIRED', '상태를 바꾸는 요청에는 서명 헤더가 필요합니다.', owner);
   }
 
   if (ts || sig) {
-    if (!ts || !sig) return fail(401, 'SIGNATURE_INVALID', '타임스탬프와 서명을 함께 보내야 합니다.');
+    if (!ts || !sig) return fail(401, 'SIGNATURE_INVALID', '타임스탬프와 서명을 함께 보내야 합니다.', owner);
     const tsNum = Number(ts);
-    if (!Number.isFinite(tsNum)) return fail(401, 'SIGNATURE_INVALID', '타임스탬프 형식이 올바르지 않습니다.');
+    if (!Number.isFinite(tsNum)) return fail(401, 'SIGNATURE_INVALID', '타임스탬프 형식이 올바르지 않습니다.', owner);
     // 초 단위 epoch 로 받는다. 밀리초로 보내면 오차 검사에서 걸린다.
     if (Math.abs(Math.floor(now.getTime() / 1000) - tsNum) > SIGNATURE_SKEW_SEC) {
-      return fail(401, 'SIGNATURE_EXPIRED', `타임스탬프 오차가 ${SIGNATURE_SKEW_SEC}초를 넘습니다.`);
+      return fail(401, 'SIGNATURE_EXPIRED', `타임스탬프 오차가 ${SIGNATURE_SKEW_SEC}초를 넘습니다.`, owner);
     }
 
     const expected = signPartnerRequest(decrypt(key.signingEnc), ts, method, path, rawBody);
     if (!safeEqual(expected, sig.trim().toLowerCase())) {
-      return fail(401, 'SIGNATURE_INVALID', '서명이 올바르지 않습니다.');
+      return fail(401, 'SIGNATURE_INVALID', '서명이 올바르지 않습니다.', owner);
     }
 
     // 같은 서명 재사용(재전송) 차단. 쓰기 요청에만 적용한다.
@@ -166,9 +225,9 @@ export async function authenticatePartner(
         // 예전에는 .catch(() => true) 로 "새 서명" 취급했다. 저장소 장애 중에는
         // 재전송 방어가 통째로 사라져 같은 서명을 반복 실행할 수 있었다.
         logger.error('파트너 API 재전송 방어 저장소 오류 — 요청을 거절합니다', { message: (e as Error).message });
-        return fail(503, 'REPLAY_GUARD_UNAVAILABLE', '요청 처리가 일시적으로 지연되고 있습니다. 잠시 후 다시 시도해 주세요.');
+        return fail(503, 'REPLAY_GUARD_UNAVAILABLE', '요청 처리가 일시적으로 지연되고 있습니다. 잠시 후 다시 시도해 주세요.', owner);
       }
-      if (!fresh) return fail(409, 'REPLAYED', '이미 처리된 요청입니다(서명 재사용).');
+      if (!fresh) return fail(409, 'REPLAYED', '이미 처리된 요청입니다(서명 재사용).', owner);
     }
   }
 

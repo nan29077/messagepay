@@ -1,6 +1,6 @@
 import { prisma } from '@/server/db';
 import { authenticatePartner } from '@/server/services/partner-auth';
-import { authError, jsonOk } from '../_shared';
+import { authError, jsonOk, logPartnerCall } from '../_shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,13 +13,20 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(req: Request) {
   const auth = await authenticatePartner(req, '');
-  if (!auth.ok) return authError(auth);
+  if (!auth.ok) {
+    await logPartnerCall({
+      req, merchantId: auth.merchantId ?? null, keyId: auth.keyId,
+      status: auth.status, errorCode: auth.code, message: auth.message,
+    });
+    return authError(auth);
+  }
 
   const merchant = await prisma.merchantProfile.findUnique({
     where: { id: auth.merchantId },
     select: { code: true, displayName: true },
   });
 
+  await logPartnerCall({ req, merchantId: auth.merchantId, keyId: auth.keyId, status: 200 });
   return jsonOk({
     merchantCode: merchant?.code ?? null,
     merchantName: merchant?.displayName ?? null,

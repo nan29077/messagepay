@@ -8,7 +8,8 @@ import { mockMoAdapter } from '@/server/adapters/mo';
 import { confirmChargeAmount, loadSelectAmountContext, isRemoteZip, maskAddress } from '@/server/services/charge-select';
 import { completePinAuthorization } from '@/server/services/pin-authorization';
 import {
-  quoteShipping, parseOptionLines, parseOptions, optionsToLines, buildOptionText,
+  quoteShipping, parseOptionLines, parseOptions, parseOptionsJson, optionsToLines, buildOptionText,
+  optionAddPrice, optionsToStorage, parseNoticeInfo, noticeMissing, parseImages, effectiveDelivery,
   shippingPolicyOf, giveText, stockText, DEFAULT_SHIPPING,
 } from '@/server/services/products';
 import { requestRefund, approveRefund } from '@/server/services/refund';
@@ -149,10 +150,51 @@ describe('옵션', () => {
   it('[8] 여러 줄 입력을 옵션 정의로 바꾼다', () => {
     const parsed = parseOptionLines('사이즈: S, M, L\n색상: 블랙, 화이트');
     expect(parsed).toEqual([
-      { name: '사이즈', values: ['S', 'M', 'L'] },
-      { name: '색상', values: ['블랙', '화이트'] },
+      {
+        name: '사이즈',
+        values: [
+          { label: 'S', addPrice: 0n, soldOut: false },
+          { label: 'M', addPrice: 0n, soldOut: false },
+          { label: 'L', addPrice: 0n, soldOut: false },
+        ],
+      },
+      {
+        name: '색상',
+        values: [
+          { label: '블랙', addPrice: 0n, soldOut: false },
+          { label: '화이트', addPrice: 0n, soldOut: false },
+        ],
+      },
     ]);
     expect(optionsToLines(parsed)).toBe('사이즈: S, M, L\n색상: 블랙, 화이트');
+  });
+
+  it('[8-1] 옛 형식(문자열 배열)도 그대로 읽는다', () => {
+    // 개편 전에 저장된 상품이 있으므로 두 형식을 모두 읽어야 한다.
+    expect(parseOptions([{ name: '사이즈', values: ['S', 'M'] }])).toEqual([
+      {
+        name: '사이즈',
+        values: [
+          { label: 'S', addPrice: 0n, soldOut: false },
+          { label: 'M', addPrice: 0n, soldOut: false },
+        ],
+      },
+    ]);
+  });
+
+  it('[8-2] 편집기 JSON 을 읽고 저장 형태로 되돌린다', () => {
+    const defs = parseOptionsJson(
+      JSON.stringify([
+        { name: '사이즈', values: [{ label: 'L', addPrice: '2000', soldOut: false }, { label: 'XL', addPrice: '3000', soldOut: true }] },
+      ]),
+    );
+    expect(defs[0].values[0].addPrice).toBe(2000n);
+    expect(defs[0].values[1].soldOut).toBe(true);
+    expect(optionsToStorage(defs)).toEqual([
+      { name: '사이즈', values: [{ label: 'L', addPrice: '2000', soldOut: false }, { label: 'XL', addPrice: '3000', soldOut: true }] },
+    ]);
+    // 형식이 깨진 JSON 은 예외 대신 빈 배열
+    expect(parseOptionsJson('{not json')).toEqual([]);
   });
 
   it('[9] 모양이 깨진 값은 예외 대신 빈 배열로 떨어진다', () => {
@@ -168,6 +210,63 @@ describe('옵션', () => {
     expect(bad.ok).toBe(false);
     const missing = buildOptionText(defs, {});
     expect(missing.ok).toBe(false);
+  });
+
+  it('[10-1] 품절 처리된 옵션값은 폼을 고쳐도 통과하지 못한다', () => {
+    const defs = [
+      { name: '색상', values: [{ label: '블랙', addPrice: '0', soldOut: false }, { label: '화이트', addPrice: '0', soldOut: true }] },
+    ];
+    expect(buildOptionText(defs, { 색상: '블랙' }).ok).toBe(true);
+    expect(buildOptionText(defs, { 색상: '화이트' }).ok).toBe(false);
+  });
+
+  it('[10-2] 옵션 추가금은 서버가 다시 계산한다', () => {
+    const defs = [
+      { name: '사이즈', values: [{ label: 'L', addPrice: '2000', soldOut: false }] },
+      { name: '각인', values: [{ label: '있음', addPrice: '5000', soldOut: false }] },
+    ];
+    expect(optionAddPrice(defs, { 사이즈: 'L', 각인: '있음' })).toBe(7000n);
+    // 정의에 없는 값은 0원으로 본다(금액을 부풀리지 못한다)
+    expect(optionAddPrice(defs, { 사이즈: 'XXL' })).toBe(0n);
+  });
+
+  it('[10-3] 옵션 추가금이 결제 금액에 반영된다', () => {
+    const p = { kind: 'PHYSICAL' as const, amount: 10_000n, shippingFee: null, freeShipOver: null, freeShipping: false };
+    const q = quoteShipping(p, 2, POLICY, false, 2_000n);
+    expect(q.goods).toBe(24_000n); // (10,000 + 2,000) × 2
+    expect(q.total).toBe(27_000n); // + 기본 배송비 3,000
+  });
+});
+
+describe('고시 · 이미지 · 배송 기본값', () => {
+  it('[10-4] 고시 정보는 모양이 깨져도 예외를 던지지 않는다', () => {
+    expect(parseNoticeInfo(null)).toBeNull();
+    expect(parseNoticeInfo({ category: 'FASHION', items: [] })).toBeNull();
+    const info = parseNoticeInfo({ category: 'FASHION', items: [{ label: '제품 소재', value: '면 100%' }] });
+    expect(info?.category).toBe('FASHION');
+    // 비어 있는 필수 항목은 경고 대상으로 남는다
+    expect(noticeMissing(info)).toContain('색상');
+    expect(noticeMissing(null).length).toBeGreaterThan(0);
+  });
+
+  it('[10-5] 추가 이미지는 장수 상한을 넘기지 않는다', () => {
+    expect(parseImages(['/a.png', '/b.png'])).toEqual(['/a.png', '/b.png']);
+    expect(parseImages(Array.from({ length: 12 }, (_, i) => `/x${i}.png`)).length).toBe(5);
+    expect(parseImages('이상한 값')).toEqual([]);
+  });
+
+  it('[10-6] 출고일·반품비는 상품값이 없으면 가맹점 기본값을 따른다', () => {
+    const policy = { ...POLICY, dispatchDays: 3, returnFee: 2_500n, exchangeFee: 5_000n };
+    expect(effectiveDelivery({ dispatchDays: null, returnFee: null, exchangeFee: null }, policy)).toEqual({
+      dispatchDays: 3,
+      returnFee: 2_500n,
+      exchangeFee: 5_000n,
+    });
+    expect(effectiveDelivery({ dispatchDays: 1, returnFee: 0n, exchangeFee: null }, policy)).toEqual({
+      dispatchDays: 1,
+      returnFee: 0n,
+      exchangeFee: 5_000n,
+    });
   });
 });
 
@@ -210,7 +309,16 @@ describe('실물 상품 주문', () => {
     const item = ctx.ctx.products.find((p) => p.kind === 'PHYSICAL');
     expect(item).toBeDefined();
     expect(item!.shippingFee).toBe(3000n);
-    expect(item!.options).toEqual([{ name: '사이즈', values: ['S', 'M', 'L'] }]);
+    expect(item!.options).toEqual([
+      {
+        name: '사이즈',
+        values: [
+          { label: 'S', addPrice: 0n, soldOut: false },
+          { label: 'M', addPrice: 0n, soldOut: false },
+          { label: 'L', addPrice: 0n, soldOut: false },
+        ],
+      },
+    ]);
     expect(item!.stock).toBe(10);
     expect(item!.soldOut).toBe(false);
   });

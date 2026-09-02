@@ -22,7 +22,7 @@ interface ChecklistItem {
 }
 
 export async function OnboardingChecklist({ merchantId }: { merchantId: string }) {
-  const [profile, moNumber, account] = await Promise.all([
+  const [profile, moNumber, account, productCount, settings] = await Promise.all([
     prisma.merchantProfile.findUnique({
       where: { id: merchantId },
       select: { businessNo: true },
@@ -35,9 +35,21 @@ export async function OnboardingChecklist({ merchantId }: { merchantId: string }
       where: { merchantId },
       select: { verified: true },
     }),
+    // 상품이 하나도 없고 직접 입력도 꺼져 있으면 결제 자체가 불가능하다.
+    // 체크리스트가 이걸 안 짚어 주면 가맹점은 "왜 결제가 안 되지" 를 혼자 찾아야 한다.
+    prisma.chargeProduct.count({ where: { merchantId, active: true, archivedAt: null } }),
+    prisma.merchantProfile.findUnique({ where: { id: merchantId }, select: { allowCustomAmount: true } }),
   ]);
 
   const items: ChecklistItem[] = [
+    {
+      key: 'product',
+      label: '판매할 상품 등록',
+      hint: '노출 중인 상품이 없습니다. 상품이 없고 직접 입력도 꺼져 있으면 이용자가 결제를 진행할 수 없습니다.',
+      done: productCount > 0 || (settings?.allowCustomAmount ?? false),
+      href: '/studio/products/new?kind=physical',
+      linkLabel: '등록하러 가기',
+    },
     {
       key: 'moNumber',
       label: '결제 수신번호 배정',

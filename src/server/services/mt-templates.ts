@@ -27,6 +27,10 @@ export const MT_TEMPLATE = {
   PHONE_LINK_VERIFY: 'PHONE_LINK_VERIFY',
   /** 결제 페이지 PC 웹 결제 인증번호 */
   PAYMENT_VERIFY: 'PAYMENT_VERIFY',
+  /** 실물 주문 발송 안내(택배사·송장번호) */
+  SHIPMENT_SENT: 'SHIPMENT_SENT',
+  /** 비실물 상품 즉시 지급 안내(코드·다운로드 주소) */
+  FULFILLMENT_INSTANT: 'FULFILLMENT_INSTANT',
 } as const;
 
 export type MtTemplateCode = (typeof MT_TEMPLATE)[keyof typeof MT_TEMPLATE];
@@ -243,6 +247,55 @@ export function tplChargeSuccess(input: ChargeSuccessInput): TemplateOutput {
   };
 }
 
+/**
+ * 실물 주문 발송 안내.
+ *
+ * 송장을 등록해도 이용자가 모르면 "언제 오냐" 문의가 그대로 가맹점에 쌓인다.
+ * 링크는 넣지 않는다(택배사 조회 주소는 통신사 스팸 필터에 자주 걸린다).
+ */
+export function tplShipmentSent(input: {
+  merchantName: string;
+  productName: string;
+  carrier: string;
+  trackingNo: string;
+}): TemplateOutput {
+  const text =
+    `[메시지페이] ${input.merchantName} 주문하신 ${input.productName} 이(가) 발송되었습니다. ` +
+    `${input.carrier} ${input.trackingNo}. 택배사 앱이나 홈페이지에서 송장번호로 조회하실 수 있습니다.`;
+  return {
+    code: MT_TEMPLATE.SHIPMENT_SENT,
+    text,
+    masked: text,
+    vars: {
+      가맹점: input.merchantName,
+      상품: input.productName,
+      택배사: input.carrier,
+      송장번호: input.trackingNo,
+    },
+  };
+}
+
+/**
+ * 비실물 상품 즉시 지급 안내.
+ *
+ * 가맹점이 상품에 적어 둔 안내 문구(코드·이용 방법)를 그대로 보낸다.
+ * 문구는 저장 시점에 링크·개인정보 검증을 거친다.
+ */
+export function tplFulfillmentInstant(input: {
+  merchantName: string;
+  productName: string;
+  note: string;
+}): TemplateOutput {
+  const body = sanitizeLine(input.note);
+  const text = `[메시지페이] ${input.merchantName} ${input.productName} 결제가 완료되었습니다. ${body}`;
+  return {
+    code: MT_TEMPLATE.FULFILLMENT_INSTANT,
+    text,
+    masked: maskLink(text),
+    vars: { 가맹점: input.merchantName, 상품: input.productName, 안내: body },
+  };
+}
+
 export function tplChargeFailed(merchantName: string, reason?: string): TemplateOutput {
   const text =
     `[메시지페이] ${merchantName} 가맹점 결제가 완료되지 않았습니다. ` +
@@ -361,6 +414,10 @@ const V = {
   reason: { token: '{사유}', label: '실패·제한 사유' },
   verifyCode: { token: '{인증번호}', label: '6자리 인증번호' },
   ttl: { token: '{유효시간}', label: '인증번호 유효시간(분)' },
+  product: { token: '{상품}', label: '주문한 상품 이름' },
+  carrier: { token: '{택배사}', label: '택배사 이름' },
+  tracking: { token: '{송장번호}', label: '송장번호' },
+  fulfillNote: { token: '{안내}', label: '가맹점이 상품에 적어 둔 지급 안내 문구' },
 } as const;
 
 export const MT_TEMPLATE_META: Record<MtTemplateCode, MtTemplateMeta> = {
@@ -469,6 +526,21 @@ export const MT_TEMPLATE_META: Record<MtTemplateCode, MtTemplateMeta> = {
     editable: true,
     defaultBody: '결제 페이지 결제 인증번호는 {인증번호} 입니다. {유효시간}분 안에 입력해 주세요.',
     variables: [V.verifyCode, V.ttl],
+  },
+  [MT_TEMPLATE.SHIPMENT_SENT]: {
+    label: '실물 주문 발송 안내',
+    description: '가맹점이 송장을 등록하고 발송 처리하면 이용자에게 나가는 문자입니다.',
+    editable: true,
+    defaultBody:
+      '{가맹점} 주문하신 {상품} 이(가) 발송되었습니다. {택배사} {송장번호}. 택배사 앱이나 홈페이지에서 송장번호로 조회하실 수 있습니다.',
+    variables: [V.merchant, V.product, V.carrier, V.tracking],
+  },
+  [MT_TEMPLATE.FULFILLMENT_INSTANT]: {
+    label: '비실물 즉시 지급 안내',
+    description: '지급 방식이 [결제 즉시 문자 발급] 인 비실물 상품이 결제되면 나가는 문자입니다.',
+    editable: true,
+    defaultBody: '{가맹점} {상품} 결제가 완료되었습니다. {안내}',
+    variables: [V.merchant, V.product, V.fulfillNote],
   },
 };
 

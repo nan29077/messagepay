@@ -1249,6 +1249,10 @@ export async function executePayment(chargeId: string): Promise<PaymentOutcome> 
   // 포인트 지급은 가맹점이 한다. 메시지페이는 결제·정산까지만 책임지고,
   // 가맹점이 콘솔(또는 조회 API)에서 이 결제 건을 보고 자기 서비스에 포인트를 넣는다.
   // 그래서 여기서 외부를 호출하지 않는다. 지급 여부는 charge.pointStatus 로 추적한다.
+  //
+  // 예외는 지급 방식이 INSTANT 인 비실물 상품이다. 코드·다운로드 주소처럼
+  // 가맹점이 미리 적어 둔 안내를 그대로 보내면 끝나는 상품이라, 사람이 개입할 필요가 없다.
+  await deliverInstantFulfillment(chargeId);
 
   return { ok: true, status: 'PAYMENT_SUCCESS', message: '결제가 완료되었습니다.' };
 }
@@ -1262,6 +1266,53 @@ export async function executePayment(chargeId: string): Promise<PaymentOutcome> 
  * 무제한(stock=null) 상품은 아무 것도 하지 않는다.
  * 실패해도 예외를 밖으로 내보내지 않는다 — 여기서 throw 하면 실패 처리 자체가 멈춘다.
  */
+/**
+ * 비실물 상품의 즉시 지급(INSTANT) 처리.
+ *
+ * 문자 발송이 실패해도 결제 자체를 되돌리지 않는다(원칙 3: 결제 성공과 지급 성공은 다른 상태다).
+ * 실패하면 pointStatus 를 FAILED 로 남겨 가맹점이 판매 내역에서 다시 처리할 수 있게 한다.
+ */
+async function deliverInstantFulfillment(chargeId: string): Promise<void> {
+  try {
+    const charge = await prisma.charge.findUnique({
+      where: { id: chargeId },
+      select: {
+        id: true,
+        merchantId: true,
+        payerId: true,
+        pointStatus: true,
+        merchant: { select: { displayName: true } },
+        product: { select: { kind: true, name: true, fulfillment: true, fulfillmentNote: true } },
+      },
+    });
+    const product = charge?.product;
+    if (!charge || !product) return;
+    if (product.kind !== 'DIGITAL' || product.fulfillment !== 'INSTANT' || !product.fulfillmentNote) return;
+    // 이미 지급 처리된 건은 다시 보내지 않는다(재시도·중복 승인 방어).
+    if (charge.pointStatus === 'SENT') return;
+
+    const sent = await sendMtForPayer(
+      charge.payerId!,
+      tpl.tplFulfillmentInstant({
+        merchantName: charge.merchant.displayName,
+        productName: product.name,
+        note: product.fulfillmentNote,
+      }),
+      null,
+      charge.merchantId,
+    );
+
+    await prisma.charge.update({
+      where: { id: chargeId },
+      data: sent
+        ? { pointStatus: 'SENT', pointGivenAt: new Date(), pointBy: 'system:instant', pointNote: '즉시 지급 문자 발송' }
+        : { pointStatus: 'FAILED', pointNote: '즉시 지급 문자 발송 실패 — 판매 내역에서 다시 처리해 주세요.' },
+    });
+  } catch (e) {
+    logger.error('즉시 지급 처리 실패', { chargeId, message: (e as Error).message });
+  }
+}
+
 export async function restoreStock(productId: string | null, quantity: number): Promise<void> {
   if (!productId || quantity <= 0) return;
   try {
@@ -1279,7 +1330,7 @@ function decryptBillKey(enc: string): string {
   return decrypt(enc);
 }
 
-async function sendMtForPayer(payerId: string, template: TemplateOutput, chargeId?: string, merchantId?: string) {
+async function sendMtForPayer(payerId: string, template: TemplateOutput, chargeId?: string | null, merchantId?: string) {
   const payer = await prisma.payerProfile.findUnique({ where: { id: payerId } });
   if (!payer) return false;
   const phone = decrypt(payer.phoneEnc);

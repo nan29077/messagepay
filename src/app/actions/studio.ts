@@ -4,20 +4,28 @@ import { logger } from '@/lib/logger';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireMerchant } from '@/server/auth';
+import { requireMerchant, writeAudit } from '@/server/auth';
 import { newId } from '@/lib/id';
-import { accountTail4, encrypt, isValidResident, maskName, maskResident, normalizeResident } from '@/lib/crypto';
+import { accountTail4, decrypt, encrypt, isValidResident, maskName, maskResident, normalizeResident } from '@/lib/crypto';
 import { resolvePolicy } from '@/server/services/limits';
 import { issueMerchantApiKey } from '@/server/services/partner-auth';
 import { formatWon } from '@/lib/money';
-import { loadBannedWords } from '@/server/services/charge-flow';
-import { THANKS_MT_MAX_LENGTH, THANKS_MT_VARIABLES, MO_GUIDE_MAX_LENGTH, MO_GUIDE_VARIABLES } from '@/server/services/mt-templates';
+import { loadBannedWords, sendMt } from '@/server/services/charge-flow';
+import { requestRefund } from '@/server/services/refund';
+import {
+  THANKS_MT_MAX_LENGTH, THANKS_MT_VARIABLES, MO_GUIDE_MAX_LENGTH, MO_GUIDE_VARIABLES,
+  tplChargeSuccess, tplSelectAmount, tplShipmentSent,
+} from '@/server/services/mt-templates';
+import { env } from '@/lib/env';
+import { getPublicBaseUrl } from '@/server/public-base-url';
 import { bannedNeedle, filterContent } from '@/server/services/content-filter';
-import { parseOptionLines } from '@/server/services/products';
+import {
+  MAX_EXTRA_IMAGES, noticeCategoryOf, optionsToStorage, parseOptionLines, parseOptionsJson,
+} from '@/server/services/products';
 import { bankName } from '@/components/studio/banks';
 import { Prisma } from '@/generated/prisma/client';
-import type { DigitalProductType, ProductKind } from '@/generated/prisma/enums';
-import { PAID_STATUSES } from '@/components/studio/shared';
+import type { DigitalProductType, FulfillmentMode, ProductKind } from '@/generated/prisma/enums';
+import { MAX_CHARGE_PRODUCTS, PAID_STATUSES } from '@/components/studio/shared';
 
 /**
  * 가맹점 관리자(/studio) 서버 액션.
@@ -36,6 +44,13 @@ export interface StudioActionState {
   secret?: string;
   secretLabel?: string;
   secretHint?: string;
+  /**
+   * 처리 후 이동할 주소.
+   *
+   * 등록·복제·보관처럼 "이 화면에 더 있을 이유가 없는" 동작에서만 채운다.
+   * 폼 컴포넌트가 알림을 보여 준 뒤 이동한다(서버에서 redirect 하면 결과 문구가 사라진다).
+   */
+  redirectTo?: string;
 }
 
 type Handler = (merchantId: string, userId: string) => Promise<StudioActionState>;
@@ -79,9 +94,6 @@ function text(formData: FormData, key: string): string {
 function checked(formData: FormData, key: string): boolean {
   return formData.get(key) != null;
 }
-
-/** 가맹점 1곳이 등록할 수 있는 충전 상품 수 상한 (선택 화면이 감당하는 개수) */
-const MAX_CHARGE_PRODUCTS = 12;
 
 function parseAmount(input: string): bigint | null {
   const v = input.replace(/[,\s원]/g, '');
@@ -150,31 +162,6 @@ export async function unblockPayerAction(
 // ===========================================================================
 // ===========================================================================
 
-/**
- * 테스트 결제·구간 미리보기에 쓸 표시 문구를 만든다.
- *
- * 실제 결제는 저장 전에 반드시 filterContent 를 거친다.
- * 그런데 이 두 경로는 입력을 그대로 발행하고 있었고, 그 이벤트는 미리보기 전용 채널이 아니라
- * 미리보기 경로는 그 필터를 건너뛰면 가맹점이 직접 등록한
- * 금칙어나 전화번호가 미리보기에 그대로 나오게 된다.
- *
- * 저장은 하지 않고 필터만 통과시켜, 실제 결제와 같은 기준으로 보이게 한다.
- */
-async function previewSafeText(merchantId: string, payerName: string, message: string) {
-  const rules = await loadBannedWords(merchantId);
-  const name = filterContent(payerName, { bannedWords: rules, maxLength: 20 });
-  const body = filterContent(message, { bannedWords: rules, maxLength: 200 });
-
-  if (name.action === 'BLOCK' || body.action === 'BLOCK') {
-    return { blocked: true as const };
-  }
-  return {
-    blocked: false as const,
-    payerName: name.clean,
-    // filterContent 는 빈 문자열을 "(내용 없음)" 으로 바꾼다. 미리보기에서는 그냥 비워 둔다.
-    message: body.clean === '(내용 없음)' ? '' : body.clean,
-  };
-}
 
 // ===========================================================================
 // ===========================================================================
@@ -303,7 +290,12 @@ async function effectiveAmountRange(merchantId: string) {
   return { min, max };
 }
 
-/** 직접 입력 허용 여부. 끄면 등록된 충전 상품만 고를 수 있다. */
+/**
+ * 직접 입력 설정.
+ *
+ * 허용 여부뿐 아니라 가맹점 자체 범위·배수 단위까지 받는다.
+ * 플랫폼 한도보다 넓힐 수는 없다(좁히는 용도).
+ */
 export async function updateChargeSettingsAction(
   _prev: StudioActionState,
   formData: FormData,
@@ -319,17 +311,148 @@ export async function updateChargeSettingsAction(
       if (usable === 0) {
         return {
           ok: false,
-          message: '직접 입력을 끄려면 사용 중인 충전 상품이 최소 1개 있어야 합니다.',
+          message: '직접 입력을 끄려면 노출 중인 상품이 최소 1개 있어야 합니다.',
         };
       }
     }
 
-    await prisma.merchantProfile.update({ where: { id: merchantId }, data: { allowCustomAmount } });
+    const range = await effectiveAmountRange(merchantId);
+    if (!range) return { ok: false, message: '가맹점 정보를 찾을 수 없습니다.' };
+
+    const customMin = amountOrNull(formData, 'customMinAmount');
+    if (customMin === 'ERR') return { ok: false, message: '직접 입력 최소 금액은 숫자만 입력해 주세요.' };
+    const customMax = amountOrNull(formData, 'customMaxAmount');
+    if (customMax === 'ERR') return { ok: false, message: '직접 입력 최대 금액은 숫자만 입력해 주세요.' };
+    const step = intOrNull(formData, 'customAmountStep', 1_000_000);
+    if (step === 'ERR') return { ok: false, message: '입력 단위는 0 이상 정수로 입력해 주세요.' };
+
+    if (customMin !== null && customMin < range.min) {
+      return { ok: false, message: `직접 입력 최소 금액은 ${formatWon(range.min)} 이상이어야 합니다. (플랫폼 한도)` };
+    }
+    if (customMax !== null && customMax > range.max) {
+      return { ok: false, message: `직접 입력 최대 금액은 ${formatWon(range.max)} 이하여야 합니다. (플랫폼 한도)` };
+    }
+    if (customMin !== null && customMax !== null && customMin > customMax) {
+      return { ok: false, message: '직접 입력 최소 금액이 최대 금액보다 큽니다.' };
+    }
+    // 단위가 범위와 어긋나면 어떤 값도 입력할 수 없는 화면이 된다.
+    if (step !== null && step > 1) {
+      const lo = customMin ?? range.min;
+      const hi = customMax ?? range.max;
+      const first = ((lo + BigInt(step) - 1n) / BigInt(step)) * BigInt(step);
+      if (first > hi) {
+        return {
+          ok: false,
+          message: `${step.toLocaleString('ko-KR')}원 단위로는 ${formatWon(lo)} ~ ${formatWon(hi)} 사이에 입력할 수 있는 금액이 없습니다.`,
+        };
+      }
+    }
+
+    await prisma.merchantProfile.update({
+      where: { id: merchantId },
+      data: {
+        allowCustomAmount,
+        customMinAmount: customMin,
+        customMaxAmount: customMax,
+        customAmountStep: step !== null && step > 1 ? step : null,
+      },
+    });
     revalidatePath('/studio/settings');
     revalidatePath('/studio');
     return {
       ok: true,
-      message: allowCustomAmount ? '직접 입력을 허용했습니다.' : '직접 입력을 끄고 등록된 상품만 노출합니다.',
+      message: allowCustomAmount ? '직접 입력 설정을 저장했습니다.' : '직접 입력을 끄고 등록된 상품만 노출합니다.',
+    };
+  });
+}
+
+/**
+ * 안내 문자 테스트 발송.
+ *
+ * 저장만 하고 실제 문자를 못 받아 보면, 줄바꿈이 어떻게 끊기는지·치환자가 제대로 들어가는지
+ * 실제로 나가 봐야 안다. 가맹점 담당자 번호로만 보낸다(임의 번호로 보내면 스팸 도구가 된다).
+ */
+export async function sendTestMtAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withMerchant(async (merchantId, userId) => {
+    const kind = text(formData, 'kind');
+    if (kind !== 'moGuide' && kind !== 'thanks') return { ok: false, message: '보낼 문자를 고르지 못했습니다.' };
+
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { phoneEnc: true, phoneMasked: true } });
+    if (!user?.phoneEnc) {
+      return { ok: false, message: '계정에 등록된 휴대폰 번호가 없습니다. 프로필 설정에서 번호를 먼저 등록해 주세요.' };
+    }
+
+    const merchant = await prisma.merchantProfile.findUniqueOrThrow({
+      where: { id: merchantId },
+      select: { displayName: true, code: true, thanksMtMessage: true, moGuideMtMessage: true },
+    });
+    const products = await prisma.chargeProduct.findMany({
+      where: { merchantId, active: true, archivedAt: null },
+      orderBy: [{ sortOrder: 'asc' }],
+      select: { name: true },
+    });
+
+    const template =
+      kind === 'moGuide'
+        ? tplSelectAmount({
+            merchantName: merchant.displayName,
+            link: `${await getPublicBaseUrl()}/r/TESTTEST`,
+            ttlMin: Math.floor(env.payment.selectTtlSec / 60),
+            productNames: products.map((p) => p.name),
+            custom: merchant.moGuideMtMessage,
+          })
+        : tplChargeSuccess({
+            payerName: '홍길동',
+            merchantName: merchant.displayName,
+            amount: 3_000n,
+            message: '테스트 발송입니다',
+            cumulative: 12_000n,
+            custom: merchant.thanksMtMessage,
+          });
+
+    const sent = await sendMt({ phone: decrypt(user.phoneEnc), template, merchantId });
+    return sent
+      ? { ok: true, message: `${user.phoneMasked ?? '등록된 번호'} 로 테스트 문자를 보냈습니다. 실제 발송 문구와 같습니다.` }
+      : { ok: false, message: '테스트 발송에 실패했습니다. 잠시 후 다시 시도해 주세요.' };
+  });
+}
+
+/** 연동 키의 IP 허용목록 저장. 비우면 어디서나 호출할 수 있다. */
+export async function updateApiKeyIpsAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withMerchant(async (merchantId) => {
+    const keyId = text(formData, 'keyId');
+    if (!keyId) return { ok: false, message: '키를 찾을 수 없습니다.' };
+
+    const key = await prisma.merchantApiKey.findFirst({
+      where: { id: keyId, merchantId, revokedAt: null },
+      select: { id: true, name: true },
+    });
+    if (!key) return { ok: false, message: '유효한 키를 찾을 수 없습니다.' };
+
+    const raw = text(formData, 'allowedIps');
+    const list = raw
+      .split(/[,\s]+/)
+      .map((v) => v.trim())
+      .filter(Boolean)
+      .slice(0, 20);
+    // IPv4 주소 또는 CIDR 만 받는다. 형식이 틀린 값을 저장하면 조용히 전부 막힌다.
+    const bad = list.find((v) => !/^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$/.test(v));
+    if (bad) return { ok: false, message: `IP 형식이 올바르지 않습니다: ${bad} (예: 203.0.113.10 또는 203.0.113.0/24)` };
+
+    await prisma.merchantApiKey.update({
+      where: { id: keyId },
+      data: { allowedIps: list.length > 0 ? list.join(',') : null },
+    });
+    revalidatePath('/studio/settings');
+    return {
+      ok: true,
+      message: list.length > 0 ? `${key.name} 은(는) 이제 ${list.length}개 IP 에서만 호출됩니다.` : `${key.name} 의 IP 제한을 해제했습니다.`,
     };
   });
 }
@@ -338,10 +461,39 @@ export async function updateChargeSettingsAction(
 // 상품 (비실물 · 실물)
 // ---------------------------------------------------------------------------
 
+/** 상품 설명 최대 길이. 상세 설명을 담을 수 있도록 넉넉히 둔다. */
+const PRODUCT_DESCRIPTION_MAX = 2000;
+
+/** 폼이 보낸 반복 필드를 문자열 배열로 읽는다. */
+function textList(formData: FormData, key: string): string[] {
+  return formData
+    .getAll(key)
+    .map((v) => (typeof v === 'string' ? v.trim() : ''))
+    .filter(Boolean);
+}
+
+/** 0 이상 정수. 비어 있으면 null, 형식이 틀리면 'ERR'. */
+function intOrNull(formData: FormData, key: string, max: number): number | null | 'ERR' {
+  const raw = text(formData, key);
+  if (!raw) return null;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isInteger(n) || n < 0 || n > max) return 'ERR';
+  return n;
+}
+
+/** 0 이상 금액. 비어 있으면 null, 형식이 틀리면 'ERR'. */
+function amountOrNull(formData: FormData, key: string): bigint | null | 'ERR' {
+  const raw = text(formData, key);
+  if (!raw) return null;
+  const v = parseAmount(raw);
+  if (v === null || v < 0n) return 'ERR';
+  return v;
+}
+
 /**
  * 폼에서 상품 값을 읽어 검증한다.
  *
- * 비실물(포인트·상품권·이용권)과 실물(배송비·재고·옵션)은 필요한 값이 다르다.
+ * 비실물(포인트·상품권·이용권·컨텐츠)과 실물(배송비·재고·옵션·반품)은 필요한 값이 다르다.
  * 두 경로가 각각 검증하면 규칙이 갈라지므로 여기 한 곳에서만 판단한다.
  */
 async function parseProductForm(
@@ -376,13 +528,28 @@ async function parseProductForm(
     };
   }
 
-  const description = text(formData, 'description').slice(0, 300) || null;
+  const description = text(formData, 'description').slice(0, PRODUCT_DESCRIPTION_MAX) || null;
   // 상품 이미지 주소도 프로필·배너와 같은 기준으로 검증한다.
   // 무검증으로 저장하면 결제 화면의 <img src> 가 제3자 도메인을 가리키게 되어
   // 그 화면을 여는 모든 이용자의 IP·UA 가 새어 나가고, javascript: 같은 스킴도 그대로 남는다.
   const imageUrl = safeImageUrl(text(formData, 'imageUrl').slice(0, 500), '상품 이미지 주소');
+
+  // 추가 이미지도 같은 기준으로 검증한다. 하나라도 형식이 틀리면 safeImageUrl 이 던진다.
+  const extra = textList(formData, 'extraImage')
+    .slice(0, MAX_EXTRA_IMAGES)
+    .map((v) => safeImageUrl(v.slice(0, 500), '상품 추가 이미지 주소'))
+    .filter((v): v is string => Boolean(v));
+
   const sortOrderRaw = Number.parseInt(text(formData, 'sortOrder') || '0', 10);
   const sortOrder = Number.isFinite(sortOrderRaw) ? Math.max(0, Math.min(999, sortOrderRaw)) : 0;
+
+  // 상품정보 제공 고시. 라벨/값을 쌍으로 받아 저장한다(값이 빈 항목은 남기되 경고만 한다).
+  const noticeCategory = noticeCategoryOf(text(formData, 'noticeCategory')).key;
+  const noticeLabels = formData.getAll('noticeLabel').map((v) => String(v ?? '').trim());
+  const noticeValues = formData.getAll('noticeValue').map((v) => String(v ?? '').trim());
+  const noticeItems = noticeLabels
+    .map((label, i) => ({ label: label.slice(0, 40), value: (noticeValues[i] ?? '').slice(0, 200) }))
+    .filter((it) => it.label.length > 0);
 
   const base = {
     id: newId(),
@@ -392,14 +559,20 @@ async function parseProductForm(
     amount,
     description,
     imageUrl,
+    images: extra.length > 0 ? (extra as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
+    taxFree: checked(formData, 'taxFree'),
+    noticeInfo:
+      kind === 'PHYSICAL' && noticeItems.length > 0
+        ? ({ category: noticeCategory, items: noticeItems } as unknown as Prisma.InputJsonValue)
+        : Prisma.DbNull,
     sortOrder,
     active: !formData.has('active') || checked(formData, 'active'),
   } satisfies Partial<Prisma.ChargeProductUncheckedCreateInput> as Prisma.ChargeProductUncheckedCreateInput;
 
   if (kind === 'DIGITAL') {
     const typeRaw = text(formData, 'digitalType').toUpperCase();
-    if (typeRaw !== 'POINT' && typeRaw !== 'VOUCHER' && typeRaw !== 'PASS') {
-      return { ok: false, message: '비실물 상품 유형(포인트·상품권·이용권)을 선택해 주세요.' };
+    if (typeRaw !== 'POINT' && typeRaw !== 'VOUCHER' && typeRaw !== 'PASS' && typeRaw !== 'CONTENT') {
+      return { ok: false, message: '비실물 상품 유형(포인트·상품권·이용권·컨텐츠)을 선택해 주세요.' };
     }
     const digitalType = typeRaw as DigitalProductType;
 
@@ -424,6 +597,32 @@ async function parseProductForm(
       return { ok: false, message: '이용권은 유효기간(일)을 입력해 주세요.' };
     }
 
+    const modeRaw = text(formData, 'fulfillment').toUpperCase() || 'MANUAL';
+    if (modeRaw !== 'MANUAL' && modeRaw !== 'API' && modeRaw !== 'INSTANT') {
+      return { ok: false, message: '지급 방식을 선택해 주세요.' };
+    }
+    const fulfillment = modeRaw as FulfillmentMode;
+    const fulfillmentNote = text(formData, 'fulfillmentNote').slice(0, 300) || null;
+    if (fulfillment === 'INSTANT' && !fulfillmentNote) {
+      return {
+        ok: false,
+        message: '결제 즉시 문자로 발급하려면 문자에 넣을 안내 문구(코드·다운로드 주소 등)를 입력해 주세요.',
+      };
+    }
+    // 즉시 발급 문자에는 결제 링크와 같은 규칙을 적용한다. 개인정보·계좌번호는 넣을 수 없다.
+    if (fulfillmentNote && /\d{2,3}-?\d{3,4}-?\d{4}/.test(fulfillmentNote)) {
+      return { ok: false, message: '지급 안내 문구에 전화번호·계좌번호는 넣을 수 없습니다.' };
+    }
+
+    const withdrawalNotice = text(formData, 'withdrawalNotice').slice(0, 300) || null;
+    // 디지털 콘텐츠는 사용 개시 시 청약철회가 제한된다. 고지를 강제한다.
+    if (digitalType === 'CONTENT' && !withdrawalNotice) {
+      return {
+        ok: false,
+        message: '컨텐츠 상품은 청약철회 제한 안내를 입력해야 합니다. (예: 다운로드·재생을 시작하면 환불이 제한됩니다)',
+      };
+    }
+
     return {
       ok: true,
       data: {
@@ -432,38 +631,30 @@ async function parseProductForm(
         giveAmount,
         giveUnit: text(formData, 'giveUnit').slice(0, 10) || null,
         validDays,
+        fulfillment,
+        fulfillmentNote,
+        withdrawalNotice,
       },
     };
   }
 
   // ── 실물 ──────────────────────────────────────────────────────────
-  const intOrNull = (key: string, max: number): number | null | 'ERR' => {
-    const raw = text(formData, key);
-    if (!raw) return null;
-    const n = Number.parseInt(raw, 10);
-    if (!Number.isInteger(n) || n < 0 || n > max) return 'ERR';
-    return n;
-  };
-
-  const stock = intOrNull('stock', 1_000_000);
+  const stock = intOrNull(formData, 'stock', 1_000_000);
   if (stock === 'ERR') return { ok: false, message: '재고는 0 이상 1,000,000 이하 정수로 입력해 주세요. (비우면 무제한)' };
-  const stockAlert = intOrNull('stockAlert', 1_000_000);
+  const stockAlert = intOrNull(formData, 'stockAlert', 1_000_000);
   if (stockAlert === 'ERR') return { ok: false, message: '재고 경고 기준은 0 이상 정수로 입력해 주세요.' };
-  const maxPerOrder = intOrNull('maxPerOrder', 999);
+  const maxPerOrder = intOrNull(formData, 'maxPerOrder', 999);
   if (maxPerOrder === 'ERR') return { ok: false, message: '1회 주문 최대 수량은 1~999 사이 정수로 입력해 주세요.' };
   if (maxPerOrder !== null && maxPerOrder < 1) {
     return { ok: false, message: '1회 주문 최대 수량은 1 이상이어야 합니다. (비우면 제한 없음)' };
   }
+  const dispatchDays = intOrNull(formData, 'dispatchDays', 30);
+  if (dispatchDays === 'ERR') return { ok: false, message: '출고 소요일은 0~30일 사이 정수로 입력해 주세요. (비우면 기본 배송정책)' };
 
   const freeShipping = checked(formData, 'freeShipping');
 
-  const feeRaw = text(formData, 'shippingFee');
-  let shippingFee: bigint | null = null;
-  if (feeRaw) {
-    const v = parseAmount(feeRaw);
-    if (v === null || v < 0n) return { ok: false, message: '배송비는 0 이상 숫자로 입력해 주세요. (비우면 기본 배송정책)' };
-    shippingFee = v;
-  }
+  const shippingFee = amountOrNull(formData, 'shippingFee');
+  if (shippingFee === 'ERR') return { ok: false, message: '배송비는 0 이상 숫자로 입력해 주세요. (비우면 기본 배송정책)' };
 
   const overRaw = text(formData, 'freeShipOver');
   let freeShipOver: bigint | null = null;
@@ -473,7 +664,26 @@ async function parseProductForm(
     freeShipOver = v;
   }
 
-  const options = parseOptionLines(text(formData, 'options'));
+  const returnFee = amountOrNull(formData, 'returnFee');
+  if (returnFee === 'ERR') return { ok: false, message: '반품 배송비는 0 이상 숫자로 입력해 주세요. (비우면 기본 배송정책)' };
+  const exchangeFee = amountOrNull(formData, 'exchangeFee');
+  if (exchangeFee === 'ERR') return { ok: false, message: '교환 배송비는 0 이상 숫자로 입력해 주세요. (비우면 기본 배송정책)' };
+
+  // 옵션은 편집기가 보낸 JSON 을 먼저 보고, 없으면 여러 줄 텍스트로 되돌아간다.
+  const optionsJson = text(formData, 'optionsJson');
+  const options = optionsJson ? parseOptionsJson(optionsJson) : parseOptionLines(text(formData, 'options'));
+
+  // 옵션 추가금이 붙으면 결제 금액이 한도를 넘을 수 있다. 가장 비싼 조합으로 미리 막는다.
+  const maxAdd = options.reduce(
+    (sum, o) => sum + o.values.reduce((m, v) => (v.addPrice > m ? v.addPrice : m), 0n),
+    0n,
+  );
+  if (amount + maxAdd > range.max) {
+    return {
+      ok: false,
+      message: `옵션 추가금을 모두 더하면 ${formatWon(amount + maxAdd)} 이 되어 결제 한도(${formatWon(range.max)})를 넘습니다. 추가금을 줄여 주세요.`,
+    };
+  }
 
   return {
     ok: true,
@@ -483,10 +693,14 @@ async function parseProductForm(
       stock,
       stockAlert,
       maxPerOrder,
+      dispatchDays,
       freeShipping,
       shippingFee,
       freeShipOver,
-      options: options.length > 0 ? (options as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
+      returnFee,
+      exchangeFee,
+      options:
+        options.length > 0 ? (optionsToStorage(options) as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
     },
   };
 }
@@ -514,12 +728,11 @@ export async function createChargeProductAction(
     });
     if (dup) return { ok: false, message: '같은 이름의 상품이 이미 있습니다.' };
 
-    await prisma.chargeProduct.create({
+    const created = await prisma.chargeProduct.create({
       data: { ...parsed.data, sortOrder: parsed.data.sortOrder ?? count },
     });
-    revalidatePath('/studio/products');
-    revalidatePath('/studio/settings');
-    return { ok: true, message: `${parsed.data.name} 상품을 추가했습니다.` };
+    revalidateProducts();
+    return { ok: true, message: `${created.name} 상품을 추가했습니다.`, redirectTo: `/studio/products/${created.id}` };
   });
 }
 
@@ -552,8 +765,7 @@ export async function updateChargeProductAction(
 
     const { id: _newId, merchantId: _m, kind: _k, ...rest } = parsed.data;
     await prisma.chargeProduct.update({ where: { id }, data: rest });
-    revalidatePath('/studio/products');
-    revalidatePath('/studio/settings');
+    revalidateProducts();
     return { ok: true, message: '상품을 저장했습니다.' };
   });
 }
@@ -594,9 +806,156 @@ export async function archiveChargeProductAction(
       where: { id },
       data: { archivedAt: new Date(), active: false },
     });
-    revalidatePath('/studio/products');
-    revalidatePath('/studio/settings');
-    return { ok: true, message: `${current.name} 상품을 보관했습니다.` };
+    revalidateProducts();
+    return { ok: true, message: `${current.name} 상품을 보관했습니다. 보관함에서 되살릴 수 있습니다.`, redirectTo: '/studio/products' };
+  });
+}
+
+/**
+ * 보관한 상품을 되살린다.
+ *
+ * 보관이 단방향이면 잘못 누른 가맹점이 상품을 통째로 다시 입력해야 한다.
+ * 되살릴 때는 숨김(active=false) 상태로 돌려, 확인한 뒤 직접 노출하게 한다.
+ */
+export async function restoreChargeProductAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withMerchant(async (merchantId) => {
+    const id = text(formData, 'productId');
+    if (!id) return { ok: false, message: '상품을 찾을 수 없습니다.' };
+
+    const current = await prisma.chargeProduct.findFirst({
+      where: { id, merchantId, archivedAt: { not: null } },
+      select: { id: true, name: true, kind: true },
+    });
+    if (!current) return { ok: false, message: '보관된 상품을 찾을 수 없습니다.' };
+
+    // 되살리면 다시 상한을 차지한다. 상한을 넘으면 되돌릴 수 없다.
+    const count = await prisma.chargeProduct.count({
+      where: { merchantId, kind: current.kind, archivedAt: null },
+    });
+    if (count >= MAX_CHARGE_PRODUCTS) {
+      return { ok: false, message: `사용 중인 상품이 이미 ${MAX_CHARGE_PRODUCTS}개입니다. 먼저 다른 상품을 보관해 주세요.` };
+    }
+    const dup = await prisma.chargeProduct.findFirst({
+      where: { merchantId, name: current.name, archivedAt: null },
+      select: { id: true },
+    });
+    if (dup) return { ok: false, message: '같은 이름의 상품이 이미 있습니다. 되살리기 전에 이름을 정리해 주세요.' };
+
+    await prisma.chargeProduct.update({
+      where: { id },
+      data: { archivedAt: null, active: false },
+    });
+    revalidateProducts();
+    return { ok: true, message: `${current.name} 상품을 되살렸습니다. 숨김 상태이니 확인 후 노출해 주세요.` };
+  });
+}
+
+/**
+ * 상품 복제.
+ * 옵션만 다른 변형 상품을 만들 때 전부 다시 입력하지 않게 한다.
+ */
+export async function duplicateChargeProductAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withMerchant(async (merchantId) => {
+    const id = text(formData, 'productId');
+    if (!id) return { ok: false, message: '상품을 찾을 수 없습니다.' };
+
+    const src = await prisma.chargeProduct.findFirst({ where: { id, merchantId, archivedAt: null } });
+    if (!src) return { ok: false, message: '상품을 찾을 수 없습니다.' };
+
+    const count = await prisma.chargeProduct.count({
+      where: { merchantId, kind: src.kind, archivedAt: null },
+    });
+    if (count >= MAX_CHARGE_PRODUCTS) {
+      return { ok: false, message: `상품은 종류별로 최대 ${MAX_CHARGE_PRODUCTS}개까지 등록할 수 있습니다.` };
+    }
+
+    // 이름이 겹치면 결제 화면에서 구분되지 않는다. 빈 번호를 찾아 붙인다.
+    let name = '';
+    for (let i = 2; i <= 20; i += 1) {
+      const candidate = `${src.name} (${i})`.slice(0, 40);
+      const exists = await prisma.chargeProduct.findFirst({
+        where: { merchantId, name: candidate, archivedAt: null },
+        select: { id: true },
+      });
+      if (!exists) {
+        name = candidate;
+        break;
+      }
+    }
+    if (!name) return { ok: false, message: '복제본 이름을 만들지 못했습니다. 기존 복제본을 정리해 주세요.' };
+
+    const { id: _id, createdAt: _c, updatedAt: _u, ...rest } = src;
+    const created = await prisma.chargeProduct.create({
+      data: {
+        ...rest,
+        id: newId(),
+        name,
+        sku: null,
+        // 복제본은 항상 숨김으로 만든다. 값을 고치기 전에 팔리면 안 된다.
+        active: false,
+        sortOrder: count,
+        options: (src.options ?? Prisma.DbNull) as Prisma.InputJsonValue | typeof Prisma.DbNull,
+        images: (src.images ?? Prisma.DbNull) as Prisma.InputJsonValue | typeof Prisma.DbNull,
+        noticeInfo: (src.noticeInfo ?? Prisma.DbNull) as Prisma.InputJsonValue | typeof Prisma.DbNull,
+      },
+    });
+    revalidateProducts();
+    return {
+      ok: true,
+      message: `${created.name} 으로 복제했습니다. 숨김 상태이니 값을 확인한 뒤 노출해 주세요.`,
+      redirectTo: `/studio/products/${created.id}`,
+    };
+  });
+}
+
+/**
+ * 노출 순서를 한 칸 올리거나 내린다.
+ *
+ * 숫자를 직접 적게 하면 상품마다 저장을 눌러야 하고, 같은 숫자가 겹치면
+ * 결제 화면 순서가 예측 불가능해진다. 같은 종류 안에서 자리만 맞바꾼다.
+ */
+export async function moveChargeProductAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withMerchant(async (merchantId) => {
+    const id = text(formData, 'productId');
+    const dir = text(formData, 'direction');
+    if (!id || (dir !== 'up' && dir !== 'down')) return { ok: false, message: '이동 방향이 올바르지 않습니다.' };
+
+    const target = await prisma.chargeProduct.findFirst({
+      where: { id, merchantId, archivedAt: null },
+      select: { id: true, kind: true },
+    });
+    if (!target) return { ok: false, message: '상품을 찾을 수 없습니다.' };
+
+    const siblings = await prisma.chargeProduct.findMany({
+      where: { merchantId, kind: target.kind, archivedAt: null },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true },
+    });
+    const index = siblings.findIndex((r) => r.id === id);
+    const swapWith = dir === 'up' ? index - 1 : index + 1;
+    if (index < 0 || swapWith < 0 || swapWith >= siblings.length) {
+      return { ok: false, message: dir === 'up' ? '이미 첫 번째입니다.' : '이미 마지막입니다.' };
+    }
+
+    const reordered = [...siblings];
+    [reordered[index], reordered[swapWith]] = [reordered[swapWith], reordered[index]];
+    // 순서를 0..n 으로 다시 매겨 중복·구멍을 없앤다.
+    await prisma.$transaction(
+      reordered.map((row, i) =>
+        prisma.chargeProduct.update({ where: { id: row.id }, data: { sortOrder: i } }),
+      ),
+    );
+    revalidateProducts();
+    return { ok: true, message: '노출 순서를 바꿨습니다.' };
   });
 }
 
@@ -619,7 +978,7 @@ export async function adjustProductStockAction(
     // 비우면 '무제한'으로 되돌린다.
     if (!raw) {
       await prisma.chargeProduct.update({ where: { id }, data: { stock: null } });
-      revalidatePath('/studio/products');
+      revalidateProducts();
       return { ok: true, message: `${current.name} 재고를 무제한으로 바꿨습니다.` };
     }
 
@@ -628,12 +987,50 @@ export async function adjustProductStockAction(
       return { ok: false, message: '재고는 0 이상 1,000,000 이하 정수로 입력해 주세요.' };
     }
     await prisma.chargeProduct.update({ where: { id }, data: { stock: n } });
-    revalidatePath('/studio/products');
+    revalidateProducts();
     return { ok: true, message: `${current.name} 재고를 ${n.toLocaleString('ko-KR')}개로 맞췄습니다.` };
   });
 }
 
-/** 가맹점 기본 배송정책 저장. 상품별 값이 없으면 이 값이 쓰인다. */
+/** 상품 노출/숨김 토글. 목록에서 바로 쓴다. */
+export async function toggleChargeProductActiveAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withMerchant(async (merchantId) => {
+    const id = text(formData, 'productId');
+    if (!id) return { ok: false, message: '상품을 찾을 수 없습니다.' };
+
+    const current = await prisma.chargeProduct.findFirst({
+      where: { id, merchantId, archivedAt: null },
+      select: { id: true, name: true, active: true },
+    });
+    if (!current) return { ok: false, message: '상품을 찾을 수 없습니다.' };
+
+    if (current.active) {
+      // 마지막 노출 상품을 숨기면서 직접 입력도 꺼져 있으면 결제가 아예 막힌다.
+      const merchant = await prisma.merchantProfile.findUniqueOrThrow({
+        where: { id: merchantId },
+        select: { allowCustomAmount: true },
+      });
+      const remain = await prisma.chargeProduct.count({
+        where: { merchantId, active: true, archivedAt: null, id: { not: id } },
+      });
+      if (remain === 0 && !merchant.allowCustomAmount) {
+        return { ok: false, message: '마지막 노출 상품입니다. 먼저 직접 입력을 허용하거나 다른 상품을 노출해 주세요.' };
+      }
+    }
+
+    await prisma.chargeProduct.update({ where: { id }, data: { active: !current.active } });
+    revalidateProducts();
+    return {
+      ok: true,
+      message: current.active ? `${current.name} 을(를) 숨겼습니다.` : `${current.name} 을(를) 결제 화면에 노출합니다.`,
+    };
+  });
+}
+
+/** 가맹점 기본 배송·반품 정책 저장. 상품별 값이 없으면 이 값이 쓰인다. */
 export async function saveShippingPolicyAction(
   _prev: StudioActionState,
   formData: FormData,
@@ -651,20 +1048,36 @@ export async function saveShippingPolicyAction(
       freeOver = v;
     }
 
-    const remoteRaw = text(formData, 'remoteFee');
-    let remoteFee = 0n;
-    if (remoteRaw) {
-      const v = parseAmount(remoteRaw);
-      if (v === null || v < 0n) return { ok: false, message: '도서산간 추가 배송비는 0 이상 숫자로 입력해 주세요.' };
-      remoteFee = v;
+    const remoteFee = amountOrNull(formData, 'remoteFee');
+    if (remoteFee === 'ERR') return { ok: false, message: '도서산간 추가 배송비는 0 이상 숫자로 입력해 주세요.' };
+    const returnFee = amountOrNull(formData, 'returnFee');
+    if (returnFee === 'ERR') return { ok: false, message: '반품 배송비는 0 이상 숫자로 입력해 주세요.' };
+    const exchangeFee = amountOrNull(formData, 'exchangeFee');
+    if (exchangeFee === 'ERR') return { ok: false, message: '교환 배송비는 0 이상 숫자로 입력해 주세요.' };
+
+    const dispatchDays = intOrNull(formData, 'dispatchDays', 30);
+    if (dispatchDays === 'ERR') return { ok: false, message: '출고 소요일은 0~30일 사이 정수로 입력해 주세요.' };
+
+    const returnZip = text(formData, 'returnZipCode').replace(/[^\d]/g, '').slice(0, 5) || null;
+    const returnAddress = text(formData, 'returnAddress').slice(0, 200) || null;
+    // 반품지는 주소만 있고 우편번호가 없으면 택배사 접수가 안 된다. 둘 다 받거나 둘 다 비운다.
+    if ((returnZip && !returnAddress) || (!returnZip && returnAddress)) {
+      return { ok: false, message: '반품지는 우편번호와 주소를 함께 입력해 주세요.' };
     }
 
     const data = {
       baseFee,
       freeOver,
-      remoteFee,
+      remoteFee: remoteFee ?? 0n,
+      returnFee: returnFee ?? 0n,
+      exchangeFee: exchangeFee ?? 0n,
+      dispatchDays: dispatchDays ?? 2,
       carrier: text(formData, 'carrier').slice(0, 30) || null,
       guide: text(formData, 'guide').slice(0, 300) || null,
+      returnReceiver: text(formData, 'returnReceiver').slice(0, 30) || null,
+      returnPhone: text(formData, 'returnPhone').replace(/[^\d-]/g, '').slice(0, 20) || null,
+      returnZipCode: returnZip,
+      returnAddress,
     };
 
     await prisma.merchantShippingPolicy.upsert({
@@ -672,7 +1085,8 @@ export async function saveShippingPolicyAction(
       create: { id: newId(), merchantId, ...data },
       update: data,
     });
-    revalidatePath('/studio/products');
+    revalidateProducts();
+    revalidatePath('/studio/settings');
     return {
       ok: true,
       message: freeOver
@@ -680,6 +1094,13 @@ export async function saveShippingPolicyAction(
         : `배송정책을 저장했습니다. 기본 배송비 ${formatWon(baseFee)}`,
     };
   });
+}
+
+/** 상품을 건드리는 액션이 공통으로 다시 그려야 하는 화면들. */
+function revalidateProducts() {
+  revalidatePath('/studio/products');
+  revalidatePath('/studio/settings');
+  revalidatePath('/studio');
 }
 
 // ===========================================================================
@@ -1132,12 +1553,22 @@ export async function updateChargePageAction(
       };
     }
 
-    // 기본 배너 프리셋을 골랐으면 프리셋을, '직접 입력'이면 입력한 주소를 사용한다.
-    if (bannerPreset && bannerPreset !== 'custom' && !/^\/banners\/[a-z0-9-]+\.png$/.test(bannerPreset)) {
+    // 'auto' 는 배너를 고정하지 않는다(가맹점마다 정해진 기본 배너가 쓰인다).
+    // 예전에는 이 선택지가 없어서, 자동 상태로 저장을 누르면 그때 보이던 기본 배너가
+    // 고정 값으로 굳어 다시 자동으로 되돌릴 방법이 없었다.
+    if (
+      bannerPreset &&
+      bannerPreset !== 'custom' &&
+      bannerPreset !== 'auto' &&
+      !/^\/banners\/[a-z0-9-]+\.png$/.test(bannerPreset)
+    ) {
       return { ok: false, message: '배너 선택 값이 올바르지 않습니다.' };
     }
     const bannerUrl =
-      bannerPreset === 'custom' ? parsed.data.bannerUrl || null : bannerPreset ? bannerPreset : null;
+      bannerPreset === 'auto' ? null
+      : bannerPreset === 'custom' ? parsed.data.bannerUrl || null
+      : bannerPreset ? bannerPreset
+      : null;
 
     await prisma.merchantProfile.update({
       where: { id: merchantId },
@@ -1181,6 +1612,16 @@ export async function createApiKeyAction(
     const name = text(formData, 'name').slice(0, 40) || '연동 키';
     const issued = await issueMerchantApiKey(merchantId, name);
 
+    // 발급과 동시에 IP 를 제한할 수 있게 한다(나중에 따로 저장할 수도 있다).
+    const ips = text(formData, 'allowedIps')
+      .split(/[,\s]+/)
+      .map((v) => v.trim())
+      .filter((v) => /^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$/.test(v))
+      .slice(0, 20);
+    if (ips.length > 0) {
+      await prisma.merchantApiKey.update({ where: { id: issued.id }, data: { allowedIps: ips.join(',') } });
+    }
+
     revalidatePath('/studio/settings');
     return {
       ok: true,
@@ -1217,13 +1658,50 @@ export async function revokeApiKeyAction(
 // 주문 · 배송 (실물 상품)
 // ===========================================================================
 
-const SHIPMENT_STATUSES = ['PREPARING', 'SHIPPED', 'DELIVERED', 'CANCELED'] as const;
+/** 배송(반품 포함) 상태 값. 화면 드롭다운과 검증이 같은 목록을 본다. */
+const SHIPMENT_STATUSES = [
+  'PREPARING', 'SHIPPED', 'DELIVERED', 'CANCELED',
+  'RETURN_REQUESTED', 'RETURNING', 'RETURNED', 'EXCHANGE_REQUESTED', 'EXCHANGE_SHIPPED',
+] as const;
+
+type ShipmentStatusValue = (typeof SHIPMENT_STATUSES)[number];
+
+/** 발송(=송장이 있어야 하는) 상태 */
+const NEEDS_TRACKING: ShipmentStatusValue[] = ['SHIPPED', 'EXCHANGE_SHIPPED'];
+
+/** 반품·교환 흐름 상태 */
+const RETURN_FLOW: ShipmentStatusValue[] = [
+  'RETURN_REQUESTED', 'RETURNING', 'RETURNED', 'EXCHANGE_REQUESTED', 'EXCHANGE_SHIPPED',
+];
+
+function shipmentTimestamps(
+  status: ShipmentStatusValue,
+  current: { shippedAt: Date | null; deliveredAt: Date | null; returnRequestedAt: Date | null; returnClosedAt: Date | null },
+  now: Date,
+) {
+  return {
+    // 발송 시각은 처음 발송으로 바꾼 때만 기록한다(수정할 때마다 갱신하면 배송 지연을 못 본다).
+    shippedAt: status === 'SHIPPED' ? current.shippedAt ?? now : status === 'PREPARING' ? null : current.shippedAt,
+    // 배송 완료 시각도 최초 1회만 기록한다. 메모·송장번호만 고치려고 다시 저장할 때마다
+    // 갱신되면 실제 배송 완료일이 사라져 배송 지연 통계와 분쟁 대응 근거가 어긋난다.
+    deliveredAt:
+      status === 'DELIVERED'
+        ? current.deliveredAt ?? now
+        : status === 'PREPARING'
+          ? null
+          : current.deliveredAt,
+    // 반품·교환 접수 시각도 최초 1회.
+    returnRequestedAt: RETURN_FLOW.includes(status) ? current.returnRequestedAt ?? now : current.returnRequestedAt,
+    returnClosedAt: status === 'RETURNED' ? current.returnClosedAt ?? now : status === 'PREPARING' ? null : current.returnClosedAt,
+  };
+}
 
 /**
- * 배송 정보 저장 (송장 입력 · 상태 변경).
+ * 배송 정보 저장 (송장 입력 · 상태 변경 · 반품/교환 접수).
  *
  * 발송(SHIPPED)으로 바꾸려면 택배사와 송장번호가 있어야 한다.
  * 송장 없이 발송 처리하면 이용자가 조회할 수 없고, 분쟁 시 발송 사실을 증명하지 못한다.
+ * 발송으로 처음 바뀌는 순간에는 이용자에게 발송 안내 문자를 보낸다.
  */
 export async function updateShipmentAction(
   _prev: StudioActionState,
@@ -1234,23 +1712,31 @@ export async function updateShipmentAction(
     if (!chargeId) return { ok: false, message: '주문을 찾을 수 없습니다.' };
 
     const statusRaw = text(formData, 'status').toUpperCase();
-    if (!SHIPMENT_STATUSES.includes(statusRaw as (typeof SHIPMENT_STATUSES)[number])) {
+    if (!SHIPMENT_STATUSES.includes(statusRaw as ShipmentStatusValue)) {
       return { ok: false, message: '배송 상태를 선택해 주세요.' };
     }
-    const status = statusRaw as (typeof SHIPMENT_STATUSES)[number];
+    const status = statusRaw as ShipmentStatusValue;
 
     // 남의 가맹점 주문을 건드릴 수 없도록 merchantId 를 조건에 함께 건다.
     const current = await prisma.chargeShipment.findFirst({
       where: { chargeId, merchantId },
-      select: { id: true, status: true, shippedAt: true, deliveredAt: true },
+      select: {
+        id: true, status: true, shippedAt: true, deliveredAt: true,
+        returnRequestedAt: true, returnClosedAt: true,
+      },
     });
     if (!current) return { ok: false, message: '주문을 찾을 수 없습니다.' };
 
     const carrier = text(formData, 'carrier').slice(0, 30) || null;
     const trackingNo = text(formData, 'trackingNo').replace(/[^0-9A-Za-z-]/g, '').slice(0, 40) || null;
+    const returnTrackingNo = text(formData, 'returnTrackingNo').replace(/[^0-9A-Za-z-]/g, '').slice(0, 40) || null;
+    const returnReason = text(formData, 'returnReason').slice(0, 200) || null;
 
-    if (status === 'SHIPPED' && (!carrier || !trackingNo)) {
+    if (NEEDS_TRACKING.includes(status) && (!carrier || !trackingNo)) {
       return { ok: false, message: '발송 처리에는 택배사와 송장번호가 필요합니다.' };
+    }
+    if (RETURN_FLOW.includes(status) && !returnReason) {
+      return { ok: false, message: '반품·교환은 사유를 남겨야 합니다. 분쟁 시 근거가 됩니다.' };
     }
 
     const now = new Date();
@@ -1260,31 +1746,230 @@ export async function updateShipmentAction(
         status,
         carrier,
         trackingNo,
+        returnTrackingNo,
+        returnReason,
         memo: text(formData, 'memo').slice(0, 100) || null,
-        // 발송 시각은 처음 발송으로 바꾼 때만 기록한다(수정할 때마다 갱신하면 배송 지연을 못 본다).
-        shippedAt: status === 'SHIPPED' ? current.shippedAt ?? now : status === 'PREPARING' ? null : current.shippedAt,
-        // 배송 완료 시각도 최초 1회만 기록한다. 메모·송장번호만 고치려고 다시 저장할 때마다
-        // 갱신되면 실제 배송 완료일이 사라져 배송 지연 통계와 분쟁 대응 근거가 어긋난다.
-        deliveredAt:
-          status === 'DELIVERED'
-            ? current.deliveredAt ?? now
-            : status === 'PREPARING'
-              ? null
-              : current.deliveredAt,
+        ...shipmentTimestamps(status, current, now),
       },
     });
 
+    // 발송으로 "처음" 바뀐 순간에만 안내 문자를 보낸다. 저장할 때마다 보내면 문자 폭탄이 된다.
+    let notified = false;
+    if (status === 'SHIPPED' && current.status !== 'SHIPPED' && !checked(formData, 'skipNotify')) {
+      notified = await notifyShipment(chargeId, carrier!, trackingNo!);
+    }
+
     revalidatePath('/studio/orders');
+    revalidatePath('/studio');
     return {
       ok: true,
       message:
         status === 'SHIPPED'
-          ? `발송 처리했습니다. (${carrier} ${trackingNo})`
+          ? `발송 처리했습니다. (${carrier} ${trackingNo})${notified ? ' 이용자에게 발송 안내 문자를 보냈습니다.' : ''}`
           : status === 'DELIVERED'
             ? '배송 완료로 표시했습니다.'
             : status === 'CANCELED'
-              ? '배송을 취소 상태로 표시했습니다. 결제 환불은 별도로 진행해 주세요.'
-              : '배송 준비 상태로 되돌렸습니다.',
+              ? '배송을 취소 상태로 표시했습니다. 결제 환불이 필요하면 아래 [환불 요청] 을 눌러 주세요.'
+              : RETURN_FLOW.includes(status)
+                ? '반품·교환 상태를 저장했습니다. 환불이 필요하면 [환불 요청] 을 눌러 주세요.'
+                : '배송 준비 상태로 되돌렸습니다.',
+    };
+  });
+}
+
+/** 발송 안내 문자. 실패해도 배송 저장 자체를 되돌리지는 않는다. */
+async function notifyShipment(chargeId: string, carrier: string, trackingNo: string): Promise<boolean> {
+  try {
+    const charge = await prisma.charge.findUnique({
+      where: { id: chargeId },
+      select: {
+        id: true,
+        merchantId: true,
+        merchant: { select: { displayName: true } },
+        payer: { select: { phoneEnc: true } },
+        product: { select: { name: true } },
+      },
+    });
+    if (!charge?.payer) return false;
+    const phone = decrypt(charge.payer.phoneEnc);
+    if (!phone) return false;
+    return await sendMt({
+      phone,
+      template: tplShipmentSent({
+        merchantName: charge.merchant.displayName,
+        productName: charge.product?.name ?? '주문 상품',
+        carrier,
+        trackingNo,
+      }),
+      // 발송 안내는 결제 결과가 아니다. chargeId 를 넘기면 charge.mtStatus 가 이 문자 결과로 덮인다.
+      merchantId: charge.merchantId,
+    });
+  } catch (e) {
+    logger.warn('발송 안내 문자 실패', { chargeId, message: (e as Error).message });
+    return false;
+  }
+}
+
+/**
+ * 여러 주문을 한 번에 발송 처리한다.
+ *
+ * 하루 수십 건을 한 건씩 저장하게 두면 실수로 빠뜨리는 주문이 반드시 생긴다.
+ * 입력은 "거래번호,송장번호" 를 줄바꿈으로 나열한 형식이다(엑셀에서 그대로 붙여 넣을 수 있다).
+ */
+export async function bulkShipAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withMerchant(async (merchantId) => {
+    const carrier = text(formData, 'carrier').slice(0, 30);
+    if (!carrier) return { ok: false, message: '택배사를 입력해 주세요.' };
+
+    const raw = text(formData, 'rows');
+    if (!raw) return { ok: false, message: '거래번호와 송장번호를 입력해 주세요.' };
+
+    const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 200);
+    if (lines.length === 0) return { ok: false, message: '처리할 줄이 없습니다.' };
+
+    const notify = checked(formData, 'notify');
+    const done: string[] = [];
+    const failed: string[] = [];
+
+    for (const line of lines) {
+      // 쉼표·탭·연속 공백 모두 구분자로 받는다(엑셀 붙여넣기는 탭이다).
+      const [noRaw, trackRaw] = line.split(/[,\t]|\s{2,}/).map((v) => (v ?? '').trim());
+      const transactionNo = (noRaw ?? '').toUpperCase();
+      const trackingNo = (trackRaw ?? '').replace(/[^0-9A-Za-z-]/g, '');
+      if (!transactionNo || !trackingNo) {
+        failed.push(`${line} (형식 오류)`);
+        continue;
+      }
+
+      const charge = await prisma.charge.findFirst({
+        where: { transactionNo, merchantId, status: { in: PAID_STATUSES } },
+        select: { id: true, shipment: { select: { status: true } } },
+      });
+      if (!charge?.shipment) {
+        failed.push(`${transactionNo} (주문 없음)`);
+        continue;
+      }
+      if (charge.shipment.status === 'SHIPPED') {
+        failed.push(`${transactionNo} (이미 발송됨)`);
+        continue;
+      }
+
+      const cur = await prisma.chargeShipment.findUniqueOrThrow({
+        where: { chargeId: charge.id },
+        select: { shippedAt: true, deliveredAt: true, returnRequestedAt: true, returnClosedAt: true },
+      });
+      await prisma.chargeShipment.update({
+        where: { chargeId: charge.id },
+        data: {
+          status: 'SHIPPED',
+          carrier,
+          trackingNo,
+          ...shipmentTimestamps('SHIPPED', cur, new Date()),
+        },
+      });
+      if (notify) await notifyShipment(charge.id, carrier, trackingNo);
+      done.push(transactionNo);
+    }
+
+    revalidatePath('/studio/orders');
+    if (done.length === 0) {
+      return { ok: false, message: `처리된 건이 없습니다. ${failed.slice(0, 3).join(' / ')}` };
+    }
+    return {
+      ok: true,
+      message:
+        failed.length === 0
+          ? `${done.length}건을 발송 처리했습니다.`
+          : `${done.length}건 처리, ${failed.length}건 실패 — ${failed.slice(0, 3).join(' / ')}${failed.length > 3 ? ' 외' : ''}`,
+    };
+  });
+}
+
+/**
+ * 배송지 원문 확인.
+ *
+ * 목록에는 마스킹만 보여 주고, 실제 배송 작업을 할 때만 원문을 연다.
+ * 누가 언제 누구의 배송지를 열었는지 감사로그로 남긴다(개인정보 열람 기록).
+ */
+export async function revealShipmentAddressAction(
+  chargeId: string,
+): Promise<
+  | { ok: true; receiver: string; phone: string; address: string; zipCode: string }
+  | { ok: false; message: string }
+> {
+  let merchantId: string;
+  let userId: string;
+  try {
+    const user = await requireMerchant();
+    merchantId = user.merchantId;
+    userId = user.id;
+  } catch (e) {
+    return { ok: false, message: (e as Error).message || '가맹점 권한이 필요합니다.' };
+  }
+
+  try {
+    const row = await prisma.chargeShipment.findFirst({
+      where: { chargeId, merchantId },
+      select: {
+        id: true, receiverEnc: true, phoneEnc: true, addressEnc: true, zipCode: true,
+        charge: { select: { transactionNo: true } },
+      },
+    });
+    if (!row) return { ok: false, message: '주문을 찾을 수 없습니다.' };
+
+    await writeAudit({
+      adminUserId: userId,
+      action: 'SHIPMENT_ADDRESS_VIEW',
+      targetType: 'charge_shipment',
+      targetId: row.id,
+      after: { transactionNo: row.charge.transactionNo, by: 'merchant', merchantId },
+    });
+
+    return {
+      ok: true,
+      receiver: decrypt(row.receiverEnc),
+      phone: decrypt(row.phoneEnc),
+      address: decrypt(row.addressEnc),
+      zipCode: row.zipCode,
+    };
+  } catch (e) {
+    return { ok: false, message: userFacingError(e) };
+  }
+}
+
+/**
+ * 가맹점이 올리는 환불 요청.
+ *
+ * 실제 환불 실행은 통합 관리자가 승인해야 한다(결제사 취소·정산 원장 반대분개가 함께 일어난다).
+ * 그래도 품절·배송불가처럼 가맹점만 아는 사유를 접수할 통로는 있어야 한다.
+ */
+export async function requestChargeRefundAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withMerchant(async (merchantId, userId) => {
+    const chargeId = text(formData, 'chargeId');
+    const reason = text(formData, 'reason').slice(0, 200);
+    if (!chargeId) return { ok: false, message: '결제 건을 찾을 수 없습니다.' };
+    if (reason.length < 5) return { ok: false, message: '환불 사유를 5자 이상 적어 주세요. 관리자 승인 근거가 됩니다.' };
+
+    const charge = await prisma.charge.findFirst({
+      where: { id: chargeId, merchantId },
+      select: { id: true, transactionNo: true },
+    });
+    if (!charge) return { ok: false, message: '결제 건을 찾을 수 없습니다.' };
+
+    await requestRefund({ chargeId: charge.id, reason: `[가맹점] ${reason}`, requestedBy: userId });
+
+    revalidatePath('/studio/orders');
+    revalidatePath('/studio/charges');
+    revalidatePath(`/studio/charges/${charge.id}`);
+    return {
+      ok: true,
+      message: `${charge.transactionNo} 환불을 요청했습니다. 통합 관리자 승인 후 처리됩니다.`,
     };
   });
 }

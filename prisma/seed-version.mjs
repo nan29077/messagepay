@@ -15,6 +15,7 @@
  *   7 - 테스트 크리에이터의 잘못된 전체 캐릭터 시트 URL 제거
  *   8 - 문자페이 브랜드 전환(계정 도메인 munjapay.kr, 가맹점 코드 MJP-)
  *   9 - 메시지페이 브랜드 전환(계정 도메인 messagepay.kr, 가맹점 코드 MSG-)
+ *  10 - 판매 관리 개편: 옵션 새 형식(값별 추가금·품절), 컨텐츠 상품, 고시정보, 반품 정책
  */
-export const SEED_VERSION = 9;
+export const SEED_VERSION = 10;
 export const SEED_VERSION_KEY = 'seed.version';

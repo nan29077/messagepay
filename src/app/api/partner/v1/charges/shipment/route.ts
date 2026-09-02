@@ -1,7 +1,7 @@
 import { prisma } from '@/server/db';
 import { authenticatePartner } from '@/server/services/partner-auth';
 import { PAID_STATUSES } from '@/components/studio/shared';
-import { authError, jsonError, jsonOk } from '../../_shared';
+import { authError, jsonError, jsonOk, logPartnerCall } from '../../_shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -34,21 +34,36 @@ interface ShipBody {
 export async function POST(req: Request) {
   const rawBody = await req.text();
   const auth = await authenticatePartner(req, rawBody);
-  if (!auth.ok) return authError(auth);
+  if (!auth.ok) {
+    await logPartnerCall({
+      req, merchantId: auth.merchantId ?? null, keyId: auth.keyId,
+      status: auth.status, errorCode: auth.code, message: auth.message,
+    });
+    return authError(auth);
+  }
 
   let body: ShipBody;
   try {
     body = JSON.parse(rawBody || '{}') as ShipBody;
   } catch {
-    return jsonError(400, 'INVALID_JSON', '본문이 올바른 JSON 이 아닙니다.');
+    return logPartnerCall({
+      req, merchantId: auth.merchantId, keyId: auth.keyId,
+      status: 400, errorCode: 'INVALID_JSON',
+    }).then(() => jsonError(400, 'INVALID_JSON', '본문이 올바른 JSON 이 아닙니다.'));
   }
 
   const transactionNo = String(body.transactionNo ?? '').trim();
-  if (!transactionNo) return jsonError(400, 'INVALID_ITEMS', 'transactionNo 가 필요합니다.');
+  if (!transactionNo) return logPartnerCall({
+   req, merchantId: auth.merchantId, keyId: auth.keyId,
+   status: 400, errorCode: 'INVALID_ITEMS',
+ }).then(() => jsonError(400, 'INVALID_ITEMS', 'transactionNo 가 필요합니다.'));
 
   const status = String(body.status ?? '').toUpperCase();
   if (!STATUSES.includes(status as Status)) {
-    return jsonError(400, 'INVALID_STATUS', `status 는 ${STATUSES.join(' / ')} 중 하나여야 합니다.`);
+    return logPartnerCall({
+      req, merchantId: auth.merchantId, keyId: auth.keyId,
+      status: 400, errorCode: 'INVALID_STATUS',
+    }).then(() => jsonError(400, 'INVALID_STATUS', `status 는 ${STATUSES.join(' / ')} 중 하나여야 합니다.`));
   }
 
   // 본문에 없는 필드는 "지우라는 뜻" 이 아니라 "건드리지 말라는 뜻" 이다.
@@ -68,14 +83,23 @@ export async function POST(req: Request) {
     where: { transactionNo, merchantId: auth.merchantId, status: { in: PAID_STATUSES } },
     select: { id: true, shipment: { select: { shippedAt: true, deliveredAt: true, carrier: true, trackingNo: true } } },
   });
-  if (!charge) return jsonError(404, 'NOT_FOUND', '해당 거래번호의 결제 완료 주문을 찾을 수 없습니다.');
-  if (!charge.shipment) return jsonError(400, 'NOT_PHYSICAL', '배송 정보가 없는 주문입니다(실물 상품이 아닙니다).');
+  if (!charge) return logPartnerCall({
+   req, merchantId: auth.merchantId, keyId: auth.keyId,
+   status: 404, errorCode: 'NOT_FOUND',
+ }).then(() => jsonError(404, 'NOT_FOUND', '해당 거래번호의 결제 완료 주문을 찾을 수 없습니다.'));
+  if (!charge.shipment) return logPartnerCall({
+   req, merchantId: auth.merchantId, keyId: auth.keyId,
+   status: 400, errorCode: 'NOT_PHYSICAL',
+ }).then(() => jsonError(400, 'NOT_PHYSICAL', '배송 정보가 없는 주문입니다(실물 상품이 아닙니다).'));
 
   // 발송 처리에 필요한 값은 이번 요청 또는 이미 저장된 값 중 하나로 채워져 있어야 한다.
   const effectiveCarrier = carrier === undefined ? charge.shipment.carrier : carrier;
   const effectiveTrackingNo = trackingNo === undefined ? charge.shipment.trackingNo : trackingNo;
   if (status === 'SHIPPED' && (!effectiveCarrier || !effectiveTrackingNo)) {
-    return jsonError(400, 'TRACKING_REQUIRED', '발송(SHIPPED) 처리에는 carrier 와 trackingNo 가 필요합니다.');
+    return logPartnerCall({
+      req, merchantId: auth.merchantId, keyId: auth.keyId,
+      status: 400, errorCode: 'TRACKING_REQUIRED',
+    }).then(() => jsonError(400, 'TRACKING_REQUIRED', '발송(SHIPPED) 처리에는 carrier 와 trackingNo 가 필요합니다.'));
   }
 
   const now = new Date();
@@ -104,5 +128,6 @@ export async function POST(req: Request) {
     },
   });
 
+  await logPartnerCall({ req, merchantId: auth.merchantId, keyId: auth.keyId, status: 200 });
   return jsonOk({ transactionNo, status, carrier: effectiveCarrier, trackingNo: effectiveTrackingNo });
 }

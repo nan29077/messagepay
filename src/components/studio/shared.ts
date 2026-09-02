@@ -15,6 +15,12 @@ export const PAID_STATUSES: ChargeStatus[] = [
   'SETTLED',
 ];
 
+/**
+ * 가맹점 1곳이 등록할 수 있는 상품 수 상한(종류별).
+ * 서버 액션과 등록 화면이 같은 값을 봐야 "등록을 눌러야 상한을 알게 되는" 일이 없다.
+ */
+export const MAX_CHARGE_PRODUCTS = 12;
+
 export type SearchParamsRecord = Record<string, string | string[] | undefined>;
 
 export function one(v: string | string[] | undefined): string {

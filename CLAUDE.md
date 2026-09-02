@@ -42,8 +42,31 @@
 | 후원샵 | 결제 페이지 |
 | 방송 노출 | 충전 반영 |
 | Donation / DonorProfile / CreatorProfile | Charge / PayerProfile / MerchantProfile |
+| 상품 설정 | 상품 관리 (`/studio/products`) |
+| 주문·배송 | 주문·판매 (`/studio/orders`) |
+| 결제 설정 | 판매 설정 (`/studio/settings`) |
+| 비실물 | 비실물(컨텐츠) — 화면 문구는 괄호까지 함께 쓴다 |
+| 포인트 지급(상태 문구) | 지급 대기 / 지급 완료 / 지급 보류 (`pointStatusLabel`) |
 
 DB 모델·테이블·컬럼도 2026-08-31 에 같은 기준으로 개명했다: `Charge`(charge) · `MerchantProfile`(merchant_profile) · `PayerProfile`(payer_profile) · `merchantId` · `payerId` · `chargeId`. 라우트도 `/studio/charges` · `/admin/merchants` · `/admin/payers` · `/merchant-apply` 다.
+
+## 가맹점 콘솔 구조 (2026-09-02 개편)
+
+`판매` 그룹은 업무 흐름대로 셋으로 나눈다. 화면을 새로 만들 때 이 경계를 넘지 않는다.
+
+| 메뉴 | 경로 | 맡는 것 |
+|---|---|---|
+| 상품 관리 | `/studio/products` (목록) · `/new` · `/[id]` | 무엇을 파는가. 목록과 등록/수정 폼은 반드시 분리한다 |
+| 주문·판매 | `/studio/orders?tab=delivery\|digital\|return` | 어떻게 처리하는가. 실물 배송 · 비실물 지급 · 반품/교환 |
+| 판매 설정 | `/studio/settings?tab=amount\|shipping\|message\|page\|api\|channel` | 어떤 조건으로 파는가. **배송 정책은 상품이 아니라 여기 있다** |
+
+규칙:
+- **배송지 원문(`receiverEnc`/`phoneEnc`/`addressEnc`)은 목록에서 자동 복호화하지 않는다.** 마스킹 컬럼을 쓰고, `revealShipmentAddressAction` 으로 열람할 때마다 감사로그(`SHIPMENT_ADDRESS_VIEW`)를 남긴다. 주문서 CSV 내려받기도 `SHIPMENT_EXPORT` 로 기록한다.
+- **실물 주문은 `pointStatus = SKIPPED`.** 금액 확정(`charge-select.ts`)에서 정한다. 기본값 PENDING 으로 두면 실물 주문이 지급 대기 목록과 파트너 API `status=pending` 에 섞인다.
+- **옵션 JSON 은 값별 객체 형식**이다: `[{ name, values: [{ label, addPrice, soldOut }] }]`. 구 형식(문자열 배열)도 `parseOptions` 가 읽는다. 옵션값별 *수량* 재고는 두지 않는다(재고는 상품 단위, 값 단위는 품절 플래그만).
+- **옵션 추가금·배송비는 화면 값을 믿지 않고 서버가 다시 계산한다** (`optionAddPrice` + `quoteShipping`).
+- 가맹점은 환불을 실행할 수 없고 **요청만** 한다(`requestChargeRefundAction` → 관리자 승인).
+- 상품 보관은 되돌릴 수 있다(`restoreChargeProductAction`). 단방향 삭제를 다시 만들지 않는다.
 
 ## 기술 스택
 

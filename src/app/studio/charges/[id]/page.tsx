@@ -2,9 +2,11 @@ import { notFound } from 'next/navigation';
 import { Badge, Card, CardTitle, DataRow, EmptyState, LinkButton, Notice, SectionTitle, Table, Td, Th } from '@/components/ui';
 import { PageHeader } from '@/components/layout/console-shell';
 import { ActionForm } from '@/components/studio/action-form';
-import { blockPayerAction } from '@/app/actions/studio';
+import { AddressReveal } from '@/components/studio/address-reveal';
+import { blockPayerAction, requestChargeRefundAction } from '@/app/actions/studio';
 import { requireMerchant } from '@/server/auth';
 import { prisma } from '@/server/db';
+import { Field, Input } from '@/components/ui';
 import { formatWon } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import {
@@ -12,8 +14,12 @@ import {
   chargeStatusLabel,
   paymentModeLabel,
   paymentTxStatusLabel,
+  pointStatusLabel,
   refundStatusLabel,
+  shipmentStatusLabel,
 } from '@/lib/labels';
+import { digitalTypeLabel, fulfillmentLabel, productKindLabel } from '@/server/services/products';
+import { PAID_STATUSES } from '@/components/studio/shared';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +38,10 @@ export default async function StudioChargeDetailPage({ params }: { params: Promi
       },
       mtMessages: { orderBy: { createdAt: 'desc' } },
       refunds: { orderBy: { requestedAt: 'desc' } },
+      product: {
+        select: { id: true, name: true, sku: true, kind: true, digitalType: true, fulfillment: true, imageUrl: true },
+      },
+      shipment: true,
     },
   });
 
@@ -102,11 +112,11 @@ export default async function StudioChargeDetailPage({ params }: { params: Promi
             <div className="mt-2">
               <DataRow label="MT 안내" value={<Badge tone={deliveryStatusLabel[charge.mtStatus].tone}>{deliveryStatusLabel[charge.mtStatus].text}</Badge>} />
               <DataRow
-                label="포인트 지급"
+                label="지급 처리"
                 value={
                   <span className="inline-flex items-center gap-1.5">
-                    <Badge tone={deliveryStatusLabel[charge.pointStatus].tone}>
-                      {deliveryStatusLabel[charge.pointStatus].text}
+                    <Badge tone={pointStatusLabel[charge.pointStatus].tone}>
+                      {pointStatusLabel[charge.pointStatus].text}
                     </Badge>
                     {charge.pointNote ? (
                       <span className="text-[12px] text-ink-400">{charge.pointNote}</span>
@@ -117,6 +127,106 @@ export default async function StudioChargeDetailPage({ params }: { params: Promi
             </div>
           </Card>
         </div>
+
+        {/* ── 주문 정보 ─────────────────────────────────────────
+            상품·수량·옵션·배송 상태가 없으면 주문 화면에서 여기로 들어왔을 때
+            오히려 정보가 줄어든다. 실물이면 배송지까지 여기서 확인·처리할 수 있어야 한다. */}
+        {charge.product || charge.shipment ? (
+          <section>
+            <SectionTitle title="주문 정보" description="이 결제로 팔린 상품과 배송 상태입니다." />
+            <div className="grid gap-2.5 lg:grid-cols-2">
+              <Card>
+                <CardTitle>상품</CardTitle>
+                <div className="mt-2 flex items-start gap-3">
+                  {charge.product?.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={charge.product.imageUrl}
+                      alt=""
+                      className="h-14 w-14 shrink-0 rounded-xl border border-ink-100 object-cover"
+                    />
+                  ) : null}
+                  <div className="min-w-0 flex-1">
+                    <DataRow
+                      label="상품"
+                      value={
+                        charge.product ? (
+                          <a href={`/studio/products/${charge.product.id}`} className="font-bold text-brand-700 hover:underline">
+                            {charge.product.name}
+                          </a>
+                        ) : (
+                          '직접 입력 결제'
+                        )
+                      }
+                    />
+                    {charge.product ? (
+                      <DataRow
+                        label="종류"
+                        value={
+                          charge.product.kind === 'DIGITAL'
+                            ? `${productKindLabel.DIGITAL} · ${digitalTypeLabel[charge.product.digitalType ?? 'POINT']} · ${fulfillmentLabel[charge.product.fulfillment].text}`
+                            : productKindLabel.PHYSICAL
+                        }
+                      />
+                    ) : null}
+                    {charge.product?.sku ? (
+                      <DataRow label="SKU" value={<span className="font-mono text-[12px]">{charge.product.sku}</span>} />
+                    ) : null}
+                    <DataRow label="수량" value={`${charge.quantity}개`} />
+                    {charge.optionText ? <DataRow label="옵션" value={charge.optionText} /> : null}
+                    <DataRow label="상품 금액" value={formatWon(charge.amount - charge.shippingFee)} />
+                    <DataRow
+                      label="배송비"
+                      value={charge.shippingFee === 0n ? '무료 · 해당 없음' : formatWon(charge.shippingFee)}
+                    />
+                  </div>
+                </div>
+              </Card>
+
+              {charge.shipment ? (
+                <Card>
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <CardTitle>배송</CardTitle>
+                    <Badge tone={shipmentStatusLabel[charge.shipment.status].tone}>
+                      {shipmentStatusLabel[charge.shipment.status].text}
+                    </Badge>
+                    {charge.shipment.remote ? <Badge tone="warning">도서산간</Badge> : null}
+                  </div>
+                  <div className="mb-3">
+                    <AddressReveal
+                      chargeId={charge.id}
+                      receiverMasked={charge.shipment.receiverMasked}
+                      phoneMasked={charge.shipment.phoneMasked}
+                      addressMasked={charge.shipment.addressMasked}
+                      zipCode={charge.shipment.zipCode}
+                    />
+                  </div>
+                  <DataRow label="택배사" value={charge.shipment.carrier ?? '미등록'} />
+                  <DataRow
+                    label="송장번호"
+                    value={
+                      charge.shipment.trackingNo ? (
+                        <span className="font-mono text-[12px]">{charge.shipment.trackingNo}</span>
+                      ) : (
+                        '미등록'
+                      )
+                    }
+                  />
+                  <DataRow label="발송시각" value={formatKst(charge.shipment.shippedAt)} />
+                  <DataRow label="배송완료시각" value={formatKst(charge.shipment.deliveredAt)} />
+                  {charge.shipment.returnReason ? (
+                    <DataRow label="반품·교환 사유" value={charge.shipment.returnReason} />
+                  ) : null}
+                  <div className="mt-3">
+                    <LinkButton href="/studio/orders" variant="secondary" size="sm">
+                      주문·판매에서 처리
+                    </LinkButton>
+                  </div>
+                </Card>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
 
         <section>
           <SectionTitle title="조치" description="아래 동작은 결제 상태를 변경하지 않습니다." />
@@ -148,6 +258,40 @@ export default async function StudioChargeDetailPage({ params }: { params: Promi
                 )
               ) : (
                 <Notice tone="neutral">연결된 이용자 프로필이 없어 차단할 수 없습니다.</Notice>
+              )}
+            </Card>
+
+            {/* 가맹점은 환불을 직접 실행할 수 없다(결제사 취소·정산 반대분개가 함께 일어난다).
+                그래도 품절·배송불가처럼 가맹점만 아는 사유를 올릴 통로는 있어야 한다. */}
+            <Card>
+              <CardTitle>환불 요청</CardTitle>
+              {charge.status === 'REFUNDED' ? (
+                <Notice tone="neutral">이미 환불이 완료된 거래입니다.</Notice>
+              ) : charge.refunds.some((r) => ['REQUESTED', 'APPROVED', 'DONE'].includes(r.status)) ? (
+                <Notice tone="warning">
+                  이미 환불이 요청된 거래입니다. 아래 환불 내역에서 진행 상태를 확인하실 수 있습니다.
+                </Notice>
+              ) : !PAID_STATUSES.includes(charge.status) ? (
+                <Notice tone="neutral">결제가 완료된 거래만 환불을 요청할 수 있습니다.</Notice>
+              ) : (
+                <>
+                  <p className="mb-3 mt-1 text-[12.5px] leading-relaxed text-ink-500">
+                    요청하면 통합 관리자가 확인 후 결제사 취소와 정산 정정을 처리합니다. 요청만으로 환불이 완료되지는
+                    않습니다.
+                  </p>
+                  <ActionForm
+                    action={requestChargeRefundAction}
+                    submitLabel="환불 요청"
+                    variant="danger"
+                    size="sm"
+                    confirmMessage="통합 관리자 승인 후 실제 환불이 처리됩니다. 요청하시겠습니까?"
+                  >
+                    <input type="hidden" name="chargeId" value={charge.id} />
+                    <Field label="사유" hint="품절 · 배송불가 · 이용자 요청 등. 5자 이상." required>
+                      <Input name="reason" maxLength={200} placeholder="재고 소진으로 배송 불가" />
+                    </Field>
+                  </ActionForm>
+                </>
               )}
             </Card>
           </div>

@@ -2,7 +2,7 @@ import { prisma } from '@/server/db';
 import { decrypt } from '@/lib/crypto';
 import { authenticatePartner } from '@/server/services/partner-auth';
 import { PAID_STATUSES } from '@/components/studio/shared';
-import { authError, jsonError, jsonOk } from '../_shared';
+import { authError, jsonError, jsonOk, logPartnerCall } from '../_shared';
 import type { Prisma } from '@/generated/prisma/client';
 
 export const runtime = 'nodejs';
@@ -31,17 +31,29 @@ const DEFAULT_LIMIT = 100;
  */
 export async function GET(req: Request) {
   const auth = await authenticatePartner(req, '');
-  if (!auth.ok) return authError(auth);
+  if (!auth.ok) {
+    await logPartnerCall({
+      req, merchantId: auth.merchantId ?? null, keyId: auth.keyId,
+      status: auth.status, errorCode: auth.code, message: auth.message,
+    });
+    return authError(auth);
+  }
 
   const url = new URL(req.url);
   const status = (url.searchParams.get('status') ?? 'pending').toLowerCase();
   if (status !== 'pending' && status !== 'all') {
-    return jsonError(400, 'INVALID_STATUS', 'status 는 pending 또는 all 이어야 합니다.');
+    return logPartnerCall({
+      req, merchantId: auth.merchantId, keyId: auth.keyId,
+      status: 400, errorCode: 'INVALID_STATUS',
+    }).then(() => jsonError(400, 'INVALID_STATUS', 'status 는 pending 또는 all 이어야 합니다.'));
   }
 
   const limitRaw = Number(url.searchParams.get('limit') ?? DEFAULT_LIMIT);
   if (!Number.isInteger(limitRaw) || limitRaw < 1 || limitRaw > MAX_LIMIT) {
-    return jsonError(400, 'INVALID_LIMIT', `limit 은 1~${MAX_LIMIT} 사이 정수여야 합니다.`);
+    return logPartnerCall({
+      req, merchantId: auth.merchantId, keyId: auth.keyId,
+      status: 400, errorCode: 'INVALID_LIMIT',
+    }).then(() => jsonError(400, 'INVALID_LIMIT', `limit 은 1~${MAX_LIMIT} 사이 정수여야 합니다.`));
   }
 
   const sinceRaw = url.searchParams.get('since');
@@ -49,7 +61,10 @@ export async function GET(req: Request) {
   if (sinceRaw) {
     const parsed = new Date(sinceRaw);
     if (Number.isNaN(parsed.getTime())) {
-      return jsonError(400, 'INVALID_SINCE', 'since 는 ISO8601 형식이어야 합니다.');
+      return logPartnerCall({
+        req, merchantId: auth.merchantId, keyId: auth.keyId,
+        status: 400, errorCode: 'INVALID_SINCE',
+      }).then(() => jsonError(400, 'INVALID_SINCE', 'since 는 ISO8601 형식이어야 합니다.'));
     }
     since = parsed;
   }
@@ -61,7 +76,10 @@ export async function GET(req: Request) {
       where: { id: cursor, merchantId: auth.merchantId },
       select: { id: true },
     });
-    if (!owned) return jsonError(400, 'INVALID_CURSOR', 'cursor 가 올바르지 않습니다.');
+    if (!owned) return logPartnerCall({
+   req, merchantId: auth.merchantId, keyId: auth.keyId,
+   status: 400, errorCode: 'INVALID_CURSOR',
+ }).then(() => jsonError(400, 'INVALID_CURSOR', 'cursor 가 올바르지 않습니다.'));
   }
 
   const where: Prisma.ChargeWhereInput = {

@@ -98,6 +98,16 @@ export default async function StudioDashboardPage() {
     }),
   ]);
 
+  const [ordersPending, pointsPending, activeProducts] = await Promise.all([
+    prisma.chargeShipment.count({
+      where: { merchantId, status: 'PREPARING', charge: { status: { in: PAID_STATUSES } } },
+    }),
+    prisma.charge.count({
+      where: { merchantId, status: { in: PAID_STATUSES }, pointStatus: 'PENDING', product: { kind: 'DIGITAL' } },
+    }),
+    prisma.chargeProduct.count({ where: { merchantId, active: true, archivedAt: null } }),
+  ]);
+
   const moAssigned = moNumber?.status === 'ASSIGNED';
 
   const links: { label: string; ok: boolean; value: string; href: string }[] = [
@@ -131,6 +141,27 @@ export default async function StudioDashboardPage() {
 
         {/* 0) 신규 가맹점 온보딩 체크리스트 — 모두 완료되면 스스로 사라진다 */}
         <OnboardingChecklist merchantId={merchantId} />
+
+        {/* 0-1) 오늘 처리할 일.
+            대시보드에서 상품 관리·주문 판매로 가는 길이 없으면 사이드바를 뒤져야 한다. */}
+        <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+          <TodoTile
+            href="/studio/orders?tab=delivery"
+            label="배송 준비"
+            value={ordersPending}
+            unit="건"
+            hint={ordersPending > 0 ? '송장 등록 필요' : '밀린 주문 없음'}
+          />
+          <TodoTile
+            href="/studio/orders?tab=digital"
+            label="지급 대기"
+            value={pointsPending}
+            unit="건"
+            hint={pointsPending > 0 ? '비실물 지급 필요' : '밀린 지급 없음'}
+          />
+          <TodoTile href="/studio/products" label="노출 중인 상품" value={activeProducts} unit="개" hint="상품 관리" />
+          <TodoTile href="/studio/settings?tab=shipping" label="판매 설정" value={null} unit="" hint="금액 · 배송 · 안내 문자" />
+        </div>
 
         {nextStep ? (
           <Link
@@ -326,5 +357,38 @@ function MiniMetric({ label, value, accent = false }: { label: string; value: st
         {value}
       </p>
     </div>
+  );
+}
+
+/** 대시보드에서 바로 처리 화면으로 넘어가는 타일. */
+function TodoTile({
+  href,
+  label,
+  value,
+  unit,
+  hint,
+}: {
+  href: string;
+  label: string;
+  value: number | null;
+  unit: string;
+  hint: string;
+}) {
+  const urgent = value !== null && value > 0 && (label === '배송 준비' || label === '지급 대기');
+  return (
+    <Link
+      href={href}
+      className="card min-h-[104px] p-4 transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-lift)]"
+    >
+      <p className="text-[11.5px] font-bold text-ink-400">{label}</p>
+      <p
+        className={`mt-2 text-[22px] font-black tracking-[-0.035em] tabular-nums ${
+          urgent ? 'text-warning-500' : 'text-ink-900'
+        }`}
+      >
+        {value === null ? '설정' : `${formatNumber(value)}${unit}`}
+      </p>
+      <p className="mt-1 text-[11px] leading-relaxed text-ink-400">{hint}</p>
+    </Link>
   );
 }

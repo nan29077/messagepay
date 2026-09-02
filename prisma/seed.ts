@@ -181,11 +181,60 @@ async function main() {
           shippingFee: 3000n,
           freeShipOver: 50000n,
           description: '면 100% · 국내 제작',
+          // 옵션값별 추가금·품절을 확인할 수 있게 새 형식으로 깔아 둔다.
           options: [
-            { name: '사이즈', values: ['S', 'M', 'L', 'XL'] },
-            { name: '색상', values: ['블랙', '화이트'] },
+            {
+              name: '사이즈',
+              values: [
+                { label: 'S', addPrice: '0', soldOut: false },
+                { label: 'M', addPrice: '0', soldOut: false },
+                { label: 'L', addPrice: '0', soldOut: false },
+                { label: 'XL', addPrice: '2000', soldOut: false },
+              ],
+            },
+            {
+              name: '색상',
+              values: [
+                { label: '블랙', addPrice: '0', soldOut: false },
+                { label: '화이트', addPrice: '0', soldOut: true },
+              ],
+            },
           ] as object,
+          dispatchDays: 2,
+          returnFee: 3000n,
+          exchangeFee: 6000n,
+          noticeInfo: {
+            category: 'FASHION',
+            items: [
+              { label: '제품 소재', value: '면 100%' },
+              { label: '색상', value: '블랙 / 화이트' },
+              { label: '치수', value: 'S~XL (상세 이미지 참조)' },
+              { label: '제조자', value: '메시지페이 샘플' },
+              { label: '제조국', value: '대한민국' },
+              { label: '세탁방법 및 취급 주의사항', value: '찬물 단독 세탁' },
+              { label: '품질보증기준', value: '관련 법 및 소비자분쟁해결기준에 따름' },
+              { label: 'A/S 책임자와 전화번호', value: '고객센터 1600-0000' },
+            ],
+          } as object,
           sortOrder: 5,
+        },
+      });
+      // 비실물 4번째 유형(컨텐츠) — 결제 즉시 문자로 지급되는 상품.
+      await prisma.chargeProduct.create({
+        data: {
+          id: newId(),
+          merchantId: merchant.id,
+          kind: 'DIGITAL',
+          digitalType: 'CONTENT',
+          name: '전자책 이용권',
+          amount: 4900,
+          giveAmount: 1,
+          giveUnit: '개',
+          description: 'PDF 다운로드 링크가 결제 즉시 문자로 발송됩니다.',
+          fulfillment: 'INSTANT',
+          fulfillmentNote: '내려받기 코드 SAMPLE-0000 을 앱 [코드 등록] 에 입력해 주세요.',
+          withdrawalNotice: '다운로드를 시작하면 청약철회가 제한됩니다.',
+          sortOrder: 6,
         },
       });
 
@@ -200,8 +249,25 @@ async function main() {
           remoteFee: 3000n,
           carrier: 'CJ대한통운',
           guide: '영업일 기준 2~3일 내 발송됩니다. 주말·공휴일은 발송이 어렵습니다.',
+          dispatchDays: 2,
+          returnFee: 3000n,
+          exchangeFee: 6000n,
+          returnReceiver: '반품 담당',
+          returnPhone: '1600-0000',
+          returnZipCode: '06236',
+          returnAddress: '서울특별시 강남구 테헤란로 1 메시지페이 물류센터',
         },
-        update: {},
+        // 반품 정책은 뒤에 추가된 값이라 기존 시드 DB 에도 채워 넣는다.
+        // 비어 있으면 결제 화면에 반품지가 표시되지 않는다.
+        update: {
+          dispatchDays: 2,
+          returnFee: 3000n,
+          exchangeFee: 6000n,
+          returnReceiver: '반품 담당',
+          returnPhone: '1600-0000',
+          returnZipCode: '06236',
+          returnAddress: '서울특별시 강남구 테헤란로 1 메시지페이 물류센터',
+        },
       });
     }
 

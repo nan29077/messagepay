@@ -1,7 +1,7 @@
 import { prisma } from '@/server/db';
 import { authenticatePartner } from '@/server/services/partner-auth';
 import { PAID_STATUSES } from '@/components/studio/shared';
-import { authError, jsonError, jsonOk } from '../../_shared';
+import { authError, jsonError, jsonOk, logPartnerCall } from '../../_shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -31,33 +31,57 @@ interface AckBody {
 export async function POST(req: Request) {
   const rawBody = await req.text();
   const auth = await authenticatePartner(req, rawBody);
-  if (!auth.ok) return authError(auth);
+  if (!auth.ok) {
+    await logPartnerCall({
+      req, merchantId: auth.merchantId ?? null, keyId: auth.keyId,
+      status: auth.status, errorCode: auth.code, message: auth.message,
+    });
+    return authError(auth);
+  }
 
   let body: AckBody;
   try {
     body = JSON.parse(rawBody || '{}') as AckBody;
   } catch {
-    return jsonError(400, 'INVALID_JSON', '본문이 올바른 JSON 이 아닙니다.');
+    return logPartnerCall({
+      req, merchantId: auth.merchantId, keyId: auth.keyId,
+      status: 400, errorCode: 'INVALID_JSON',
+    }).then(() => jsonError(400, 'INVALID_JSON', '본문이 올바른 JSON 이 아닙니다.'));
   }
 
   const status = String(body.status ?? '').toUpperCase();
   if (status !== 'SENT' && status !== 'FAILED') {
-    return jsonError(400, 'INVALID_STATUS', 'status 는 SENT 또는 FAILED 여야 합니다.');
+    return logPartnerCall({
+      req, merchantId: auth.merchantId, keyId: auth.keyId,
+      status: 400, errorCode: 'INVALID_STATUS',
+    }).then(() => jsonError(400, 'INVALID_STATUS', 'status 는 SENT 또는 FAILED 여야 합니다.'));
   }
 
   if (!Array.isArray(body.transactionNos) || body.transactionNos.length === 0) {
-    return jsonError(400, 'INVALID_ITEMS', 'transactionNos 배열이 필요합니다.');
+    return logPartnerCall({
+      req, merchantId: auth.merchantId, keyId: auth.keyId,
+      status: 400, errorCode: 'INVALID_ITEMS',
+    }).then(() => jsonError(400, 'INVALID_ITEMS', 'transactionNos 배열이 필요합니다.'));
   }
   if (body.transactionNos.length > MAX_ITEMS) {
-    return jsonError(400, 'TOO_MANY_ITEMS', `한 번에 최대 ${MAX_ITEMS}건까지 보낼 수 있습니다.`);
+    return logPartnerCall({
+      req, merchantId: auth.merchantId, keyId: auth.keyId,
+      status: 400, errorCode: 'TOO_MANY_ITEMS',
+    }).then(() => jsonError(400, 'TOO_MANY_ITEMS', `한 번에 최대 ${MAX_ITEMS}건까지 보낼 수 있습니다.`));
   }
 
   const nos = [...new Set(body.transactionNos.map((v) => String(v).trim()).filter(Boolean))];
-  if (nos.length === 0) return jsonError(400, 'INVALID_ITEMS', 'transactionNos 배열이 비어 있습니다.');
+  if (nos.length === 0) return logPartnerCall({
+   req, merchantId: auth.merchantId, keyId: auth.keyId,
+   status: 400, errorCode: 'INVALID_ITEMS',
+ }).then(() => jsonError(400, 'INVALID_ITEMS', 'transactionNos 배열이 비어 있습니다.'));
 
   const note = body.note == null ? null : String(body.note).slice(0, 200);
   if (status === 'FAILED' && !note) {
-    return jsonError(400, 'NOTE_REQUIRED', '보류(FAILED) 처리에는 note 가 필요합니다.');
+    return logPartnerCall({
+      req, merchantId: auth.merchantId, keyId: auth.keyId,
+      status: 400, errorCode: 'NOTE_REQUIRED',
+    }).then(() => jsonError(400, 'NOTE_REQUIRED', '보류(FAILED) 처리에는 note 가 필요합니다.'));
   }
 
   // 변경 전 상태를 먼저 읽는다.
@@ -97,6 +121,7 @@ export async function POST(req: Request) {
         : { pointStatus: 'FAILED', pointGivenAt: null, pointNote: note, pointBy: `api:${auth.keyId}` },
   });
 
+  await logPartnerCall({ req, merchantId: auth.merchantId, keyId: auth.keyId, status: 200 });
   return jsonOk({
     updated: result.count,
     // 이미 지급 완료로 확정됐거나(SENT) 결제·환불 상태 때문에 대상이 아니어서 변경되지 않은 건

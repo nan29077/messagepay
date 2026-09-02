@@ -1,16 +1,18 @@
 import Link from 'next/link';
 import { LayoutGrid, Rows3, Search } from 'lucide-react';
-import { Badge, Button, Card, EmptyState, Field, Input, Select, Table, Td, Th, cx } from '@/components/ui';
+import { Badge, Button, Card, EmptyState, Field, Input, Notice, Select, Table, Td, Th, cx } from '@/components/ui';
 import { PageHeader } from '@/components/layout/console-shell';
 import { buildQuery, one, type SearchParamsRecord } from '@/components/studio/shared';
 import { ChargeCardGrid } from '@/components/studio/charge-cards';
-import { PointBulkPanel } from '@/components/studio/point-bulk-panel';
 import { PAID_STATUSES } from '@/components/studio/shared';
+import { productKindShort } from '@/server/services/products';
 import { requireMerchant } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { formatNumber, formatWon } from '@/lib/money';
 import { formatKst, kstStartOfDay } from '@/lib/datetime';
-import { deliveryStatusLabel, chargeStatusLabel, refundStatusLabel, SELECTABLE_CHARGE_STATUSES } from '@/lib/labels';
+import {
+  deliveryStatusLabel, chargeStatusLabel, pointStatusLabel, refundStatusLabel, SELECTABLE_CHARGE_STATUSES,
+} from '@/lib/labels';
 import type { ChargeStatus, Prisma } from '@/generated/prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -34,9 +36,6 @@ const POINT_FILTERS = [
   { value: 'given', label: '지급 완료' },
   { value: 'held', label: '보류' },
 ] as const;
-
-/** 일괄 처리 패널에 한 번에 올리는 최대 건수 */
-const BULK_PANEL_SIZE = 100;
 
 /**
  * 보기 방식. 기본은 카드다.
@@ -90,7 +89,7 @@ export default async function StudioChargesPage({
     pointStatus: 'PENDING',
   };
 
-  const [total, rows, pendingTotal, pendingRows] = await Promise.all([
+  const [total, rows, pendingTotal] = await Promise.all([
     prisma.charge.count({ where }),
     prisma.charge.findMany({
       where,
@@ -109,24 +108,13 @@ export default async function StudioChargesPage({
         status: true,
         mtStatus: true,
         pointStatus: true,
+        quantity: true,
         payer: { select: { phoneMasked: true } },
+        product: { select: { name: true, kind: true } },
         refunds: { orderBy: { requestedAt: 'desc' }, take: 1, select: { status: true } },
       },
     }),
     prisma.charge.count({ where: pendingWhere }),
-    prisma.charge.findMany({
-      where: pendingWhere,
-      orderBy: { paidAt: 'asc' },
-      take: BULK_PANEL_SIZE,
-      select: {
-        id: true,
-        transactionNo: true,
-        receivedAt: true,
-        amount: true,
-        displayName: true,
-        payer: { select: { phoneMasked: true } },
-      },
-    }),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -141,17 +129,18 @@ export default async function StudioChargesPage({
       />
 
       <div className="space-y-4">
-        <PointBulkPanel
-          total={pendingTotal}
-          rows={pendingRows.map((r) => ({
-            id: r.id,
-            transactionNo: r.transactionNo,
-            receivedAt: formatKst(r.receivedAt, false),
-            amount: r.amount.toString(),
-            displayName: r.displayName,
-            phoneMasked: r.payer?.phoneMasked ?? null,
-          }))}
-        />
+        {/* 지급 처리는 주문·판매 > 비실물(컨텐츠) 판매로 옮겼다.
+            결제 내역은 "돈이 어떻게 됐나" 를 보는 화면이고, 지급은 "무엇을 줘야 하나" 라
+            섞어 두면 실물 주문까지 지급 목록에 끼어든다. */}
+        {pendingTotal > 0 ? (
+          <Notice tone="warning" title={`지급 대기 ${formatNumber(pendingTotal)}건`}>
+            비실물(컨텐츠) 상품의 지급 처리는{' '}
+            <Link href="/studio/orders?tab=digital" className="font-bold text-brand-700">
+              주문 · 판매 &gt; 비실물(컨텐츠) 판매
+            </Link>{' '}
+            에서 합니다.
+          </Notice>
+        ) : null}
 
         <Card>
           <form method="get" className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_2fr_auto] md:items-end">
@@ -261,11 +250,12 @@ export default async function StudioChargesPage({
                 <Th>이용자</Th>
                 <Th>표시명</Th>
                 <Th>접수</Th>
+                <Th>상품</Th>
                 <Th>내용</Th>
                 <Th className="text-right">결제 금액</Th>
                 <Th>결제 상태</Th>
                 <Th>MT 안내</Th>
-                <Th>포인트 지급</Th>
+                <Th>지급 처리</Th>
                 <Th>환불</Th>
               </tr>
             </thead>
@@ -273,7 +263,7 @@ export default async function StudioChargesPage({
               {rows.map((d) => {
                 const st = chargeStatusLabel[d.status];
                 const mt = deliveryStatusLabel[d.mtStatus];
-                const rf = deliveryStatusLabel[d.pointStatus];
+                const rf = pointStatusLabel[d.pointStatus];
                 const refund = d.refunds[0] ? refundStatusLabel[d.refunds[0].status] : null;
                 return (
                   <tr key={d.id} className="hover:bg-ink-50">
@@ -293,7 +283,20 @@ export default async function StudioChargesPage({
                         {d.channel === 'WEB' ? '웹(PC)' : '문자(MO)'}
                       </Badge>
                     </Td>
-                    <Td className="max-w-[280px]">
+                    <Td className="max-w-[180px]">
+                      {d.product ? (
+                        <span className="block truncate">
+                          <Badge tone={d.product.kind === 'PHYSICAL' ? 'neutral' : 'brand'}>
+                            {productKindShort[d.product.kind]}
+                          </Badge>
+                          <span className="ml-1.5 align-middle">{d.product.name}</span>
+                          {d.quantity > 1 ? <span className="ml-1 text-ink-400">× {d.quantity}</span> : null}
+                        </span>
+                      ) : (
+                        <span className="text-ink-300">직접 입력</span>
+                      )}
+                    </Td>
+                    <Td className="max-w-[240px]">
                       <span className="line-clamp-2">{d.message || '-'}</span>
                     </Td>
                     <Td className="whitespace-nowrap text-right font-semibold tabular-nums text-ink-900">
