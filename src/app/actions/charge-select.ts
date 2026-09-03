@@ -2,6 +2,7 @@
 
 import { headers } from 'next/headers';
 import { confirmChargeAmount } from '@/server/services/charge-select';
+import { clientIpFrom } from '@/server/rate-limit';
 
 /**
  * 상품·금액 확정.
@@ -75,7 +76,9 @@ export async function confirmChargeAmountAction(
     quantity: Number.isFinite(quantityRaw) ? quantityRaw : 1,
     optionValues: parseOptionValues(s('optionValues')),
     address,
-    ip: h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? undefined,
+    // XFF 의 첫 홉은 클라이언트가 임의로 써 넣을 수 있다.
+    // 이 값은 SecureLink.usedIp 로 저장되어 "누가 이 결제를 확정했는가" 의 유일한 증거가 된다.
+    ip: clientIpFrom((name) => h.get(name)) ?? undefined,
     userAgent: h.get('user-agent') ?? undefined,
   });
 

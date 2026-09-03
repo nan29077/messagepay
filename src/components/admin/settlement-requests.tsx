@@ -8,6 +8,7 @@ import {
   bulkUpdateSettlementAction,
   applyPayoutResultsAction,
   fileWithholdingAction,
+  updateSettlementRequestStatus,
 } from '@/app/actions/admin/settlement';
 
 export interface SettlementRow {
@@ -35,7 +36,85 @@ export interface SettlementRow {
 
 const SELECTABLE = new Set(['REQUESTED', 'REVIEWING', 'APPROVED', 'PAID']);
 
-export function SettlementRequestsPanel({ rows }: { rows: SettlementRow[] }) {
+/**
+ * 회차 하나의 상태를 손으로 바꾼다.
+ *
+ * 일괄 처리(bulkUpdateSettlementAction)로는 반려밖에 되돌릴 수 없어,
+ * "이체파일이 발급된 건은 되돌리지 못한다" 같은 안전장치가 실제 경로 없이 코드에만 있었다.
+ * 여기서 그 액션을 실제로 쓴다.
+ */
+function SingleStatusForm({ row, disabled }: { row: SettlementRow; disabled: boolean }) {
+  const [state, action, pending] = React.useActionState(updateSettlementRequestStatus, initialAdminState);
+
+  // 서버가 허용하는 전이만 고른다(반려 건은 더 이상 바꿀 수 없고, 지급 완료는 지급 실패로만 되돌린다).
+  const options =
+    row.status === 'REJECTED'
+      ? []
+      : row.status === 'PAID'
+        ? [{ value: 'PAYOUT_FAILED', label: '지급 실패로 되돌리기' }]
+        : row.status === 'APPROVED'
+          ? [
+              { value: 'PAID', label: '지급 완료' },
+              { value: 'PAYOUT_FAILED', label: '지급 실패' },
+              { value: 'REJECTED', label: '반려' },
+            ]
+          : row.status === 'PAYOUT_FAILED'
+            ? [
+                { value: 'APPROVED', label: '승인(재지급 대상)' },
+                { value: 'REJECTED', label: '반려' },
+              ]
+            : [
+                { value: 'REVIEWING', label: '검토중' },
+                { value: 'APPROVED', label: '승인' },
+                { value: 'REJECTED', label: '반려' },
+              ];
+
+  if (options.length === 0) return <span className="text-[11px] text-ink-300">처리 완료</span>;
+
+  return (
+    <details>
+      <summary className="cursor-pointer text-[11.5px] font-semibold text-brand-700">단건 처리</summary>
+      <form action={action} className="mt-1.5 w-44 space-y-1.5">
+        <input type="hidden" name="requestId" value={row.id} />
+        <select
+          name="status"
+          defaultValue={options[0].value}
+          disabled={disabled}
+          className="h-8 w-full rounded-lg border border-ink-200 px-2 text-[12px] disabled:bg-ink-50 disabled:text-ink-400"
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <input
+          name="memo"
+          placeholder="사유 (반려·지급실패는 필수)"
+          className="h-8 w-full rounded-lg border border-ink-200 px-2 text-[12px] outline-none focus:border-brand-400"
+        />
+        <button
+          disabled={disabled || pending}
+          className="h-8 w-full rounded-lg bg-ink-900 text-[12px] font-bold text-white disabled:opacity-50"
+        >
+          {pending ? '처리 중' : '상태 변경'}
+        </button>
+        {state.message ? (
+          <Notice tone={state.ok ? 'success' : 'danger'}>{state.message}</Notice>
+        ) : null}
+      </form>
+    </details>
+  );
+}
+
+export function SettlementRequestsPanel({
+  rows,
+  canEdit = true,
+}: {
+  rows: SettlementRow[];
+  /** 권한이 없으면 처리 컨트롤을 잠근다(서버도 같은 기준으로 막는다). */
+  canEdit?: boolean;
+}) {
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [bulkState, bulkAction, bulkPending] = React.useActionState(bulkUpdateSettlementAction, initialAdminState);
   const [resultState, resultAction, resultPending] = React.useActionState(applyPayoutResultsAction, initialAdminState);
@@ -223,6 +302,7 @@ export function SettlementRequestsPanel({ rows }: { rows: SettlementRow[] }) {
             <Th className="text-right">실지급</Th>
             <Th>주민번호</Th>
             <Th>상태</Th>
+            <Th>단건 처리</Th>
           </tr>
         </thead>
         <tbody>
@@ -278,6 +358,9 @@ export function SettlementRequestsPanel({ rows }: { rows: SettlementRow[] }) {
                   <span className="mt-0.5 block max-w-[140px] break-words text-[11px] text-ink-400">{r.adminMemo}</span>
                 ) : null}
                 {r.paidAt ? <span className="mt-0.5 block text-[11px] text-success-500">지급 {r.paidAt}</span> : null}
+              </Td>
+              <Td>
+                <SingleStatusForm row={r} disabled={!canEdit} />
               </Td>
             </tr>
           ))}

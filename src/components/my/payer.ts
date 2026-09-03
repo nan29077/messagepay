@@ -27,4 +27,4 @@ export async function requirePayerContext(next = '/my'): Promise<PayerContext> {
 
 export const NO_PAYER_TITLE = '휴대폰 번호가 연결되지 않았습니다';
 export const NO_PAYER_DESC =
-  '문자결제 내역은 휴대전화 번호를 기준으로 기록됩니다. 마이페이지의 등록 계좌 탭에서 본인 휴대폰 번호를 인증하면 해당 번호로 결제한 내역과 결제 내역이 이 계정에 표시됩니다.';
+  '문자결제 내역은 휴대전화 번호를 기준으로 기록됩니다. 마이페이지의 내 정보 탭에서 본인 휴대폰 번호를 인증하면 그 번호로 결제한 내역이 이 계정에 표시됩니다.';

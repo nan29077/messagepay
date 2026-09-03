@@ -118,6 +118,12 @@ export function ProductForm({
           )}
         </div>
 
+        {/*
+          체크박스는 해제하면 FormData 에 아예 담기지 않는다.
+          그래서 "값이 안 왔다"와 "꺼서 안 왔다"를 구분할 짝(hidden)이 반드시 있어야 한다.
+          이 hidden 이 없으면 서버는 항상 노출(true)로 저장한다.
+        */}
+        <input type="hidden" name="activePresent" value="1" />
         <label className="flex items-center gap-2 text-[13px] font-semibold text-ink-800">
           <input type="checkbox" name="active" defaultChecked={product ? product.active : true} className="h-4 w-4" />
           결제 화면에 노출

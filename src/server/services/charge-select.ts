@@ -76,6 +76,15 @@ export interface SelectAmountContext {
   allowCustomAmount: boolean;
   minAmount: bigint;
   maxAmount: bigint;
+  /**
+   * 직접 입력 전용 범위·단위.
+   * 가맹점이 판매 설정에서 좁혀 둔 값과 유효 범위(가맹점 ∩ 한도 정책)의 교집합이다.
+   * 설정 화면이 "지금 적용되는 직접 입력 범위" 라고 안내하므로 결제도 같은 값을 써야 한다.
+   */
+  customMin: bigint;
+  customMax: bigint;
+  /** null 이면 단위 제한 없음. 1 은 제한 없는 것과 같으므로 null 로 정규화한다. */
+  customStep: number | null;
   expiresAt: Date;
   shipping: ShippingPolicyView;
 }
@@ -122,6 +131,16 @@ export async function loadSelectAmountContext(
     charge.merchant.minAmount > policy.minAmount ? charge.merchant.minAmount : policy.minAmount;
   const maxAmount =
     charge.merchant.maxAmount < policy.maxAmount ? charge.merchant.maxAmount : policy.maxAmount;
+
+  // 직접 입력 범위는 가맹점이 따로 좁힐 수 있다. 유효 범위 밖으로 넓히지는 못한다.
+  const customMinRaw = charge.merchant.customMinAmount ?? minAmount;
+  const customMaxRaw = charge.merchant.customMaxAmount ?? maxAmount;
+  const customMin = customMinRaw > minAmount ? customMinRaw : minAmount;
+  const customMax = customMaxRaw < maxAmount ? customMaxRaw : maxAmount;
+  const customStep =
+    charge.merchant.customAmountStep != null && charge.merchant.customAmountStep > 1
+      ? charge.merchant.customAmountStep
+      : null;
 
   const products: ChargeProductOption[] = [];
   for (const p of rows) {
@@ -173,6 +192,9 @@ export async function loadSelectAmountContext(
       allowCustomAmount: charge.merchant.allowCustomAmount,
       minAmount,
       maxAmount,
+      customMin,
+      customMax,
+      customStep,
       expiresAt: link.expiresAt,
       shipping,
     },
@@ -296,6 +318,19 @@ export async function confirmChargeAmount(input: {
   } else if (input.customAmount != null) {
     if (!ctx.allowCustomAmount) {
       return { ok: false, message: '이 가맹점은 직접 입력을 받지 않습니다.' };
+    }
+    // 가맹점이 좁혀 둔 직접 입력 범위·단위를 화면 값과 무관하게 서버에서 다시 검사한다.
+    if (input.customAmount < ctx.customMin || input.customAmount > ctx.customMax) {
+      return {
+        ok: false,
+        message: `직접 입력 금액은 ${ctx.customMin.toString()}원 ~ ${ctx.customMax.toString()}원 사이여야 합니다.`,
+      };
+    }
+    if (ctx.customStep !== null && input.customAmount % BigInt(ctx.customStep) !== 0n) {
+      return {
+        ok: false,
+        message: `직접 입력 금액은 ${ctx.customStep.toLocaleString('ko-KR')}원 단위로 입력해 주세요.`,
+      };
     }
     amount = input.customAmount;
   }

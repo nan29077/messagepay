@@ -123,6 +123,16 @@ export async function GET(req: Request) {
     },
   });
 
+  // 복호화된 전화번호·배송지 원문을 최대 500건 내보내는 유일한 대량 반출 경로다.
+  // 성공 호출을 남기지 않으면 키가 유출됐을 때 언제 몇 건이 나갔는지 추적할 수 없다.
+  await logPartnerCall({
+    req,
+    merchantId: auth.merchantId,
+    keyId: auth.keyId,
+    status: 200,
+    message: `items=${rows.length}`,
+  });
+
   return jsonOk({
     items: rows.map((r) => ({
       transactionNo: r.transactionNo,

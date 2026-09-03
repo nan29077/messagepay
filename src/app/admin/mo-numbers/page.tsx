@@ -4,7 +4,9 @@ import { Badge, Card, CardTitle, EmptyState, Notice, SectionTitle, StatTile, Tab
 import { AdminField, AdminInput, AdminSelect, FilterBar } from '@/components/admin/controls';
 import { ActionButton, ActionForm, SelectActionForm } from '@/components/admin/action-form';
 import { createMoNumber, assignMoNumber, changeMoNumberStatus } from '@/app/actions/admin/transactions';
+import { canManageMoney } from '@/components/admin/constants';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import { moNumberStatusLabel } from '@/lib/labels';
@@ -20,6 +22,12 @@ export default async function AdminMoNumbersPage({
 }: {
   searchParams: Promise<{ status?: string; q?: string }>;
 }) {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  const me = await requireAdmin();
+  // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
+  const canEdit = canManageMoney(me.adminPermission);
+
   const sp = await searchParams;
   const q = (sp.q ?? '').trim();
   const status = STATUSES.includes(sp.status as MoNumberStatus) ? (sp.status as MoNumberStatus) : undefined;
@@ -82,12 +90,12 @@ export default async function AdminMoNumbersPage({
           <p className="mt-1 mb-3 text-[12px] leading-relaxed text-ink-400">
             사업자에게 발급받은 수신번호를 재고로 등록합니다. 대표번호 공유 모드는 키워드가 반드시 필요합니다.
           </p>
-          <ActionForm action={createMoNumber} submitLabel="재고 등록">
+          <ActionForm disabled={!canEdit} action={createMoNumber} submitLabel="재고 등록">
             <AdminField label="수신번호" hint="숫자만 입력 (예: 05051234567)">
               <AdminInput name="phoneNumber" inputMode="numeric" placeholder="05051234567" required />
             </AdminField>
             <AdminField label="키워드" hint="대표번호 공유 모드에서 문자 맨 앞에 붙는 식별 키워드">
-              <AdminInput name="keyword" placeholder="MessagePay" />
+              <AdminInput name="keyword" placeholder="MESSAGEPAY" />
             </AdminField>
             <AdminField label="수신 모드">
               <AdminSelect name="mode" defaultValue="DEDICATED">
@@ -177,7 +185,7 @@ export default async function AdminMoNumbersPage({
                   {n.status === 'ASSIGNED' || n.status === 'DISABLED' ? (
                     <span className="text-[12px] text-ink-300">-</span>
                   ) : (
-                    <SelectActionForm
+                    <SelectActionForm disabled={!canEdit}
                       action={assignMoNumber}
                       values={{ id: n.id }}
                       name="merchantId"
@@ -193,7 +201,7 @@ export default async function AdminMoNumbersPage({
                 <Td>
                   <div className="flex flex-col gap-1.5">
                     {n.status === 'ASSIGNED' ? (
-                      <ActionButton
+                      <ActionButton disabled={!canEdit}
                         action={changeMoNumberStatus}
                         values={{ id: n.id, status: 'RECLAIMED' }}
                         label="회수"
@@ -201,7 +209,7 @@ export default async function AdminMoNumbersPage({
                       />
                     ) : null}
                     {n.status !== 'DISABLED' ? (
-                      <ActionButton
+                      <ActionButton disabled={!canEdit}
                         action={changeMoNumberStatus}
                         values={{ id: n.id, status: 'DISABLED' }}
                         label="사용중지"
@@ -209,7 +217,7 @@ export default async function AdminMoNumbersPage({
                         confirm="번호를 사용중지 처리합니다."
                       />
                     ) : (
-                      <ActionButton
+                      <ActionButton disabled={!canEdit}
                         action={changeMoNumberStatus}
                         values={{ id: n.id, status: 'AVAILABLE' }}
                         label="재고 복귀"

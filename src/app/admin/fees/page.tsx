@@ -4,7 +4,9 @@ import { Badge, Card, CardTitle, EmptyState, Notice, SectionTitle, StatTile, Tab
 import { AdminField, AdminInput, AdminSelect, MerchantOptions } from '@/components/admin/controls';
 import { ActionButton, ActionForm } from '@/components/admin/action-form';
 import { createFeePolicy, deactivateFeePolicy } from '@/app/actions/admin/settlement';
+import { canManageMoney } from '@/components/admin/constants';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { formatWon, formatNumber, ratePercent } from '@/lib/money';
 import { computeFees } from '@/server/services/settlement';
 import { formatKst, kstDateKey } from '@/lib/datetime';
@@ -17,6 +19,12 @@ export default async function AdminFeesPage({
   // 가맹점 상세화면에서 "이 가맹점 수수료 변경" 으로 들어오면 해당 가맹점이 선택된 채로 열린다.
   searchParams: Promise<{ merchantId?: string }>;
 }) {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  const me = await requireAdmin();
+  // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
+  const canEdit = canManageMoney(me.adminPermission);
+
   const sp = await searchParams;
   const [policies, merchants] = await Promise.all([
     prisma.feePolicy.findMany({
@@ -135,7 +143,7 @@ export default async function AdminFeesPage({
           <p className="mt-1 mb-3 text-[12px] leading-relaxed text-ink-400">
             같은 적용 범위의 기존 활성 정책은 자동으로 마감 처리됩니다.
           </p>
-          <ActionForm action={createFeePolicy} submitLabel="정책 등록" confirm="새 수수료 정책을 등록하고 기존 정책을 마감합니다.">
+          <ActionForm disabled={!canEdit} action={createFeePolicy} submitLabel="정책 등록" confirm="새 수수료 정책을 등록하고 기존 정책을 마감합니다.">
             <AdminField label="적용 범위">
               <AdminSelect name="scope" defaultValue={presetMerchant ? 'MERCHANT' : 'GLOBAL'}>
                 <option value="GLOBAL">전역 (모든 가맹점)</option>
@@ -247,7 +255,7 @@ export default async function AdminFeesPage({
                     </Td>
                     <Td>
                       {p.active ? (
-                        <ActionButton
+                        <ActionButton disabled={!canEdit}
                           action={deactivateFeePolicy}
                           values={{ id: p.id }}
                           label="마감"

@@ -3,9 +3,10 @@ import { PageHeader } from '@/components/layout/console-shell';
 import { Badge, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
 import { AdminField, AdminSelect, FilterBar, JsonView, Pager } from '@/components/admin/controls';
 import { ActionButton } from '@/components/admin/action-form';
-import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
+import { PAGE_SIZE, parsePage, clampPage, canManageMoney } from '@/components/admin/constants';
 import { resolveRiskDetection } from '@/app/actions/admin/transactions';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst, kstStartOfDay, kstStartOfMonth } from '@/lib/datetime';
 import { riskLevelLabel, riskTypeLabel } from '@/lib/labels';
@@ -15,16 +16,21 @@ import type { RiskLevel, RiskType } from '@/generated/prisma/enums';
 export const dynamic = 'force-dynamic';
 
 const LEVELS: RiskLevel[] = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
-const TYPES: RiskType[] = [
-  'VELOCITY', 'DAILY_LIMIT', 'MONTHLY_LIMIT', 'REPEATED_FAILURE', 'NEW_DONOR',
-  'MANUAL_REVIEW', 'DUPLICATE_WEBHOOK', 'ABNORMAL_AMOUNT',
-];
+// 라벨 사전에서 파생시킨다. 손으로 나열하면 enum 이 늘 때 필터에서 빠진다
+// (실제로 CRITICAL 로만 생성되는 PAYMENT_UNKNOWN 이 목록에도 URL 파라미터 검증에도 없었다).
+const TYPES = Object.keys(riskTypeLabel) as RiskType[];
 
 export default async function AdminRiskPage({
   searchParams,
 }: {
   searchParams: Promise<{ level?: string; type?: string; resolved?: string; page?: string }>;
 }) {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  const me = await requireAdmin();
+  // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
+  const canEdit = canManageMoney(me.adminPermission);
+
   const sp = await searchParams;
   const page = parsePage(sp.page);
   const level = LEVELS.includes(sp.level as RiskLevel) ? (sp.level as RiskLevel) : undefined;
@@ -44,7 +50,7 @@ export default async function AdminRiskPage({
     prisma.riskDetection.count({ where }),
     prisma.riskDetection.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       select: {
@@ -62,6 +68,19 @@ export default async function AdminRiskPage({
   ]);
 
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // 범위를 벗어난 ?page= 는 마지막 페이지로 보낸다(빈 화면에서 돌아갈 링크가 없어진다).
+  clampPage({ basePath: '/admin/risk', params: { level: level ?? '', type: type ?? '', resolved: sp.resolved ?? '' }, page, lastPage, total });
+  // RiskDetection 에는 charge 관계가 없다. 내부 ID 를 그대로 보여 주면 결제 화면에서 검색조차
+  // 되지 않으므로, 이 페이지에 보이는 건의 거래번호만 따로 읽어 링크로 건다.
+  const chargeIds = risks.map((r) => r.chargeId).filter((v): v is string => Boolean(v));
+  const chargeNoRows = chargeIds.length
+    ? await prisma.charge.findMany({
+        where: { id: { in: chargeIds } },
+        select: { id: true, transactionNo: true },
+      })
+    : [];
+  const transactionNoOf = new Map(chargeNoRows.map((c) => [c.id, c.transactionNo]));
+
   const levelCount = (l: RiskLevel) => byLevel.find((b) => b.level === l)?._count._all ?? 0;
 
   return (
@@ -164,7 +183,18 @@ export default async function AdminRiskPage({
                         <span className="text-ink-300">-</span>
                       )}
                     </Td>
-                    <Td className="font-mono text-[11px]">{r.chargeId ?? '-'}</Td>
+                    <Td className="font-mono text-[11px]">
+                      {r.chargeId && transactionNoOf.has(r.chargeId) ? (
+                        <Link
+                          href={`/admin/payments?q=${encodeURIComponent(transactionNoOf.get(r.chargeId)!)}`}
+                          className="font-semibold text-brand-700"
+                        >
+                          {transactionNoOf.get(r.chargeId)}
+                        </Link>
+                      ) : (
+                        <span className="text-ink-300">-</span>
+                      )}
+                    </Td>
                     <Td>
                       <details>
                         <summary className="cursor-pointer text-[12px] text-brand-700">상세 보기</summary>
@@ -177,7 +207,10 @@ export default async function AdminRiskPage({
                       {r.resolved ? (
                         <>
                           <Badge tone="success">해결</Badge>
-                          <span className="mt-0.5 block text-[11px] text-ink-400">{formatKst(r.resolvedAt, false)}</span>
+                          <span className="mt-0.5 block text-[11px] text-ink-400">
+                            {formatKst(r.resolvedAt, false)}
+                            {r.resolvedBy ? ` · ${r.resolvedBy}` : ''}
+                          </span>
                         </>
                       ) : (
                         <Badge tone="danger">미해결</Badge>
@@ -187,7 +220,7 @@ export default async function AdminRiskPage({
                       {r.resolved ? (
                         <span className="text-[12px] text-ink-300">-</span>
                       ) : (
-                        <ActionButton
+                        <ActionButton disabled={!canEdit}
                           action={resolveRiskDetection}
                           values={{ riskId: r.id }}
                           label="해결 처리"

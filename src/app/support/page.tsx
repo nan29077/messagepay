@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { ShieldAlert, Clock, FileText } from 'lucide-react';
 import { PublicShell } from '@/components/layout/public-shell';
 import { PageHeader } from '@/components/public/page-header';
@@ -18,28 +20,32 @@ export default async function SupportPage({
 }) {
   const sp = await searchParams;
   const tx = (sp.tx ?? '').slice(0, 64);
-  const onboarding = sp.intent === 'onboarding';
+
+  // 도입 상담은 전용 페이지(/business)로 분리했다.
+  // 예전 링크·북마크가 이 화면의 고객센터 문의 접수로 떨어지지 않게 넘겨준다.
+  if (sp.intent === 'onboarding') redirect('/business');
 
   return (
     <PublicShell aside={<SupportAside />}>
       <PageHeader
-        eyebrow={onboarding ? 'FOR BUSINESS' : '고객센터'}
-        title={onboarding ? 'MessagePay 도입 상담' : '문의 접수'}
-        description={onboarding
-          ? '문자 결제와 포인트 충전을 서비스에 연결해 보세요. 운영 환경과 필요한 연동 방식을 남겨주시면 담당자가 검토 후 안내드립니다.'
-          : '문의 유형과 내용을 남겨주시면 담당자가 확인 후 답변드립니다. 결제 관련 문의는 거래번호를 함께 적어주세요.'}
+        eyebrow="고객센터"
+        title="문의 접수"
+        description="문의 유형과 내용을 남겨주시면 담당자가 확인 후 답변드립니다. 결제 관련 문의는 거래번호를 함께 적어주세요."
       />
 
       <BannerStrip position="SUPPORT_TOP" className="mb-4" />
 
-      <Notice tone="brand" title={onboarding ? '이런 서비스를 위한 상담입니다' : '문의 전에 확인해 주세요'}>
-        {onboarding
-          ? '게임 캐시, 멤버십 포인트, 콘텐츠 크레딧, 생활 서비스 선불금처럼 반복 충전이 필요한 서비스에 MessagePay를 연동할 수 있습니다.'
-          : '계좌 등록, 한도, 환불 조건은 이용방법과 자주 묻는 질문에 정리되어 있습니다. 급한 결제 오류는 거래번호와 함께 접수해 주시면 우선 확인합니다.'}
+      <Notice tone="brand" title="문의 전에 확인해 주세요">
+        계좌 등록, 한도, 환불 조건은 이용방법과 자주 묻는 질문에 정리되어 있습니다. 급한 결제 오류는 거래번호와 함께
+        접수해 주시면 우선 확인합니다. 서비스에 메시지페이를 도입하려면{' '}
+        <Link href="/business" className="font-bold text-brand-700 underline underline-offset-2">
+          서비스 도입 문의
+        </Link>
+        를 이용해 주세요.
       </Notice>
 
       <div className="mt-5">
-        <SupportForm defaultTransactionNo={tx || undefined} mode={onboarding ? 'onboarding' : 'support'} />
+        <SupportForm defaultTransactionNo={tx || undefined} />
       </div>
 
       <section className="mt-8 space-y-2.5">

@@ -16,14 +16,23 @@ const REPORT_STATUS: Record<ReportStatus, { text: string; tone: 'neutral' | 'bra
   DISMISSED: { text: '반려', tone: 'neutral' },
 };
 
+/** 신고 분류 라벨. 값이 늘면 여기만 채우면 된다. */
+const REPORT_CATEGORY: Record<string, string> = {
+  ABUSE: '이용자 신고',
+};
+
 export default async function StudioReportsPage() {
   const { merchantId } = await requireMerchant();
 
-  const reports = await prisma.report.findMany({
-    where: { merchantId },
-    orderBy: { createdAt: 'desc' },
-    take: 100,
-  });
+  const [reports, statusCounts] = await Promise.all([
+    prisma.report.findMany({
+      where: { merchantId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 100,
+    }),
+    // 타일은 최근 100건이 아니라 전체를 센다(목록만 최근 100건이다).
+    prisma.report.groupBy({ by: ['status'], where: { merchantId }, _count: { _all: true } }),
+  ]);
 
   const chargeIds = reports.map((r) => r.chargeId).filter((v): v is string => Boolean(v));
   const charges = chargeIds.length
@@ -34,11 +43,12 @@ export default async function StudioReportsPage() {
     : [];
   const chargeMap = new Map(charges.map((d) => [d.id, d.transactionNo]));
 
+  const countOf = (s: string) => statusCounts.find((c) => c.status === s)?._count._all ?? 0;
   const counts = {
-    OPEN: reports.filter((r) => r.status === 'OPEN').length,
-    REVIEWING: reports.filter((r) => r.status === 'REVIEWING').length,
-    RESOLVED: reports.filter((r) => r.status === 'RESOLVED').length,
-    DISMISSED: reports.filter((r) => r.status === 'DISMISSED').length,
+    OPEN: countOf('OPEN'),
+    REVIEWING: countOf('REVIEWING'),
+    RESOLVED: countOf('RESOLVED'),
+    DISMISSED: countOf('DISMISSED'),
   };
 
   return (
@@ -81,7 +91,8 @@ export default async function StudioReportsPage() {
                   return (
                     <tr key={r.id}>
                       <Td className="whitespace-nowrap tabular-nums">{formatKst(r.createdAt, false)}</Td>
-                      <Td className="whitespace-nowrap">{r.category}</Td>
+                      {/* 분류 코드를 그대로 노출하지 않는다(현재는 ABUSE 한 종류다). */}
+                      <Td className="whitespace-nowrap">{REPORT_CATEGORY[r.category] ?? r.category}</Td>
                       <Td className="max-w-[360px]">
                         <span className="line-clamp-3">{r.content}</span>
                       </Td>

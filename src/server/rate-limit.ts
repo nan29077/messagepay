@@ -43,10 +43,19 @@ export function clientIpFromRequest(req: Request): string | null {
   return clientIpFrom((name) => req.headers.get(name));
 }
 
-/** 서버 액션에서 호출자의 IP 를 얻는다. */
+/**
+ * 서버 액션에서 호출자의 IP 를 얻는다.
+ *
+ * 요청 헤더를 읽을 수 없는 실행 맥락(단위 테스트, 백그라운드 작업)에서도 예외를 던지지 않는다.
+ * 주소를 모르면 null 을 돌려주고, 호출부는 공용 버킷으로 세어 제한 자체는 유지한다.
+ */
 export async function clientIpFromHeaders(): Promise<string | null> {
-  const h = await headers();
-  return clientIpFrom((name) => h.get(name));
+  try {
+    const h = await headers();
+    return clientIpFrom((name) => h.get(name));
+  } catch {
+    return null;
+  }
 }
 
 export interface RateLimitResult {

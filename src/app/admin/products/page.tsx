@@ -2,8 +2,9 @@ import Link from 'next/link';
 import { PageHeader } from '@/components/layout/console-shell';
 import { Badge, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
 import { AdminField, AdminSelect, MerchantOptions, FilterBar, Pager } from '@/components/admin/controls';
-import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
+import { PAGE_SIZE, parsePage, clampPage } from '@/components/admin/constants';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import { digitalTypeLabel, productKindLabel, stockText } from '@/server/services/products';
@@ -30,6 +31,10 @@ export default async function AdminProductsPage({
 }: {
   searchParams: Promise<{ merchantId?: string; kind?: string; page?: string }>;
 }) {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  await requireAdmin();
+
   const sp = await searchParams;
   const page = parsePage(sp.page);
   const merchantId = (sp.merchantId ?? '').trim() || undefined;
@@ -45,7 +50,35 @@ export default async function AdminProductsPage({
   // eslint-disable-next-line react-hooks/purity -- RSC: 요청 시각 기준으로 지연 배송을 집계한다
   const delayCut = new Date(Date.now() - DELAY_HOURS * 3_600_000);
 
-  const [merchants, total, products, soldByProduct, shipmentCounts, delayed, lowStock] = await Promise.all([
+  // 목록 필터(가맹점·종류)와 요약 타일의 모집단을 맞춘다.
+  // 배송 집계는 상품 종류와 무관하므로 가맹점만 반영한다.
+  const shipmentScope: Prisma.ChargeShipmentWhereInput = {
+    charge: { status: { in: PAID_STATUSES } },
+    ...(merchantId ? { merchantId } : {}),
+  };
+  const delayedWhere: Prisma.ChargeShipmentWhereInput = {
+    status: 'PREPARING',
+    charge: { status: { in: PAID_STATUSES }, paidAt: { lt: delayCut } },
+    ...(merchantId ? { merchantId } : {}),
+  };
+  const lowStockWhere: Prisma.ChargeProductWhereInput = {
+    kind: 'PHYSICAL',
+    archivedAt: null,
+    active: true,
+    stock: { not: null, lte: 5 },
+    ...(merchantId ? { merchantId } : {}),
+  };
+
+  const [
+    merchants,
+    total,
+    products,
+    shipmentCounts,
+    delayed,
+    delayedTotal,
+    lowStock,
+    lowStockTotal,
+  ] = await Promise.all([
     prisma.merchantProfile.findMany({
       where: { status: 'APPROVED' },
       orderBy: { displayName: 'asc' },
@@ -55,29 +88,21 @@ export default async function AdminProductsPage({
     prisma.chargeProduct.count({ where }),
     prisma.chargeProduct.findMany({
       where,
-      orderBy: [{ merchantId: 'asc' }, { kind: 'asc' }, { sortOrder: 'asc' }],
+      // sortOrder 는 기본값 0 이라 동률이 많다. id 를 마지막 정렬키로 두지 않으면
+      // 페이지를 넘길 때 같은 상품이 다시 나오거나 빠질 수 있다.
+      orderBy: [{ merchantId: 'asc' }, { kind: 'asc' }, { sortOrder: 'asc' }, { id: 'asc' }],
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       include: { merchant: { select: { id: true, displayName: true } } },
     }),
-    prisma.charge.groupBy({
-      by: ['productId'],
-      where: { productId: { not: null }, status: { in: PAID_STATUSES } },
-      _count: { _all: true },
-      _sum: { amount: true },
-    }),
     prisma.chargeShipment.groupBy({
       by: ['status'],
-      where: { charge: { status: { in: PAID_STATUSES } } },
+      where: shipmentScope,
       _count: { _all: true },
     }),
     // 결제된 지 오래됐는데 아직 발송되지 않은 주문
     prisma.chargeShipment.findMany({
-      where: {
-        status: 'PREPARING',
-        charge: { status: { in: PAID_STATUSES }, paidAt: { lt: delayCut } },
-        ...(merchantId ? { merchantId } : {}),
-      },
+      where: delayedWhere,
       orderBy: { createdAt: 'asc' },
       take: 20,
       include: {
@@ -85,17 +110,31 @@ export default async function AdminProductsPage({
         charge: { select: { id: true, transactionNo: true, amount: true, paidAt: true, quantity: true, product: { select: { name: true } } } },
       },
     }),
+    // 목록은 상위 20건만 보여 주지만, 타일 수치는 전체를 센다.
+    // (잘린 배열 길이를 건수로 쓰면 지연 300건도 "20건" 으로 보여 심각도를 과소평가한다)
+    prisma.chargeShipment.count({ where: delayedWhere }),
     prisma.chargeProduct.findMany({
-      where: { kind: 'PHYSICAL', archivedAt: null, active: true, stock: { not: null, lte: 5 } },
+      where: lowStockWhere,
       orderBy: { stock: 'asc' },
       take: 20,
       include: { merchant: { select: { id: true, displayName: true } } },
     }),
+    prisma.chargeProduct.count({ where: lowStockWhere }),
   ]);
+
+  // 판매 집계는 이 페이지에 보이는 상품만 조회한다(전체를 끌어와 메모리에서 찾지 않는다).
+  const soldByProduct = await prisma.charge.groupBy({
+    by: ['productId'],
+    where: { productId: { in: products.map((p) => p.id) }, status: { in: PAID_STATUSES } },
+    _count: { _all: true },
+    _sum: { amount: true },
+  });
 
   const shipOf = (s: ShipmentStatus) => shipmentCounts.find((c) => c.status === s)?._count._all ?? 0;
   const soldOf = (id: string) => soldByProduct.find((s) => s.productId === id);
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // 범위를 벗어난 ?page= 는 마지막 페이지로 보낸다(빈 화면에서 돌아갈 링크가 없어진다).
+  clampPage({ basePath: '/admin/products', params: { merchantId: merchantId ?? '', kind: kind ?? '' }, page, lastPage, total });
 
   return (
     <>
@@ -108,16 +147,16 @@ export default async function AdminProductsPage({
         <StatTile
           label="배송 준비"
           value={formatNumber(shipOf('PREPARING'))}
-          sub={delayed.length > 0 ? `${DELAY_HOURS}시간 초과 ${delayed.length}건` : '지연 없음'}
-          tone={delayed.length > 0 ? 'danger' : shipOf('PREPARING') > 0 ? 'warning' : 'neutral'}
+          sub={delayedTotal > 0 ? `${DELAY_HOURS}시간 초과 ${formatNumber(delayedTotal)}건` : '지연 없음'}
+          tone={delayedTotal > 0 ? 'danger' : shipOf('PREPARING') > 0 ? 'warning' : 'neutral'}
         />
         <StatTile label="발송 완료" value={formatNumber(shipOf('SHIPPED'))} tone="brand" />
         <StatTile label="배송 완료" value={formatNumber(shipOf('DELIVERED'))} tone="success" />
         <StatTile
           label="재고 부족 상품"
-          value={formatNumber(lowStock.length)}
-          sub={lowStock.length > 0 ? '5개 이하' : '없음'}
-          tone={lowStock.length > 0 ? 'warning' : 'neutral'}
+          value={formatNumber(lowStockTotal)}
+          sub={lowStockTotal > 0 ? '5개 이하' : '없음'}
+          tone={lowStockTotal > 0 ? 'warning' : 'neutral'}
         />
       </div>
 

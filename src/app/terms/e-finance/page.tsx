@@ -3,7 +3,7 @@ import { PublicShell } from '@/components/layout/public-shell';
 import { PageHeader } from '@/components/public/page-header';
 import { TermsArticle, TermsNav } from '@/components/public/terms-article';
 import { Notice } from '@/components/ui';
-import { prisma } from '@/server/db';
+import { currentTermsDoc } from '@/server/services/terms';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,11 +13,8 @@ export const metadata: Metadata = {
 };
 
 export default async function EFinanceTermsPage() {
-  const doc = await prisma.termsVersion.findFirst({
-    // 시행일이 오지 않은 개정안을 현행 약관으로 보여주면 안 된다.
-    where: { type: 'E_FINANCE', active: true, effectiveFrom: { lte: new Date() } },
-    orderBy: { effectiveFrom: 'desc' },
-  });
+  // 시행일이 지난 것 중 최신 1건이 현행 약관이다(시행 예정 개정안은 아직 보여주지 않는다).
+  const doc = await currentTermsDoc('E_FINANCE');
 
   return (
     <PublicShell>

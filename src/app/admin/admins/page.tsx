@@ -4,7 +4,7 @@ import { ActionForm, SelectActionForm } from '@/components/admin/action-form';
 import { AdminInput, AdminSelect } from '@/components/admin/controls';
 import { createAdminByEmail, updateAdminPermission } from '@/app/actions/admin/accounts';
 import { prisma } from '@/server/db';
-import { getSessionUser } from '@/server/auth';
+import { getSessionUser, requireAdmin } from '@/server/auth';
 import { formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import type { AdminPermission } from '@/generated/prisma/enums';
@@ -22,6 +22,10 @@ const PERMISSIONS: Array<{ value: AdminPermission; label: string; description: s
 const permissionLabel = Object.fromEntries(PERMISSIONS.map((p) => [p.value, p.label])) as Record<AdminPermission, string>;
 
 export default async function AdminAdminsPage() {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  await requireAdmin();
+
   const [me, admins, auditCounts] = await Promise.all([
     getSessionUser(),
     prisma.adminProfile.findMany({

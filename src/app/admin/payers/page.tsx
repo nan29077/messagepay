@@ -3,10 +3,11 @@ import { PageHeader } from '@/components/layout/console-shell';
 import { Badge, EmptyState, Notice, StatTile, Table, Td, Th } from '@/components/ui';
 import { AdminField, AdminInput, AdminSelect, FilterBar, Pager } from '@/components/admin/controls';
 import { ActionButton, ActionForm } from '@/components/admin/action-form';
-import { PAGE_SIZE, parsePage, PAID_CHARGE_STATUSES } from '@/components/admin/constants';
+import { PAGE_SIZE, parsePage, PAID_CHARGE_STATUSES, clampPage, canWrite } from '@/components/admin/constants';
 import { bankLabel } from '@/components/admin/mask';
 import { unlockPayer, setPayerBlock, updatePayerLimitsByAdmin } from '@/app/actions/admin/accounts';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import type { Prisma } from '@/generated/prisma/client';
@@ -21,6 +22,12 @@ export default async function AdminPayersPage({
 }: {
   searchParams: Promise<{ q?: string; state?: string; page?: string }>;
 }) {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  const me = await requireAdmin();
+  // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
+  const canEdit = canWrite(me.adminPermission);
+
   const sp = await searchParams;
   const page = parsePage(sp.page);
   const q = (sp.q ?? '').trim();
@@ -74,6 +81,8 @@ export default async function AdminPayersPage({
   const totalMap = new Map(totals.map((t) => [t.payerId ?? '', t]));
 
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // 범위를 벗어난 ?page= 는 마지막 페이지로 보낸다(빈 화면에서 돌아갈 링크가 없어진다).
+  clampPage({ basePath: '/admin/payers', params: { q, state }, page, lastPage, total });
 
   return (
     <>
@@ -189,7 +198,7 @@ export default async function AdminPayersPage({
                             {d.dailyLimit != null || d.monthlyLimit != null ? '개별 설정됨' : '정책 기본값'}
                           </summary>
                           <div className="mt-2 w-52">
-                            <ActionForm action={updatePayerLimitsByAdmin} submitLabel="한도 저장" variant="secondary" compact>
+                            <ActionForm disabled={!canEdit} action={updatePayerLimitsByAdmin} submitLabel="한도 저장" variant="secondary" compact>
                               <input type="hidden" name="payerId" value={d.id} />
                               <AdminField label="일 한도 (비우면 정책값)">
                                 <AdminInput
@@ -215,11 +224,11 @@ export default async function AdminPayersPage({
                             action={unlockPayer}
                             values={{ payerId: d.id }}
                             label="잠금 해제"
-                            disabled={!locked && d.failCount === 0}
+                            disabled={!canEdit || (!locked && d.failCount === 0)}
                             confirm="결제 실패 잠금을 해제하고 실패 횟수를 0으로 되돌립니다."
                           />
                           {d.blockedAt ? (
-                            <ActionButton
+                            <ActionButton disabled={!canEdit}
                               action={setPayerBlock}
                               values={{ payerId: d.id, next: 'UNBLOCK' }}
                               label="제한 해제"
@@ -229,7 +238,7 @@ export default async function AdminPayersPage({
                             <details>
                               <summary className="cursor-pointer text-[12px] text-danger-500">이용 제한</summary>
                               <div className="mt-1.5 w-48">
-                                <ActionForm
+                                <ActionForm disabled={!canEdit}
                                   action={setPayerBlock}
                                   submitLabel="제한 적용"
                                   variant="danger"

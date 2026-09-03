@@ -179,8 +179,13 @@ export async function checkLimits(input: LimitCheckInput): Promise<LimitCheckRes
   const db: LimitsClient = input.tx ?? prisma;
   const policy = await resolvePolicy(input.merchantId, input.payer.id, now, db);
 
-  const payerDaily = input.payer.dailyLimit ?? policy.payerDailyLimit;
-  const payerMonthly = input.payer.monthlyLimit ?? policy.payerMonthlyLimit;
+  // 개인 한도는 정책 한도를 넘지 못한다.
+  //
+  // 저장 시점에만 검사하면, 이용자가 한도를 올려 둔 뒤 관리자가 전역 정책을 낮췄을 때
+  // 그 이용자에게는 낮춘 한도가 적용되지 않는다(리스크 대응으로 한도를 내려도 무력화된다).
+  const clamp = (mine: bigint | null, cap: bigint) => (mine !== null && mine < cap ? mine : cap);
+  const payerDaily = clamp(input.payer.dailyLimit, policy.payerDailyLimit);
+  const payerMonthly = clamp(input.payer.monthlyLimit, policy.payerMonthlyLimit);
 
   const deny = (code: LimitDenyCode, message: string): LimitCheckResult => ({
     ok: false, code, message, requiresManualReview: false, policy,

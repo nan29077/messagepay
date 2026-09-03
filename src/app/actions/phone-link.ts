@@ -170,20 +170,33 @@ export async function confirmPhoneVerification(
   // 연결 시점에 한 번 더 소유권을 검증한다 (발송~확인 사이의 상태 변화 대비).
   const existing = await prisma.payerProfile.findUnique({
     where: { phoneHash: record.ph },
-    select: { id: true, userId: true },
+    select: { id: true, userId: true, onboardingStatus: true },
   });
   if (existing?.userId && existing.userId !== user.id) {
     return { ok: false, message: '이미 다른 계정에 연결된 번호입니다. 고객센터로 문의해 주세요.' };
   }
+  // 탈퇴한 프로필은 이어받지 않는다(탈퇴 시 phoneHash 를 무효화하므로 보통 여기까지 오지 않지만,
+  // 예전 데이터에는 phoneHash 가 그대로 남아 있을 수 있다). 새 프로필을 만든다.
+  const claimable = existing && existing.onboardingStatus !== 'WITHDRAWN' ? existing : null;
 
   // 기존 연결 해제 + 새 연결을 하나의 트랜잭션으로 처리한다 (부분 실패 방지).
   await prisma.$transaction([
+    // 옛 데이터에 탈퇴 프로필이 이 번호를 쥐고 있으면 새 프로필을 만들 수 없다(phoneHash unique).
+    // 매칭 대상에서 빼면서 자리를 비워 준다.
+    ...(existing && !claimable
+      ? [
+          prisma.payerProfile.update({
+            where: { id: existing.id },
+            data: { phoneHash: `withdrawn:${existing.id}` },
+          }),
+        ]
+      : []),
     prisma.payerProfile.updateMany({
-      where: { userId: user.id, ...(existing ? { NOT: { id: existing.id } } : {}) },
+      where: { userId: user.id, ...(claimable ? { NOT: { id: claimable.id } } : {}) },
       data: { userId: null },
     }),
-    existing
-      ? prisma.payerProfile.update({ where: { id: existing.id }, data: { userId: user.id } })
+    claimable
+      ? prisma.payerProfile.update({ where: { id: claimable.id }, data: { userId: user.id } })
       : // 문자결제 이력이 없는 번호도 미리 연결해 두면 이후 결제가 자동으로 이 계정에 표시된다.
         prisma.payerProfile.create({
           data: {

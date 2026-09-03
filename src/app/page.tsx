@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { PublicShell } from '@/components/layout/public-shell';
 import { HeroSlider } from '@/components/public/hero-slider';
+import { BannerStrip } from '@/components/public/banner-strip';
 import { Card, LinkButton, SectionTitle } from '@/components/ui';
 
 const serviceTypes = [
@@ -22,6 +23,19 @@ const steps = [
   { icon: UserRoundCheck, title: '최초 1회 본인·계좌 등록', body: '안내 링크에서 본인을 확인하고 결제수단과 이용 동의를 등록합니다.' },
   { icon: Smartphone, title: '대상과 금액을 확인하고 승인', body: '결제 전에 서비스, 충전 상품, 최종 금액을 다시 확인합니다.' },
   { icon: BadgeCheck, title: '결제 완료와 서비스 반영', body: '승인 결과가 가맹 서비스에 전달되고 포인트 또는 이용권이 반영됩니다.' },
+];
+
+/**
+ * 결제 흐름 요약 4단계.
+ *
+ * 모바일에서 한 줄에 다 들어가지 않아 3 + 1 로 접히면서 화살표만 덩그러니 남았다.
+ * 좁은 화면에서는 2 x 2 격자, sm 이상에서는 한 줄 흐름으로 나눠 렌더한다.
+ */
+const flowSteps = [
+  { icon: MessageSquareText, label: '문자 요청' },
+  { icon: KeyRound, label: '본인 확인' },
+  { icon: WalletCards, label: '결제 승인' },
+  { icon: Sparkles, label: '충전 반영' },
 ];
 
 const businessBenefits = [
@@ -54,10 +68,36 @@ const faqs = [
   ['가맹점은 무엇을 관리할 수 있나요?', '충전 상품, 거래 상태, 환불 요청, 정산 내역과 운영 설정을 가맹점 전용 화면에서 확인하고 관리할 수 있습니다.'],
 ];
 
-export default function HomePage() {
+/**
+ * 탈퇴 완료 안내.
+ *
+ * 탈퇴 액션이 `/?withdrawn=1` 로 보내는데 홈이 searchParams 를 받지 않아
+ * 확인 문구까지 입력한 위험 동작의 결과가 어디에도 표시되지 않았다.
+ */
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ withdrawn?: string }>;
+}) {
+  const sp = await searchParams;
+  const withdrawn = sp.withdrawn === '1';
+
   return (
     <PublicShell>
+      {withdrawn ? (
+        <div className="mb-4 rounded-[20px] border border-[#dbe4ee] bg-white px-4 py-3.5 shadow-[0_12px_34px_rgba(7,20,38,.06)]">
+          <p className="text-[14px] font-extrabold text-ink-900">회원 탈퇴가 완료되었습니다</p>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-ink-500">
+            등록된 결제수단은 해지되었고 계정 정보는 삭제되었습니다. 이미 발생한 결제·정산 기록은 관계 법령에 따라
+            일정 기간 보관됩니다. 그동안 이용해 주셔서 감사합니다.
+          </p>
+        </div>
+      ) : null}
+
       <HeroSlider />
+
+      {/* 관리자에서 등록한 홈 배너. 예전에는 이 위치가 어디에도 렌더되지 않아 등록해도 보이지 않았다. */}
+      <BannerStrip position="HOME_TOP" className="mt-4" />
 
       <section className="mt-5 grid grid-cols-3 gap-2.5" aria-label="메시지페이 핵심 장점">
         {[
@@ -93,18 +133,37 @@ export default function HomePage() {
             <p className="mt-2 text-[13px] leading-relaxed text-ink-500">게임 캐시, 멤버십 포인트, 콘텐츠 이용권처럼 반복 충전이 중요한 서비스에 짧은 결제 진입점을 더하고, 승인 결과를 기존 시스템과 연결합니다.</p>
           </Card>
         </div>
-        <div className="mt-3 rounded-[18px] border border-[#dbe4ee] bg-white px-4 py-3.5">
-          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-[12px] font-bold text-ink-500">
-            <span className="flex items-center gap-1.5"><MessageSquareText size={15} className="text-brand-700" />문자 요청</span>
-            <ArrowRight size={13} className="text-ink-300" />
-            <span className="flex items-center gap-1.5"><KeyRound size={15} className="text-brand-700" />본인 확인</span>
-            <ArrowRight size={13} className="text-ink-300" />
-            <span className="flex items-center gap-1.5"><WalletCards size={15} className="text-brand-700" />결제 승인</span>
-            <ArrowRight size={13} className="text-ink-300" />
-            <span className="flex items-center gap-1.5"><Sparkles size={15} className="text-brand-700" />충전 반영</span>
+        <div className="mt-3 rounded-[18px] border border-[#dbe4ee] bg-white px-3 py-3 sm:px-4 sm:py-3.5">
+          {/* 모바일: 2 x 2 격자 (줄바꿈으로 화살표만 남는 것을 막는다) */}
+          <ol className="grid grid-cols-2 gap-2 sm:hidden">
+            {flowSteps.map(({ icon: Icon, label }, i) => (
+              <li
+                key={label}
+                className="flex items-center gap-2 rounded-[14px] bg-[#f6f9fc] px-2.5 py-2"
+              >
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-white text-[10px] font-black text-brand-700 ring-1 ring-[#dbe4ee]">
+                  {i + 1}
+                </span>
+                <Icon size={15} strokeWidth={1.8} className="shrink-0 text-brand-700" />
+                <span className="whitespace-nowrap text-[12px] font-bold text-ink-600">{label}</span>
+              </li>
+            ))}
+          </ol>
+
+          {/* sm 이상: 한 줄 흐름 */}
+          <div className="hidden items-center justify-center gap-x-3 text-[12px] font-bold text-ink-500 sm:flex">
+            {flowSteps.map(({ icon: Icon, label }, i) => (
+              <span key={label} className="flex items-center gap-1.5 whitespace-nowrap">
+                {i > 0 ? <ArrowRight size={13} className="mr-1.5 shrink-0 text-ink-300" /> : null}
+                <Icon size={15} strokeWidth={1.8} className="text-brand-700" />
+                {label}
+              </span>
+            ))}
           </div>
         </div>
       </section>
+
+      <BannerStrip position="HOME_MIDDLE" className="mt-8" />
 
       <section className="mt-12">
         <p className="text-[11px] font-extrabold tracking-[0.18em] text-brand-700">HOW IT WORKS</p>
@@ -167,7 +226,7 @@ export default function HomePage() {
             </div>
           ))}
         </div>
-        <LinkButton href="/support?intent=onboarding" variant="secondary" size="md" className="mt-4">도입 방식 상담하기<ArrowRight size={15} strokeWidth={1.8} /></LinkButton>
+        <LinkButton href="/business" variant="secondary" size="md" className="mt-4">도입 방식 상담하기<ArrowRight size={15} strokeWidth={1.8} /></LinkButton>
       </section>
 
       <section className="mt-12">
@@ -214,7 +273,7 @@ export default function HomePage() {
         <div className="flex items-center gap-2 text-[12px] font-extrabold"><CircleDollarSign size={17} strokeWidth={1.8} /> FOR YOUR SERVICE</div>
         <h2 className="mt-4 text-[27px] font-black leading-[1.2] tracking-[-0.05em]">고객의 충전 순간을<br />더 짧고 선명하게</h2>
         <p className="mt-3 max-w-[430px] text-[13px] leading-relaxed text-white/68">메시지페이를 내 서비스에 연결하고 싶다면 필요한 충전 방식과 운영 환경을 알려주세요.</p>
-        <LinkButton href="/support?intent=onboarding" variant="secondary" size="lg" className="mt-5 !border-[#b7f34a]/20 !bg-[#b7f34a] !text-[#071426] hover:!bg-[#d8ff88]">도입 상담 시작하기<ArrowRight size={16} strokeWidth={1.8} /></LinkButton>
+        <LinkButton href="/business" variant="secondary" size="lg" className="mt-5 !border-[#b7f34a]/20 !bg-[#b7f34a] !text-[#071426] hover:!bg-[#d8ff88]">도입 상담 시작하기<ArrowRight size={16} strokeWidth={1.8} /></LinkButton>
         </div>
       </section>
 

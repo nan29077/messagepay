@@ -5,7 +5,8 @@ import { requirePayerContext, NO_PAYER_TITLE, NO_PAYER_DESC } from '@/components
 import { prisma } from '@/server/db';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
-import { chargeStatusLabel, refundStatusLabel } from '@/lib/labels';
+import { redirect } from 'next/navigation';
+import { chargeStatusLabel, pointStatusLabel, refundStatusLabel } from '@/lib/labels';
 import type { ChargeStatus } from '@/generated/prisma/enums';
 
 export const dynamic = 'force-dynamic';
@@ -34,7 +35,7 @@ export default async function MyChargesPage({
 }) {
   const { payerId } = await requirePayerContext('/my');
   const sp = await searchParams;
-  const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1);
+  const pageRaw = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1);
 
   if (!payerId) {
     return (
@@ -54,7 +55,7 @@ export default async function MyChargesPage({
     prisma.charge.findMany({
       where: { payerId },
       orderBy: { receivedAt: 'desc' },
-      skip: (page - 1) * PAGE_SIZE,
+      skip: (pageRaw - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       select: {
         id: true,
@@ -82,6 +83,10 @@ export default async function MyChargesPage({
   ]);
 
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // 범위를 벗어난 ?page= 로 들어오면 "결제 내역이 없습니다" 가 떠 누적 금액과 모순돼 보이고,
+  // 되돌아갈 링크도 사라진다. 마지막 페이지로 보낸다.
+  if (pageRaw > lastPage && total > 0) redirect(`/my?page=${lastPage}`);
+  const page = pageRaw;
 
   return (
     <div className="space-y-4">
@@ -110,13 +115,16 @@ export default async function MyChargesPage({
             // 포인트는 가맹점이 발행·지급한다. 메시지페이는 결제와 정산만 담당하므로
             // "가맹점이 지급 처리를 했는지"만 그대로 보여준다.
             const paidCharge = REFUNDABLE.includes(d.status);
-            const point = !paidCharge
-              ? null
-              : d.pointStatus === 'SENT'
-                ? { text: '포인트 지급 완료', tone: 'success' as const }
-                : d.pointStatus === 'FAILED'
-                  ? { text: '포인트 지급 보류', tone: 'warning' as const }
-                  : { text: '포인트 지급 대기', tone: 'neutral' as const };
+            // SKIPPED(= 지급 대상 아님)를 빠뜨리면 실물 상품 주문이 영원히 "포인트 지급 대기" 로 보인다.
+            // 존재하지 않는 미지급 건에 대한 문의가 가맹점으로 간다. 다른 화면과 같은 라벨 사전을 쓴다.
+            const point =
+              !paidCharge || d.pointStatus === 'SKIPPED'
+                ? null
+                : d.pointStatus === 'SENT'
+                  ? { text: pointStatusLabel.SENT.text, tone: 'success' as const }
+                  : d.pointStatus === 'FAILED'
+                    ? { text: pointStatusLabel.FAILED.text, tone: 'warning' as const }
+                    : { text: pointStatusLabel.PENDING.text, tone: 'neutral' as const };
 
             return (
               <li key={d.id}>

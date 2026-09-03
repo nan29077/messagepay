@@ -7,9 +7,10 @@ import {
 import { ActionButton, ActionForm } from '@/components/admin/action-form';
 import { AdminField, AdminInput } from '@/components/admin/controls';
 import { bankLabel } from '@/components/admin/mask';
-import { PAID_CHARGE_STATUSES } from '@/components/admin/constants';
+import { PAID_CHARGE_STATUSES, canWrite } from '@/components/admin/constants';
 import { unlockPayer, setPayerBlock, updatePayerLimitsByAdmin } from '@/app/actions/admin/accounts';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import {
@@ -24,6 +25,12 @@ import { resolvePolicy } from '@/server/services/limits';
 export const dynamic = 'force-dynamic';
 
 export default async function AdminPayerDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  const me = await requireAdmin();
+  // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다.
+  const canEdit = canWrite(me.adminPermission);
+
   const { id } = await params;
 
   const payer = await prisma.payerProfile.findUnique({
@@ -173,11 +180,11 @@ export default async function AdminPayerDetailPage({ params }: { params: Promise
                   action={unlockPayer}
                   values={{ payerId: payer.id }}
                   label="결제 실패 잠금 해제"
-                  disabled={!locked && payer.failCount === 0}
+                  disabled={!canEdit || (!locked && payer.failCount === 0)}
                   confirm="잠금을 해제하고 실패 횟수를 0으로 되돌립니다."
                 />
                 {payer.blockedAt ? (
-                  <ActionButton
+                  <ActionButton disabled={!canEdit}
                     action={setPayerBlock}
                     values={{ payerId: payer.id, next: 'UNBLOCK' }}
                     label="이용 제한 해제"
@@ -187,7 +194,7 @@ export default async function AdminPayerDetailPage({ params }: { params: Promise
               </div>
 
               {!payer.blockedAt ? (
-                <ActionForm action={setPayerBlock} submitLabel="이용 제한 적용" variant="danger" confirm="이후 이 이용자의 문자결제가 접수되지 않습니다.">
+                <ActionForm disabled={!canEdit} action={setPayerBlock} submitLabel="이용 제한 적용" variant="danger" confirm="이후 이 이용자의 문자결제가 접수되지 않습니다.">
                   <input type="hidden" name="payerId" value={payer.id} />
                   <input type="hidden" name="next" value="BLOCK" />
                   <AdminField label="제한 사유">
@@ -196,7 +203,7 @@ export default async function AdminPayerDetailPage({ params }: { params: Promise
                 </ActionForm>
               ) : null}
 
-              <ActionForm action={updatePayerLimitsByAdmin} submitLabel="개인 한도 저장" variant="secondary">
+              <ActionForm disabled={!canEdit} action={updatePayerLimitsByAdmin} submitLabel="개인 한도 저장" variant="secondary">
                 <input type="hidden" name="payerId" value={payer.id} />
                 <div className="grid grid-cols-2 gap-2">
                   <AdminField label="일 한도" hint={`정책값 ${formatWon(policy.payerDailyLimit)}`}>
@@ -212,7 +219,7 @@ export default async function AdminPayerDetailPage({ params }: { params: Promise
         </div>
 
         <section>
-          <SectionTitle title="가맹점별 결제" description="상위 10명" />
+          <SectionTitle title="가맹점별 결제" description="상위 10곳" />
           {payer.merchantLinks.length === 0 ? (
             <EmptyState title="결제한 가맹점이 없습니다" />
           ) : (
@@ -287,9 +294,9 @@ export default async function AdminPayerDetailPage({ params }: { params: Promise
         </section>
 
         <section>
-          <SectionTitle title="결제 내역" description="최근 30건" />
+          <SectionTitle title="PG 결제 승인 내역" description="최근 30건 · 결제사 거래 기준" />
           {transactions.length === 0 ? (
-            <EmptyState title="결제 내역이 없습니다" />
+            <EmptyState title="PG 결제 승인 내역이 없습니다" />
           ) : (
             <Table>
               <thead>

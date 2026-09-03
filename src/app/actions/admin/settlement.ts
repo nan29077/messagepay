@@ -358,15 +358,18 @@ export async function createFeePolicy(_prev: AdminActionState, fd: FormData): Pr
       if (!merchant) throw new Error('가맹점을 찾을 수 없습니다.');
     }
 
+    // 마감 대상은 "아직 종료일이 없는" 정책뿐이다.
+    // effectiveTo 조건이 없으면 이미 마감된 옛 정책의 종료일까지 새 시행일로 밀려
+    // 지난 기간의 정책 이력이 소급 변조된다(어느 요율이 언제까지였는지가 어긋난다).
     const previous = await prisma.feePolicy.findMany({
-      where: { active: true, scope, merchantId },
+      where: { active: true, scope, merchantId, effectiveTo: null },
       select: { id: true, pgFeeRate: true, platformFeeRate: true },
     });
 
     const created = await prisma.$transaction(async (tx) => {
       // 아직 시행되지 않은 예약 정책은 새 정책이 대체한다. 적용된 적이 없으므로 바로 마감한다.
       await tx.feePolicy.updateMany({
-        where: { active: true, scope, merchantId, effectiveFrom: { gte: effectiveFrom } },
+        where: { active: true, scope, merchantId, effectiveTo: null, effectiveFrom: { gte: effectiveFrom } },
         data: { active: false, effectiveTo: effectiveFrom },
       });
       // 시행 중인 정책은 새 정책의 시행일까지 그대로 살려 둔다(이력 보존 + 공백 방지).
@@ -379,7 +382,7 @@ export async function createFeePolicy(_prev: AdminActionState, fd: FormData): Pr
       // active 는 "관리자가 수동으로 마감했는가" 만 뜻하고, 실제 적용 여부는
       // effectiveFrom / effectiveTo 로 판단한다(resolveFeePolicy 와 같은 기준).
       await tx.feePolicy.updateMany({
-        where: { active: true, scope, merchantId, effectiveFrom: { lt: effectiveFrom } },
+        where: { active: true, scope, merchantId, effectiveTo: null, effectiveFrom: { lt: effectiveFrom } },
         data: { effectiveTo: effectiveFrom },
       });
       return tx.feePolicy.create({
@@ -420,7 +423,11 @@ export async function deactivateFeePolicy(_prev: AdminActionState, fd: FormData)
     if (!before) throw new Error('수수료 정책을 찾을 수 없습니다.');
     if (!before.active) throw new Error('이미 마감된 정책입니다.');
 
-    await prisma.feePolicy.update({ where: { id }, data: { active: false, effectiveTo: new Date() } });
+    // 이미 종료일이 박힌 정책은 종료일을 건드리지 않는다(지난 이력을 늘리지 않기 위해).
+    await prisma.feePolicy.update({
+      where: { id },
+      data: { active: false, ...(before.effectiveTo === null ? { effectiveTo: new Date() } : {}) },
+    });
     await writeAudit({
       adminUserId: admin.id,
       action: 'FEE_POLICY_DEACTIVATE',

@@ -47,8 +47,15 @@ export default async function MyConsentsPage() {
     },
   });
 
-  // 최신 마케팅 동의 상태 (이력 중 가장 최근 레코드 기준)
-  const latestMarketing = records.find((r) => r.type === 'MARKETING');
+  // 최신 마케팅 동의 상태.
+  //
+  // 위 목록은 take: 100 이라, 다른 동의가 100건을 밀어내면 최신 마케팅 레코드가 사라져
+  // "동의 중" 인데 화면에는 "미동의" 로 보이고 동의 레코드가 중복 생성된다. 따로 조회한다.
+  const latestMarketing = await prisma.consentRecord.findFirst({
+    where: { OR: or, type: 'MARKETING' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    select: { agreed: true },
+  });
   const marketingAgreed = latestMarketing?.agreed ?? false;
 
   return (

@@ -136,6 +136,20 @@ function supplyOfInclusive(total: bigint): bigint {
 }
 
 /**
+ * 부가세 포함 차감액을 공급가액과 부가세로 나눈다.
+ *
+ * 1원 같은 아주 작은 차감액에서 역산하면 공급가액이 0원이 되어
+ * "공급가액 0원 · 부가세 1원" 이라는 세금계산서로 쓸 수 없는 기록이 남는다.
+ * 그런 경우는 전액을 공급가액으로 잡는다.
+ */
+function splitSupplyVat(total: bigint): [bigint, bigint] {
+  if (total <= 0n) return [0n, 0n];
+  const supply = supplyOfInclusive(total);
+  if (supply <= 0n) return [total, 0n];
+  return [supply, total - supply];
+}
+
+/**
  * 수수료 계산.
  *
  * 어느 방식이든 **차감액(= 공급가액 + 부가세)** 이 실제로 가맹점 정산금에서 빠지는 금액이고,
@@ -165,13 +179,12 @@ export function computeFees(amount: bigint, rates: FeeRates): FeeBreakdown {
   const platformApplied = applyRate(amount, platformRate);
 
   // 포함 요율이면 요율을 곱한 값이 이미 차감액이므로 공급가액을 역산한다.
-  const pgFeeSupply = rates.vatIncluded ? supplyOfInclusive(pgApplied) : pgApplied;
-  const platformFeeSupply = rates.vatIncluded ? supplyOfInclusive(platformApplied) : platformApplied;
-
-  const pgFeeVat = rates.vatIncluded ? pgApplied - pgFeeSupply : applyRate(pgFeeSupply, VAT_RATE);
-  const platformFeeVat = rates.vatIncluded
-    ? platformApplied - platformFeeSupply
-    : applyRate(platformFeeSupply, VAT_RATE);
+  const [pgFeeSupply, pgFeeVat] = rates.vatIncluded
+    ? splitSupplyVat(pgApplied)
+    : [pgApplied, applyRate(pgApplied, VAT_RATE)];
+  const [platformFeeSupply, platformFeeVat] = rates.vatIncluded
+    ? splitSupplyVat(platformApplied)
+    : [platformApplied, applyRate(platformApplied, VAT_RATE)];
 
   const pgFee = pgFeeSupply + pgFeeVat;
   const platformFeeRaw = platformFeeSupply + platformFeeVat;
@@ -188,15 +201,25 @@ export function computeFees(amount: bigint, rates: FeeRates): FeeBreakdown {
   const platformFee = platformFeeRaw > room ? room : platformFeeRaw;
   const net = amount - pgFeeCapped - platformFee;
 
+  // 잘라낸 뒤에는 공급가액·부가세도 다시 나눈다.
+  //
+  // 이 값들은 화면용이 아니라 그대로 저장된다(Charge.feeVat, 정산 원장 분개 메모).
+  // 보정 전 값을 남기면 "공급가액 + 부가세 = 차감액" 이 깨진 채 append-only 원장에 확정되어
+  // 세금계산서 근거로 쓸 수 없게 된다. 원장은 정정이 불가능하므로 여기서 맞춰야 한다.
+  const [pgSupplyFinal, pgVatFinal] =
+    pgFeeCapped === pgFee ? [pgFeeSupply, pgFeeVat] : splitSupplyVat(pgFeeCapped);
+  const [platformSupplyFinal, platformVatFinal] =
+    platformFee === platformFeeRaw ? [platformFeeSupply, platformFeeVat] : splitSupplyVat(platformFee);
+
   return {
     gross: amount,
     pgFee: pgFeeCapped,
-    pgFeeSupply,
-    pgFeeVat,
+    pgFeeSupply: pgSupplyFinal,
+    pgFeeVat: pgVatFinal,
     platformFee,
-    platformFeeSupply,
-    platformFeeVat,
-    vat: pgFeeVat + platformFeeVat,
+    platformFeeSupply: platformSupplyFinal,
+    platformFeeVat: platformVatFinal,
+    vat: pgVatFinal + platformVatFinal,
     net,
     pgFeeRate: pgRate,
     platformFeeRate: platformRate,

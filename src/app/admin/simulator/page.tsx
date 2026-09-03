@@ -5,7 +5,9 @@ import { AdminField, AdminInput, AdminSelect, AdminTextarea } from '@/components
 import { ActionFormWithDetail } from '@/components/admin/action-form';
 import { maskLinkTokens, shortId } from '@/components/admin/mask';
 import { runMoSimulation } from '@/app/actions/admin/simulator';
+import { canWrite } from '@/components/admin/constants';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { readMockOutbox } from '@/server/adapters/mt';
 import { env, isLocal } from '@/lib/env';
 import { maskPhone } from '@/lib/crypto';
@@ -16,6 +18,12 @@ import { moResultLabel, chargeStatusLabel } from '@/lib/labels';
 export const dynamic = 'force-dynamic';
 
 export default async function AdminSimulatorPage() {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  const me = await requireAdmin();
+  // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
+  const canEdit = canWrite(me.adminPermission);
+
   // 로컬 개발 환경이 아니면 화면 자체를 차단한다.
   if (!isLocal) {
     return (
@@ -84,7 +92,7 @@ export default async function AdminSimulatorPage() {
           <p className="mt-1 mb-3 text-[12px] leading-relaxed text-ink-400">
             mock MO 어댑터의 파서를 그대로 사용해 실제 수신 처리 로직을 실행합니다.
           </p>
-          <ActionFormWithDetail
+          <ActionFormWithDetail disabled={!canEdit}
             action={runMoSimulation}
             submitLabel="시뮬레이션 실행"
             confirm="실제 결제 거래가 생성됩니다. 계속할까요?"

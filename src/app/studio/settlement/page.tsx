@@ -15,6 +15,7 @@ import { settlementDateFor, toDateKey, formatDateKeyKo } from '@/lib/business-da
 import { loadHolidaysAround, buildScheduleNotice, buildUpcomingPayouts } from '@/server/services/settlement-schedule';
 import { ledgerEntryLabel, settlementStatusLabel } from '@/lib/labels';
 import { PAID_STATUSES } from '@/components/studio/shared';
+import { env } from '@/lib/env';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,7 +86,10 @@ export default async function StudioSettlementPage({
         status: { in: PAID_STATUSES },
         paidAt: { gte: new Date(range.start.getTime() - 45 * 86_400_000), lt: range.end },
       },
-      select: { paidAt: true, amount: true, netAmount: true },
+      // settledAt / settlementRequestId 를 함께 읽는다.
+      // PAID_STATUSES 에는 SETTLED 도 들어 있어, 이 값을 보지 않으면 이미 지급이 끝난 결제가
+      // 과거 날짜 셀에 "정산예정" 으로 다시 표시된다(같은 칸의 "지급완료" 와 이중으로 보인다).
+      select: { paidAt: true, amount: true, netAmount: true, settledAt: true, settlementRequestId: true },
     }),
     prisma.settlementRequest.findMany({
       // markSettlementPayoutFailed 는 status 만 바꾸고 paidAt 은 지우지 않는다.
@@ -101,6 +105,8 @@ export default async function StudioSettlementPage({
   ]);
 
   const isBusinessMerchant = Boolean(profile?.businessNo);
+  // 안내 문구에 실제 설정값을 넣는다(문구로만 언급하면 왜 지급이 안 되는지 알 수 없다).
+  const minPayoutText = formatWon(BigInt(env.payout.minAmount));
 
   // 적용 중인 수수료 정책을 실제 정산 계산식에 넣은 예시(결제 1건 기준).
   const feeSample = computeFees(3_000n, {
@@ -139,7 +145,9 @@ export default async function StudioSettlementPage({
     }
 
     // 정산 예정일이 이번 달 안이면 캘린더에 표시한다.
-    if (settlementDate >= range.key && settlementDate < `${range.nextKey}-01`) {
+    // 이미 지급됐거나 회차에 묶인 건은 "예정" 이 아니다.
+    const alreadySettled = d.settledAt !== null || d.settlementRequestId !== null;
+    if (!alreadySettled && settlementDate >= range.key && settlementDate < `${range.nextKey}-01`) {
       const s = scheduledByDay.get(settlementDate) ?? { amount: 0n, count: 0, from: [] };
       s.amount += d.netAmount ?? d.amount;
       s.count += 1;
@@ -173,9 +181,17 @@ export default async function StudioSettlementPage({
   // 원천징수 미리보기는 실제 요청 시 계산과 **같은 함수**를 써야 한다.
   // 화면은 3.3% 단일 절사, 서버는 2단계 계산이면 요청 직후 금액이 달라져
   // 가맹점이 "표시된 금액과 다르다"고 느끼게 된다.
+  //
+  // 기준 금액도 실제 회차와 같아야 한다. summary.available 은 아직 지급일이 오지 않은
+  // 결제까지 포함한 누적 잔액이라, 그 값에 3.3% 를 물리면 다음 회차 실지급액보다 크게 나온다.
+  // 실제 배치는 "지급일이 도래한 결제분" 을 가용 잔액 범위 안에서 지급한다.
+  const dueNet = upcoming.rows.filter((r) => r.due).reduce((sum, r) => sum + r.net, 0n);
+  const nextNet = dueNet > 0n ? dueNet : (upcoming.rows[0]?.net ?? 0n);
+  const nextPayoutBase = nextNet > summary.available ? summary.available : nextNet;
+
   const previewWithholding = isBusinessMerchant
     ? { incomeTax: 0n, localTax: 0n, total: 0n, exempt: true }
-    : calculateWithholding(summary.available);
+    : calculateWithholding(nextPayoutBase);
   const isCurrentMonth = range.key === kstMonthKey();
 
   return (
@@ -241,7 +257,7 @@ export default async function StudioSettlementPage({
 
                 <p className="mt-2.5 text-[11.5px] leading-relaxed text-ink-400">
                   예) 8월 3일(월) 결제 → 8월 10일(월) 정산. 금·토·일 결제분은 하나로 묶여 다음 주 금요일에 정산됩니다.
-                  아래 캘린더에서 <span className="font-bold text-ink-600">결제</span>과{' '}
+                  아래 캘린더에서 <span className="font-bold text-ink-600">결제</span>와{' '}
                   <span className="font-bold text-brand-700">정산 예정</span>을 날짜별로 확인할 수 있습니다.
                 </p>
               </div>
@@ -375,7 +391,7 @@ export default async function StudioSettlementPage({
                 {/* 범례 */}
                 <div className="mt-3 flex flex-wrap items-center gap-x-3.5 gap-y-1.5 border-t border-ink-100 pt-2.5">
                   <span className="flex items-center gap-1.5 text-[11px] font-semibold text-ink-500">
-                    <span className="h-3 w-0.5 rounded bg-ink-300" /> 결제 (결제 완료)
+                    <span className="h-3 w-0.5 rounded bg-ink-300" /> 결제 완료
                   </span>
                   <span className="flex items-center gap-1.5 text-[11px] font-semibold text-ink-500">
                     <span className="h-3 w-3 rounded bg-brand-50 ring-1 ring-inset ring-brand-200" /> 정산 예정
@@ -433,7 +449,15 @@ export default async function StudioSettlementPage({
                     )
                   }
                 />
-                <DataRow label="정산 가능금" value={formatWon(summary.available)} />
+                <DataRow label="정산 가능금 (누적)" value={formatWon(summary.available)} />
+                <DataRow
+                  label="다음 회차 지급 대상"
+                  value={
+                    nextPayoutBase > 0n
+                      ? `${formatWon(nextPayoutBase)}${dueNet > 0n ? '' : ' (지급일 도래 전)'}`
+                      : '없음'
+                  }
+                />
                 {isBusinessMerchant ? (
                   <DataRow label="원천징수" value="해당 없음 (사업자 · 세금계산서 대상)" />
                 ) : (
@@ -446,7 +470,10 @@ export default async function StudioSettlementPage({
                     />
                   </>
                 )}
-                <DataRow label="실지급 예상" value={formatWon(summary.available - previewWithholding.total)} />
+                <DataRow
+                  label="실지급 예상"
+                  value={formatWon(nextPayoutBase - previewWithholding.total)}
+                />
 
                 <div className="mt-3">
                   {!account ? (
@@ -524,7 +551,7 @@ export default async function StudioSettlementPage({
               )}
               <p className="mt-2 text-[11.5px] leading-relaxed text-ink-400">
                 &ldquo;지급 처리 중&rdquo;은 지급일이 지났지만 아직 이체가 완료되지 않은 금액입니다. 지급 배치는
-                영업일에 하루 한 번 실행되며, 계좌 미인증·최소 지급 금액 미만인 경우 다음 회차로 이월됩니다.
+                영업일에 하루 한 번 실행되며, 계좌 미인증이거나 지급액이 최소 지급 금액({minPayoutText}) 미만이면 다음 회차로 이월됩니다.
               </p>
             </section>
 
@@ -734,7 +761,7 @@ export default async function StudioSettlementPage({
                 description="최근 50건입니다. 원장은 수정·삭제되지 않으며 정정은 반대 분개로 기록됩니다."
               />
               {ledger.length === 0 ? (
-                <EmptyState title="원장 기록이 없습니다" description="결제가 완료된 결제가 발생하면 자동으로 기록됩니다." />
+                <EmptyState title="원장 기록이 없습니다" description="결제가 완료되면 자동으로 기록됩니다." />
               ) : (
                 <Table>
                   <thead>

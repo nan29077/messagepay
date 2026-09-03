@@ -42,7 +42,7 @@ export default async function MerchantApplyPage() {
             {existing.status === 'PENDING'
               ? '관리자 심사가 진행 중입니다. 승인되면 MO 결제 수신번호가 배정되고 결제 페이지가 공개됩니다.'
               : existing.status === 'APPROVED'
-                ? '승인이 완료되었습니다. 가맹점 콘솔에서 결제 설정과 정산을 설정하세요.'
+                ? '승인이 완료되었습니다. 가맹점 콘솔에서 판매 설정과 정산을 설정하세요.'
                 : '신청 상태에 대한 자세한 안내가 필요하면 고객센터로 문의해 주세요.'}
           </p>
           <div className="mt-4 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">

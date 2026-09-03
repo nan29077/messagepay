@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { prisma } from '@/server/db';
 import { writeAudit } from '@/server/auth';
 import { newId } from '@/lib/id';
-import { requestRefund, approveRefund, rejectRefund } from '@/server/services/refund';
+import { requestRefund, approveRefund, rejectRefund, reopenRefund } from '@/server/services/refund';
 import { reconcileUnknownPayment } from '@/server/services/payment-reconcile';
 import type { AdminActionState } from '@/components/admin/state';
 import { run, text, optText, money, enumValue, requiredId } from './shared';
@@ -174,11 +174,18 @@ export async function reconcilePaymentAction(_prev: AdminActionState, fd: FormDa
 
     const before = await prisma.paymentTransaction.findUnique({
       where: { id: transactionId },
-      select: { id: true, orderNo: true, status: true, charge: { select: { status: true } } },
+      select: { id: true, orderNo: true, status: true, chargeId: true, charge: { select: { status: true } } },
     });
     if (!before) throw new Error('결제 거래를 찾을 수 없습니다.');
 
     const result = await reconcileUnknownPayment(transactionId, decision, memo);
+
+    // 대사가 끝난 건의 "결제결과 미확인" 탐지도 함께 닫는다.
+    // 남겨 두면 이미 정리된 건이 계속 미해결 HIGH 이상 타일에 잡혀 진짜 위험을 가린다.
+    const closedRisks = await prisma.riskDetection.updateMany({
+      where: { chargeId: before.chargeId, type: 'PAYMENT_UNKNOWN', resolved: false },
+      data: { resolved: true, resolvedBy: admin.id, resolvedAt: new Date() },
+    });
 
     await writeAudit({
       adminUserId: admin.id,
@@ -186,11 +193,19 @@ export async function reconcilePaymentAction(_prev: AdminActionState, fd: FormDa
       targetType: 'PaymentTransaction',
       targetId: transactionId,
       before: { status: before.status, chargeStatus: before.charge.status },
-      after: { status: decision === 'APPROVE' ? 'APPROVED' : 'CANCELED', orderNo: before.orderNo, memo },
+      after: {
+        status: decision === 'APPROVE' ? 'APPROVED' : 'CANCELED',
+        orderNo: before.orderNo,
+        memo,
+        resolvedRiskDetections: closedRisks.count,
+      },
     });
     revalidatePath('/admin/payments');
     revalidatePath('/admin/settlements');
-    return result.message;
+    revalidatePath('/admin/risk');
+    return closedRisks.count > 0
+      ? `${result.message} 관련 이상거래 탐지 ${closedRisks.count}건도 함께 해결 처리했습니다.`
+      : result.message;
   });
 }
 
@@ -200,12 +215,17 @@ export async function approveRefundAction(_prev: AdminActionState, fd: FormData)
   return run(async (admin) => {
     if (admin.adminPermission === 'SUPPORT') throw new Error('환불 승인은 재무/운영 권한에서만 가능합니다.');
     const refundId = requiredId(fd, 'refundId', '환불 요청');
+    // 되돌릴 수 없는 출금이다. 거절·직접환불과 같은 기준으로 근거를 남긴다.
+    const memo = optText(fd, 'memo');
+    if (!memo || memo.length < 2) throw new Error('승인 사유를 2자 이상 입력해 주세요.');
 
     const before = await prisma.refund.findUnique({
       where: { id: refundId },
       select: { id: true, status: true, amount: true, chargeId: true },
     });
     if (!before) throw new Error('환불 요청을 찾을 수 없습니다.');
+    // 이미 처리된 건을 다시 눌러도 "승인했습니다" 로 응답하고 감사로그만 한 벌 더 쌓이던 문제를 막는다.
+    if (before.status !== 'REQUESTED') throw new Error('요청 상태의 환불만 승인할 수 있습니다.');
 
     await approveRefund(refundId, admin.id);
     await writeAudit({
@@ -214,7 +234,7 @@ export async function approveRefundAction(_prev: AdminActionState, fd: FormData)
       targetType: 'Refund',
       targetId: refundId,
       before: { status: before.status },
-      after: { status: 'DONE', amount: before.amount, chargeId: before.chargeId },
+      after: { status: 'DONE', amount: before.amount, chargeId: before.chargeId, memo },
     });
     revalidatePath('/admin/refunds');
     revalidatePath('/admin/settlements');
@@ -251,6 +271,39 @@ export async function rejectRefundAction(_prev: AdminActionState, fd: FormData):
   });
 }
 
+/**
+ * 처리가 멈춘 환불(실패·승인)을 요청 상태로 되돌린다.
+ *
+ * PG 취소 실패로 FAILED 가 된 건은 승인·거절 버튼이 모두 사라지고 신규 요청도 막혀
+ * 화면에서 되살릴 방법이 없었다. 되돌린 뒤 재시도하거나 거절한다.
+ */
+export async function reopenRefundAction(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
+  return run(async (admin) => {
+    if (admin.adminPermission === 'SUPPORT') throw new Error('환불 처리는 운영/재무 권한에서만 가능합니다.');
+    const refundId = requiredId(fd, 'refundId', '환불 요청');
+    const memo = optText(fd, 'memo');
+    if (!memo || memo.length < 2) throw new Error('되돌리는 사유를 2자 이상 입력해 주세요. (PG 취소 내역 확인 결과 등)');
+
+    const before = await prisma.refund.findUnique({
+      where: { id: refundId },
+      select: { status: true, chargeId: true },
+    });
+    if (!before) throw new Error('환불 요청을 찾을 수 없습니다.');
+
+    await reopenRefund(refundId, admin.id, memo);
+    await writeAudit({
+      adminUserId: admin.id,
+      action: 'REFUND_REOPEN',
+      targetType: 'Refund',
+      targetId: refundId,
+      before: { status: before.status },
+      after: { status: 'REQUESTED', chargeId: before.chargeId, memo },
+    });
+    revalidatePath('/admin/refunds');
+    return '환불을 요청 상태로 되돌렸습니다. 승인 또는 거절로 이어서 처리해 주세요.';
+  });
+}
+
 /** 관리자 직접 환불: 요청 생성 후 즉시 승인한다. */
 export async function createAdminRefund(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
@@ -259,12 +312,20 @@ export async function createAdminRefund(_prev: AdminActionState, fd: FormData): 
     const reason = text(fd, 'reason');
     if (!keyword) throw new Error('거래번호를 입력해 주세요.');
     if (reason.length < 2) throw new Error('환불 사유를 2자 이상 입력해 주세요.');
+    // 거래번호를 손으로 입력받는 화면이다. 한 글자만 틀려도 무관한 결제가 즉시 환불되므로
+    // 금액을 함께 받아 서버에서 대조한다(확인창만으로는 대상을 확인할 방법이 없다).
+    const expectedAmount = money(fd, 'amount', '환불 금액', { min: 1n });
 
     const charge = await prisma.charge.findFirst({
       where: { OR: [{ transactionNo: keyword }, { id: keyword }] },
       select: { id: true, transactionNo: true, amount: true, status: true },
     });
     if (!charge) throw new Error('해당 거래번호의 결제 건을 찾을 수 없습니다.');
+    if (charge.amount !== expectedAmount) {
+      throw new Error(
+        `입력한 금액과 결제 금액이 다릅니다. ${charge.transactionNo} 의 결제 금액은 ${charge.amount.toLocaleString('ko-KR')}원입니다. 대상을 다시 확인해 주세요.`,
+      );
+    }
 
     const refund = await requestRefund({ chargeId: charge.id, reason, requestedBy: admin.id });
     await approveRefund(refund.id, admin.id);

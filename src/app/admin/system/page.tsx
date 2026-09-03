@@ -4,6 +4,7 @@ import { Card, CardTitle, SectionTitle, StatTile, Table, Th, Td, Badge, EmptySta
 import { SafetyBanner } from '@/components/admin/safety-banner';
 import { shortId } from '@/components/admin/mask';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { kv } from '@/server/redis';
 import { env } from '@/lib/env';
 import { formatNumber } from '@/lib/money';
@@ -36,6 +37,10 @@ async function checkCache(): Promise<{ ok: boolean; detail: string; latencyMs: n
 }
 
 export default async function AdminSystemPage() {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  await requireAdmin();
+
   const [db, cache, webhooks, moErrors, paymentErrors] = await Promise.all([
     checkDatabase(),
     checkCache(),
@@ -81,7 +86,7 @@ export default async function AdminSystemPage() {
       />
 
       <div className="space-y-5">
-        <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-3">
           <StatTile
             label="데이터베이스"
             value={db.ok ? '정상' : '오류'}

@@ -3,6 +3,7 @@
 import { cookies } from 'next/headers';
 import { prisma } from '@/server/db';
 import { kv } from '@/server/redis';
+import { consumeIpRateLimit, consumeRateLimit } from '@/server/rate-limit';
 import { newId } from '@/lib/id';
 import { encrypt, maskPhone, normalizePhone, phoneHash } from '@/lib/crypto';
 import { env, isLocal } from '@/lib/env';
@@ -90,6 +91,17 @@ export async function startWebPinCharge(_prev: WebPinState, formData: FormData):
 
   const ph = phoneHash(phone);
   const masked = maskPhone(phone);
+
+  // 이 액션은 문자만 보내는 게 아니라 Charge · PaymentPinSession 행과 한도 카운터까지 만든다.
+  // 로그인 없이 호출되므로 IP·가맹점 버킷을 함께 센다(번호만 세면 번호를 바꿔 무제한 호출된다).
+  const byIp = await consumeIpRateLimit('webpin', 20, PIN_SEND_WINDOW_SEC);
+  if (!byIp.ok) {
+    return { ok: false, step: 'phone', phoneMasked: masked, message: '요청이 너무 잦습니다. 10분 후 다시 시도해 주세요.' };
+  }
+  const byMerchant = await consumeRateLimit('webpin-merchant', merchantId, 200, PIN_SEND_WINDOW_SEC);
+  if (!byMerchant.ok) {
+    return { ok: false, step: 'phone', phoneMasked: masked, message: '요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.' };
+  }
 
   const sent = await kv.incr(pinSendKey(ph), PIN_SEND_WINDOW_SEC);
   if (sent > PIN_SEND_MAX) {

@@ -3,7 +3,7 @@ import { PublicShell } from '@/components/layout/public-shell';
 import { PageHeader } from '@/components/public/page-header';
 import { TermsArticle, TermsNav } from '@/components/public/terms-article';
 import { Notice } from '@/components/ui';
-import { prisma } from '@/server/db';
+import { currentTermsDoc } from '@/server/services/terms';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,10 +13,8 @@ export const metadata: Metadata = {
 };
 
 export default async function PrivacyPage() {
-  const doc = await prisma.termsVersion.findFirst({
-    where: { type: 'PRIVACY', active: true },
-    orderBy: { effectiveFrom: 'desc' },
-  });
+  // 다른 약관 화면과 같은 기준을 쓴다(예전에는 여기만 시행일을 보지 않았다).
+  const doc = await currentTermsDoc('PRIVACY');
 
   return (
     <PublicShell>

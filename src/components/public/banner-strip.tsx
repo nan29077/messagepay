@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Megaphone, ArrowRight } from 'lucide-react';
 import { prisma } from '@/server/db';
+import { kstStartOfDay } from '@/lib/datetime';
 
 /**
  * 관리자(/admin/banners)에서 등록한 배너를 노출하는 공용 컴포넌트 (서버).
@@ -10,13 +11,17 @@ import { prisma } from '@/server/db';
  */
 export async function BannerStrip({ position, className }: { position: string; className?: string }) {
   const now = new Date();
+  // 종료일은 "그날까지" 노출한다.
+  // 관리자 폼이 날짜를 KST 00:00 으로 저장하므로 endsAt >= now 로 비교하면
+  // 종료일 당일 새벽부터 배너가 사라져 하루가 통째로 빠진다.
+  const todayStart = kstStartOfDay(now);
   const banners = await prisma.banner
     .findMany({
       where: {
         position,
         active: true,
         OR: [{ startsAt: null }, { startsAt: { lte: now } }],
-        AND: [{ OR: [{ endsAt: null }, { endsAt: { gte: now } }] }],
+        AND: [{ OR: [{ endsAt: null }, { endsAt: { gte: todayStart } }] }],
       },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
       take: 3,

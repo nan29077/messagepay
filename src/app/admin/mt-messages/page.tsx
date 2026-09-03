@@ -2,8 +2,9 @@ import { PageHeader } from '@/components/layout/console-shell';
 import { Badge, Card, CardTitle, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
 import { AdminField, AdminInput, AdminSelect, FilterBar, Pager } from '@/components/admin/controls';
 import { maskLinkTokens, shortId } from '@/components/admin/mask';
-import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
+import { PAGE_SIZE, parsePage, clampPage } from '@/components/admin/constants';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { readMockOutbox } from '@/server/adapters/mt';
 import { env } from '@/lib/env';
 import { maskPhone } from '@/lib/crypto';
@@ -22,6 +23,10 @@ export default async function AdminMtMessagesPage({
 }: {
   searchParams: Promise<{ status?: string; template?: string; page?: string }>;
 }) {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  await requireAdmin();
+
   const sp = await searchParams;
   const page = parsePage(sp.page);
   const status = STATUSES.includes(sp.status as DeliveryStatus) ? (sp.status as DeliveryStatus) : undefined;
@@ -51,6 +56,8 @@ export default async function AdminMtMessagesPage({
 
   const outbox = env.mt.provider === 'mock' || env.safety.safeMode ? readMockOutbox(30) : [];
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // 범위를 벗어난 ?page= 는 마지막 페이지로 보낸다(빈 화면에서 돌아갈 링크가 없어진다).
+  clampPage({ basePath: '/admin/mt-messages', params: { status: status ?? '', template }, page, lastPage, total });
   const countOf = (s: DeliveryStatus) => grouped.find((g) => g.status === s)?._count._all ?? 0;
 
   return (

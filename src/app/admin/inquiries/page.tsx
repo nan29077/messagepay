@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { PageHeader } from '@/components/layout/console-shell';
 import { Badge, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
 import { AdminField, AdminInput, AdminSelect, FilterBar, Pager } from '@/components/admin/controls';
-import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
+import { PAGE_SIZE, parsePage, clampPage } from '@/components/admin/constants';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/auth';
 import { formatNumber } from '@/lib/money';
@@ -98,7 +98,8 @@ export default async function AdminInquiriesPage({
         _count: { select: { messages: true } },
       },
     }),
-    prisma.supportInquiry.groupBy({ by: ['status'], _count: { _all: true } }),
+    // 목록과 같은 필터를 적용한다(타일만 전체 수치를 보여 주면 필터한 결과로 오인한다).
+    prisma.supportInquiry.groupBy({ by: ['status'], where, _count: { _all: true } }),
     prisma.supportMessage.count({ where: { sender: 'USER', readByAdminAt: null } }),
   ]);
 
@@ -112,6 +113,8 @@ export default async function AdminInquiriesPage({
   const userMap = new Map(users.map((u) => [u.id, u]));
 
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // 범위를 벗어난 ?page= 는 마지막 페이지로 보낸다(빈 화면에서 돌아갈 링크가 없어진다).
+  clampPage({ basePath: '/admin/inquiries', params: { status: status ?? '', q, category: category ?? '', source: source ?? '' }, page, lastPage, total });
   const count = (s: InquiryStatus) => byStatus.find((b) => b.status === s)?._count._all ?? 0;
 
   return (

@@ -3,8 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ConsoleShell, type NavGroup } from '@/components/layout/console-shell';
 import { getSessionUser, requireMerchant } from '@/server/auth';
-import { prisma } from '@/server/db';
-import { PAID_STATUSES } from '@/components/studio/shared';
+import { getStudioPendingCounts } from '@/server/services/studio-pending';
 
 export const dynamic = 'force-dynamic';
 
@@ -102,26 +101,14 @@ export default async function StudioLayout({ children }: { children: React.React
   const user = await requireMerchant().catch(() => null);
   if (!user) redirect('/login?next=/studio');
 
-  // 밀린 일을 메뉴에서 바로 보이게 한다. 세 번의 count 는 인덱스가 있어 가볍다.
-  const [ordersPending, pointsPending, reportsOpen] = await Promise.all([
-    prisma.chargeShipment.count({
-      where: { merchantId: user.merchantId, status: 'PREPARING', charge: { status: { in: PAID_STATUSES } } },
-    }),
-    prisma.charge.count({
-      where: {
-        merchantId: user.merchantId,
-        status: { in: PAID_STATUSES },
-        pointStatus: 'PENDING',
-        product: { kind: 'DIGITAL' },
-      },
-    }),
-    prisma.report.count({ where: { merchantId: user.merchantId, status: 'OPEN' } }),
-  ]);
+  // 밀린 일을 메뉴에서 바로 보이게 한다.
+  // 대시보드도 같은 집계를 쓰므로 요청 단위 캐시로 묶어 한 번만 실행한다.
+  const pending = await getStudioPendingCounts(user.merchantId);
 
   return (
     <ConsoleShell
       title="가맹점 관리자"
-      groups={buildGroups({ orders: ordersPending, points: pointsPending, reports: reportsOpen })}
+      groups={buildGroups({ orders: pending.orders, points: pending.points, reports: pending.reports })}
       user={{
         id: user.id,
         name: user.name ?? '가맹점',

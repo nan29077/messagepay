@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { prisma } from '@/server/db';
 import { getSessionUser } from '@/server/auth';
+import { isSameOrigin } from '@/server/request-guard';
 import { claimGuestInquiry } from '@/server/services/inquiry';
 
 export const runtime = 'nodejs';
@@ -14,7 +15,13 @@ export const dynamic = 'force-dynamic';
 
 const GUEST_COOKIE = 'messagepay_inquiry';
 
-export async function GET() {
+export async function GET(req: Request) {
+  // 이 GET 은 조회만 하지 않는다(게스트 스레드 승계 · 쿠키 삭제 · 관리자 답변 읽음 처리).
+  // 교차 출처 요청만으로 미읽음 배지가 지워지고 게스트 문의 쿠키가 사라지는 것을 막는다.
+  if (!isSameOrigin(req)) {
+    return Response.json({ ok: false, message: '허용되지 않은 요청입니다.' }, { status: 403 });
+  }
+
   const user = await getSessionUser().catch(() => null);
   const jar = await cookies();
   const guestToken = jar.get(GUEST_COOKIE)?.value ?? null;

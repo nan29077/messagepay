@@ -61,7 +61,7 @@ function buildNav(myHref: string): NavItem[] {
 }
 
 const DRAWER_EXTRA: NavItem[] = [
-  { href: '/support', label: '서비스 도입', icon: Building2 },
+  { href: '/business', label: '서비스 도입', icon: Building2 },
   { href: '/notice', label: '공지', icon: Bell },
   { href: '/support', label: '고객센터', icon: LifeBuoy },
 ];
@@ -165,7 +165,16 @@ export function PublicShellClient({
         ) : null}
       </header>
 
-      <main className="public-content px-4 py-5 sm:px-6 sm:py-7">{children}</main>
+      <main className="public-content px-4 py-5 sm:px-6 sm:py-7">
+        {children}
+        {/*
+          보조 영역.
+          레이아웃이 한 컬럼(앱 화면 형태)으로 바뀌면서 aside 를 아무 데도 그리지 않아,
+          고객센터·가맹점 가입 신청 같은 안내 카드가 통째로 사라져 있었다.
+          좁은 화면 기준이므로 본문 아래에 이어 붙인다.
+        */}
+        {aside ? <div className="mt-8 border-t border-ink-100 pt-6">{aside}</div> : null}
+      </main>
 
       <Footer />
         </div>

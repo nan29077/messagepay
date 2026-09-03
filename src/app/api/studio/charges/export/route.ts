@@ -1,8 +1,13 @@
 import { requireMerchant } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { formatKst } from '@/lib/datetime';
-import { chargeStatusLabel, pointStatusLabel } from '@/lib/labels';
-import { PAID_STATUSES } from '@/components/studio/shared';
+import { SELECTABLE_CHARGE_STATUSES, chargeStatusLabel, pointStatusLabel } from '@/lib/labels';
+import {
+  CHARGE_PERIODS,
+  PAID_STATUSES,
+  normalizePeriod,
+  periodStart,
+} from '@/components/studio/shared';
 import type { ChargeStatus, Prisma } from '@/generated/prisma/client';
 
 /**
@@ -27,21 +32,24 @@ function csvCell(v: string | null | undefined): string {
 }
 
 export async function GET(req: Request) {
-  const { merchantId } = await requireMerchant();
+  // 미인증 요청이 500 으로 떨어지지 않도록 401 로 정리한다(관리자 라우트와 같은 규약).
+  const session = await requireMerchant().catch(() => null);
+  if (!session) return new Response('가맹점 로그인이 필요합니다.', { status: 401 });
+  const { merchantId } = session;
   const url = new URL(req.url);
 
-  const period = url.searchParams.get('period') || '30d';
+  const period = normalizePeriod(url.searchParams.get('period') || '30d', CHARGE_PERIODS, '30d');
   const status = url.searchParams.get('status') || '';
   const point = url.searchParams.get('point') || '';
   const q = (url.searchParams.get('q') || '').trim();
 
   const where: Prisma.ChargeWhereInput = { merchantId };
-  const now = Date.now();
-  if (period === 'today') where.receivedAt = { gte: new Date(new Date().setHours(0, 0, 0, 0)) };
-  else if (period === '7d') where.receivedAt = { gte: new Date(now - 7 * 86_400_000) };
-  else if (period === '30d') where.receivedAt = { gte: new Date(now - 30 * 86_400_000) };
+  // 화면 목록과 같은 함수를 쓴다(예전에는 서버 로컬 자정 기준이라 KST 새벽 결제가 빠졌다).
+  const gte = periodStart(period);
+  if (gte) where.receivedAt = { gte };
 
-  if (status && status in chargeStatusLabel) where.status = status as ChargeStatus;
+  // 화면 드롭다운과 같은 목록만 허용한다(코드가 기록하지 않는 상태를 URL 로 넣지 못하게).
+  if (status && (SELECTABLE_CHARGE_STATUSES as string[]).includes(status)) where.status = status as ChargeStatus;
   if (q) where.transactionNo = { contains: q, mode: 'insensitive' };
   if (point === 'pending') where.pointStatus = 'PENDING';
   if (point === 'given') where.pointStatus = 'SENT';

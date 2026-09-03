@@ -1,4 +1,5 @@
 import { getSessionUser } from '@/server/auth';
+import { isSameOrigin } from '@/server/request-guard';
 import { prisma } from '@/server/db';
 
 export const runtime = 'nodejs';
@@ -29,6 +30,11 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
+  // 읽음 처리는 상태를 바꾼다. 교차 출처 요청으로 알림 배지가 지워지지 않게 막는다.
+  if (!isSameOrigin(request)) {
+    return Response.json({ ok: false, message: '허용되지 않은 요청입니다.' }, { status: 403 });
+  }
+
   const user = await getSessionUser();
   if (!user) return Response.json({ message: '로그인이 필요합니다.' }, { status: 401 });
 

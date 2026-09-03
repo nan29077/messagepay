@@ -173,6 +173,7 @@ export function SelectActionForm({
  * MO 시뮬레이터처럼 실행 결과 자체가 화면 산출물인 경우에 사용한다.
  */
 export function ActionFormWithDetail({
+  disabled,
   action,
   children,
   submitLabel,
@@ -184,6 +185,8 @@ export function ActionFormWithDetail({
   submitLabel: string;
   detailLabels: Record<string, string>;
   confirm?: string;
+  /** 권한이 없어 어차피 거절될 동작은 눌리지 않게 한다. */
+  disabled?: boolean;
 }) {
   const [state, formAction, pending] = React.useActionState(action, initialAdminState);
 
@@ -200,7 +203,7 @@ export function ActionFormWithDetail({
       className="space-y-3"
     >
       {children}
-      <Button type="submit" size="md" disabled={pending}>
+      <Button type="submit" size="md" disabled={pending || disabled}>
         {pending ? '실행 중' : submitLabel}
       </Button>
       {state.message ? <Notice tone={state.ok ? 'success' : 'danger'}>{state.message}</Notice> : null}

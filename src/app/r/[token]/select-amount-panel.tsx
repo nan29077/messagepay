@@ -64,6 +64,9 @@ export function SelectAmountPanel({
   allowCustom,
   minAmount,
   maxAmount,
+  customMin,
+  customMax,
+  customStep,
   message,
   paymentMock,
   shippingGuide,
@@ -76,6 +79,10 @@ export function SelectAmountPanel({
   allowCustom: boolean;
   minAmount: string;
   maxAmount: string;
+  /** 직접 입력 전용 범위·단위. 서버가 같은 값으로 다시 검사한다. */
+  customMin: string;
+  customMax: string;
+  customStep: number | null;
   message: string;
   paymentMock: boolean;
   shippingGuide: string | null;
@@ -84,6 +91,9 @@ export function SelectAmountPanel({
 }) {
   const min = BigInt(minAmount);
   const max = BigInt(maxAmount);
+  // 직접 입력은 가맹점이 좁혀 둔 범위·단위를 따른다(서버도 같은 값으로 다시 검사한다).
+  const cMin = BigInt(customMin);
+  const cMax = BigInt(customMax);
 
   const [state, formAction, pending] = React.useActionState(confirmChargeAmountAction, initial);
 
@@ -180,7 +190,12 @@ export function SelectAmountPanel({
       addr.address1.trim().length >= 5);
 
   const amountValid =
-    preview.total !== null && preview.total >= min && preview.total <= max;
+    preview.total !== null &&
+    (mode === 'custom'
+      ? preview.total >= cMin &&
+        preview.total <= cMax &&
+        (customStep === null || preview.total % BigInt(customStep) === 0n)
+      : preview.total >= min && preview.total <= max);
   // 프리셋도 직접입력도 쓸 수 없는 상태(전 상품 품절·한도 초과 + 직접입력 불가)
   const nothingSelectable = !allowCustom && !products.some((p) => p.payable && !p.soldOut);
   const valid =
@@ -329,7 +344,7 @@ export function SelectAmountPanel({
                 inputMode="numeric"
                 value={custom}
                 onChange={(e) => setCustom(e.target.value.replace(/[^\d]/g, ''))}
-                placeholder={`${min.toString()} ~ ${max.toString()}`}
+                placeholder={`${cMin.toString()} ~ ${cMax.toString()}`}
                 aria-label="직접 입력 결제 금액"
                 className="h-12 w-44 rounded-xl border border-ink-200 px-3.5 text-right text-[15px] font-bold tabular-nums outline-none focus:border-brand-400"
               />
@@ -337,7 +352,9 @@ export function SelectAmountPanel({
             </div>
             {!amountValid && custom ? (
               <p className="mt-1.5 text-[12px] font-semibold text-danger-500">
-                {formatWon(min)} ~ {formatWon(max)} 사이로 입력해 주세요.
+                {formatWon(cMin)} ~ {formatWon(cMax)} 사이
+                {customStep !== null ? `, ${customStep.toLocaleString('ko-KR')}원 단위` : ''}
+                로 입력해 주세요.
               </p>
             ) : null}
           </div>

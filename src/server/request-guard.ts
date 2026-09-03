@@ -40,3 +40,42 @@ export function isSameOrigin(req: Request): boolean {
   if (referer) return hosts.has(referer);
   return false;
 }
+
+/**
+ * 본문을 상한까지만 읽는다.
+ *
+ * `Content-Length` 만 보고 판단하면 chunked 전송(길이 헤더 없음)을 막지 못한다.
+ * `req.text()` 로 먼저 다 읽은 뒤 크기를 재는 것도 마찬가지다 — 검사 시점에는 이미
+ * 전부 메모리에 올라가 있다. 인증 이전 단계인 웹훅에서는 그 자체가 공격 표면이 된다.
+ *
+ * 스트림을 읽으면서 누적 바이트가 상한을 넘는 순간 중단한다.
+ */
+export async function readTextWithLimit(
+  req: Request,
+  maxBytes: number,
+): Promise<{ ok: true; text: string } | { ok: false }> {
+  const declared = Number(req.headers.get('content-length') ?? 0);
+  if (Number.isFinite(declared) && declared > maxBytes) return { ok: false };
+
+  const body = req.body;
+  if (!body) {
+    const text = await req.text();
+    return Buffer.byteLength(text, 'utf8') > maxBytes ? { ok: false } : { ok: true, text };
+  }
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      return { ok: false };
+    }
+    chunks.push(value);
+  }
+  return { ok: true, text: Buffer.concat(chunks).toString('utf8') };
+}

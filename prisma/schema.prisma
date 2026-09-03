@@ -726,7 +726,10 @@ model ChargeShipment {
   addressEnc     String  @map("address_enc")
   /// 시/군/구까지만 남긴 표기. 목록 화면에는 이 값만 쓴다.
   addressMasked  String  @map("address_masked")
+  /// 이용자가 결제 화면에서 남긴 배송 요청. 가맹점은 읽기만 한다(덮어쓰면 오배송 근거가 사라진다).
   memo           String?
+  /// 가맹점 내부 메모. 이용자에게 보이지 않는다.
+  merchantMemo   String? @map("merchant_memo")
   /// 도서산간 추가배송비가 붙은 주문인지
   remote         Boolean @default(false)
 

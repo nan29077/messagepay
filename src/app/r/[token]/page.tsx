@@ -23,6 +23,7 @@ import { defaultPayerName } from '@/lib/payer-name';
 import { ConfirmPanel } from './confirm-panel';
 import { SelectAmountPanel } from './select-amount-panel';
 import { loadSelectAmountContext } from '@/server/services/charge-select';
+import { currentTermsList } from '@/server/services/terms';
 import { getPaymentAdapter } from '@/server/adapters/payment';
 
 /**
@@ -179,11 +180,8 @@ async function RegisterScreen({ token }: { token: string }) {
       orderBy: { effectiveFrom: 'desc' },
     }),
     resolvePolicy(ctx.merchantId, ctx.payerId, nowForPolicy),
-    prisma.termsVersion.findMany({
-      // TermsVersion 은 종료일이 없다(신 버전 등록 시 구 버전 active=false 처리).
-      where: { active: true, effectiveFrom: { lte: nowForPolicy } },
-      orderBy: [{ required: 'desc' }, { effectiveFrom: 'desc' }],
-    }),
+    // 유형별 현재 시행본만 가져온다(시행 예정 개정안은 제외).
+    currentTermsList(nowForPolicy),
   ]);
 
   // 등록 시점에는 충전 금액이 정해지지 않았다(문자를 보낸 뒤 링크에서 고른다).
@@ -206,12 +204,9 @@ async function RegisterScreen({ token }: { token: string }) {
   const pgFixed = feePolicy?.pgFixedFee ?? 0n;
   const pct = (rate: string) => `${(Number(rate) * 100).toFixed(1)}%`;
 
-  // 동일 유형의 약관이 여러 버전 활성화된 경우 최신(effectiveFrom 최신) 1건만 노출한다.
-  const seenTypes = new Set<string>();
+  // currentTermsList 가 유형별 1건만 돌려준다. 필수 항목을 위로 올려 보여 준다.
   const terms: TermsItem[] = [];
-  for (const t of termsRows) {
-    if (seenTypes.has(t.type)) continue;
-    seenTypes.add(t.type);
+  for (const t of [...termsRows].sort((a, b) => Number(b.required) - Number(a.required))) {
     terms.push({
       id: t.id,
       type: t.type,
@@ -386,6 +381,9 @@ async function SelectAmountScreen({ token }: { token: string }) {
         allowCustom={ctx.allowCustomAmount}
         minAmount={ctx.minAmount.toString()}
         maxAmount={ctx.maxAmount.toString()}
+        customMin={ctx.customMin.toString()}
+        customMax={ctx.customMax.toString()}
+        customStep={ctx.customStep}
         message={ctx.message}
         paymentMock={paymentMock}
         shippingGuide={ctx.shipping.guide}

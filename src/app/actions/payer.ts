@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
+import { currentTermsDoc } from '@/server/services/terms';
 import { getSessionUser, destroySession } from '@/server/auth';
 import { revokePaymentMethod } from '@/server/services/payer-registration';
 import { requestRefund } from '@/server/services/refund';
@@ -184,8 +185,8 @@ export async function toggleMerchantBlock(
   return {
     ok: true,
     message: shouldBlock
-      ? `${link.merchant.displayName} 님에 대한 결제가 차단되었습니다.`
-      : `${link.merchant.displayName} 님에 대한 차단이 해제되었습니다.`,
+      ? `${link.merchant.displayName} 가맹점의 결제를 차단했습니다.`
+      : `${link.merchant.displayName} 가맹점의 결제 차단을 해제했습니다.`,
   };
 }
 
@@ -239,11 +240,7 @@ export async function setMarketingConsent(
 
   const agree = String(formData.get('agree') ?? '') === 'on';
 
-  const terms = await prisma.termsVersion.findFirst({
-    where: { type: 'MARKETING', effectiveFrom: { lte: new Date() } },
-    orderBy: { effectiveFrom: 'desc' },
-    select: { id: true },
-  });
+  const terms = await currentTermsDoc('MARKETING');
   if (!terms) return { ok: false, message: '마케팅 동의 약관을 찾을 수 없습니다. 고객센터로 문의해 주세요.' };
 
   const payer = await prisma.payerProfile.findUnique({
@@ -327,11 +324,32 @@ export async function withdrawAccount(_prev: PayerActionState, formData: FormDat
   }
 
   try {
+    // 탈퇴한 프로필이 "번호만 인증하면 누구나 이어받을 수 있는" 상태로 남지 않게 한다.
+    //
+    // 휴대전화 번호는 해지 후 재판매된다. phoneHash 를 그대로 두면 같은 번호를 새로 받은
+    // 다른 사람이 가입 후 번호 인증만으로 이전 이용자의 결제 내역·메시지 원문·차단 목록·
+    // 동의 이력을 전부 열람하게 된다(phone-link.ts 는 userId 가 null 이면 그대로 붙인다).
+    //
+    // 거래 이력(Charge)은 payerId 로 연결되어 그대로 보존되고, 마스킹된 번호도 남는다.
+    // 다만 이 프로필은 더 이상 어떤 번호와도 매칭되지 않는다.
+    const withdrawing = await prisma.payerProfile.findUnique({
+      where: { userId: user.id },
+      select: { id: true },
+    });
+
     await prisma.$transaction([
       // 이용자 프로필은 남기고 계정 연결만 끊는다 (거래 이력 보존)
       prisma.payerProfile.updateMany({
         where: { userId: user.id },
-        data: { userId: null, onboardingStatus: 'WITHDRAWN' },
+        data: {
+          userId: null,
+          onboardingStatus: 'WITHDRAWN',
+          // 다시 매칭되지 않도록 무효화한다(unique 컬럼이라 값 자체를 바꾼다).
+          ...(withdrawing ? { phoneHash: `withdrawn:${withdrawing.id}` } : {}),
+          // 표시 이름은 거래 기록(Charge.displayName 스냅샷)에 이미 남아 있어 프로필에는 둘 필요가 없다.
+          displayName: null,
+          snsPlatform: null,
+        },
       }),
       prisma.user.update({
         where: { id: user.id },

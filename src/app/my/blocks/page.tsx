@@ -11,7 +11,19 @@ export const dynamic = 'force-dynamic';
 
 export default async function MyBlocksPage() {
   const { payerId } = await requirePayerContext('/my/blocks');
-  if (!payerId) return <EmptyState title={NO_PAYER_TITLE} description={NO_PAYER_DESC} />;
+  if (!payerId) {
+    return (
+      <EmptyState
+        title={NO_PAYER_TITLE}
+        description={NO_PAYER_DESC}
+        action={
+          <LinkButton href="/my/account#phone-link" size="sm">
+            휴대폰 번호 연결하기
+          </LinkButton>
+        }
+      />
+    );
+  }
 
   // 이용자가 건 차단(payerBlockedAt)과 가맹점이 건 차단(blockedPayer)은 별개다.
   // 이 화면에서 해제할 수 있는 것은 이용자 본인이 건 차단뿐이다.

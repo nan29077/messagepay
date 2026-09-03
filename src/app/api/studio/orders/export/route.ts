@@ -3,7 +3,12 @@ import { prisma } from '@/server/db';
 import { decrypt } from '@/lib/crypto';
 import { formatKst } from '@/lib/datetime';
 import { DELIVERY_SHIPMENT_STATUSES, RETURN_SHIPMENT_STATUSES, shipmentStatusLabel } from '@/lib/labels';
-import { PAID_STATUSES } from '@/components/studio/shared';
+import {
+  ORDER_CHARGE_STATUSES,
+  ORDER_PERIODS,
+  normalizePeriod,
+  periodStart,
+} from '@/components/studio/shared';
 import type { Prisma } from '@/generated/prisma/client';
 import type { ShipmentStatus } from '@/generated/prisma/enums';
 
@@ -29,28 +34,26 @@ function csvCell(v: string | null | undefined): string {
 }
 
 export async function GET(req: Request) {
-  const { merchantId, id: userId } = await requireMerchant();
+  const session = await requireMerchant().catch(() => null);
+  if (!session) return new Response('가맹점 로그인이 필요합니다.', { status: 401 });
+  const { merchantId, id: userId } = session;
   const url = new URL(req.url);
 
   const tab = url.searchParams.get('tab') === 'return' ? 'return' : 'delivery';
-  const period = url.searchParams.get('period') || '30d';
+  const period = normalizePeriod(url.searchParams.get('period') || '30d', ORDER_PERIODS, '30d');
   const statusParam = url.searchParams.get('status') || '';
   const q = (url.searchParams.get('q') || '').trim();
 
   const scope = tab === 'return' ? RETURN_SHIPMENT_STATUSES : DELIVERY_SHIPMENT_STATUSES;
   const status = scope.includes(statusParam as ShipmentStatus) ? (statusParam as ShipmentStatus) : undefined;
 
-  const now = Date.now();
-  const gte =
-    period === '7d' ? new Date(now - 7 * 86_400_000)
-    : period === '30d' ? new Date(now - 30 * 86_400_000)
-    : period === '90d' ? new Date(now - 90 * 86_400_000)
-    : null;
+  const gte = periodStart(period);
 
   const where: Prisma.ChargeShipmentWhereInput = {
     merchantId,
     status: status ? status : { in: scope },
-    charge: { status: { in: PAID_STATUSES }, ...(gte ? { paidAt: { gte } } : {}) },
+    // 화면 목록과 같은 모집단을 쓴다(환불 요청·완료 건 포함).
+    charge: { status: { in: ORDER_CHARGE_STATUSES }, ...(gte ? { paidAt: { gte } } : {}) },
   };
   if (q) {
     where.OR = [
@@ -83,7 +86,8 @@ export async function GET(req: Request) {
     adminUserId: userId,
     action: 'SHIPMENT_EXPORT',
     targetType: 'charge_shipment',
-    after: { merchantId, tab, period, status: statusParam, q, count: rows.length, by: 'merchant' },
+    // 열람자 계정을 함께 남긴다(가맹점 단위로만 남기면 담당자가 여럿일 때 추적이 안 된다).
+    after: { merchantId, userId, tab, period, status: statusParam, q, count: rows.length, by: 'merchant' },
   });
 
   const header = [
@@ -101,7 +105,8 @@ export async function GET(req: Request) {
     '연락처',
     '우편번호',
     '주소',
-    '배송메모',
+    '이용자배송요청',
+    '가맹점내부메모',
     '도서산간',
     '택배사',
     '송장번호',
@@ -130,6 +135,7 @@ export async function GET(req: Request) {
         csvCell(s.zipCode),
         csvCell(decrypt(s.addressEnc)),
         csvCell(s.memo ?? ''),
+        csvCell(s.merchantMemo ?? ''),
         csvCell(s.remote ? 'Y' : 'N'),
         csvCell(s.carrier ?? ''),
         csvCell(s.trackingNo ?? ''),

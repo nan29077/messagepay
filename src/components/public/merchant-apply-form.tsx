@@ -209,7 +209,7 @@ function ApplyDone({ code, displayName }: { code: string; displayName?: string }
           <li>
             <span className="font-bold text-ink-900">3. 결제 연동 설정</span>
             <br />
-            승인 후 가맹점 콘솔에서 결제 수신번호, 결제 설정, 정산 계좌를 설정합니다.
+            승인 후 가맹점 콘솔에서 결제 수신번호, 판매 설정, 정산 계좌를 설정합니다.
           </li>
         </ol>
       </Card>

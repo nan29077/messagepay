@@ -1,4 +1,5 @@
 import { requireAdmin, writeAudit } from '@/server/auth';
+import { isSameOrigin } from '@/server/request-guard';
 import { buildPayoutRows, markPayoutFileIssued } from '@/server/services/settlement';
 
 export const runtime = 'nodejs';
@@ -27,7 +28,17 @@ function csvCell(v: string): string {
  */
 const ALLOWED_PERMISSIONS = new Set(['SUPER_ADMIN', 'FINANCE']);
 
+/** 한 번에 요청할 수 있는 최대 회차 수 */
+const MAX_IDS = 200;
+
 export async function GET(req: Request) {
+  // 이 GET 은 파일만 내려주지 않고 발급 이력(payoutIssuedAt · payoutBatchNo)을 기록한다.
+  // 동일 출처 검사가 없으면 로그인한 재무 관리자가 악성 페이지를 여는 것만으로
+  // (<img src=...>) 발급 이력이 찍히고 배치번호가 소진된다. 이중이체 추적 근거가 오염된다.
+  if (!isSameOrigin(req)) {
+    return new Response('허용되지 않은 요청입니다.', { status: 403 });
+  }
+
   // 미인증 요청이 500 으로 떨어지지 않도록 여기서 401 로 정리한다.
   const admin = await requireAdmin().catch(() => null);
   if (!admin) return new Response('관리자 로그인이 필요합니다.', { status: 401 });
@@ -43,6 +54,9 @@ export async function GET(req: Request) {
 
   if (ids.length === 0) {
     return new Response('선택된 정산 요청이 없습니다.', { status: 400 });
+  }
+  if (ids.length > MAX_IDS) {
+    return new Response(`한 번에 최대 ${MAX_IDS}건까지 내려받을 수 있습니다.`, { status: 400 });
   }
 
   const rows = await buildPayoutRows(ids);

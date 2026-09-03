@@ -3,6 +3,7 @@
 import { cookies } from 'next/headers';
 import { prisma } from '@/server/db';
 import { kv } from '@/server/redis';
+import { consumeIpRateLimit } from '@/server/rate-limit';
 import { newId } from '@/lib/id';
 import { decrypt, encrypt, generateNumericCode, hmac, maskPhone, normalizePhone, phoneHash, safeEqual } from '@/lib/crypto';
 import { getMtAdapter } from '@/server/adapters/mt';
@@ -95,6 +96,13 @@ export async function requestWebDonateCode(_prev: WebDonateState, formData: Form
   const phone = normalizePhone(String(formData.get('phone') ?? ''));
   if (!/^01[0-9]{8,9}$/.test(phone)) {
     return { ok: false, step: 'phone', message: '휴대전화 번호 형식을 확인해 주세요. (예: 010-1234-5678)' };
+  }
+
+  // 번호 버킷만으로는 번호를 바꿔 가며 무제한 발송할 수 있다(문자 비용 소진 + 우리 발신번호를 쓴 스팸).
+  // 로그인 없이 문자를 보내는 입구이므로 IP 버킷도 함께 센다.
+  const byIp = await consumeIpRateLimit('webcharge-otp', 20, SEND_WINDOW_SEC);
+  if (!byIp.ok) {
+    return { ok: false, step: 'phone', message: '요청이 너무 잦습니다. 10분 후 다시 시도해 주세요.' };
   }
 
   const ph = phoneHash(phone);

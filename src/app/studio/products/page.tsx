@@ -13,6 +13,7 @@ import {
   restoreChargeProductAction,
   toggleChargeProductActiveAction,
 } from '@/app/actions/studio';
+import { PAID_STATUSES } from '@/components/studio/shared';
 import { requireMerchant } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { resolvePolicy } from '@/server/services/limits';
@@ -48,7 +49,7 @@ export default async function StudioProductsPage({
   const sp = await searchParams;
   const tab: Tab = TABS.some((t) => t.key === sp.tab) ? (sp.tab as Tab) : 'physical';
 
-  const [merchant, products, archived, policy, shippingRow, soldByProduct] = await Promise.all([
+  const [merchant, products, archived, archivedTotal, policy, shippingRow, soldByProduct] = await Promise.all([
     prisma.merchantProfile.findUnique({
       where: { id: merchantId },
       select: { id: true, displayName: true, allowCustomAmount: true, minAmount: true, maxAmount: true },
@@ -62,11 +63,14 @@ export default async function StudioProductsPage({
       orderBy: { archivedAt: 'desc' },
       take: 50,
     }),
+    // 배지에 잘린 목록 길이를 쓰면 보관 상품이 50개를 넘을 때 숫자가 50 에서 멈춘다.
+    prisma.chargeProduct.count({ where: { merchantId, archivedAt: { not: null } } }),
     resolvePolicy(merchantId, null),
     prisma.merchantShippingPolicy.findUnique({ where: { merchantId } }),
     prisma.charge.groupBy({
       by: ['productId'],
-      where: { merchantId, productId: { not: null } },
+      // 상태를 걸지 않으면 PIN 실패·한도 차단·환불 건까지 "판매" 로 세어 부풀려진다.
+      where: { merchantId, productId: { not: null }, status: { in: PAID_STATUSES } },
       _count: { _all: true },
     }),
   ]);
@@ -136,7 +140,7 @@ export default async function StudioProductsPage({
           >
             {t.label}
             <span className="ml-1 tabular-nums opacity-60">
-              {t.key === 'physical' ? physical.length : t.key === 'digital' ? digital.length : archived.length}
+              {t.key === 'physical' ? physical.length : t.key === 'digital' ? digital.length : archivedTotal}
             </span>
           </Link>
         ))}
@@ -200,7 +204,9 @@ export default async function StudioProductsPage({
               p.kind === 'PHYSICAL'
                 ? quoteShipping(p, 1, shipping)
                 : { total: p.amount, fee: 0n, freeReason: null };
-            const overLimit = p.kind === 'PHYSICAL' && quote.total > effMax;
+            // 비실물은 한도를 넘으면 결제 화면 목록에서 아예 빠진다(charge-select).
+            // 목록에서 경고하지 않으면 "노출 중" 으로 보이는데 결제 화면에 없는 이유를 찾을 수 없다.
+            const overLimit = quote.total > effMax;
             return (
               <li key={p.id}>
                 <Card>

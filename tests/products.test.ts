@@ -512,6 +512,9 @@ describe('환불과 재고', () => {
     expect((await prisma.chargeProduct.findUniqueOrThrow({ where: { id: product.id } })).stock).toBe(9);
     const shipment = await prisma.chargeShipment.findUniqueOrThrow({ where: { chargeId: charge.id } });
     expect(shipment.status).toBe('SHIPPED');
-    expect(shipment.memo).toMatch(/회수/);
+    // 회수 안내는 가맹점 내부 메모에 남긴다.
+    // 이용자가 결제 화면에서 남긴 배송 요청(memo)을 덮어쓰면 오배송 분쟁 근거가 사라진다.
+    expect(shipment.merchantMemo).toMatch(/회수/);
+    expect(shipment.memo).toBe('부재 시 경비실');
   });
 });

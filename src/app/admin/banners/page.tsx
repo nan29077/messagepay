@@ -3,19 +3,34 @@ import { Badge, Card, CardTitle, EmptyState, Notice, SectionTitle, StatTile } fr
 import { AdminField, AdminInput, AdminSelect } from '@/components/admin/controls';
 import { ActionButton, ActionForm } from '@/components/admin/action-form';
 import { saveBanner, deleteBanner } from '@/app/actions/admin/content';
+import { canWrite } from '@/components/admin/constants';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { formatNumber } from '@/lib/money';
 import { formatKst, kstDateKey } from '@/lib/datetime';
 
 export const dynamic = 'force-dynamic';
 
-const POSITIONS = ['HOME_TOP', 'HOME_MIDDLE', 'SUPPORT_TOP', 'CONSOLE_TOP'];
+/** 배너 노출 위치. 값은 DB 에 그대로 저장되고, 라벨은 화면 표기용이다. */
+const POSITIONS: Array<{ value: string; label: string }> = [
+  { value: 'HOME_TOP', label: '홈 상단 (메인 히어로 아래)' },
+  { value: 'HOME_MIDDLE', label: '홈 중간 (도입 안내 위)' },
+  { value: 'SUPPORT_TOP', label: '고객센터·도입 문의 상단' },
+  { value: 'CONSOLE_TOP', label: '관리자·가맹점 콘솔 상단' },
+];
+const positionLabel = Object.fromEntries(POSITIONS.map((p) => [p.value, p.label])) as Record<string, string>;
 
 function dateValue(d: Date | null): string {
   return d ? kstDateKey(d) : '';
 }
 
 export default async function AdminBannersPage() {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  const me = await requireAdmin();
+  // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
+  const canEdit = canWrite(me.adminPermission);
+
   const banners = await prisma.banner.findMany({
     orderBy: [{ position: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'desc' }],
     take: 100,
@@ -46,12 +61,12 @@ export default async function AdminBannersPage() {
         <Card>
           <CardTitle>새 배너 등록</CardTitle>
           <div className="mt-3">
-            <ActionForm action={saveBanner} submitLabel="배너 등록">
+            <ActionForm disabled={!canEdit} action={saveBanner} submitLabel="배너 등록">
               <AdminField label="노출 위치">
-                <AdminSelect name="position" defaultValue={POSITIONS[0]}>
+                <AdminSelect name="position" defaultValue={POSITIONS[0].value}>
                   {POSITIONS.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
+                    <option key={p.value} value={p.value}>
+                      {p.label}
                     </option>
                   ))}
                 </AdminSelect>
@@ -97,13 +112,13 @@ export default async function AdminBannersPage() {
                 <Card key={b.id}>
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge tone="brand">{b.position}</Badge>
+                      <Badge tone="brand">{positionLabel[b.position] ?? b.position}</Badge>
                       <CardTitle>{b.title}</CardTitle>
                       <Badge tone={b.active ? 'success' : 'neutral'}>{b.active ? '활성' : '비활성'}</Badge>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-ink-400">등록 {formatKst(b.createdAt, false)}</span>
-                      <ActionButton
+                      <ActionButton disabled={!canEdit}
                         action={deleteBanner}
                         values={{ id: b.id }}
                         label="삭제"
@@ -113,14 +128,19 @@ export default async function AdminBannersPage() {
                     </div>
                   </div>
 
-                  <ActionForm action={saveBanner} submitLabel="저장" variant="secondary">
+                  <ActionForm disabled={!canEdit} action={saveBanner} submitLabel="저장" variant="secondary">
                     <input type="hidden" name="id" value={b.id} />
                     <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
                       <AdminField label="노출 위치">
                         <AdminSelect name="position" defaultValue={b.position}>
-                          {[...new Set([...POSITIONS, b.position])].map((p) => (
-                            <option key={p} value={p}>
-                              {p}
+                          {[
+                            ...POSITIONS,
+                            ...(POSITIONS.some((p) => p.value === b.position)
+                              ? []
+                              : [{ value: b.position, label: b.position }]),
+                          ].map((p) => (
+                            <option key={p.value} value={p.value}>
+                              {p.label}
                             </option>
                           ))}
                         </AdminSelect>

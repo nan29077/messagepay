@@ -26,7 +26,10 @@ export default async function StudioSettingsProfilePage() {
 
   return (
     <>
-      <PageHeader title="설정" description="채널 프로필과 계정 정보를 관리합니다. 결제 페이지 꾸미기는 결제 설정 > 결제페이지 탭에 있습니다." />
+      <PageHeader
+        title="프로필 설정"
+        description="가맹점 프로필과 계정 정보를 관리합니다. 결제 페이지 꾸미기는 판매 설정 > 결제 페이지 탭에 있습니다."
+      />
 
       <div className="space-y-5">
         <section>
@@ -45,7 +48,10 @@ export default async function StudioSettingsProfilePage() {
         </section>
 
         <section>
-          <SectionTitle title="프로필 수정" description="결제 페이지과 결제 알림에 표시되는 정보입니다. 가맹점 소개는 결제 설정 > 결제페이지 탭에서 수정합니다." />
+          <SectionTitle
+            title="프로필 수정"
+            description="결제 페이지와 결제 알림에 표시되는 정보입니다. 가맹점 소개는 판매 설정 > 결제 페이지 탭에서 수정합니다."
+          />
           <Card>
             <div className="mb-5 flex items-center gap-3 rounded-2xl border border-brand-100 bg-brand-50/60 p-4">
               <ProfileAvatar

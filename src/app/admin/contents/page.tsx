@@ -3,7 +3,9 @@ import { Badge, Card, CardTitle, EmptyState, Notice, SectionTitle, StatTile } fr
 import { AdminField, AdminInput, AdminSelect, AdminTextarea, FilterBar } from '@/components/admin/controls';
 import { ActionButton, ActionForm } from '@/components/admin/action-form';
 import { saveContentPost, deleteContentPost } from '@/app/actions/admin/content';
+import { canWrite } from '@/components/admin/constants';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import type { Prisma } from '@/generated/prisma/client';
@@ -15,6 +17,12 @@ export default async function AdminContentsPage({
 }: {
   searchParams: Promise<{ type?: string }>;
 }) {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  const me = await requireAdmin();
+  // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
+  const canEdit = canWrite(me.adminPermission);
+
   const sp = await searchParams;
   const type = sp.type === 'NOTICE' || sp.type === 'FAQ' ? sp.type : undefined;
 
@@ -61,7 +69,7 @@ export default async function AdminContentsPage({
         <Card>
           <CardTitle>새 게시글</CardTitle>
           <div className="mt-3">
-            <ActionForm action={saveContentPost} submitLabel="게시글 등록">
+            <ActionForm disabled={!canEdit} action={saveContentPost} submitLabel="게시글 등록">
               <AdminField label="유형">
                 <AdminSelect name="type" defaultValue="NOTICE">
                   <option value="NOTICE">공지</option>
@@ -111,7 +119,7 @@ export default async function AdminContentsPage({
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-ink-400">수정 {formatKst(p.updatedAt, false)}</span>
-                      <ActionButton
+                      <ActionButton disabled={!canEdit}
                         action={deleteContentPost}
                         values={{ id: p.id }}
                         label="삭제"
@@ -121,7 +129,7 @@ export default async function AdminContentsPage({
                     </div>
                   </div>
 
-                  <ActionForm action={saveContentPost} submitLabel="저장" variant="secondary">
+                  <ActionForm disabled={!canEdit} action={saveContentPost} submitLabel="저장" variant="secondary">
                     <input type="hidden" name="id" value={p.id} />
                     <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
                       <AdminField label="유형">

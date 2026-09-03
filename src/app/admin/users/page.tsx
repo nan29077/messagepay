@@ -3,10 +3,11 @@ import { PageHeader } from '@/components/layout/console-shell';
 import { Badge, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
 import { AdminField, AdminInput, AdminSelect, FilterBar, Pager } from '@/components/admin/controls';
 import { SelectActionForm } from '@/components/admin/action-form';
-import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
+import { PAGE_SIZE, parsePage, clampPage, canWrite } from '@/components/admin/constants';
 import { issueTemporaryPasswordAction, updateUserStatus } from '@/app/actions/admin/accounts';
 import { TempPasswordButton } from '@/components/admin/temp-password-button';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import type { Prisma } from '@/generated/prisma/client';
@@ -27,6 +28,12 @@ export default async function AdminUsersPage({
 }: {
   searchParams: Promise<{ q?: string; role?: string; status?: string; page?: string }>;
 }) {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  const me = await requireAdmin();
+  // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
+  const canEdit = canWrite(me.adminPermission);
+
   const sp = await searchParams;
   const now = new Date();
   const page = parsePage(sp.page);
@@ -79,6 +86,8 @@ export default async function AdminUsersPage({
   ]);
 
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // 범위를 벗어난 ?page= 는 마지막 페이지로 보낸다(빈 화면에서 돌아갈 링크가 없어진다).
+  clampPage({ basePath: '/admin/users', params: { q, role: role ?? '', status: status ?? '' }, page, lastPage, total });
   const count = (s: UserStatus) => byStatus.find((b) => b.status === s)?._count._all ?? 0;
 
   return (
@@ -191,7 +200,7 @@ export default async function AdminUsersPage({
                     <Td className="whitespace-nowrap">{formatKst(u.lastLoginAt, false)}</Td>
                     <Td className="whitespace-nowrap">{formatKst(u.createdAt, false)}</Td>
                     <Td>
-                      <SelectActionForm
+                      <SelectActionForm disabled={!canEdit}
                         action={updateUserStatus}
                         values={{ userId: u.id }}
                         name="status"
@@ -199,7 +208,8 @@ export default async function AdminUsersPage({
                         options={[
                           { value: 'ACTIVE', label: '활성' },
                           { value: 'SUSPENDED', label: '정지' },
-                          { value: 'WITHDRAWN', label: '탈퇴' },
+                          // 본인 탈퇴(결제수단 해지 + 개인정보 정리)와 다른 처리라 라벨을 구분한다.
+                          { value: 'WITHDRAWN', label: '해지(관리자 처리)' },
                         ]}
                         confirm={`${u.email ?? u.id} 회원의 상태를 변경합니다. 계속할까요?`}
                       />

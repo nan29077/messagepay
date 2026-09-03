@@ -31,7 +31,7 @@ const slides = [
     eyebrow: 'BUILT FOR YOUR SERVICE',
     title: '충전이 필요한 서비스에\n메시지페이를 연결하세요',
     description: '게임, 멤버십, 교육, 생활 서비스까지 반복 결제와 포인트 충전을 더 짧게 만듭니다.',
-    href: '/support?intent=onboarding',
+    href: '/business',
     cta: '서비스 도입 문의',
   },
 ];

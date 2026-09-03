@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { ConsoleShell, type NavGroup } from '@/components/layout/console-shell';
 import { requireAdmin, type SessionUser } from '@/server/auth';
+import { AdminPermissionBanner } from '@/components/admin/permission-banner';
 
 export const dynamic = 'force-dynamic';
 
@@ -104,6 +105,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         avatarIndex: admin.avatarIndex,
       }}
     >
+      <AdminPermissionBanner />
       {children}
     </ConsoleShell>
   );

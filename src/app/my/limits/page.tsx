@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import {Gauge, ChevronLeft } from 'lucide-react';
-import { Card, CardTitle, EmptyState, Notice, DataRow, SectionTitle, StatTile } from '@/components/ui';
+import { Card, CardTitle, EmptyState, Notice, DataRow, SectionTitle, StatTile, LinkButton } from '@/components/ui';
 import { LimitsForm } from '@/components/my/limits-form';
 import { requirePayerContext, NO_PAYER_TITLE, NO_PAYER_DESC } from '@/components/my/payer';
 import { prisma } from '@/server/db';
@@ -14,7 +14,19 @@ const ALL = 'ALL';
 
 export default async function MyLimitsPage() {
   const { payerId } = await requirePayerContext('/my/limits');
-  if (!payerId) return <EmptyState title={NO_PAYER_TITLE} description={NO_PAYER_DESC} />;
+  if (!payerId) {
+    return (
+      <EmptyState
+        title={NO_PAYER_TITLE}
+        description={NO_PAYER_DESC}
+        action={
+          <LinkButton href="/my/account#phone-link" size="sm">
+            휴대폰 번호 연결하기
+          </LinkButton>
+        }
+      />
+    );
+  }
 
   const [payer, policy] = await Promise.all([
     prisma.payerProfile.findUnique({
@@ -49,8 +61,11 @@ export default async function MyLimitsPage() {
     }),
   ]);
 
-  const effectiveDaily = payer?.dailyLimit ?? policy.payerDailyLimit;
-  const effectiveMonthly = payer?.monthlyLimit ?? policy.payerMonthlyLimit;
+  // checkLimits 와 같은 규칙으로 보여 준다(내 설정과 정책 한도 중 낮은 쪽).
+  const clamp = (mine: bigint | null | undefined, cap: bigint) =>
+    mine != null && mine < cap ? mine : cap;
+  const effectiveDaily = clamp(payer?.dailyLimit, policy.payerDailyLimit);
+  const effectiveMonthly = clamp(payer?.monthlyLimit, policy.payerMonthlyLimit);
 
   return (
     <div className="space-y-5">

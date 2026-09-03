@@ -7,10 +7,10 @@ import { runPayoutBatchAction, retryPayoutAction } from '@/app/actions/admin/set
 import { buildPayoutDashboard } from '@/server/services/auto-settlement';
 import { formatDateKeyKo } from '@/lib/business-day';
 import { env } from '@/lib/env';
-import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
+import { PAGE_SIZE, parsePage, clampPage, canManageMoney } from '@/components/admin/constants';
 import { SettlementRequestsPanel, type SettlementRow } from '@/components/admin/settlement-requests';
 import { prisma } from '@/server/db';
-import { getSettlementSummary } from '@/server/services/settlement';
+import { requireAdmin } from '@/server/auth';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst, kstMonthKey } from '@/lib/datetime';
 import { settlementStatusLabel, ledgerEntryLabel } from '@/lib/labels';
@@ -26,6 +26,12 @@ export default async function AdminSettlementsPage({
 }: {
   searchParams: Promise<{ status?: string; merchantId?: string; key?: string; page?: string; rpage?: string }>;
 }) {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  const me = await requireAdmin();
+  // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
+  const canEdit = canManageMoney(me.adminPermission);
+
   const sp = await searchParams;
   const page = parsePage(sp.page);
   // 요청 목록과 원장 목록은 페이지를 따로 넘긴다 (하나의 page 로 묶으면 요청 목록이 2페이지부터 같은 내용을 반복한다)
@@ -85,7 +91,13 @@ export default async function AdminSettlementsPage({
         merchant: { select: { id: true, displayName: true } },
       },
     }),
-    prisma.settlementRequest.groupBy({ by: ['status'], _count: { _all: true }, _sum: { amount: true } }),
+    // 목록과 같은 필터를 적용한다. where 를 빼면 가맹점으로 걸러도 타일만 전체 수치를 보여 준다.
+    prisma.settlementRequest.groupBy({
+      by: ['status'],
+      where: requestWhere,
+      _count: { _all: true },
+      _sum: { amount: true },
+    }),
     prisma.settlementLedger.findMany({
       distinct: ['settlementKey'],
       orderBy: { settlementKey: 'desc' },
@@ -97,13 +109,95 @@ export default async function AdminSettlementsPage({
   // 자동 지급 모니터링 (오늘 지급 예정 / 실행 결과 / 실패 / 보류)
   const payout = await buildPayoutDashboard();
 
-  const summaries = await Promise.all(
-    merchants.slice(0, 30).map(async (c) => ({ merchant: c, summary: await getSettlementSummary(c.id) })),
-  );
-  const visibleSummaries = summaries.filter((s) => s.summary.balance !== 0n || s.summary.pending !== 0n);
+  // 가맹점별 정산 요약.
+  //
+  // 예전에는 이름순 상위 30곳만 getSettlementSummary 로 각각 조회했다. 그래서
+  //  (1) 31번째 이후 가맹점은 잔액이 얼마든 이 표에 절대 나타나지 않았고
+  //  (2) 가맹점 수만큼 쿼리가 늘었다.
+  // 원장이 있는 가맹점 전체를 집계 두 번으로 가져와 잔액이 큰 순으로 보여 준다.
+  const [ledgerAgg, pendingAgg] = await Promise.all([
+    prisma.settlementLedger.groupBy({
+      by: ['merchantId', 'entryType'],
+      where: merchantId ? { merchantId } : {},
+      _sum: { amount: true },
+    }),
+    prisma.settlementRequest.groupBy({
+      by: ['merchantId'],
+      where: {
+        status: { in: ['REQUESTED', 'REVIEWING', 'APPROVED', 'PAYOUT_FAILED'] },
+        ...(merchantId ? { merchantId } : {}),
+      },
+      _sum: { amount: true },
+    }),
+  ]);
+
+  const entrySums = new Map<string, Map<string, bigint>>();
+  for (const r of ledgerAgg) {
+    const m = entrySums.get(r.merchantId) ?? new Map<string, bigint>();
+    m.set(r.entryType, (m.get(r.entryType) ?? 0n) + (r._sum.amount ?? 0n));
+    entrySums.set(r.merchantId, m);
+  }
+  const pendingByMerchant = new Map(pendingAgg.map((r) => [r.merchantId, r._sum.amount ?? 0n]));
+
+  const summaryIds = [...new Set([...entrySums.keys(), ...pendingByMerchant.keys()])];
+  const summaryMerchants =
+    summaryIds.length > 0
+      ? await prisma.merchantProfile.findMany({
+          where: { id: { in: summaryIds } },
+          select: { id: true, displayName: true, code: true },
+        })
+      : [];
+
+  // getSettlementSummary 와 같은 계산식이다(원장 부호 규칙 포함).
+  const allSummaries = summaryMerchants.map((c) => {
+    const g = entrySums.get(c.id) ?? new Map<string, bigint>();
+    const s = (t: string) => g.get(t) ?? 0n;
+    const balance = [...g.values()].reduce((a, b) => a + b, 0n);
+    const pending = pendingByMerchant.get(c.id) ?? 0n;
+    const available = balance - pending;
+    return {
+      merchant: c,
+      summary: {
+        totalGross: s('CHARGE_GROSS'),
+        totalPgFee: -s('PG_FEE'),
+        totalPlatformFee: -s('PLATFORM_FEE'),
+        totalRefund: -(s('REFUND') + s('REFUND_FEE_RETURN')),
+        totalAdjustment: s('ADJUSTMENT'),
+        totalPaid: -(s('PAYOUT') + s('PAYOUT_WITHHOLDING')),
+        balance,
+        pending,
+        available: available < 0n ? 0n : available,
+      },
+    };
+  });
+
+  const SUMMARY_LIMIT = 100;
+  const nonZeroSummaries = allSummaries
+    .filter((s) => s.summary.balance !== 0n || s.summary.pending !== 0n)
+    .sort((a, b) => (a.summary.available < b.summary.available ? 1 : a.summary.available > b.summary.available ? -1 : 0));
+  const summaryHidden = Math.max(0, nonZeroSummaries.length - SUMMARY_LIMIT);
+  const visibleSummaries = nonZeroSummaries.slice(0, SUMMARY_LIMIT);
 
   const lastPage = Math.max(1, Math.ceil(ledgerTotal / PAGE_SIZE));
   const requestLastPage = Math.max(1, Math.ceil(requestTotal / PAGE_SIZE));
+
+  // 이 화면은 목록이 둘(요청 회차 rpage / 원장 page)이라 각각 보정한다.
+  const pagerParams = { status: status ?? '', merchantId: merchantId ?? '', key: settlementKey };
+  clampPage({
+    basePath: '/admin/settlements',
+    params: { ...pagerParams, rpage: String(requestPage) },
+    page,
+    lastPage,
+    total: ledgerTotal,
+  });
+  clampPage({
+    basePath: '/admin/settlements',
+    params: { ...pagerParams, page: String(page) },
+    page: requestPage,
+    lastPage: requestLastPage,
+    total: requestTotal,
+    pageParam: 'rpage',
+  });
 
   // 클라이언트 패널로 넘길 직렬화 행 (BigInt·Date 를 문자열로)
   const requestRows: SettlementRow[] = requests.map((r) => ({
@@ -178,7 +272,7 @@ export default async function AdminSettlementsPage({
         </div>
 
         <div className="mt-3 flex flex-wrap items-start gap-3">
-          <ActionForm
+          <ActionForm disabled={!canEdit}
             action={runPayoutBatchAction}
             submitLabel="자동 지급 지금 실행"
             variant="secondary"
@@ -256,7 +350,7 @@ export default async function AdminSettlementsPage({
                     <Td className="text-right font-semibold tabular-nums">{formatWon(f.amount)}</Td>
                     <Td className="max-w-[280px] break-words text-danger-500">{f.reason ?? '-'}</Td>
                     <Td>
-                      <ActionForm
+                      <ActionForm disabled={!canEdit}
                         action={retryPayoutAction}
                         submitLabel="지급 재시도"
                         variant="secondary"
@@ -282,7 +376,9 @@ export default async function AdminSettlementsPage({
       <section className="mt-5">
         <SectionTitle
           title="가맹점별 정산 요약"
-          description="잔액 = 원장 합계 / 보류 = 지급 진행 중 금액 / 가능 = 다음 회차에 지급 가능한 금액"
+          description={`잔액 = 원장 합계 / 보류 = 지급 진행 중 금액 / 가능 = 다음 회차에 지급 가능한 금액${
+            summaryHidden > 0 ? ` · 가능 금액 상위 ${SUMMARY_LIMIT}곳만 표시 (${summaryHidden}곳 더 있음)` : ''
+          }`}
         />
         {visibleSummaries.length === 0 ? (
           <EmptyState title="정산 원장이 있는 가맹점이 없습니다" />
@@ -354,7 +450,7 @@ export default async function AdminSettlementsPage({
           </datalist>
         </FilterBar>
 
-        <SettlementRequestsPanel rows={requestRows} />
+        <SettlementRequestsPanel rows={requestRows} canEdit={canEdit} />
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {/* Link 는 화면에 보이면 prefetch 로 GET 을 미리 호출해 주민번호 복호화·감사로그가 클릭 없이 쌓인다. */}

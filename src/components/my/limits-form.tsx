@@ -36,8 +36,10 @@ export function LimitsForm({
       >
         <Input
           name="dailyLimit"
+          // type 을 주지 않으면 text 라 max 가 무시된다(주석과 달리 화면에서 막히지 않았다).
+          type="number"
           inputMode="numeric"
-          pattern="[0-9]*"
+          min={1}
           max={maxDaily}
           defaultValue={defaultDaily}
           placeholder={maxDaily}
@@ -51,8 +53,9 @@ export function LimitsForm({
       >
         <Input
           name="monthlyLimit"
+          type="number"
           inputMode="numeric"
-          pattern="[0-9]*"
+          min={1}
           max={maxMonthly}
           defaultValue={defaultMonthly}
           placeholder={maxMonthly}

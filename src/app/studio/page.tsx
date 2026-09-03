@@ -13,6 +13,7 @@ import { OnboardingChecklist } from '@/components/studio/onboarding-checklist';
 import { ChargeCardGrid } from '@/components/studio/charge-cards';
 import { requireMerchant } from '@/server/auth';
 import { prisma } from '@/server/db';
+import { getStudioPendingCounts } from '@/server/services/studio-pending';
 import { getSettlementSummary } from '@/server/services/settlement';
 import { formatNumber, formatWon } from '@/lib/money';
 import { kstMonthKey, kstStartOfDay } from '@/lib/datetime';
@@ -98,15 +99,13 @@ export default async function StudioDashboardPage() {
     }),
   ]);
 
-  const [ordersPending, pointsPending, activeProducts] = await Promise.all([
-    prisma.chargeShipment.count({
-      where: { merchantId, status: 'PREPARING', charge: { status: { in: PAID_STATUSES } } },
-    }),
-    prisma.charge.count({
-      where: { merchantId, status: { in: PAID_STATUSES }, pointStatus: 'PENDING', product: { kind: 'DIGITAL' } },
-    }),
+  // 사이드바 배지와 같은 집계다(요청 단위 캐시라 이 호출은 쿼리를 새로 돌리지 않는다).
+  const [pending, activeProducts] = await Promise.all([
+    getStudioPendingCounts(merchantId),
     prisma.chargeProduct.count({ where: { merchantId, active: true, archivedAt: null } }),
   ]);
+  const ordersPending = pending.orders;
+  const pointsPending = pending.points;
 
   const moAssigned = moNumber?.status === 'ASSIGNED';
 
@@ -195,7 +194,7 @@ export default async function StudioDashboardPage() {
         {/* 1) 핵심 수치 — 카드 8개 대신 한 판에 정리 */}
         <Card padded={false} className="overflow-hidden">
           <div className="grid grid-cols-2 divide-ink-100 lg:grid-cols-4 lg:divide-x">
-            <Metric label="오늘 결제 금액" value={formatWon(todayAmount._sum.amount ?? 0n)} accent />
+            <Metric label="오늘 접수 금액" value={formatWon(todayAmount._sum.amount ?? 0n)} accent />
             <Metric label="오늘 문자 수신" value={`${formatNumber(todayMessages)}건`} />
             <Metric
               label="결제 성공"

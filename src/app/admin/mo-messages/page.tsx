@@ -3,8 +3,9 @@ import { PageHeader } from '@/components/layout/console-shell';
 import { Badge, EmptyState, Notice, StatTile, Table, Td, Th } from '@/components/ui';
 import { AdminField, AdminInput, AdminSelect, MerchantOptions, FilterBar, Pager } from '@/components/admin/controls';
 import { shortId } from '@/components/admin/mask';
-import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
+import { PAGE_SIZE, parsePage, clampPage } from '@/components/admin/constants';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import { moResultLabel, chargeStatusLabel } from '@/lib/labels';
@@ -30,13 +31,21 @@ export default async function AdminMoMessagesPage({
     result?: string; merchantId?: string; from?: string; to?: string; number?: string; page?: string;
   }>;
 }) {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  await requireAdmin();
+
   const sp = await searchParams;
   const page = parsePage(sp.page);
   const result = RESULTS.includes(sp.result as MoProcessResult) ? (sp.result as MoProcessResult) : undefined;
   const merchantId = (sp.merchantId ?? '').trim() || undefined;
   const receivedNumber = (sp.number ?? '').trim();
-  const from = parseDate(sp.from);
-  const toRaw = parseDate(sp.to);
+  const fromRaw = parseDate(sp.from);
+  const toRawDate = parseDate(sp.to);
+  // 시작일이 종료일보다 뒤면 어떤 조건으로도 0건이다. 조회하지 말고 안내한다.
+  const invalidRange = Boolean(fromRaw && toRawDate && fromRaw > toRawDate);
+  const from = invalidRange ? undefined : fromRaw;
+  const toRaw = invalidRange ? undefined : toRawDate;
   const to = toRaw ? new Date(toRaw.getTime() + 86_400_000) : undefined;
 
   const where: Prisma.MoInboundMessageWhereInput = {
@@ -66,6 +75,14 @@ export default async function AdminMoMessagesPage({
   ]);
 
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // 범위를 벗어난 ?page= 는 마지막 페이지로 보낸다(빈 화면에서 돌아갈 링크가 없어진다).
+  clampPage({ basePath: '/admin/mo-messages', params: {
+      result: result ?? '',
+      merchantId: merchantId ?? '',
+      number: receivedNumber,
+      from: sp.from ?? '',
+      to: sp.to ?? '',
+    }, page, lastPage, total });
   const countOf = (r: MoProcessResult) => grouped.find((g) => g.result === r)?._count._all ?? 0;
 
   return (
@@ -74,6 +91,12 @@ export default async function AdminMoMessagesPage({
         title="수신 문자 관리"
         description="MO 사업자로부터 수신한 원문은 암호화 보관되며 관리자 화면에서도 복호화하지 않습니다. 필터링된 노출용 문구만 표시합니다."
       />
+
+      {invalidRange ? (
+        <Notice tone="warning" title="기간을 다시 확인해 주세요">
+          시작일이 종료일보다 뒤입니다. 기간 조건을 무시하고 전체 기간으로 조회했습니다.
+        </Notice>
+      ) : null}
 
       <div className="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         <StatTile label="정상 라우팅" value={formatNumber(countOf('ROUTED'))} tone="success" />

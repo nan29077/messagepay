@@ -5,6 +5,7 @@ import { logger, scrub } from '@/lib/logger';
 import { getMoAdapter } from '@/server/adapters/mo';
 import { handleMoInbound } from '@/server/services/charge-flow';
 import { clientIpFromRequest } from '@/server/rate-limit';
+import { readTextWithLimit } from '@/server/request-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,14 +25,12 @@ const MAX_BODY_BYTES = 64 * 1024;
 
 export async function POST(req: Request) {
   const started = Date.now();
-  const declared = Number(req.headers.get('content-length') ?? 0);
-  if (declared > MAX_BODY_BYTES) {
+  // 길이 헤더가 없는 chunked 요청도 상한을 넘는 순간 끊는다(전부 읽은 뒤 재면 이미 늦다).
+  const body = await readTextWithLimit(req, MAX_BODY_BYTES);
+  if (!body.ok) {
     return NextResponse.json({ ok: false, message: '요청 본문이 너무 큽니다.' }, { status: 413 });
   }
-  const raw = await req.text();
-  if (Buffer.byteLength(raw, 'utf8') > MAX_BODY_BYTES) {
-    return NextResponse.json({ ok: false, message: '요청 본문이 너무 큽니다.' }, { status: 413 });
-  }
+  const raw = body.text;
   const headerMap: Record<string, string> = {};
   req.headers.forEach((v, k) => {
     headerMap[k.toLowerCase()] = v;

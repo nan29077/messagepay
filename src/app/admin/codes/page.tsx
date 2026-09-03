@@ -3,9 +3,10 @@ import { PageHeader } from '@/components/layout/console-shell';
 import { Badge, EmptyState, Notice, StatTile, Table, Td, Th } from '@/components/ui';
 import { AdminField, AdminInput, AdminSelect, FilterBar, Pager } from '@/components/admin/controls';
 import { ActionButton } from '@/components/admin/action-form';
-import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
+import { PAGE_SIZE, parsePage, clampPage, canManageMoney } from '@/components/admin/constants';
 import { reissueMerchantCode } from '@/app/actions/admin/accounts';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import { merchantStatusLabel } from '@/lib/labels';
@@ -18,6 +19,12 @@ export default async function AdminCodesPage({
 }: {
   searchParams: Promise<{ q?: string; state?: string; page?: string }>;
 }) {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  const me = await requireAdmin();
+  // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
+  const canEdit = canManageMoney(me.adminPermission);
+
   const sp = await searchParams;
   const page = parsePage(sp.page);
   const q = (sp.q ?? '').trim();
@@ -53,6 +60,8 @@ export default async function AdminCodesPage({
   ]);
 
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // 범위를 벗어난 ?page= 는 마지막 페이지로 보낸다(빈 화면에서 돌아갈 링크가 없어진다).
+  clampPage({ basePath: '/admin/codes', params: { q, state }, page, lastPage, total });
 
   return (
     <>
@@ -126,7 +135,7 @@ export default async function AdminCodesPage({
                     <Td className="font-mono text-[12px]">{c.active ? `/c/${c.code}` : '-'}</Td>
                     <Td>
                       {c.active ? (
-                        <ActionButton
+                        <ActionButton disabled={!canEdit}
                           action={reissueMerchantCode}
                           values={{ merchantId: c.merchant.id }}
                           label="재발급"

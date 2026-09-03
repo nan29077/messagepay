@@ -2,9 +2,10 @@ import { PageHeader } from '@/components/layout/console-shell';
 import { Badge, Card, CardTitle, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
 import { AdminField, AdminInput, AdminSelect, FilterBar, Pager } from '@/components/admin/controls';
 import { ActionButton, ActionForm, SelectActionForm } from '@/components/admin/action-form';
-import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
+import { PAGE_SIZE, parsePage, clampPage, canManageMoney } from '@/components/admin/constants';
 import { updateReportStatus, createBannedWord, deleteBannedWord } from '@/app/actions/admin/policy';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import type { Prisma } from '@/generated/prisma/client';
@@ -32,6 +33,12 @@ export default async function AdminModerationPage({
 }: {
   searchParams: Promise<{ status?: string; page?: string }>;
 }) {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  const me = await requireAdmin();
+  // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
+  const canEdit = canManageMoney(me.adminPermission);
+
   const sp = await searchParams;
   const page = parsePage(sp.page);
   const status = REPORT_STATUSES.includes(sp.status as ReportStatus) ? (sp.status as ReportStatus) : undefined;
@@ -70,6 +77,8 @@ export default async function AdminModerationPage({
   const reporterById = new Map(reporters.map((u) => [u.id, u]));
 
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // 범위를 벗어난 ?page= 는 마지막 페이지로 보낸다(빈 화면에서 돌아갈 링크가 없어진다).
+  clampPage({ basePath: '/admin/moderation', params: { status: status ?? '' }, page, lastPage, total });
   const countOf = (s: ReportStatus) => byStatus.find((b) => b.status === s)?._count._all ?? 0;
 
   return (
@@ -83,12 +92,17 @@ export default async function AdminModerationPage({
         <StatTile label="접수" value={formatNumber(countOf('OPEN'))} tone={countOf('OPEN') > 0 ? 'warning' : 'neutral'} />
         <StatTile label="검토중" value={formatNumber(countOf('REVIEWING'))} tone="brand" />
         <StatTile label="처리완료" value={formatNumber(countOf('RESOLVED'))} tone="success" />
-        <StatTile label="전역 금칙어" value={formatNumber(words.length)} />
+        <StatTile
+          label="전역 금칙어"
+          value={formatNumber(words.filter((w) => w.active).length)}
+          sub={`등록 ${formatNumber(words.length)}건 중 활성`}
+        />
       </div>
 
       <Notice tone="neutral" title="금칙어 처리 방식">
         마스킹(MASK)은 단어만 가려 표시하고, 표시(FLAG)는 그대로 두되 검토 대상으로 기록합니다.
-        금칙어는 결제를 막지 않습니다. 문자 본문은 가맹점·최고관리자만 문자 관리에서 보므로 기록만 가립니다.
+        <b>차단(BLOCK)은 그 문자의 결제를 실제로 막습니다</b> — 신중히 사용하세요.
+        문자 본문은 가맹점·최고관리자만 문자 관리에서 보므로 마스킹·표시는 기록만 가립니다.
         가맹점이 직접 등록한 개별 금칙어는 각 콘솔에서 관리합니다.
       </Notice>
 
@@ -96,7 +110,7 @@ export default async function AdminModerationPage({
         <Card>
           <CardTitle>전역 금칙어 추가</CardTitle>
           <div className="mt-3">
-            <ActionForm action={createBannedWord} submitLabel="금칙어 등록">
+            <ActionForm disabled={!canEdit} action={createBannedWord} submitLabel="금칙어 등록">
               <AdminField label="단어">
                 <AdminInput name="word" required maxLength={40} />
               </AdminField>
@@ -104,6 +118,7 @@ export default async function AdminModerationPage({
                 <AdminSelect name="action" defaultValue="MASK">
                   <option value="MASK">마스킹 (MASK)</option>
                   <option value="FLAG">표시 (FLAG)</option>
+                  <option value="BLOCK">차단 (BLOCK · 결제를 막습니다)</option>
                 </AdminSelect>
               </AdminField>
             </ActionForm>
@@ -122,7 +137,7 @@ export default async function AdminModerationPage({
                       <Badge tone={actionLabel[w.action].tone}>{actionLabel[w.action].text}</Badge>
                       {!w.active ? <Badge tone="neutral">비활성</Badge> : null}
                     </div>
-                    <ActionButton
+                    <ActionButton disabled={!canEdit}
                       action={deleteBannedWord}
                       values={{ id: w.id }}
                       label="삭제"
@@ -195,7 +210,7 @@ export default async function AdminModerationPage({
                         <Badge tone={reportStatusLabel[r.status].tone}>{reportStatusLabel[r.status].text}</Badge>
                       </Td>
                       <Td>
-                        <SelectActionForm
+                        <SelectActionForm disabled={!canEdit}
                           action={updateReportStatus}
                           values={{ reportId: r.id }}
                           name="status"

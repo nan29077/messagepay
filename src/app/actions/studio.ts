@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { requireMerchant, writeAudit } from '@/server/auth';
+import { RETURN_SHIPMENT_STATUSES } from '@/lib/labels';
 import { newId } from '@/lib/id';
 import { accountTail4, decrypt, encrypt, isValidResident, maskName, maskResident, normalizeResident } from '@/lib/crypto';
 import { resolvePolicy } from '@/server/services/limits';
@@ -540,9 +541,6 @@ async function parseProductForm(
     .map((v) => safeImageUrl(v.slice(0, 500), '상품 추가 이미지 주소'))
     .filter((v): v is string => Boolean(v));
 
-  const sortOrderRaw = Number.parseInt(text(formData, 'sortOrder') || '0', 10);
-  const sortOrder = Number.isFinite(sortOrderRaw) ? Math.max(0, Math.min(999, sortOrderRaw)) : 0;
-
   // 상품정보 제공 고시. 라벨/값을 쌍으로 받아 저장한다(값이 빈 항목은 남기되 경고만 한다).
   const noticeCategory = noticeCategoryOf(text(formData, 'noticeCategory')).key;
   const noticeLabels = formData.getAll('noticeLabel').map((v) => String(v ?? '').trim());
@@ -565,8 +563,10 @@ async function parseProductForm(
       kind === 'PHYSICAL' && noticeItems.length > 0
         ? ({ category: noticeCategory, items: noticeItems } as unknown as Prisma.InputJsonValue)
         : Prisma.DbNull,
-    sortOrder,
-    active: !formData.has('active') || checked(formData, 'active'),
+    // 노출 순서(sortOrder)는 여기서 다루지 않는다.
+    // 폼에 입력칸이 없으므로 읽으면 항상 0 이 되어, 저장할 때마다 진열 순서가 초기화된다.
+    // 순서는 등록 시점과 목록의 위/아래 버튼(moveChargeProductAction)에서만 정한다.
+    active: formData.has('activePresent') ? checked(formData, 'active') : true,
   } satisfies Partial<Prisma.ChargeProductUncheckedCreateInput> as Prisma.ChargeProductUncheckedCreateInput;
 
   if (kind === 'DIGITAL') {
@@ -729,7 +729,8 @@ export async function createChargeProductAction(
     if (dup) return { ok: false, message: '같은 이름의 상품이 이미 있습니다.' };
 
     const created = await prisma.chargeProduct.create({
-      data: { ...parsed.data, sortOrder: parsed.data.sortOrder ?? count },
+      // 새 상품은 목록 맨 뒤에 붙인다(수정 저장은 순서를 건드리지 않는다).
+      data: { ...parsed.data, sortOrder: count },
     });
     revalidateProducts();
     return { ok: true, message: `${created.name} 상품을 추가했습니다.`, redirectTo: `/studio/products/${created.id}` };
@@ -1367,7 +1368,7 @@ export async function saveWithholdingResidentAction(
   _prev: StudioActionState,
   formData: FormData,
 ): Promise<StudioActionState> {
-  return withMerchant(async (merchantId) => {
+  return withMerchant(async (merchantId, userId) => {
     const account = await prisma.settlementAccount.findUnique({
       where: { merchantId },
       select: { id: true },
@@ -1396,9 +1397,19 @@ export async function saveWithholdingResidentAction(
     if (!norm) return { ok: false, message: '주민등록번호 13자리를 정확히 입력해 주세요.' };
     if (!isValidResident(norm)) return { ok: false, message: '주민등록번호가 올바르지 않습니다. 다시 확인해 주세요.' };
 
+    const masked = maskResident(norm);
     await prisma.settlementAccount.update({
       where: { merchantId },
-      data: { residentEnc: encrypt(norm), residentMasked: maskResident(norm) },
+      data: { residentEnc: encrypt(norm), residentMasked: masked },
+    });
+
+    // 개인정보 등록 기록. 원문·암호문은 남기지 않고 마스킹 값만 남긴다.
+    await writeAudit({
+      adminUserId: userId,
+      action: 'WITHHOLDING_RESIDENT_SAVE',
+      targetType: 'settlement_account',
+      targetId: account.id,
+      after: { merchantId, by: 'merchant', userId, residentMasked: masked },
     });
 
     revalidatePath('/studio/settlement');
@@ -1410,7 +1421,7 @@ export async function saveSettlementAccountAction(
   _prev: StudioActionState,
   formData: FormData,
 ): Promise<StudioActionState> {
-  return withMerchant(async (merchantId) => {
+  return withMerchant(async (merchantId, userId) => {
     const parsed = z
       .object({
         bankCode: z.string().min(2).max(4),
@@ -1441,10 +1452,41 @@ export async function saveSettlementAccountAction(
       verifiedAt: null,
     };
 
-    await prisma.settlementAccount.upsert({
+    const before = await prisma.settlementAccount.findUnique({
+      where: { merchantId },
+      select: { id: true, bankCode: true, bankName: true, accountTail4: true, holderMasked: true },
+    });
+
+    const saved = await prisma.settlementAccount.upsert({
       where: { merchantId },
       create: { id: newId(), merchantId, ...data },
       update: data,
+    });
+
+    // 돈이 나가는 계좌다. 언제·어느 IP 에서 무엇이 무엇으로 바뀌었는지 남긴다.
+    // 원문·암호문은 넣지 않고 은행 / 끝 4자리 / 마스킹 예금주만 기록한다.
+    await writeAudit({
+      adminUserId: userId,
+      action: 'SETTLEMENT_ACCOUNT_CHANGE',
+      targetType: 'settlement_account',
+      targetId: saved.id,
+      before: before
+        ? {
+            bankCode: before.bankCode,
+            bankName: before.bankName,
+            accountTail4: before.accountTail4,
+            holderMasked: before.holderMasked,
+          }
+        : null,
+      after: {
+        merchantId,
+        by: 'merchant',
+        userId,
+        bankCode: data.bankCode,
+        bankName: data.bankName,
+        accountTail4: data.accountTail4,
+        holderMasked: data.holderMasked,
+      },
     });
 
     revalidatePath('/studio/settlement/account');
@@ -1748,7 +1790,8 @@ export async function updateShipmentAction(
         trackingNo,
         returnTrackingNo,
         returnReason,
-        memo: text(formData, 'memo').slice(0, 100) || null,
+        // 이용자가 남긴 배송 요청(memo)은 건드리지 않는다. 가맹점 메모는 별도 컬럼이다.
+        merchantMemo: text(formData, 'merchantMemo').slice(0, 100) || null,
         ...shipmentTimestamps(status, current, now),
       },
     });
@@ -1856,6 +1899,12 @@ export async function bulkShipAction(
         failed.push(`${transactionNo} (이미 발송됨)`);
         continue;
       }
+      // 반품·교환이 진행 중인 주문을 발송 완료로 덮으면 반품 탭에서 사라진다.
+      // 붙여넣기에 섞여 들어온 거래번호를 조용히 처리하지 않는다.
+      if (RETURN_SHIPMENT_STATUSES.includes(charge.shipment.status)) {
+        failed.push(`${transactionNo} (반품·교환 진행 중)`);
+        continue;
+      }
 
       const cur = await prisma.chargeShipment.findUniqueOrThrow({
         where: { chargeId: charge.id },
@@ -1925,7 +1974,9 @@ export async function revealShipmentAddressAction(
       action: 'SHIPMENT_ADDRESS_VIEW',
       targetType: 'charge_shipment',
       targetId: row.id,
-      after: { transactionNo: row.charge.transactionNo, by: 'merchant', merchantId },
+      // writeAudit 은 관리자 프로필이 없는 주체를 adminId 에 남기지 못한다.
+      // 가맹점 담당자가 여럿이면 "어느 가맹점" 까지만 남아 추적이 불가능하므로 계정을 함께 남긴다.
+      after: { transactionNo: row.charge.transactionNo, by: 'merchant', merchantId, userId },
     });
 
     return {

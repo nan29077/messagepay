@@ -72,6 +72,13 @@ export async function approveRefund(refundId: string, adminUserId?: string) {
   if (refund.status !== 'REQUESTED') {
     throw new Error('요청 상태의 환불만 승인할 수 있습니다. 목록을 새로고침해 현재 상태를 확인해 주세요.');
   }
+
+  // 선점(APPROVED)보다 먼저 검사한다.
+  // 선점한 뒤에 여기서 실패하면 환불은 APPROVED, 결제는 REFUND_REQUESTED 로 남아
+  // 승인·거절 버튼이 모두 사라지고 신규 환불 요청도 막힌 채 고착된다.
+  const txn = refund.charge.transactions.find((t) => t.status === 'APPROVED');
+  if (!txn) throw new Error('승인된 결제 거래가 없습니다.');
+
   const claimed = await prisma.refund.updateMany({
     where: { id: refundId, status: 'REQUESTED' },
     data: { status: 'APPROVED' },
@@ -79,9 +86,6 @@ export async function approveRefund(refundId: string, adminUserId?: string) {
   if (claimed.count === 0) {
     throw new Error('이미 다른 처리가 진행 중인 환불입니다. 잠시 후 상태를 다시 확인해 주세요.');
   }
-
-  const txn = refund.charge.transactions.find((t) => t.status === 'APPROVED');
-  if (!txn) throw new Error('승인된 결제 거래가 없습니다.');
 
   const adapter = getPaymentAdapter();
   const res = await adapter.cancel({
@@ -93,7 +97,8 @@ export async function approveRefund(refundId: string, adminUserId?: string) {
 
   if (!res.ok) {
     // 선점(APPROVED)했다가 PG 취소에 실패한 건은 FAILED 로 확정한다.
-    // 관리자 화면에서 재시도(신규 환불 요청)로 이어갈 수 있도록 사유를 남긴다.
+    // 취소가 실제로는 성공했는데 응답만 실패했을 수 있으므로 자동으로 되돌리지 않는다.
+    // 관리자가 PG 내역을 확인한 뒤 reopenRefund 로 요청 상태로 되돌려 재시도하거나 거절한다.
     await prisma.refund.update({
       where: { id: refundId },
       data: { status: 'FAILED', resultCode: res.code ?? null, resultMessage: res.message ?? null },
@@ -137,7 +142,9 @@ export async function approveRefund(refundId: string, adminUserId?: string) {
       if (shipment) {
         await tx.chargeShipment.update({
           where: { chargeId: refund.chargeId },
-          data: shippedOut ? { memo: '환불 처리됨 — 발송분 회수 필요' } : { status: 'CANCELED' },
+          data: shippedOut
+            ? { merchantMemo: '환불 처리됨 — 발송분 회수 필요' }
+            : { status: 'CANCELED' },
         });
       }
     }
@@ -185,22 +192,70 @@ export async function rejectRefund(refundId: string, adminUserId?: string, memo?
   if (!refund) throw new Error('환불 요청을 찾을 수 없습니다.');
   // 동시 승인·거절 경합 방어: 요청(REQUESTED) 상태만 조건부 UPDATE 로 선점한다.
   // 무조건 REJECTED 로 덮으면 승인 흐름이 먼저 선점한 건(APPROVED·DONE)까지 되돌려 원장과 어긋난다.
-  const claimed = await prisma.refund.updateMany({
-    where: { id: refundId, status: 'REQUESTED' },
-    data: { status: 'REJECTED', approvedBy: adminUserId ?? null, resultMessage: memo ?? null, processedAt: new Date() },
-  });
-  if (claimed.count === 0) {
-    throw new Error('이미 처리된 환불입니다. 목록을 새로고침해 현재 상태를 확인해 주세요.');
-  }
-  // 환불 요청 직전 상태(BROADCASTED·SETTLED 등)로 되돌린다. 이력이 없는 예전 건은 정산대기로 둔다.
-  const transition = await prisma.chargeStatusLog.findFirst({
-    where: { chargeId: refund.chargeId, toStatus: 'REFUND_REQUESTED' },
-    orderBy: { createdAt: 'desc' },
-    select: { fromStatus: true },
-  });
-  await prisma.charge.update({
-    where: { id: refund.chargeId },
-    data: { status: transition?.fromStatus ?? 'SETTLEMENT_PENDING', statusReason: '환불 거절' },
+  // 환불 상태 변경과 결제 상태 복원은 한 트랜잭션이어야 한다.
+  // 나누면 커밋 사이에 죽었을 때 "환불은 거절인데 결제는 환불 요청 중" 인 고착 상태가 된다.
+  await prisma.$transaction(async (tx) => {
+    const claimed = await tx.refund.updateMany({
+      where: { id: refundId, status: 'REQUESTED' },
+      data: { status: 'REJECTED', approvedBy: adminUserId ?? null, resultMessage: memo ?? null, processedAt: new Date() },
+    });
+    if (claimed.count === 0) {
+      throw new Error('이미 처리된 환불입니다. 목록을 새로고침해 현재 상태를 확인해 주세요.');
+    }
+    // 환불 요청 직전 상태(BROADCASTED·SETTLED 등)로 되돌린다. 이력이 없는 예전 건은 정산대기로 둔다.
+    const transition = await tx.chargeStatusLog.findFirst({
+      where: { chargeId: refund.chargeId, toStatus: 'REFUND_REQUESTED' },
+      orderBy: { createdAt: 'desc' },
+      select: { fromStatus: true },
+    });
+    await tx.charge.update({
+      where: { id: refund.chargeId },
+      data: { status: transition?.fromStatus ?? 'SETTLEMENT_PENDING', statusReason: '환불 거절' },
+    });
   });
   return refund;
+}
+
+/**
+ * 처리가 멈춘 환불(FAILED · APPROVED)을 다시 요청(REQUESTED) 상태로 되돌린다.
+ *
+ * 승인 도중 PG 취소가 실패하면 환불은 FAILED, 결제는 REFUND_REQUESTED 로 남는다.
+ * 그 상태에서는 승인·거절 버튼이 모두 사라지고(요청 상태가 아니므로),
+ * 신규 환불 요청도 막혀(결제가 이미 REFUND_REQUESTED) 관리자 화면에서 되살릴 방법이 없었다.
+ *
+ * 자동으로 되돌리지 않는 이유: PG 취소가 실제로는 성공했는데 응답만 실패했을 수 있다.
+ * 관리자가 PG 내역을 확인한 뒤 명시적으로 되돌려 재시도하거나 거절하도록 한다.
+ */
+export async function reopenRefund(refundId: string, adminUserId?: string, memo?: string) {
+  const refund = await prisma.refund.findUnique({
+    where: { id: refundId },
+    select: { id: true, status: true, chargeId: true, resultMessage: true },
+  });
+  if (!refund) throw new Error('환불 요청을 찾을 수 없습니다.');
+  if (refund.status !== 'FAILED' && refund.status !== 'APPROVED') {
+    throw new Error('처리가 멈춘 환불(실패·승인)만 요청 상태로 되돌릴 수 있습니다.');
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const claimed = await tx.refund.updateMany({
+      where: { id: refundId, status: refund.status },
+      data: {
+        status: 'REQUESTED',
+        approvedBy: adminUserId ?? null,
+        processedAt: null,
+        resultMessage: memo ? `요청 상태로 되돌림: ${memo}`.slice(0, 200) : refund.resultMessage,
+      },
+    });
+    if (claimed.count === 0) {
+      throw new Error('이미 다른 처리가 진행 중인 환불입니다. 목록을 새로고침해 주세요.');
+    }
+    // 승인·거절 흐름이 이어지려면 결제도 환불 요청 중이어야 한다.
+    // 이미 환불이 끝난 건(REFUNDED)은 건드리지 않는다.
+    await tx.charge.updateMany({
+      where: { id: refund.chargeId, status: { not: 'REFUNDED' } },
+      data: { status: 'REFUND_REQUESTED', statusReason: '환불 재검토' },
+    });
+  });
+
+  return prisma.refund.findUnique({ where: { id: refundId } });
 }

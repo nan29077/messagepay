@@ -2,14 +2,21 @@ import Link from 'next/link';
 import { LayoutGrid, Rows3, Search } from 'lucide-react';
 import { Badge, Button, Card, EmptyState, Field, Input, Notice, Select, Table, Td, Th, cx } from '@/components/ui';
 import { PageHeader } from '@/components/layout/console-shell';
-import { buildQuery, one, type SearchParamsRecord } from '@/components/studio/shared';
+import {
+  CHARGE_PERIODS,
+  buildQuery,
+  normalizePeriod,
+  one,
+  periodStart,
+  type SearchParamsRecord,
+} from '@/components/studio/shared';
 import { ChargeCardGrid } from '@/components/studio/charge-cards';
 import { PAID_STATUSES } from '@/components/studio/shared';
 import { productKindShort } from '@/server/services/products';
 import { requireMerchant } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { formatNumber, formatWon } from '@/lib/money';
-import { formatKst, kstStartOfDay } from '@/lib/datetime';
+import { formatKst } from '@/lib/datetime';
 import {
   deliveryStatusLabel, chargeStatusLabel, pointStatusLabel, refundStatusLabel, SELECTABLE_CHARGE_STATUSES,
 } from '@/lib/labels';
@@ -18,6 +25,8 @@ import type { ChargeStatus, Prisma } from '@/generated/prisma/client';
 export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 20;
+/** CSV 라우트(api/studio/charges/export)의 상한과 같아야 한다. */
+const CSV_MAX_ROWS = 5000;
 
 const PERIODS = [
   { value: 'today', label: '오늘' },
@@ -49,14 +58,6 @@ const VIEWS = [
 
 type ViewMode = (typeof VIEWS)[number]['value'];
 
-function periodStart(period: string): Date | null {
-  const now = new Date();
-  if (period === 'today') return kstStartOfDay(now);
-  if (period === '7d') return new Date(now.getTime() - 7 * 86_400_000);
-  if (period === '30d') return new Date(now.getTime() - 30 * 86_400_000);
-  return null;
-}
-
 export default async function StudioChargesPage({
   searchParams,
 }: {
@@ -65,7 +66,7 @@ export default async function StudioChargesPage({
   const { merchantId } = await requireMerchant();
   const sp = await searchParams;
 
-  const period = one(sp.period) || '30d';
+  const period = normalizePeriod(one(sp.period) || '30d', CHARGE_PERIODS, '30d');
   const status = one(sp.status);
   const q = one(sp.q).trim();
   const point = one(sp.point);
@@ -195,6 +196,12 @@ export default async function StudioChargesPage({
             >
               CSV 내려받기
             </Link>
+            {/* 라우트가 5,000건에서 자르는데 파일에는 아무 표시가 없어, 전량으로 믿고 반영하면 누락된다. */}
+            {total > CSV_MAX_ROWS ? (
+              <span className="font-semibold text-danger-500">
+                CSV 는 최대 {formatNumber(CSV_MAX_ROWS)}건까지 담깁니다. 기간을 좁혀 나눠 받아 주세요.
+              </span>
+            ) : null}
           </p>
           <nav
             aria-label="보기 방식"

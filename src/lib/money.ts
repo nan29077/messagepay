@@ -47,7 +47,11 @@ export function applyRate(amount: bigint, rate: string | number, fixed: bigint =
 export function ratePercent(value: string | number): string {
   const n = Number(value);
   if (!Number.isFinite(n)) return String(value);
-  return `${(n * 100).toFixed(2)}%`;
+  // 요율은 퍼센트 소수점 4자리까지 입력할 수 있다(percentRate).
+  // 2자리로 고정하면 1.8375% 가 "1.84%" 로 보이고, 화면 값을 그대로 다시 입력하면 요율이 달라진다.
+  const percent = n * 100;
+  const text = percent.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+  return `${text.includes('.') ? text : percent.toFixed(2)}%`;
 }
 
 /** BigInt 를 JSON 으로 직렬화하기 위한 안전 변환 */

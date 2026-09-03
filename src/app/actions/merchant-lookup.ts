@@ -1,10 +1,8 @@
 'use server';
 
 import { prisma } from '@/server/db';
-import { kv } from '@/server/redis';
-import { headers } from 'next/headers';
 import { normalizeMerchantCode } from '@/lib/id';
-import { clientIpFrom } from '@/server/rate-limit';
+import { consumeIpRateLimit } from '@/server/rate-limit';
 
 /**
  * 가맹점 검색 / 코드 조회.
@@ -60,11 +58,10 @@ export interface LookupResult {
 }
 
 export async function lookupMerchantCode(input: string): Promise<LookupResult> {
-  const h = await headers();
-  const ip = clientIpFrom((name) => h.get(name)) ?? 'unknown';
-
-  const tries = await kv.incr(`lookup:${ip}`, WINDOW_SEC);
-  if (tries > MAX_TRIES) {
+  // consumeRateLimit 은 저장소 장애 시 예외를 흡수한다.
+  // kv.incr 를 직접 부르면 Redis 순단에 가맹점 검색 자체가 실패한다.
+  const limited = await consumeIpRateLimit('merchant-lookup', MAX_TRIES, WINDOW_SEC);
+  if (!limited.ok) {
     return { ok: false, message: '조회 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' };
   }
 

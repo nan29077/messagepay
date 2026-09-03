@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { Notice } from '@/components/ui';
 import { PageHeader } from '@/components/layout/console-shell';
@@ -22,7 +22,11 @@ export default async function NewProductPage({
 }) {
   const { merchantId } = await requireMerchant();
   const sp = await searchParams;
-  const kind: ProductKind = sp.kind === 'digital' ? 'DIGITAL' : 'PHYSICAL';
+  // 종류는 등록 후 바꿀 수 없다. 오타(?kind=Digital)를 조용히 실물로 처리하면
+  // 잘못 등록한 상품을 보관하고 다시 만들어야 한다.
+  const kindRaw = (sp.kind ?? '').trim();
+  if (kindRaw !== 'digital' && kindRaw !== 'physical') redirect('/studio/products');
+  const kind: ProductKind = kindRaw === 'digital' ? 'DIGITAL' : 'PHYSICAL';
 
   const [merchant, policy, shippingRow, count] = await Promise.all([
     prisma.merchantProfile.findUnique({

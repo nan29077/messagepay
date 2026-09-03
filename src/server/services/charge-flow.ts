@@ -962,7 +962,10 @@ export async function executePayment(chargeId: string): Promise<PaymentOutcome> 
           id: newId(),
           chargeId,
           orderNo: newOrderNo(),
-          provider: env.payment.provider,
+          // 설정값이 아니라 실제로 이 건을 처리하는 어댑터를 남긴다.
+          // SAFE_MODE=true 면 PAYMENT_PROVIDER 가 hecto 여도 mock 이 승인한다.
+          // 설정값을 남기면 모의 승인을 실승인으로 오인해 정산·환불을 진행하게 된다.
+          provider: getPaymentAdapter().info().provider,
           amount: charge.amount,
           // 한도 집계를 되돌릴 때 이 값을 기준 시각으로 쓴다(환불·대사 경로 포함).
           // DB 기본값(now())에 맡기면 예약에 쓴 reservedAt 과 KST 날짜가 갈릴 수 있고,

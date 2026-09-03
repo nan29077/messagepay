@@ -1,11 +1,13 @@
 import Link from 'next/link';
 import { PageHeader } from '@/components/layout/console-shell';
+import { SafetyBanner } from '@/components/admin/safety-banner';
 import { Badge, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
 import { AdminField, AdminInput, AdminSelect, FilterBar, Pager } from '@/components/admin/controls';
-import { PAGE_SIZE, parsePage } from '@/components/admin/constants';
+import { PAGE_SIZE, parsePage, clampPage, canManageMoney } from '@/components/admin/constants';
 import { ActionForm } from '@/components/admin/action-form';
 import { reconcilePaymentAction } from '@/app/actions/admin/transactions';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import { paymentTxStatusLabel, chargeStatusLabel } from '@/lib/labels';
@@ -34,7 +36,16 @@ const txSelect = {
 
 type TxRow = Prisma.PaymentTransactionGetPayload<{ select: typeof txSelect }>;
 
-function TxRows({ rows, reconcilable = false }: { rows: TxRow[]; reconcilable?: boolean }) {
+function TxRows({
+  rows,
+  reconcilable = false,
+  canEdit = true,
+}: {
+  rows: TxRow[];
+  reconcilable?: boolean;
+  /** 권한이 없으면 대사 컨트롤을 잠근다. */
+  canEdit?: boolean;
+}) {
   return (
     <tbody>
       {rows.map((t) => (
@@ -102,7 +113,7 @@ function TxRows({ rows, reconcilable = false }: { rows: TxRow[]; reconcilable?: 
           </Td>
           {reconcilable ? (
             <Td>
-              <ReconcileCell transactionId={t.id} orderNo={t.orderNo} />
+              <ReconcileCell transactionId={t.id} orderNo={t.orderNo} canEdit={canEdit} />
             </Td>
           ) : null}
         </tr>
@@ -115,10 +126,18 @@ function TxRows({ rows, reconcilable = false }: { rows: TxRow[]; reconcilable?: 
  * 결과 미확인 결제의 수동 확정.
  * PG 관리자 화면에서 실제 승인 여부를 대사한 뒤에만 사용한다. 되돌릴 수 없다.
  */
-function ReconcileCell({ transactionId, orderNo }: { transactionId: string; orderNo: string }) {
+function ReconcileCell({
+  transactionId,
+  orderNo,
+  canEdit,
+}: {
+  transactionId: string;
+  orderNo: string;
+  canEdit: boolean;
+}) {
   return (
     <div className="flex min-w-[210px] flex-col gap-2">
-      <ActionForm
+      <ActionForm disabled={!canEdit}
         action={reconcilePaymentAction}
         submitLabel="결제 확정"
         variant="primary"
@@ -134,7 +153,7 @@ PG 관리자에서 실제 출금을 확인하셨나요? 정산 원장에 분개�
           className="h-8 w-full rounded-lg border border-ink-200 px-2 text-[12px] text-ink-900 focus:border-brand-400 focus:outline-none"
         />
       </ActionForm>
-      <ActionForm
+      <ActionForm disabled={!canEdit}
         action={reconcilePaymentAction}
         submitLabel="결제 취소"
         variant="danger"
@@ -174,6 +193,12 @@ export default async function AdminPaymentsPage({
 }: {
   searchParams: Promise<{ status?: string; q?: string; page?: string }>;
 }) {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  const me = await requireAdmin();
+  // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
+  const canEdit = canManageMoney(me.adminPermission);
+
   const sp = await searchParams;
   const page = parsePage(sp.page);
   const q = (sp.q ?? '').trim();
@@ -192,25 +217,32 @@ export default async function AdminPaymentsPage({
       : {}),
   };
 
-  const [total, rows, needsCheck, grouped] = await Promise.all([
+  const needsCheckWhere: Prisma.PaymentTransactionWhereInput = { status: { in: ['UNKNOWN', 'TIMEOUT'] } };
+
+  const [total, rows, needsCheck, needsCheckTotal, grouped] = await Promise.all([
     prisma.paymentTransaction.count({ where }),
     prisma.paymentTransaction.findMany({
       where,
-      orderBy: { requestedAt: 'desc' },
+      // 같은 시각의 거래가 있어도 페이지 사이에서 순서가 흔들리지 않게 id 를 보조 정렬로 둔다.
+      orderBy: [{ requestedAt: 'desc' }, { id: 'desc' }],
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       select: txSelect,
     }),
     prisma.paymentTransaction.findMany({
-      where: { status: { in: ['UNKNOWN', 'TIMEOUT'] } },
-      orderBy: { requestedAt: 'desc' },
+      where: needsCheckWhere,
+      orderBy: [{ requestedAt: 'desc' }, { id: 'desc' }],
       take: 20,
       select: txSelect,
     }),
+    // 목록은 상위 20건만 보여 주지만 경고 제목에는 실제 건수를 쓴다.
+    prisma.paymentTransaction.count({ where: needsCheckWhere }),
     prisma.paymentTransaction.groupBy({ by: ['status'], _count: { _all: true }, _sum: { amount: true } }),
   ]);
 
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // 범위를 벗어난 ?page= 는 마지막 페이지로 보낸다(빈 화면에서 돌아갈 링크가 없어진다).
+  clampPage({ basePath: '/admin/payments', params: { q, status: status ?? '' }, page, lastPage, total });
   const countOf = (s: PaymentTxStatus) => grouped.find((g) => g.status === s)?._count._all ?? 0;
   const approvedSum = grouped.find((g) => g.status === 'APPROVED')?._sum.amount ?? 0n;
 
@@ -218,11 +250,17 @@ export default async function AdminPaymentsPage({
     <>
       <PageHeader
         title="결제 관리"
-        description="PG 결제 거래와 결제 거래를 함께 조회합니다. 결과를 확인할 수 없는 건은 상단에 별도로 모아 표시합니다."
+        description="PG 결제 거래와 연결된 결제 건을 함께 조회합니다. 결과를 확인할 수 없는 건은 상단에 별도로 모아 표시합니다."
       />
 
+      {/* 실제 계약이 없는 외부 연동은 mock 으로 동작한다. 그 사실을 이 화면에도 명시한다. */}
+      <div className="mb-4">
+        <SafetyBanner />
+      </div>
+
       <div className="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-        <StatTile label="승인" value={formatNumber(countOf('APPROVED'))} sub={formatWon(approvedSum)} tone="success" />
+        {/* 아래 네 타일은 필터와 무관한 전체 기준이다(목록만 필터를 탄다). */}
+        <StatTile label="승인 (전체)" value={formatNumber(countOf('APPROVED'))} sub={formatWon(approvedSum)} tone="success" />
         <StatTile label="실패" value={formatNumber(countOf('FAILED'))} tone={countOf('FAILED') > 0 ? 'danger' : 'neutral'} />
         <StatTile label="취소" value={formatNumber(countOf('CANCELED'))} />
         <StatTile
@@ -235,7 +273,12 @@ export default async function AdminPaymentsPage({
 
       {needsCheck.length > 0 ? (
         <section className="mb-6">
-          <Notice tone="danger" title={`결과 확인이 필요한 결제 ${needsCheck.length}건`}>
+          <Notice
+            tone="danger"
+            title={`결과 확인이 필요한 결제 ${formatNumber(needsCheckTotal)}건${
+              needsCheckTotal > needsCheck.length ? ` (오래된 순 ${needsCheck.length}건 표시)` : ''
+            }`}
+          >
             PG 응답이 타임아웃되었거나 결과를 알 수 없는 거래입니다. 실제 승인 여부를 PG 관리자에서 대사한 뒤 오른쪽
             [수동 확정]으로 결론을 반영해 주세요. 확인 전까지는 중복 결제를 유발할 수 있는 재시도를 하지 마세요.
             [결제 확정]은 정산 원장에 분개를 추가하고, [결제 취소]는 결제를 실패로 확정하며 한도 집계를 되돌립니다.
@@ -256,7 +299,7 @@ export default async function AdminPaymentsPage({
                   <Th>수동 확정</Th>
                 </tr>
               </thead>
-              <TxRows rows={needsCheck} reconcilable />
+              <TxRows rows={needsCheck} reconcilable canEdit={canEdit} />
             </Table>
           </div>
         </section>

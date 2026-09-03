@@ -3,7 +3,9 @@ import { Badge, Card, CardTitle, Notice, SectionTitle } from '@/components/ui';
 import { AdminField, AdminTextarea } from '@/components/admin/controls';
 import { ActionButton, ActionForm } from '@/components/admin/action-form';
 import { saveMtTemplateAction, resetMtTemplateAction } from '@/app/actions/admin/mt-templates';
+import { canManageTemplates } from '@/components/admin/constants';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { formatKst } from '@/lib/datetime';
 import {
   MT_TEMPLATE_BODY_MAX_LENGTH,
@@ -22,6 +24,12 @@ export const dynamic = 'force-dynamic';
  * 발송 이력(어떤 문자가 실제로 나갔는지)은 /admin/mt-messages 에서 본다.
  */
 export default async function AdminMtTemplatesPage() {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  const me = await requireAdmin();
+  // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
+  const canEdit = canManageTemplates(me.adminPermission);
+
   const rows = await prisma.mtMessageTemplate.findMany({
     select: { code: true, body: true, updatedBy: true, updatedAt: true },
   });
@@ -94,7 +102,7 @@ export default async function AdminMtTemplatesPage() {
               </div>
 
               <div className="mt-3">
-                <ActionForm action={saveMtTemplateAction} submitLabel="본문 저장">
+                <ActionForm disabled={!canEdit} action={saveMtTemplateAction} submitLabel="본문 저장">
                   <input type="hidden" name="code" value={code} />
                   <AdminField
                     label="문자 본문"
@@ -116,7 +124,7 @@ export default async function AdminMtTemplatesPage() {
                     최종 수정 {formatKst(row.updatedAt, false)}
                     {row.updatedBy ? ` · ${editorName.get(row.updatedBy) ?? row.updatedBy}` : ''}
                   </span>
-                  <ActionButton
+                  <ActionButton disabled={!canEdit}
                     action={resetMtTemplateAction}
                     values={{ code }}
                     label="기본 문구로 초기화"

@@ -5,7 +5,9 @@ import { Badge, Card, CardTitle, EmptyState, Notice, SectionTitle, Table, Td, Th
 import { AdminField, AdminInput, AdminSelect } from '@/components/admin/controls';
 import { ActionButton, ActionForm } from '@/components/admin/action-form';
 import { createHolidayAction, updateHolidayAction, deleteHolidayAction } from '@/app/actions/admin/holidays';
+import { canManageMoney } from '@/components/admin/constants';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { formatDateKeyKo, toDateKey } from '@/lib/business-day';
 import { findYearsMissingHolidays } from '@/server/services/settlement-schedule';
 import { holidayKindLabel } from '@/lib/labels';
@@ -23,6 +25,12 @@ export default async function AdminHolidaysPage({
 }: {
   searchParams: Promise<{ year?: string }>;
 }) {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  const me = await requireAdmin();
+  // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
+  const canEdit = canManageMoney(me.adminPermission);
+
   const sp = await searchParams;
 
   // 정산일 계산은 KST 기준이므로 "올해" 판단도 KST 기준으로 맞춘다.
@@ -67,7 +75,7 @@ export default async function AdminHolidaysPage({
             법정공휴일뿐 아니라 대체공휴일·임시공휴일·은행 휴무일(근로자의 날 등)도 함께 등록해야 정산일이
             정확합니다.
           </p>
-          <ActionForm action={createHolidayAction} submitLabel="공휴일 등록">
+          <ActionForm disabled={!canEdit} action={createHolidayAction} submitLabel="공휴일 등록">
             <AdminField label="날짜">
               <AdminInput type="date" name="date" required />
             </AdminField>
@@ -147,7 +155,7 @@ export default async function AdminHolidaysPage({
                     </Td>
                     <Td className="max-w-[200px] break-words text-[12px] text-ink-400">{h.memo ?? '-'}</Td>
                     <Td>
-                      <ActionForm action={updateHolidayAction} submitLabel="수정" variant="secondary" compact>
+                      <ActionForm disabled={!canEdit} action={updateHolidayAction} submitLabel="수정" variant="secondary" compact>
                         <input type="hidden" name="id" value={h.id} />
                         <div className="flex w-56 flex-col gap-1.5">
                           <AdminInput name="name" defaultValue={h.name} placeholder="명칭" required />
@@ -172,7 +180,7 @@ export default async function AdminHolidaysPage({
                       </ActionForm>
                     </Td>
                     <Td>
-                      <ActionButton
+                      <ActionButton disabled={!canEdit}
                         action={deleteHolidayAction}
                         values={{ id: h.id }}
                         label="삭제"

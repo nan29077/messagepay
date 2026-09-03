@@ -63,18 +63,31 @@ export async function OnboardingChecklist({ merchantId }: { merchantId: string }
       label: '정산 계좌 등록·인증',
       hint: '정산 대금을 받을 계좌를 등록하고 실명 확인을 마쳐 주세요.',
       done: account?.verified ?? false,
-      href: '/studio/settlement/account',
+      // 리다이렉트 전용 shim 을 거치지 않고 바로 탭으로 보낸다.
+      href: '/studio/settlement?tab=account',
       linkLabel: '등록하러 가기',
     },
-    {
-      key: 'businessNo',
-      label: '사업자 정보 등록',
-      hint: '정산 시 세금계산서 발행에 필요합니다.',
-      done: Boolean(profile?.businessNo),
-      href: '/studio/profile',
-      linkLabel: '입력하러 가기',
-    },
   ];
+
+  /**
+   * 사업자 정보는 "선택" 항목이다.
+   *
+   * 프로필 화면에 사업자등록번호 입력란이 없어(가입 신청과 관리자에서만 다룬다) 링크를 눌러도
+   * 입력할 수 없었고, 필수 항목으로 세면 개인 가맹점은 영영 채우지 못해 이 카드가 대시보드에
+   * 영구히 고정됐다. 개인 가맹점은 원천징수(3.3%)로 정산되므로 사업자등록이 필수가 아니다.
+   */
+  const optionalItems: ChecklistItem[] = profile?.businessNo
+    ? []
+    : [
+        {
+          key: 'businessNo',
+          label: '사업자 정보 등록 (선택)',
+          hint: '세금계산서 발행이 필요한 사업자만 등록하면 됩니다. 등록 전에는 원천징수(3.3%) 후 지급됩니다.',
+          done: false,
+          href: '/support',
+          linkLabel: '문의하기',
+        },
+      ];
 
   const doneCount = items.filter((i) => i.done).length;
   if (doneCount === items.length) return null;
@@ -102,7 +115,7 @@ export async function OnboardingChecklist({ merchantId }: { merchantId: string }
       </div>
 
       <ul>
-        {items.map((item) => (
+        {[...items, ...optionalItems].map((item) => (
           <li
             key={item.key}
             className="flex items-start justify-between gap-3 border-b border-ink-100 px-4 py-3 last:border-0"

@@ -16,7 +16,16 @@ import { formatKst } from '@/lib/datetime';
 import {
   DELIVERY_SHIPMENT_STATUSES, RETURN_SHIPMENT_STATUSES, pointStatusLabel, shipmentStatusLabel,
 } from '@/lib/labels';
-import { PAID_STATUSES, buildQuery, one, type SearchParamsRecord } from '@/components/studio/shared';
+import {
+  ORDER_CHARGE_STATUSES,
+  ORDER_PERIODS,
+  PAID_STATUSES,
+  buildQuery,
+  normalizePeriod,
+  one,
+  periodStart,
+  type SearchParamsRecord,
+} from '@/components/studio/shared';
 import { digitalTypeLabel, fulfillmentLabel, shippingPolicyOf } from '@/server/services/products';
 import type { Prisma } from '@/generated/prisma/client';
 import type { ShipmentStatus } from '@/generated/prisma/enums';
@@ -33,7 +42,19 @@ export const dynamic = 'force-dynamic';
  * 배송지 원문은 목록에서 자동으로 풀지 않는다. [주소 보기] 를 눌러야 열리고 열람 기록이 남는다.
  */
 
+/**
+ * 비실물 지급 대상 조건.
+ *
+ * 상품이 없는 직접 입력 결제(productId = null)도 지급 대상이다.
+ * 실물 주문만 금액 확정 시점에 pointStatus = SKIPPED 로 빠진다(charge-select.ts).
+ */
+const DIGITAL_PAYABLE = {
+  OR: [{ product: { kind: 'DIGITAL' as const } }, { productId: null }],
+};
+
 const PAGE_SIZE = 20;
+/** 주문서 CSV 라우트의 상한과 같아야 한다. */
+const CSV_MAX_ROWS = 3000;
 
 const TABS = [
   { key: 'delivery', label: '실물 주문·배송' },
@@ -68,14 +89,6 @@ function delayCutoff(): Date {
   return new Date(Date.now() - DELAY_DAYS * 86_400_000);
 }
 
-function periodStart(period: string): Date | null {
-  const now = Date.now();
-  if (period === '7d') return new Date(now - 7 * 86_400_000);
-  if (period === '30d') return new Date(now - 30 * 86_400_000);
-  if (period === '90d') return new Date(now - 90 * 86_400_000);
-  return null;
-}
-
 export default async function StudioOrdersPage({
   searchParams,
 }: {
@@ -85,7 +98,7 @@ export default async function StudioOrdersPage({
   const sp = await searchParams;
 
   const tab: Tab = TABS.some((t) => t.key === one(sp.tab)) ? (one(sp.tab) as Tab) : 'delivery';
-  const period = one(sp.period) || '30d';
+  const period = normalizePeriod(one(sp.period) || '30d', ORDER_PERIODS, '30d');
   const sort = one(sp.sort) === 'newest' ? 'newest' : 'oldest';
   const q = one(sp.q).trim();
   const page = Math.max(1, Number.parseInt(one(sp.page) || '1', 10) || 1);
@@ -102,7 +115,9 @@ export default async function StudioOrdersPage({
     }),
     prisma.charge.groupBy({
       by: ['pointStatus'],
-      where: { merchantId, status: { in: PAID_STATUSES }, product: { kind: 'DIGITAL' } },
+      // 직접 입력 결제(productId = null)도 지급 대상이다.
+      // 여기서 빼면 결제 내역의 "지급 대기 N건" 안내를 따라와도 처리할 건이 보이지 않는다.
+      where: { merchantId, status: { in: PAID_STATUSES }, ...DIGITAL_PAYABLE },
       _count: { _all: true },
     }),
     prisma.merchantShippingPolicy.findUnique({ where: { merchantId } }),
@@ -209,8 +224,9 @@ async function ShipmentList({
     merchantId,
     status: status ? status : { in: scope },
     // 결제가 완료된 주문만 처리 대상이다. 결제 전 단계는 아직 주문이 아니다.
+    // 환불 요청·완료 건도 회수·반품 업무가 남으므로 목록에는 남긴다(행에 환불 배지가 붙는다).
     charge: {
-      status: { in: PAID_STATUSES },
+      status: { in: ORDER_CHARGE_STATUSES },
       ...(gte ? { paidAt: { gte } } : {}),
       ...(q
         ? {
@@ -359,6 +375,11 @@ async function ShipmentList({
           title={tab === 'delivery' ? '주문 목록' : '반품·교환 목록'}
           description={`${formatNumber(total)}건 (${page}/${lastPage} 페이지)`}
         />
+        {total > CSV_MAX_ROWS ? (
+          <p className="mb-2 text-[12px] font-semibold text-danger-500">
+            주문서 CSV 는 최대 {formatNumber(CSV_MAX_ROWS)}건까지 담깁니다. 기간을 좁혀 나눠 받아 주세요.
+          </p>
+        ) : null}
         <LinkButton href={exportHref} variant="secondary" size="sm" prefetch={false}>
           <Download size={14} strokeWidth={1.9} />
           주문서 엑셀
@@ -464,7 +485,12 @@ async function ShipmentList({
 
                   {s.memo ? (
                     <p className="mt-2 rounded-lg bg-warning-50 px-2.5 py-1.5 text-[11.5px] text-ink-700">
-                      요청: {s.memo}
+                      이용자 요청: {s.memo}
+                    </p>
+                  ) : null}
+                  {s.merchantMemo ? (
+                    <p className="mt-2 rounded-lg bg-ink-50 px-2.5 py-1.5 text-[11.5px] text-ink-600">
+                      내부 메모: {s.merchantMemo}
                     </p>
                   ) : null}
 
@@ -516,8 +542,16 @@ async function ShipmentList({
                           />
                         </Field>
                       </div>
-                      <Field label="메모 (선택)" hint="100자 이내. 이용자에게는 보이지 않습니다.">
-                        <Textarea name="memo" rows={1} maxLength={100} defaultValue={s.memo ?? ''} />
+                      <Field
+                        label="내부 메모 (선택)"
+                        hint="100자 이내. 이용자에게는 보이지 않습니다. 이용자가 남긴 배송 요청은 위에 그대로 보존됩니다."
+                      >
+                        <Textarea
+                          name="merchantMemo"
+                          rows={1}
+                          maxLength={100}
+                          defaultValue={s.merchantMemo ?? ''}
+                        />
                       </Field>
                       <label className="flex items-center gap-2 text-[12px] font-semibold text-ink-600">
                         <input type="checkbox" name="skipNotify" className="h-4 w-4" />
@@ -532,7 +566,8 @@ async function ShipmentList({
                         {s.returnRequestedAt ? ` · 반품·교환 접수 ${formatKst(s.returnRequestedAt, false)}` : ''}
                       </p>
 
-                      {s.charge.status !== 'REFUNDED' && !refund ? (
+                      {s.charge.status !== 'REFUNDED' &&
+                      !(refund === 'REQUESTED' || refund === 'APPROVED' || refund === 'DONE') ? (
                         <details className="w-full sm:w-auto">
                           <summary className="cursor-pointer list-none rounded-lg border border-ink-200 px-2.5 py-1.5 text-[12px] font-bold text-ink-600 hover:bg-ink-50">
                             환불 요청
@@ -617,7 +652,7 @@ async function DigitalSales({
         merchantId,
         status: { in: PAID_STATUSES },
         pointStatus: 'PENDING',
-        product: { kind: 'DIGITAL' },
+        ...DIGITAL_PAYABLE,
       },
       orderBy: { paidAt: 'asc' },
       take: BULK_PANEL_SIZE,
@@ -627,7 +662,7 @@ async function DigitalSales({
       },
     }),
     prisma.charge.findMany({
-      where: { merchantId, status: { in: PAID_STATUSES }, product: { kind: 'DIGITAL' } },
+      where: { merchantId, status: { in: PAID_STATUSES }, ...DIGITAL_PAYABLE },
       orderBy: { paidAt: 'desc' },
       take: 30,
       select: {

@@ -4,7 +4,9 @@ import { Badge, Card, CardTitle, EmptyState, Notice, SectionTitle, StatTile } fr
 import { AdminField, AdminInput, AdminSelect, MerchantOptions } from '@/components/admin/controls';
 import { ActionButton, ActionForm } from '@/components/admin/action-form';
 import { saveLimitPolicy, toggleLimitPolicy } from '@/app/actions/admin/policy';
+import { canManageMoney } from '@/components/admin/constants';
 import { prisma } from '@/server/db';
+import { requireAdmin } from '@/server/auth';
 import { FALLBACK_POLICY } from '@/server/services/limits';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst, kstDateKey } from '@/lib/datetime';
@@ -95,6 +97,12 @@ function LimitFields({ v }: { v: LimitValues }) {
 }
 
 export default async function AdminPoliciesPage() {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  const me = await requireAdmin();
+  // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
+  const canEdit = canManageMoney(me.adminPermission);
+
   const [policies, merchants] = await Promise.all([
     prisma.chargeLimitPolicy.findMany({
       orderBy: [{ active: 'desc' }, { scope: 'asc' }, { effectiveFrom: 'desc' }],
@@ -116,7 +124,14 @@ export default async function AdminPoliciesPage() {
     }),
   ]);
 
-  const globalActive = policies.find((p) => p.active && p.scope === 'GLOBAL');
+  // 적용 여부는 active 플래그가 아니라 시행 기간으로 판단한다(resolvePolicy 와 같은 기준).
+  // active 는 "수동으로 마감했는가" 만 뜻한다.
+  const now = new Date();
+  const isEffective = (p: { active: boolean; effectiveFrom: Date; effectiveTo: Date | null }) =>
+    p.active && p.effectiveFrom <= now && (p.effectiveTo === null || p.effectiveTo > now);
+  const isScheduled = (p: { active: boolean; effectiveFrom: Date }) => p.active && p.effectiveFrom > now;
+
+  const globalActive = policies.find((p) => p.scope === 'GLOBAL' && isEffective(p));
   const payerScoped = policies.filter((p) => p.scope === 'PAYER').length;
   const merchantScoped = policies.filter((p) => p.scope === 'MERCHANT').length;
 
@@ -131,7 +146,7 @@ export default async function AdminPoliciesPage() {
         <StatTile
           label="전역 1일 한도"
           value={formatWon(globalActive?.payerDailyLimit ?? FALLBACK_POLICY.payerDailyLimit)}
-          sub={globalActive ? '활성 전역 정책' : '정책 미등록 · 코드 기본값'}
+          sub={globalActive ? '지금 적용 중인 전역 정책' : '적용 중인 정책 없음 · 코드 기본값'}
           tone="brand"
         />
         <StatTile
@@ -148,9 +163,12 @@ export default async function AdminPoliciesPage() {
       </Notice>
 
       <section className="mt-5">
-        <SectionTitle title="새 정책 등록" description="전역 정책은 활성 상태로 1개만 둘 수 있습니다." />
+        <SectionTitle
+          title="새 정책 등록"
+          description="전역 정책은 기간이 겹치지 않아야 합니다. 시행일을 미래로 두면 그날까지 현행 정책이 그대로 적용됩니다."
+        />
         <Card>
-          <ActionForm action={saveLimitPolicy} submitLabel="정책 등록" confirm="새 한도 정책을 등록합니다.">
+          <ActionForm disabled={!canEdit} action={saveLimitPolicy} submitLabel="정책 등록" confirm="새 한도 정책을 등록합니다.">
             <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
               <AdminField label="적용 범위">
                 <AdminSelect name="scope" defaultValue="MERCHANT">
@@ -200,7 +218,15 @@ export default async function AdminPoliciesPage() {
                           ? `가맹점 정책 · ${p.merchant?.displayName ?? p.merchantId ?? '-'}`
                           : `이용자 정책 · ${p.payerId ?? '-'}`}
                     </CardTitle>
-                    <Badge tone={p.active ? 'success' : 'neutral'}>{p.active ? '활성' : '비활성'}</Badge>
+                    {!p.active ? (
+                      <Badge tone="neutral">마감</Badge>
+                    ) : isScheduled(p) ? (
+                      <Badge tone="warning">시행 예정</Badge>
+                    ) : isEffective(p) ? (
+                      <Badge tone="success">적용 중</Badge>
+                    ) : (
+                      <Badge tone="neutral">지난 정책</Badge>
+                    )}
                     {p.scope === 'MERCHANT' && p.merchant ? (
                       <Link href={`/admin/merchants/${p.merchant.id}`} className="text-[12px] font-semibold text-brand-700">
                         가맹점 상세
@@ -214,9 +240,11 @@ export default async function AdminPoliciesPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] text-ink-400">
-                      적용 {formatKst(p.effectiveFrom, false)} · 수정 {formatKst(p.updatedAt, false)}
+                      적용 {formatKst(p.effectiveFrom, false)} ~{' '}
+                      {p.effectiveTo ? formatKst(p.effectiveTo, false) : '진행 중'} · 수정{' '}
+                      {formatKst(p.updatedAt, false)}
                     </span>
-                    <ActionButton
+                    <ActionButton disabled={!canEdit}
                       action={toggleLimitPolicy}
                       values={{ id: p.id }}
                       label={p.active ? '비활성화' : '활성화'}
@@ -226,7 +254,7 @@ export default async function AdminPoliciesPage() {
                   </div>
                 </div>
 
-                <ActionForm action={saveLimitPolicy} submitLabel="변경 저장" variant="secondary" confirm="한도 값을 저장합니다. 변경 전/후 값이 감사로그에 기록됩니다.">
+                <ActionForm disabled={!canEdit} action={saveLimitPolicy} submitLabel="변경 저장" variant="secondary" confirm="한도 값을 저장합니다. 변경 전/후 값이 감사로그에 기록됩니다.">
                   <input type="hidden" name="id" value={p.id} />
                   <input type="hidden" name="active" value={p.active ? 'on' : ''} />
                   <input type="hidden" name="effectiveFrom" value={p.effectiveFrom.toISOString()} />

@@ -1,5 +1,6 @@
 import { requireMerchant } from '@/server/auth';
 import { isSameOrigin } from '@/server/request-guard';
+import { consumeRateLimit } from '@/server/rate-limit';
 import { putObject, newObjectName } from '@/server/uploads';
 
 export const runtime = 'nodejs';
@@ -46,6 +47,15 @@ export async function POST(req: Request) {
   const merchant = await requireMerchant().catch(() => null);
   if (!merchant) {
     return Response.json({ ok: false, message: '가맹점 로그인이 필요합니다.' }, { status: 401 });
+  }
+
+  // 5MB 파일을 횟수 제한 없이 올릴 수 있으면 저장소·비용이 소진된다.
+  const byMerchant = await consumeRateLimit('upload', merchant.merchantId, 60, 600);
+  if (!byMerchant.ok) {
+    return Response.json(
+      { ok: false, message: '이미지 업로드가 너무 잦습니다. 잠시 후 다시 시도해 주세요.' },
+      { status: 429 },
+    );
   }
 
   const form = await req.formData().catch(() => null);

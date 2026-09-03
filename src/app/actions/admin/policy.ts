@@ -90,10 +90,23 @@ export async function saveLimitPolicy(_prev: AdminActionState, fd: FormData): Pr
     const merchantId = scope === 'MERCHANT' ? requiredId(fd, 'merchantId', '가맹점') : null;
     const payerId = scope === 'PAYER' ? requiredId(fd, 'payerId', '이용자') : null;
 
-    if (scope === 'GLOBAL') {
-      const existingGlobal = await prisma.chargeLimitPolicy.count({ where: { scope: 'GLOBAL', active: true } });
-      if (existingGlobal > 0 && active) {
-        throw new Error('활성 전역 정책이 이미 있습니다. 기존 정책을 먼저 비활성화해 주세요.');
+    if (scope === 'GLOBAL' && active) {
+      // 겹치는 기간만 막는다.
+      //
+      // 예전에는 "활성 전역 정책이 있으면" 무조건 거절했다. 그래서 시행일이 미래인 정책을
+      // 등록하려면 현행 정책을 먼저 비활성화해야 했고, toggleLimitPolicy 가 effectiveTo 를
+      // 즉시 박으므로 오늘~새 시행일 사이에 적용 가능한 전역 정책이 하나도 없는 구간이 생겼다.
+      // 그 기간에는 코드 기본값(FALLBACK_POLICY)이 조용히 적용된다.
+      const overlapping = await prisma.chargeLimitPolicy.count({
+        where: {
+          scope: 'GLOBAL',
+          active: true,
+          effectiveTo: null,
+          effectiveFrom: { gte: effectiveFrom },
+        },
+      });
+      if (overlapping > 0) {
+        throw new Error('같은 날 또는 그 이후에 시행되는 전역 정책이 이미 있습니다. 그 정책을 먼저 마감해 주세요.');
       }
     }
     if (merchantId) {
@@ -105,8 +118,17 @@ export async function saveLimitPolicy(_prev: AdminActionState, fd: FormData): Pr
       if (!payer) throw new Error('이용자를 찾을 수 없습니다.');
     }
 
-    const created = await prisma.chargeLimitPolicy.create({
-      data: { id: newId(), scope, merchantId, payerId, ...values, active, effectiveFrom },
+    const created = await prisma.$transaction(async (tx) => {
+      if (scope === 'GLOBAL' && active) {
+        // 시행 중인 전역 정책은 새 정책의 시행일까지 그대로 살려 둔다(공백 구간 방지).
+        await tx.chargeLimitPolicy.updateMany({
+          where: { scope: 'GLOBAL', active: true, effectiveTo: null, effectiveFrom: { lt: effectiveFrom } },
+          data: { effectiveTo: effectiveFrom },
+        });
+      }
+      return tx.chargeLimitPolicy.create({
+        data: { id: newId(), scope, merchantId, payerId, ...values, active, effectiveFrom },
+      });
     });
     await writeAudit({
       adminUserId: admin.id,
@@ -154,6 +176,10 @@ export async function toggleLimitPolicy(_prev: AdminActionState, fd: FormData): 
 
 export async function createTermsVersion(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
+    // 현행 약관을 교체하는 동작이다(전자금융거래 약관 포함). 최고 관리자만 등록한다.
+    if (admin.adminPermission !== 'SUPER_ADMIN') {
+      throw new Error('약관 버전 등록은 최고 관리자만 가능합니다.');
+    }
     const type = enumValue(
       fd,
       'type',
@@ -175,12 +201,11 @@ export async function createTermsVersion(_prev: AdminActionState, fd: FormData):
     const dup = await prisma.termsVersion.findUnique({ where: { type_version: { type, version } } });
     if (dup) throw new Error('같은 유형의 동일 버전이 이미 있습니다.');
 
-    const created = await prisma.$transaction(async (tx) => {
-      // 기존 버전은 비활성 처리만 한다. 동의 이력 보존을 위해 삭제하지 않는다.
-      await tx.termsVersion.updateMany({ where: { type, active: true }, data: { active: false } });
-      return tx.termsVersion.create({
-        data: { id: newId(), type, version, title, content, required, effectiveFrom, active: true },
-      });
+    // 기존 버전을 여기서 내리지 않는다.
+    // 시행일이 미래인 개정안을 등록하는 순간 현행 약관이 공개 화면과 결제 동의 목록에서
+    // 사라지던 문제 때문이다. 현행 판단은 시행일로 한다(server/services/terms.ts).
+    const created = await prisma.termsVersion.create({
+      data: { id: newId(), type, version, title, content, required, effectiveFrom, active: true },
     });
 
     await writeAudit({
@@ -191,7 +216,7 @@ export async function createTermsVersion(_prev: AdminActionState, fd: FormData):
       after: { type, version, title, required, effectiveFrom },
     });
     revalidatePath('/admin/terms');
-    return `${type} ${version} 버전을 등록했습니다. 이전 버전은 비활성 처리되었습니다.`;
+    return `${type} ${version} 버전을 등록했습니다. 시행일(${effectiveFrom.toISOString().slice(0, 10)})이 지나면 자동으로 현행 약관이 됩니다.`;
   });
 }
 
@@ -229,6 +254,10 @@ export async function updateReportStatus(_prev: AdminActionState, fd: FormData):
 
 export async function createBannedWord(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
+    // 전역 금칙어는 결제 흐름(charge-flow)에 그대로 반영된다. 정책 변경과 같은 기준으로 막는다.
+    if (admin.adminPermission === 'SUPPORT') {
+      throw new Error('전역 금칙어 변경은 운영/재무 권한에서만 가능합니다.');
+    }
     const word = text(fd, 'word');
     const action = enumValue(fd, 'action', ['BLOCK', 'MASK', 'FLAG'] as const, '처리 방식');
     if (word.length < 1 || word.length > 40) throw new Error('금칙어는 1 ~ 40자로 입력해 주세요.');
@@ -255,6 +284,9 @@ export async function createBannedWord(_prev: AdminActionState, fd: FormData): P
 
 export async function deleteBannedWord(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
+    if (admin.adminPermission === 'SUPPORT') {
+      throw new Error('전역 금칙어 변경은 운영/재무 권한에서만 가능합니다.');
+    }
     const id = requiredId(fd, 'id', '금칙어');
     const before = await prisma.bannedWord.findUnique({ where: { id } });
     if (!before) throw new Error('금칙어를 찾을 수 없습니다.');

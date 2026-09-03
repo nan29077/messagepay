@@ -89,6 +89,29 @@ export async function findDueCharges(
 }
 
 /**
+ * 회차에 담을 결제 건을 고른다.
+ *
+ * 잔액을 넘는 건은 건너뛰고 다음 건을 본다(큰 건 하나가 뒤의 작은 건 전부를 무기한 막지 않게).
+ * **화면의 "오늘 지급 예정" 과 실제 배치가 반드시 같은 규칙을 써야 한다.**
+ * 예전에는 화면이 netAmount 를 단순 합산해, 잔액이 줄었거나 최소 지급액 미만인 가맹점까지
+ * 예정 금액에 넣어 실제 이체액과 어긋났다.
+ */
+export function selectPayoutCharges(
+  charges: DueCharge[],
+  available: bigint,
+): { amount: bigint; ids: string[] } {
+  let amount = 0n;
+  const ids: string[] = [];
+  for (const c of charges) {
+    if (c.netAmount <= 0n) continue;
+    if (amount + c.netAmount > available) continue;
+    amount += c.netAmount;
+    ids.push(c.id);
+  }
+  return { amount, ids };
+}
+
+/**
  * 가맹점 한 곳의 자동 지급.
  * 예외를 밖으로 던지지 않는다(배치 전체가 멈추면 안 된다).
  */
@@ -121,16 +144,7 @@ export async function runMerchantPayout(
 
     // 환불 등으로 잔액이 줄었으면 그 범위 안에서만 지급한다.
     const summary = await getSettlementSummary(merchantId);
-    let amount = 0n;
-    const included: string[] = [];
-    for (const c of charges) {
-      if (c.netAmount <= 0n) continue;
-      // 잔액을 넘는 건은 건너뛰고 다음 건을 본다. break 로 멈추면 앞의 큰 건 하나가
-      // 뒤의 작은 건 전부를 무기한 막는다(회차 구성은 아래에서 명시적으로 기록한다).
-      if (amount + c.netAmount > summary.available) continue;
-      amount += c.netAmount;
-      included.push(c.id);
-    }
+    const { amount, ids: included } = selectPayoutCharges(charges, summary.available);
 
     if (included.length === 0 || amount < BigInt(env.payout.minAmount)) {
       return {
@@ -423,15 +437,89 @@ export async function buildPayoutDashboard(now: Date = new Date()): Promise<Payo
     orderBy: { createdAt: 'asc' },
     take: 200,
   });
+  const merchantIds = merchants.map((m) => m.id);
 
+  // 예전에는 가맹점마다 findDueCharges 를 불러 200곳이면 600여 쿼리가 나갔다.
+  // 이 화면은 force-dynamic 이라 접속할 때마다 반복되고, 배치 시간대와 겹치면 부하가 곱해진다.
+  // 필요한 값을 네 번의 집계 쿼리로 한 번에 모은다.
+  const [policyRows, chargeRows, ledgerRows, pendingRows] = await Promise.all([
+    prisma.feePolicy.findMany({
+      where: {
+        active: true,
+        effectiveFrom: { lte: now },
+        OR: [{ scope: 'GLOBAL' }, { scope: 'MERCHANT', merchantId: { in: merchantIds } }],
+        AND: [{ OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] }],
+      },
+      orderBy: { effectiveFrom: 'desc' },
+      select: { scope: true, merchantId: true, settlementDays: true },
+    }),
+    prisma.charge.findMany({
+      where: {
+        merchantId: { in: merchantIds },
+        status: { in: PAID_STATUSES },
+        settledAt: null,
+        settlementRequestId: null,
+        paidAt: { not: null },
+      },
+      orderBy: { paidAt: 'asc' },
+      select: { id: true, merchantId: true, netAmount: true, paidAt: true },
+    }),
+    prisma.settlementLedger.groupBy({
+      by: ['merchantId'],
+      where: { merchantId: { in: merchantIds } },
+      _sum: { amount: true },
+    }),
+    prisma.settlementRequest.groupBy({
+      by: ['merchantId'],
+      where: {
+        merchantId: { in: merchantIds },
+        status: { in: ['REQUESTED', 'REVIEWING', 'APPROVED', 'PAYOUT_FAILED'] },
+      },
+      _sum: { amount: true },
+    }),
+  ]);
+
+  const globalDays = policyRows.find((p) => p.scope === 'GLOBAL')?.settlementDays ?? 5;
+  const daysOf = new Map<string, number>();
+  for (const p of policyRows) {
+    if (p.scope !== 'MERCHANT' || !p.merchantId) continue;
+    if (!daysOf.has(p.merchantId)) daysOf.set(p.merchantId, p.settlementDays);
+  }
+
+  const balanceOf = new Map(ledgerRows.map((r) => [r.merchantId, r._sum.amount ?? 0n]));
+  const pendingOf = new Map(pendingRows.map((r) => [r.merchantId, r._sum.amount ?? 0n]));
+
+  const chargesOf = new Map<string, DueCharge[]>();
+  for (const c of chargeRows) {
+    if (!c.paidAt) continue;
+    const row: DueCharge = { id: c.id, netAmount: c.netAmount ?? 0n, paidAt: c.paidAt };
+    const list = chargesOf.get(c.merchantId);
+    if (list) list.push(row);
+    else chargesOf.set(c.merchantId, [row]);
+  }
+
+  const holidays =
+    chargeRows.length > 0 && chargeRows[0].paidAt
+      ? await loadHolidaysAround(toDateKey(chargeRows[0].paidAt), todayKey)
+      : new Set<string>();
+
+  const minPayout = BigInt(env.payout.minAmount);
   let scheduledMerchants = 0;
   let scheduledAmount = 0n;
   const blocked: PayoutDashboard['blocked'] = [];
 
   for (const m of merchants) {
-    const { charges } = await findDueCharges(m.id, now);
-    if (charges.length === 0) continue;
-    const amount = charges.reduce((sum, c) => sum + (c.netAmount > 0n ? c.netAmount : 0n), 0n);
+    const all = chargesOf.get(m.id);
+    if (!all || all.length === 0) continue;
+
+    const days = daysOf.get(m.id) ?? globalDays;
+    const due = all.filter((c) => settlementDateFor(toDateKey(c.paidAt), holidays, days) <= todayKey);
+    if (due.length === 0) continue;
+
+    // 실제 배치와 같은 규칙으로 담는다(원장 가용 잔액 범위 안에서만).
+    const balanceRaw = (balanceOf.get(m.id) ?? 0n) - (pendingOf.get(m.id) ?? 0n);
+    const available = balanceRaw < 0n ? 0n : balanceRaw;
+    const { amount } = selectPayoutCharges(due, available);
     if (amount <= 0n) continue;
 
     if (!m.settlementAccount) {
@@ -440,6 +528,15 @@ export async function buildPayoutDashboard(now: Date = new Date()): Promise<Payo
     }
     if (!m.settlementAccount.verified) {
       blocked.push({ merchantId: m.id, merchantName: m.displayName, amount, reason: '정산 계좌 인증 대기' });
+      continue;
+    }
+    if (amount < minPayout) {
+      blocked.push({
+        merchantId: m.id,
+        merchantName: m.displayName,
+        amount,
+        reason: `최소 지급 금액(${env.payout.minAmount}원) 미만 — 다음 회차로 이월`,
+      });
       continue;
     }
     scheduledMerchants += 1;

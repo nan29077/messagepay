@@ -8,6 +8,8 @@ import {
 import { ActionButton, ActionForm, SelectActionForm } from '@/components/admin/action-form';
 import { updateMerchantStatus, updateMerchantPaymentMode, reissueMerchantCode, updateMerchantAmountBounds, setSettlementAccountVerified } from '@/app/actions/admin/accounts';
 import { prisma } from '@/server/db';
+import { canManageMoney } from '@/components/admin/constants';
+import { requireAdmin } from '@/server/auth';
 import { getSettlementSummary } from '@/server/services/settlement';
 import { resolveFeePolicy } from '@/server/services/settlement';
 import { env } from '@/lib/env';
@@ -19,6 +21,12 @@ import { AdminField, AdminInput } from '@/components/admin/controls';
 export const dynamic = 'force-dynamic';
 
 export default async function AdminMerchantDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  // 레이아웃 가드에만 기대지 않는다. App Router 는 layout 과 page 를 함께 렌더하므로
+  // 비관리자 요청에서도 이 페이지의 조회가 실행될 수 있다(스튜디오·마이페이지와 같은 규약).
+  const me = await requireAdmin();
+  // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다.
+  const canEdit = canManageMoney(me.adminPermission);
+
   const { id } = await params;
 
   const merchant = await prisma.merchantProfile.findUnique({
@@ -113,10 +121,10 @@ export default async function AdminMerchantDetailPage({ params }: { params: Prom
             </div>
             <div className="mt-3 rounded-xl border border-ink-100 px-3 py-3">
               <p className="mb-2 text-[12.5px] font-bold text-ink-900">1건 결제 금액 허용 범위 변경</p>
-              <ActionForm
+              <ActionForm disabled={!canEdit}
                 action={updateMerchantAmountBounds}
                 submitLabel="범위 저장"
-                confirm="이 가맹점의 1건 결제 금액 허용 범위를 변경합니다. 현재 설정 금액이 범위를 벗어나면 자동 보정됩니다."
+                confirm="이 가맹점의 1건 결제 금액 허용 범위를 변경합니다. 범위를 벗어난 충전 상품은 판매 중지(비활성)됩니다. 상품 금액은 바꾸지 않습니다."
               >
                 <input type="hidden" name="merchantId" value={merchant.id} />
                 <div className="grid grid-cols-2 gap-2">
@@ -130,7 +138,7 @@ export default async function AdminMerchantDetailPage({ params }: { params: Prom
               </ActionForm>
             </div>
             <div className="mt-3">
-              <SelectActionForm
+              <SelectActionForm disabled={!canEdit}
                 action={updateMerchantStatus}
                 values={{ merchantId: merchant.id }}
                 name="status"
@@ -153,7 +161,7 @@ export default async function AdminMerchantDetailPage({ params }: { params: Prom
               현재 설정: {merchant.paymentMode ? paymentModeLabel[merchant.paymentMode] : '전역 설정 사용'}
             </p>
             <div className="mt-3">
-              <SelectActionForm
+              <SelectActionForm disabled={!canEdit}
                 action={updateMerchantPaymentMode}
                 values={{ merchantId: merchant.id }}
                 name="paymentMode"
@@ -229,7 +237,7 @@ export default async function AdminMerchantDetailPage({ params }: { params: Prom
           <Card>
             <div className="flex items-center justify-between gap-2">
               <CardTitle>가맹점 코드</CardTitle>
-              <ActionButton
+              <ActionButton disabled={!canEdit}
                 action={reissueMerchantCode}
                 values={{ merchantId: merchant.id }}
                 label="코드 재발급"
@@ -339,7 +347,7 @@ export default async function AdminMerchantDetailPage({ params }: { params: Prom
                   인증되지 않은 계좌로는 정산을 요청할 수 없습니다.
                 </p>
                 {merchant.settlementAccount.verified ? (
-                  <ActionButton
+                  <ActionButton disabled={!canEdit}
                     action={setSettlementAccountVerified}
                     values={{ merchantId: merchant.id, verified: 'false' }}
                     label="인증 해제"
@@ -347,7 +355,7 @@ export default async function AdminMerchantDetailPage({ params }: { params: Prom
                     confirm="정산 계좌 인증을 해제합니다. 재확인 전까지 이 가맹점은 정산을 요청할 수 없습니다."
                   />
                 ) : (
-                  <ActionButton
+                  <ActionButton disabled={!canEdit}
                     action={setSettlementAccountVerified}
                     values={{ merchantId: merchant.id, verified: 'true' }}
                     label="실명확인 완료 처리"
