@@ -3,7 +3,7 @@ import { PageHeader } from '@/components/layout/console-shell';
 import { Badge, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
 import { AdminField, AdminInput, AdminSelect, FilterBar, Pager } from '@/components/admin/controls';
 import { SelectActionForm } from '@/components/admin/action-form';
-import { PAGE_SIZE, parsePage, clampPage, canWrite } from '@/components/admin/constants';
+import { PAGE_SIZE, parsePage, clampPage, canWrite, canManageMoney } from '@/components/admin/constants';
 import { issueTemporaryPasswordAction, updateUserStatus } from '@/app/actions/admin/accounts';
 import { TempPasswordButton } from '@/components/admin/temp-password-button';
 import { prisma } from '@/server/db';
@@ -33,6 +33,8 @@ export default async function AdminUsersPage({
   const me = await requireAdmin();
   // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
   const canEdit = canWrite(me.adminPermission);
+  // 임시 비밀번호 발급은 issueTemporaryPasswordAction 이 READ_ONLY 와 SUPPORT 를 모두 막는다.
+  const canIssueTempPassword = canManageMoney(me.adminPermission);
 
   const sp = await searchParams;
   const now = new Date();
@@ -219,6 +221,7 @@ export default async function AdminUsersPage({
                         action={issueTemporaryPasswordAction}
                         userId={u.id}
                         label={u.email ?? u.id}
+                        disabled={!canIssueTempPassword}
                       />
                     </Td>
                   </tr>

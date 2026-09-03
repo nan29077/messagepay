@@ -7,7 +7,7 @@ import {
 import { ActionButton, ActionForm } from '@/components/admin/action-form';
 import { AdminField, AdminInput } from '@/components/admin/controls';
 import { bankLabel } from '@/components/admin/mask';
-import { PAID_CHARGE_STATUSES, canWrite } from '@/components/admin/constants';
+import { PAID_CHARGE_STATUSES, canWrite, canManageMoney } from '@/components/admin/constants';
 import { unlockPayer, setPayerBlock, updatePayerLimitsByAdmin } from '@/app/actions/admin/accounts';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/auth';
@@ -30,6 +30,8 @@ export default async function AdminPayerDetailPage({ params }: { params: Promise
   const me = await requireAdmin();
   // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다.
   const canEdit = canWrite(me.adminPermission);
+  // 한도 변경은 updatePayerLimitsByAdmin 이 SUPPORT 를 막는다. 잠금 해제·이용 제한과 기준이 다르다.
+  const canEditLimits = canManageMoney(me.adminPermission);
 
   const { id } = await params;
 
@@ -203,7 +205,7 @@ export default async function AdminPayerDetailPage({ params }: { params: Promise
                 </ActionForm>
               ) : null}
 
-              <ActionForm disabled={!canEdit} action={updatePayerLimitsByAdmin} submitLabel="개인 한도 저장" variant="secondary">
+              <ActionForm disabled={!canEditLimits} action={updatePayerLimitsByAdmin} submitLabel="개인 한도 저장" variant="secondary">
                 <input type="hidden" name="payerId" value={payer.id} />
                 <div className="grid grid-cols-2 gap-2">
                   <AdminField label="일 한도" hint={`정책값 ${formatWon(policy.payerDailyLimit)}`}>

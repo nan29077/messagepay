@@ -8,7 +8,7 @@ import { newId, newMerchantCode } from '@/lib/id';
 import { env } from '@/lib/env';
 import type { AdminActionState } from '@/components/admin/state';
 import { issueTemporaryPassword } from '@/server/services/password-reset';
-import { run, text, optText, money, optMoney, enumValue, requiredId } from './shared';
+import { run, text, optText, money, optMoney, enumValue, requiredId, assertMoneyAdmin } from './shared';
 
 /**
  * 회원 / 이용자 / 가맹점 / 코드 / 관리자 권한 관련 서버 액션.
@@ -75,9 +75,7 @@ export async function issueTemporaryPasswordAction(
     if (admin.adminPermission === 'READ_ONLY') throw new Error('읽기 전용 권한입니다.');
     // 임시 비밀번호는 그 계정으로 그대로 로그인할 수 있는 값이다(응답에 원문이 1회 노출된다).
     // 상담 등급까지 열어 두면 가맹점 계정을 탈취해 정산 요청·API 키 발급까지 할 수 있다.
-    if (admin.adminPermission === 'SUPPORT') {
-      throw new Error('임시 비밀번호 발급은 운영/재무 권한에서만 가능합니다.');
-    }
+    assertMoneyAdmin(admin, '임시 비밀번호 발급은 운영/재무 권한에서만 가능합니다.');
     const userId = requiredId(fd, 'userId', '회원');
 
     const target = await prisma.user.findUnique({
@@ -185,9 +183,7 @@ const PAYER_LIMIT_MAX = 10_000_000n;
 export async function updatePayerLimitsByAdmin(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
     // 한도는 이상거래 방어선이다. 다른 금전 액션과 같은 기준으로 상담 등급을 막는다.
-    if (admin.adminPermission === 'SUPPORT') {
-      throw new Error('이용자 한도 변경은 운영/재무 권한에서만 가능합니다.');
-    }
+    assertMoneyAdmin(admin, '이용자 한도 변경은 운영/재무 권한에서만 가능합니다.');
     const payerId = requiredId(fd, 'payerId', '이용자');
     const dailyLimit = optMoney(fd, 'dailyLimit', '일일 한도');
     const monthlyLimit = optMoney(fd, 'monthlyLimit', '월간 한도');
@@ -228,9 +224,7 @@ export async function updateMerchantStatus(_prev: AdminActionState, fd: FormData
   return run(async (admin) => {
     // 가맹점 심사는 실제 소비자 결제를 받을 수 있게 하는 KYC 게이트다.
     // 상담 등급이 통과시킬 수 있으면 자기 명의 가맹점을 스스로 승인할 수 있다.
-    if (admin.adminPermission === 'SUPPORT') {
-      throw new Error('가맹점 심사는 운영/재무 권한에서만 가능합니다.');
-    }
+    assertMoneyAdmin(admin, '가맹점 심사는 운영/재무 권한에서만 가능합니다.');
     const merchantId = requiredId(fd, 'merchantId', '가맹점');
     const status = enumValue(fd, 'status', ['PENDING', 'APPROVED', 'REJECTED', 'SUSPENDED'] as const, '심사 상태');
 
@@ -284,9 +278,7 @@ export async function updateMerchantStatus(_prev: AdminActionState, fd: FormData
 export async function updateMerchantPaymentMode(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
     // MO 번호 배정과 같은 파괴력(결제 경로 자체를 바꾼다)이라 같은 기준으로 막는다.
-    if (admin.adminPermission === 'SUPPORT') {
-      throw new Error('결제 모드 변경은 운영/재무 권한에서만 가능합니다.');
-    }
+    assertMoneyAdmin(admin, '결제 모드 변경은 운영/재무 권한에서만 가능합니다.');
     const merchantId = requiredId(fd, 'merchantId', '가맹점');
     const raw = text(fd, 'paymentMode');
     if (!['', 'CONFIRM_LINK', 'DIRECT_TRIGGER'].includes(raw)) throw new Error('결제 모드 값이 올바르지 않습니다.');
@@ -326,9 +318,7 @@ export async function updateMerchantPaymentMode(_prev: AdminActionState, fd: For
  */
 export async function updateMerchantAmountBounds(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
-    if (admin.adminPermission === 'SUPPORT') {
-      throw new Error('결제 금액 범위 변경은 운영/재무 권한에서만 가능합니다.');
-    }
+    assertMoneyAdmin(admin, '결제 금액 범위 변경은 운영/재무 권한에서만 가능합니다.');
     const merchantId = requiredId(fd, 'merchantId', '가맹점');
     const minAmount = money(fd, 'minAmount', '1건 최소 결제 금액', { min: 100n });
     const maxAmount = money(fd, 'maxAmount', '1건 최대 결제 금액', { min: 100n });
@@ -376,9 +366,7 @@ export async function updateMerchantAmountBounds(_prev: AdminActionState, fd: Fo
 export async function applyGlobalAmountBounds(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
     // 버튼 한 번으로 전 가맹점의 결제 상한이 바뀌고 범위 밖 상품이 전부 꺼진다(매출이 즉시 멈춘다).
-    if (admin.adminPermission === 'SUPPORT') {
-      throw new Error('전체 가맹점 금액 범위 일괄 적용은 운영/재무 권한에서만 가능합니다.');
-    }
+    assertMoneyAdmin(admin, '전체 가맹점 금액 범위 일괄 적용은 운영/재무 권한에서만 가능합니다.');
     const minAmount = money(fd, 'minAmount', '1건 최소 결제 금액', { min: 100n });
     const maxAmount = money(fd, 'maxAmount', '1건 최대 결제 금액', { min: 100n });
     if (minAmount > maxAmount) throw new Error('최소 금액이 최대 금액보다 클 수 없습니다.');
@@ -439,9 +427,7 @@ export async function setSettlementAccountVerified(
   fd: FormData,
 ): Promise<AdminActionState> {
   return run(async (admin) => {
-    if (admin.adminPermission === 'SUPPORT') {
-      throw new Error('정산 계좌 실명확인은 재무/운영 권한에서만 가능합니다.');
-    }
+    assertMoneyAdmin(admin, '정산 계좌 실명확인은 재무/운영 권한에서만 가능합니다.');
     const merchantId = requiredId(fd, 'merchantId', '가맹점');
     const verified = text(fd, 'verified') === 'true';
 
@@ -501,9 +487,7 @@ async function generateUniqueCode(): Promise<string> {
 export async function reissueMerchantCode(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
     // 결제 링크(/c/코드)가 즉시 무효화된다. 안내문·배너에 박힌 링크가 전부 죽는다.
-    if (admin.adminPermission === 'SUPPORT') {
-      throw new Error('가맹점 코드 재발급은 운영/재무 권한에서만 가능합니다.');
-    }
+    assertMoneyAdmin(admin, '가맹점 코드 재발급은 운영/재무 권한에서만 가능합니다.');
     const merchantId = requiredId(fd, 'merchantId', '가맹점');
     const before = await prisma.merchantProfile.findUnique({
       where: { id: merchantId },

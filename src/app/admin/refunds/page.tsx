@@ -244,7 +244,7 @@ export default async function AdminRefundsPage({
                         </div>
                       ) : r.status === 'FAILED' || r.status === 'APPROVED' ? (
                         <details>
-                          <summary className="cursor-pointer text-[12px] font-semibold text-warning-600">
+                          <summary className="cursor-pointer text-[12px] font-semibold text-warning-500">
                             요청 상태로 되돌리기
                           </summary>
                           <div className="mt-1.5 w-52">

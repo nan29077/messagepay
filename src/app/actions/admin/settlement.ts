@@ -14,7 +14,7 @@ import { runScheduledPayouts, retryPayout } from '@/server/services/auto-settlem
 import { notifyUser } from '@/server/services/notifications';
 import { formatWon } from '@/lib/money';
 import type { AdminActionState } from '@/components/admin/state';
-import { run, text, optText, money, percentRate, enumValue, requiredId, optDate } from './shared';
+import { run, text, optText, money, percentRate, enumValue, requiredId, optDate, assertMoneyAdmin } from './shared';
 
 /**
  * 정산 요청 처리 / 수수료 정책 관리 / 지급대행(쿠콘) 운영.
@@ -37,7 +37,7 @@ export async function updateSettlementRequestStatus(
   fd: FormData,
 ): Promise<AdminActionState> {
   return run(async (admin) => {
-    if (admin.adminPermission === 'SUPPORT') throw new Error('정산 처리는 재무/운영 권한에서만 가능합니다.');
+    assertMoneyAdmin(admin, '정산 처리는 재무/운영 권한에서만 가능합니다.');
     const requestId = requiredId(fd, 'requestId', '정산 요청');
     const status = enumValue(fd, 'status', ['REVIEWING', 'APPROVED', 'PAID', 'PAYOUT_FAILED', 'REJECTED'] as const, '정산 상태');
     const memo = optText(fd, 'memo');
@@ -124,7 +124,7 @@ export async function bulkUpdateSettlementAction(
   fd: FormData,
 ): Promise<AdminActionState> {
   return run(async (admin) => {
-    if (admin.adminPermission === 'SUPPORT') throw new Error('정산 처리는 재무/운영 권한에서만 가능합니다.');
+    assertMoneyAdmin(admin, '정산 처리는 재무/운영 권한에서만 가능합니다.');
     const action = enumValue(fd, 'bulkAction', ['APPROVE', 'REJECT', 'PAY'] as const, '일괄 작업');
     const memo = optText(fd, 'memo');
     const ids = fd.getAll('requestId').map((v) => String(v)).filter(Boolean);
@@ -216,7 +216,7 @@ export async function applyPayoutResultsAction(
   fd: FormData,
 ): Promise<AdminActionState> {
   return run(async (admin) => {
-    if (admin.adminPermission === 'SUPPORT') throw new Error('정산 처리는 재무/운영 권한에서만 가능합니다.');
+    assertMoneyAdmin(admin, '정산 처리는 재무/운영 권한에서만 가능합니다.');
     const raw = text(fd, 'results');
     if (!raw) throw new Error('결과 내용을 붙여넣어 주세요.');
     // 이체파일 배치번호. 입력하면 해당 배치로 나간 건에만 결과를 반영한다.
@@ -298,7 +298,7 @@ export async function fileWithholdingAction(
   fd: FormData,
 ): Promise<AdminActionState> {
   return run(async (admin) => {
-    if (admin.adminPermission === 'SUPPORT') throw new Error('정산 처리는 재무/운영 권한에서만 가능합니다.');
+    assertMoneyAdmin(admin, '정산 처리는 재무/운영 권한에서만 가능합니다.');
     const ids = fd.getAll('requestId').map((v) => String(v)).filter(Boolean);
     const single = optText(fd, 'requestIdSingle');
     if (single) ids.push(single);
@@ -331,7 +331,7 @@ export async function fileWithholdingAction(
 
 export async function createFeePolicy(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
-    if (admin.adminPermission === 'SUPPORT') throw new Error('수수료 정책 변경은 재무/운영 권한에서만 가능합니다.');
+    assertMoneyAdmin(admin, '수수료 정책 변경은 재무/운영 권한에서만 가능합니다.');
     const scope = enumValue(fd, 'scope', ['GLOBAL', 'MERCHANT'] as const, '적용 범위');
     const merchantId = scope === 'MERCHANT' ? requiredId(fd, 'merchantId', '가맹점') : null;
     // 입력은 퍼센트("5.5"), 저장은 소수("0.055").
@@ -423,7 +423,7 @@ export async function createFeePolicy(_prev: AdminActionState, fd: FormData): Pr
 
 export async function deactivateFeePolicy(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
-    if (admin.adminPermission === 'SUPPORT') throw new Error('수수료 정책 변경은 재무/운영 권한에서만 가능합니다.');
+    assertMoneyAdmin(admin, '수수료 정책 변경은 재무/운영 권한에서만 가능합니다.');
     const id = requiredId(fd, 'id', '수수료 정책');
     const before = await prisma.feePolicy.findUnique({ where: { id } });
     if (!before) throw new Error('수수료 정책을 찾을 수 없습니다.');
@@ -460,7 +460,7 @@ export async function deactivateFeePolicy(_prev: AdminActionState, fd: FormData)
  */
 export async function runPayoutBatchAction(_prev: AdminActionState, _fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
-    if (admin.adminPermission === 'SUPPORT') throw new Error('지급 실행은 재무/운영 권한에서만 가능합니다.');
+    assertMoneyAdmin(admin, '지급 실행은 재무/운영 권한에서만 가능합니다.');
     const result = await runScheduledPayouts();
     await writeAudit({
       adminUserId: admin.id,
@@ -484,7 +484,7 @@ export async function runPayoutBatchAction(_prev: AdminActionState, _fd: FormDat
 /** 지급 실패 회차 재시도. 재이체 전에 대행사 조회로 이중 지급을 막는다. */
 export async function retryPayoutAction(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
-    if (admin.adminPermission === 'SUPPORT') throw new Error('지급 실행은 재무/운영 권한에서만 가능합니다.');
+    assertMoneyAdmin(admin, '지급 실행은 재무/운영 권한에서만 가능합니다.');
     const requestId = requiredId(fd, 'requestId', '정산 회차');
     const result = await retryPayout(requestId);
     await writeAudit({

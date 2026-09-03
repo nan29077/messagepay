@@ -3,7 +3,7 @@ import { PageHeader } from '@/components/layout/console-shell';
 import { Badge, EmptyState, Notice, StatTile, Table, Td, Th } from '@/components/ui';
 import { AdminField, AdminInput, AdminSelect, FilterBar, Pager } from '@/components/admin/controls';
 import { ActionButton, ActionForm } from '@/components/admin/action-form';
-import { PAGE_SIZE, parsePage, PAID_CHARGE_STATUSES, clampPage, canWrite } from '@/components/admin/constants';
+import { PAGE_SIZE, parsePage, PAID_CHARGE_STATUSES, clampPage, canWrite, canManageMoney } from '@/components/admin/constants';
 import { bankLabel } from '@/components/admin/mask';
 import { unlockPayer, setPayerBlock, updatePayerLimitsByAdmin } from '@/app/actions/admin/accounts';
 import { prisma } from '@/server/db';
@@ -27,6 +27,8 @@ export default async function AdminPayersPage({
   const me = await requireAdmin();
   // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
   const canEdit = canWrite(me.adminPermission);
+  // 한도 변경은 updatePayerLimitsByAdmin 이 SUPPORT 를 막는다. 잠금 해제·이용 제한과 기준이 다르다.
+  const canEditLimits = canManageMoney(me.adminPermission);
 
   const sp = await searchParams;
   const page = parsePage(sp.page);
@@ -198,7 +200,7 @@ export default async function AdminPayersPage({
                             {d.dailyLimit != null || d.monthlyLimit != null ? '개별 설정됨' : '정책 기본값'}
                           </summary>
                           <div className="mt-2 w-52">
-                            <ActionForm disabled={!canEdit} action={updatePayerLimitsByAdmin} submitLabel="한도 저장" variant="secondary" compact>
+                            <ActionForm disabled={!canEditLimits} action={updatePayerLimitsByAdmin} submitLabel="한도 저장" variant="secondary" compact>
                               <input type="hidden" name="payerId" value={d.id} />
                               <AdminField label="일 한도 (비우면 정책값)">
                                 <AdminInput

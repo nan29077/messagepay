@@ -17,11 +17,14 @@ export function TempPasswordButton({
   action,
   userId,
   label,
+  disabled = false,
 }: {
   action: AdminServerAction;
   userId: string;
   /** 확인 문구에 표시할 대상 (이메일 등) */
   label: string;
+  /** 권한이 없으면 잠근다. 서버(issueTemporaryPasswordAction)도 같은 기준으로 막는다. */
+  disabled?: boolean;
 }) {
   const [state, formAction, pending] = React.useActionState(action, initialAdminState);
   const password = state.detail?.tempPassword;
@@ -43,7 +46,7 @@ export function TempPasswordButton({
       className="flex flex-col items-start gap-1"
     >
       <input type="hidden" name="userId" value={userId} />
-      <Button type="submit" variant="secondary" size="sm" disabled={pending}>
+      <Button type="submit" variant="secondary" size="sm" disabled={disabled || pending}>
         {pending ? '발급 중' : '임시 비밀번호'}
         <KeyRound size={15} strokeWidth={1.7} />
       </Button>

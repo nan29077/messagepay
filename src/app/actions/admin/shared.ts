@@ -15,12 +15,42 @@ import type { AdminActionState } from '@/components/admin/state';
 
 export type { AdminActionState };
 
+/**
+ * 권한 판정은 반드시 **화이트리스트**로 한다.
+ *
+ * `permission !== 'READ_ONLY'` 같은 블랙리스트는 두 경우에 조용히 열린다.
+ *  1) adminProfile 행이 없어 adminPermission 이 undefined 인 계정(레이아웃에 "권한 미지정"으로 뜬다)
+ *  2) AdminPermission enum 에 등급이 추가됐는데 이 파일을 함께 고치지 않은 경우
+ * 어느 쪽이든 "모르는 등급"이 금전·정책 변경까지 통과한다. 화이트리스트는 반대로 닫힌다.
+ * (같은 이유로 api/admin/settlements/* 라우트도 화이트리스트를 쓴다)
+ */
+const WRITE_PERMISSIONS: ReadonlySet<string> = new Set(['SUPER_ADMIN', 'OPERATION', 'FINANCE', 'SUPPORT']);
+const MONEY_PERMISSIONS: ReadonlySet<string> = new Set(['SUPER_ADMIN', 'OPERATION', 'FINANCE']);
+
 export async function requireWriteAdmin(): Promise<SessionUser> {
   const user = await requireAdmin();
-  if (user.adminPermission === 'READ_ONLY') {
+  if (!WRITE_PERMISSIONS.has(String(user.adminPermission))) {
     throw new Error('읽기 전용 권한입니다. 변경 작업은 수행할 수 없습니다.');
   }
   return user;
+}
+
+/** 금전·정책 변경 전용 진입점. 정산·환불·수수료·한도처럼 돈이 움직이는 액션에서 쓴다. */
+export async function requireFinanceAdmin(): Promise<SessionUser> {
+  const user = await requireWriteAdmin();
+  assertMoneyAdmin(user);
+  return user;
+}
+
+/**
+ * run() 안에서 이미 받은 admin 으로 금전·정책 권한을 확인한다.
+ *
+ * 액션마다 문구가 다르므로 message 를 받는다. 판정 기준(화이트리스트)은 한 곳에 모아 둔다.
+ */
+export function assertMoneyAdmin(admin: SessionUser, message?: string): void {
+  if (!MONEY_PERMISSIONS.has(String(admin.adminPermission))) {
+    throw new Error(message ?? '이 작업은 최고관리자·운영·재무 권한에서만 가능합니다.');
+  }
 }
 
 /** 액션 본문 실행 래퍼. 성공 시 반환한 문자열이 그대로 사용자 메시지가 된다. */

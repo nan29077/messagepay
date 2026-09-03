@@ -1,4 +1,5 @@
 import { requireAdmin, writeAudit } from '@/server/auth';
+import { isSameOrigin } from '@/server/request-guard';
 import { prisma } from '@/server/db';
 import { decrypt } from '@/lib/crypto';
 import { kstMonthEndKey } from '@/lib/datetime';
@@ -28,6 +29,14 @@ function csvCell(v: string): string {
 }
 
 export async function GET(req: Request) {
+  // 이 GET 은 주민등록번호를 복호화하고 열람 이력(SETTLEMENT_WITHHOLDING_EXPORT)을 남긴다.
+  // 동일 출처 검사가 없으면 로그인한 재무 관리자가 악성 페이지를 여는 것만으로
+  // (<img src=...>) 주민번호가 복호화되고, 본인이 하지도 않은 반출 기록이 감사로그에 쌓인다.
+  // 그 로그는 "누가 주민번호를 내려받았는가" 의 법적 근거라 오염되면 되돌릴 수 없다.
+  if (!isSameOrigin(req)) {
+    return new Response('허용되지 않은 요청입니다.', { status: 403 });
+  }
+
   // 미인증 요청이 500 으로 떨어지지 않도록 여기서 401 로 정리한다.
   const admin = await requireAdmin().catch(() => null);
   if (!admin) return new Response('관리자 로그인이 필요합니다.', { status: 401 });

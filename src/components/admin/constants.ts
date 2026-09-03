@@ -53,16 +53,26 @@ export function clampPage(input: {
  * 서버 액션은 이미 등급을 검사해 거절하지만, 화면이 등급을 읽지 않으면 위험한 버튼이
  * 모두 활성 상태로 보인다. 눌러 본 뒤에야 "권한이 없습니다" 를 만나는 죽은 버튼이 된다.
  * 판정 기준은 서버 액션과 같아야 한다.
+ *
+ * 판정은 반드시 **화이트리스트**로 한다. `permission !== 'READ_ONLY'` 같은 블랙리스트는
+ * adminPermission 이 undefined 인 계정(adminProfile 행이 없는 경우)이나 새로 추가된 등급을
+ * 전부 통과시켜, 화면에서 위험한 버튼이 열린 채로 보인다.
+ * (서버 쪽 같은 기준: src/app/actions/admin/shared.ts)
  */
+const WRITE_PERMISSIONS: ReadonlySet<string> = new Set(['SUPER_ADMIN', 'OPERATION', 'FINANCE', 'SUPPORT']);
+const MONEY_PERMISSIONS: ReadonlySet<string> = new Set(['SUPER_ADMIN', 'OPERATION', 'FINANCE']);
+const TEMPLATE_PERMISSIONS: ReadonlySet<string> = new Set(['SUPER_ADMIN', 'OPERATION']);
+/** 계좌번호·주민등록번호 원문이 담긴 정산 파일. api/admin/settlements/* 라우트와 같은 기준. */
+const SETTLEMENT_FILE_PERMISSIONS: ReadonlySet<string> = new Set(['SUPER_ADMIN', 'FINANCE']);
 
-/** 변경 동작 일반. `run()` 이 READ_ONLY 를 막는 것과 같은 기준. */
+/** 변경 동작 일반. `run()` 의 requireWriteAdmin() 과 같은 기준. */
 export function canWrite(permission?: string | null): boolean {
-  return permission !== 'READ_ONLY';
+  return WRITE_PERMISSIONS.has(String(permission));
 }
 
-/** 금전·정책 변경. 정산·환불·수수료·한도 액션이 SUPPORT 를 막는 것과 같은 기준. */
+/** 금전·정책 변경. 정산·환불·수수료·한도 액션의 assertMoneyAdmin() 과 같은 기준. */
 export function canManageMoney(permission?: string | null): boolean {
-  return permission !== 'READ_ONLY' && permission !== 'SUPPORT';
+  return MONEY_PERMISSIONS.has(String(permission));
 }
 
 /** 최고 관리자 전용(약관 등록, 문의 관리 등). */
@@ -72,5 +82,16 @@ export function isSuperAdmin(permission?: string | null): boolean {
 
 /** MT 메시지 본문처럼 최고관리자·운영만 다루는 영역. */
 export function canManageTemplates(permission?: string | null): boolean {
-  return permission === 'SUPER_ADMIN' || permission === 'OPERATION';
+  return TEMPLATE_PERMISSIONS.has(String(permission));
+}
+
+/**
+ * 지급대행 이체파일·원천징수 자료 내려받기.
+ *
+ * 두 라우트(api/admin/settlements/payout·withholding)는 SUPER_ADMIN·FINANCE 만 허용한다.
+ * 화면이 canManageMoney 로 열어 두면 OPERATION 관리자에게 링크가 살아 있는 채로 보이고,
+ * 눌러야 403 을 만난다.
+ */
+export function canExportSettlementFiles(permission?: string | null): boolean {
+  return SETTLEMENT_FILE_PERMISSIONS.has(String(permission));
 }

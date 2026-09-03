@@ -167,7 +167,7 @@ export default async function AdminHolidaysPage({
                             ))}
                           </AdminSelect>
                           <AdminInput name="memo" defaultValue={h.memo ?? ''} placeholder="메모" />
-                          <label className="flex items-center gap-1.5 text-[11.5px] text-ink-600">
+                          <label className="flex items-center gap-1.5 text-[11.5px] text-ink-500">
                             <input
                               type="checkbox"
                               name="active"

@@ -2,7 +2,7 @@ import { PageHeader } from '@/components/layout/console-shell';
 import { Badge, Card, CardTitle, EmptyState, Notice, SectionTitle, StatTile, Table, Td, Th } from '@/components/ui';
 import { AdminField, AdminInput, AdminSelect, FilterBar, Pager } from '@/components/admin/controls';
 import { ActionButton, ActionForm, SelectActionForm } from '@/components/admin/action-form';
-import { PAGE_SIZE, parsePage, clampPage, canManageMoney } from '@/components/admin/constants';
+import { PAGE_SIZE, parsePage, clampPage, canManageMoney, canWrite } from '@/components/admin/constants';
 import { updateReportStatus, createBannedWord, deleteBannedWord } from '@/app/actions/admin/policy';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/auth';
@@ -38,6 +38,8 @@ export default async function AdminModerationPage({
   const me = await requireAdmin();
   // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
   const canEdit = canManageMoney(me.adminPermission);
+  // 신고 처리(updateReportStatus)는 SUPPORT 를 막지 않는다. 신고 응대가 고객지원의 업무다.
+  const canHandleReports = canWrite(me.adminPermission);
 
   const sp = await searchParams;
   const page = parsePage(sp.page);
@@ -210,7 +212,7 @@ export default async function AdminModerationPage({
                         <Badge tone={reportStatusLabel[r.status].tone}>{reportStatusLabel[r.status].text}</Badge>
                       </Td>
                       <Td>
-                        <SelectActionForm disabled={!canEdit}
+                        <SelectActionForm disabled={!canHandleReports}
                           action={updateReportStatus}
                           values={{ reportId: r.id }}
                           name="status"

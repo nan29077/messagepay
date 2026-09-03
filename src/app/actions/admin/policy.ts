@@ -5,7 +5,7 @@ import { prisma } from '@/server/db';
 import { writeAudit } from '@/server/auth';
 import { newId } from '@/lib/id';
 import type { AdminActionState } from '@/components/admin/state';
-import { run, text, optText, money, int, bool, enumValue, requiredId, optDate } from './shared';
+import { run, text, optText, money, int, bool, enumValue, requiredId, optDate, assertMoneyAdmin } from './shared';
 import { bannedNeedle } from '@/server/services/content-filter';
 
 /**
@@ -49,9 +49,7 @@ function readLimitFields(fd: FormData) {
 export async function saveLimitPolicy(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
     // 한도 정책은 결제 금액·속도·잠금을 전부 정한다. 수수료 정책·정산 처리와 같은 기준으로 막는다.
-    if (admin.adminPermission === 'SUPPORT') {
-      throw new Error('한도 정책 변경은 운영/재무 권한에서만 가능합니다.');
-    }
+    assertMoneyAdmin(admin, '한도 정책 변경은 운영/재무 권한에서만 가능합니다.');
     const id = optText(fd, 'id');
     const values = readLimitFields(fd);
     const active = bool(fd, 'active');
@@ -144,9 +142,7 @@ export async function saveLimitPolicy(_prev: AdminActionState, fd: FormData): Pr
 
 export async function toggleLimitPolicy(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
-    if (admin.adminPermission === 'SUPPORT') {
-      throw new Error('한도 정책 변경은 운영/재무 권한에서만 가능합니다.');
-    }
+    assertMoneyAdmin(admin, '한도 정책 변경은 운영/재무 권한에서만 가능합니다.');
     const id = requiredId(fd, 'id', '한도 정책');
     const before = await prisma.chargeLimitPolicy.findUnique({
       where: { id },
@@ -255,9 +251,7 @@ export async function updateReportStatus(_prev: AdminActionState, fd: FormData):
 export async function createBannedWord(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
     // 전역 금칙어는 결제 흐름(charge-flow)에 그대로 반영된다. 정책 변경과 같은 기준으로 막는다.
-    if (admin.adminPermission === 'SUPPORT') {
-      throw new Error('전역 금칙어 변경은 운영/재무 권한에서만 가능합니다.');
-    }
+    assertMoneyAdmin(admin, '전역 금칙어 변경은 운영/재무 권한에서만 가능합니다.');
     const word = text(fd, 'word');
     const action = enumValue(fd, 'action', ['BLOCK', 'MASK', 'FLAG'] as const, '처리 방식');
     if (word.length < 1 || word.length > 40) throw new Error('금칙어는 1 ~ 40자로 입력해 주세요.');
@@ -284,9 +278,7 @@ export async function createBannedWord(_prev: AdminActionState, fd: FormData): P
 
 export async function deleteBannedWord(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
-    if (admin.adminPermission === 'SUPPORT') {
-      throw new Error('전역 금칙어 변경은 운영/재무 권한에서만 가능합니다.');
-    }
+    assertMoneyAdmin(admin, '전역 금칙어 변경은 운영/재무 권한에서만 가능합니다.');
     const id = requiredId(fd, 'id', '금칙어');
     const before = await prisma.bannedWord.findUnique({ where: { id } });
     if (!before) throw new Error('금칙어를 찾을 수 없습니다.');

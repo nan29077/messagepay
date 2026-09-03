@@ -7,7 +7,7 @@ import { runPayoutBatchAction, retryPayoutAction } from '@/app/actions/admin/set
 import { buildPayoutDashboard } from '@/server/services/auto-settlement';
 import { formatDateKeyKo } from '@/lib/business-day';
 import { env } from '@/lib/env';
-import { PAGE_SIZE, parsePage, clampPage, canManageMoney } from '@/components/admin/constants';
+import { PAGE_SIZE, parsePage, clampPage, canManageMoney, canExportSettlementFiles } from '@/components/admin/constants';
 import { SettlementRequestsPanel, type SettlementRow } from '@/components/admin/settlement-requests';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/auth';
@@ -31,6 +31,9 @@ export default async function AdminSettlementsPage({
   const me = await requireAdmin();
   // 서버 액션과 같은 기준으로 화면의 변경 컨트롤을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
   const canEdit = canManageMoney(me.adminPermission);
+  // 이체파일·원천징수 자료에는 계좌번호와 주민등록번호 원문이 들어간다.
+  // 두 라우트가 SUPER_ADMIN·FINANCE 만 허용하므로 링크도 같은 기준으로 잠근다.
+  const canExportFiles = canExportSettlementFiles(me.adminPermission);
 
   const sp = await searchParams;
   const page = parsePage(sp.page);
@@ -450,18 +453,20 @@ export default async function AdminSettlementsPage({
           </datalist>
         </FilterBar>
 
-        <SettlementRequestsPanel rows={requestRows} canEdit={canEdit} />
+        <SettlementRequestsPanel rows={requestRows} canEdit={canEdit} canExportPayout={canExportFiles} />
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {/* Link 는 화면에 보이면 prefetch 로 GET 을 미리 호출해 주민번호 복호화·감사로그가 클릭 없이 쌓인다. */}
-          <a
-            href={`/api/admin/settlements/withholding?from=${kstMonthKey()}-01`}
-            className="rounded-lg border border-ink-200 px-3 py-1.5 text-[12px] font-bold text-ink-700 hover:bg-ink-50"
-          >
-            이번 달 원천징수 지급명세서 자료 받기
-          </a>
-          <span className="text-[11.5px] text-ink-400">지급 완료 건의 지급명세서 산출 자료(CSV)를 내려받습니다.</span>
-        </div>
+        {canExportFiles ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {/* Link 는 화면에 보이면 prefetch 로 GET 을 미리 호출해 주민번호 복호화·감사로그가 클릭 없이 쌓인다. */}
+            <a
+              href={`/api/admin/settlements/withholding?from=${kstMonthKey()}-01`}
+              className="rounded-lg border border-ink-200 px-3 py-1.5 text-[12px] font-bold text-ink-700 hover:bg-ink-50"
+            >
+              이번 달 원천징수 지급명세서 자료 받기
+            </a>
+            <span className="text-[11.5px] text-ink-400">지급 완료 건의 지급명세서 산출 자료(CSV)를 내려받습니다.</span>
+          </div>
+        ) : null}
 
         <Pager
           basePath="/admin/settlements"

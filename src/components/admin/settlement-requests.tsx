@@ -110,10 +110,16 @@ function SingleStatusForm({ row, disabled }: { row: SettlementRow; disabled: boo
 export function SettlementRequestsPanel({
   rows,
   canEdit = true,
+  canExportPayout = true,
 }: {
   rows: SettlementRow[];
   /** 권한이 없으면 처리 컨트롤을 잠근다(서버도 같은 기준으로 막는다). */
   canEdit?: boolean;
+  /**
+   * 지급대행 이체파일 내려받기 권한. canEdit 보다 좁다.
+   * 파일에 복호화된 계좌번호·예금주 실명이 들어가 라우트는 SUPER_ADMIN·FINANCE 만 허용한다.
+   */
+  canExportPayout?: boolean;
 }) {
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [bulkState, bulkAction, bulkPending] = React.useActionState(bulkUpdateSettlementAction, initialAdminState);
@@ -143,7 +149,9 @@ export function SettlementRequestsPanel({
     ids.map((id) => <input key={id} type="hidden" name="requestId" value={id} />);
 
   const payoutUrl =
-    approvedSelected.length > 0 ? `/api/admin/settlements/payout?ids=${approvedSelected.join(',')}` : null;
+    canExportPayout && approvedSelected.length > 0
+      ? `/api/admin/settlements/payout?ids=${approvedSelected.join(',')}`
+      : null;
 
   const lastState = lastForm === 'bulk' ? bulkState : lastForm === 'result' ? resultState : lastForm === 'file' ? fileState : null;
   const anyMsg = lastState?.message ?? null;
@@ -180,12 +188,13 @@ export function SettlementRequestsPanel({
             <input
               name="memo"
               placeholder="반려/처리 사유"
-              className="h-8 w-40 rounded-lg border border-ink-200 px-2 text-[12px] outline-none focus:border-brand-400"
+              disabled={!canEdit}
+              className="h-8 w-40 rounded-lg border border-ink-200 px-2 text-[12px] outline-none focus:border-brand-400 disabled:bg-ink-50 disabled:text-ink-300"
             />
             <button
               name="bulkAction"
               value="APPROVE"
-              disabled={bulkPending || selectedIds.length === 0}
+              disabled={!canEdit || bulkPending || selectedIds.length === 0}
               className="h-8 rounded-lg bg-brand-400 px-3 text-[12px] font-bold text-ink-900 disabled:opacity-50"
             >
               일괄 승인
@@ -193,7 +202,7 @@ export function SettlementRequestsPanel({
             <button
               name="bulkAction"
               value="REJECT"
-              disabled={bulkPending || selectedIds.length === 0}
+              disabled={!canEdit || bulkPending || selectedIds.length === 0}
               className="h-8 rounded-lg border border-danger-500 px-3 text-[12px] font-bold text-danger-500 disabled:opacity-50"
             >
               일괄 반려
@@ -201,7 +210,7 @@ export function SettlementRequestsPanel({
             <button
               name="bulkAction"
               value="PAY"
-              disabled={bulkPending || approvedSelected.length === 0}
+              disabled={!canEdit || bulkPending || approvedSelected.length === 0}
               className="h-8 rounded-lg bg-ink-900 px-3 text-[12px] font-bold text-white disabled:opacity-50"
               title="승인 상태만 지급 완료됩니다"
             >
@@ -230,7 +239,7 @@ export function SettlementRequestsPanel({
           <form action={fileAction} onSubmit={() => setLastForm('file')} className="inline">
             {hidden(paidSelected)}
             <button
-              disabled={filePending || paidSelected.length === 0}
+              disabled={!canEdit || filePending || paidSelected.length === 0}
               className="h-8 rounded-lg border border-ink-200 px-3 text-[12px] font-bold text-ink-700 disabled:opacity-50"
               title="지급완료 건의 주민등록번호를 파기합니다"
             >
@@ -258,7 +267,8 @@ export function SettlementRequestsPanel({
             <input
               name="batchNo"
               placeholder="배치번호 (예: B7K2M9X4QP)"
-              className="h-8 w-56 rounded-lg border border-ink-200 px-2 font-mono text-[12px] outline-none focus:border-brand-400"
+              disabled={!canEdit}
+              className="h-8 w-56 rounded-lg border border-ink-200 px-2 font-mono text-[12px] outline-none focus:border-brand-400 disabled:bg-ink-50 disabled:text-ink-300"
             />
             <span className="text-[11px] text-ink-400">
               이체파일 이름에 있는 배치번호를 넣으면 그 배치 건에만 반영됩니다. 지난 파일을 잘못 다시
@@ -269,10 +279,11 @@ export function SettlementRequestsPanel({
             name="results"
             rows={4}
             placeholder={'01ABC...,SUCCESS\n01DEF...,FAIL,잔액부족'}
-            className="w-full rounded-xl border border-ink-200 px-3 py-2 font-mono text-[12px] outline-none focus:border-brand-400"
+            disabled={!canEdit}
+            className="w-full rounded-xl border border-ink-200 px-3 py-2 font-mono text-[12px] outline-none focus:border-brand-400 disabled:bg-ink-50 disabled:text-ink-300"
           />
           <button
-            disabled={resultPending}
+            disabled={!canEdit || resultPending}
             className="h-9 rounded-xl bg-ink-900 px-4 text-[12px] font-bold text-white disabled:opacity-50"
           >
             결과 반영

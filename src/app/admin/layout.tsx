@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { ConsoleShell, type NavGroup } from '@/components/layout/console-shell';
 import { requireAdmin, type SessionUser } from '@/server/auth';
@@ -78,6 +79,24 @@ const permissionLabel: Record<string, string> = {
   READ_ONLY: '읽기 전용',
 };
 
+/**
+ * 로그인 후 되돌아갈 관리자 경로를 구한다.
+ *
+ * 레이아웃은 pathname 을 prop 으로 받지 못한다(Next 16: "Layouts do not re-render on
+ * navigation, so they do not access pathname"). 화면 안에서 이동하다 세션이 끊긴 경우는
+ * RSC 요청의 `next-url` 헤더로 알 수 있으므로 그 값을 쓰고, 헤더가 없는 최초 문서 요청은
+ * `/admin` 으로 떨어뜨린다. 열린 리다이렉트가 되지 않도록 `/admin` 하위 경로만 통과시킨다.
+ */
+async function resolveAdminNextPath(): Promise<string> {
+  const h = await headers();
+  const raw = h.get('next-url');
+  if (!raw) return '/admin';
+  // `//evil.com` 같은 스킴 상대 URL 과 역슬래시 우회를 함께 막는다.
+  if (!raw.startsWith('/') || raw.startsWith('//') || raw.includes('\\')) return '/admin';
+  if (raw !== '/admin' && !raw.startsWith('/admin/')) return '/admin';
+  return raw;
+}
+
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   let admin: SessionUser | null = null;
   try {
@@ -85,7 +104,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   } catch {
     admin = null;
   }
-  if (!admin) redirect('/login?next=/admin');
+  if (!admin) redirect(`/login?next=${encodeURIComponent(await resolveAdminNextPath())}`);
 
   const visibleGroups = groups
     .map((group) => ({
