@@ -110,7 +110,7 @@ export async function GET(req: Request) {
       pointStatus: true,
       paidAt: true,
       isTest: true,
-      payer: { select: { phoneEnc: true, phoneMasked: true, phoneHash: true } },
+      payer: { select: { phoneMasked: true, phoneHash: true } },
       product: {
         select: { id: true, kind: true, digitalType: true, name: true, sku: true, giveAmount: true, giveUnit: true, validDays: true },
       },
@@ -140,8 +140,8 @@ export async function GET(req: Request) {
       amount: Number(r.amount),
       points: Number(r.amount),
       currency: 'KRW',
-      // 이용자 식별 기준. 가맹점 회원의 휴대폰 번호와 매칭한다.
-      payerPhone: r.payer ? decrypt(r.payer.phoneEnc) : null,
+      // 이용자 식별: 마스킹된 번호로 표시, 해시로 가맹점 회원과 매칭한다.
+      // 원문 전화번호는 보안상 반환하지 않는다 (키 유출 시 대량 개인정보 노출 방지).
       payerPhoneMasked: r.payer?.phoneMasked ?? null,
       // 번호를 저장하고 싶지 않은 가맹점을 위한 고정 해시(같은 번호 = 같은 값).
       payerRef: r.payer?.phoneHash ?? null,

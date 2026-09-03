@@ -75,7 +75,13 @@ export async function updateSettlementRequestStatus(
           : status === 'REJECTED'
             ? { status, rejectedAt: now, adminId: admin.id, adminMemo: memo ?? undefined }
             : { status, adminId: admin.id, adminMemo: memo ?? undefined };
-      await prisma.settlementRequest.update({ where: { id: requestId }, data });
+      // updateMany + where 조건으로 상태 검증과 업데이트를 원자적으로 처리한다.
+      // findUnique 이후 상태가 바뀐 경우(레이스 컨디션) count === 0 으로 감지된다.
+      const updated = await prisma.settlementRequest.updateMany({
+        where: { id: requestId, status: before.status },
+        data,
+      });
+      if (updated.count === 0) throw new Error('상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
       if (status === 'REJECTED') {
         // 회차를 버렸으므로 묶여 있던 결제 건을 지급 대상 풀로 되돌린다.
         await prisma.charge.updateMany({
