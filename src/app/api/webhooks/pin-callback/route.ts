@@ -6,7 +6,7 @@ import { safeEqual } from '@/lib/crypto';
 import { logger, scrub } from '@/lib/logger';
 import { completePinAuthorization, failPinAuthorization } from '@/server/services/pin-authorization';
 import { isMockPaymentAllowed } from '@/server/mock-guard';
-import { clientIpFromRequest } from '@/server/rate-limit';
+import { clientIpFromRequest, isAllowedIp } from '@/server/rate-limit';
 import { readTextWithLimit } from '@/server/request-guard';
 
 export const runtime = 'nodejs';
@@ -50,10 +50,25 @@ function str(v: unknown): string | null {
  * TODO(계약 후): 결제사 규격의 서명(해시) 검증으로 교체한다.
  *                지금은 공유 비밀(X-Pin-Secret) 대조만 수행하는 mock 단계다.
  *
- * PAYMENT_PIN_CALLBACK_SECRET 이 비어 있으면 로컬에서만 통과시킨다.
- * 운영/스테이징에서 비밀이 없으면 어떤 콜백도 받지 않는다(fail-closed).
+ * 2중 방어
+ *  1) 발신 IP 허용목록(PIN_CALLBACK_IPS) — 비밀이 유출돼도 아무 데서나 통지할 수 없게 한다.
+ *  2) 공유 비밀(X-Pin-Secret) — 같은 망 안에서의 위조를 막는다.
+ *
+ * 두 값 모두 비어 있으면 로컬에서만 통과시킨다.
+ * 운영/스테이징에서 설정이 없으면 어떤 콜백도 받지 않는다(fail-closed).
  */
-function verifyCallback(headerSecret: string | null): { ok: boolean; reason?: string } {
+function verifyCallback(headerSecret: string | null, ip: string | undefined): { ok: boolean; reason?: string } {
+  // (1) 발신 IP
+  if (env.payment.pinCallbackIps.length > 0) {
+    if (!ip) return { ok: false, reason: '발신 IP 를 확인할 수 없습니다.' };
+    if (!isAllowedIp(ip, env.payment.pinCallbackIps)) {
+      return { ok: false, reason: `허용되지 않은 IP: ${ip}` };
+    }
+  } else if (!isLocal) {
+    return { ok: false, reason: 'PIN_CALLBACK_IPS 미설정 (운영 환경에서는 IP 허용목록이 필수입니다)' };
+  }
+
+  // (2) 공유 비밀
   const expected = env.payment.pinCallbackSecret;
   if (!expected) {
     if (isLocal) return { ok: true };
@@ -101,7 +116,7 @@ export async function POST(req: Request) {
   // 허용목록 검사를 그대로 통과한다(2중 방어가 시크릿 하나로 줄어든다).
   const ip = clientIpFromRequest(req) ?? undefined;
 
-  const verified = verifyCallback(headerMap['x-pin-secret'] ?? null);
+  const verified = verifyCallback(headerMap['x-pin-secret'] ?? null, ip);
 
   let parsed: PinCallbackBody = {};
   try {

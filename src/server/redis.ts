@@ -57,6 +57,11 @@ class MemoryStore implements KvStore {
     await this.set(key, value, ttlSec);
     return true;
   }
+
+  /** 테스트 전용. 저장된 키를 모두 버린다. */
+  clear() {
+    this.map.clear();
+  }
 }
 
 /**
@@ -190,3 +195,14 @@ function build(): KvStore {
 
 export const kv: KvStore = globalForKv.kv ?? build();
 if (process.env.NODE_ENV !== 'production') globalForKv.kv = kv;
+
+/**
+ * 인메모리 카운터를 비운다. **테스트 전용**.
+ *
+ * 속도 제한 카운터는 프로세스 전역이라 테스트 간에 그대로 살아남는다. DB 만 비우면
+ * 앞 테스트가 올려 둔 카운터 때문에 뒤 테스트가 실행 순서에 따라 제한에 걸린다.
+ * Redis 를 쓰는 환경에서는 아무것도 하지 않는다(운영 데이터를 지우지 않기 위함).
+ */
+export function clearMemoryKv(): void {
+  if (kv instanceof MemoryStore) kv.clear();
+}

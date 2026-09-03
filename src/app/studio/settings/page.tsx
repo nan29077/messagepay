@@ -569,7 +569,7 @@ export default async function StudioSettingsPage({
                 <DataRow label="지급 결과 통보" value={<code className="font-mono text-[12px]">POST /api/partner/v1/charges/ack</code>} />
                 <DataRow label="배송 상태 갱신" value={<code className="font-mono text-[12px]">POST /api/partner/v1/charges/shipment</code>} />
                 <DataRow label="연결 점검" value={<code className="font-mono text-[12px]">GET /api/partner/v1/ping</code>} />
-                <DataRow label="이용자 식별" value="휴대폰 번호 (payerPhone) 또는 고정 해시(payerRef)" />
+                <DataRow label="이용자 식별" value="마스킹 번호(payerPhoneMasked) 또는 가맹점 전용 고정 식별자(payerRef)" />
                 <DataRow label="금액 ↔ 포인트" value="1 : 1 (10,000원 결제 = 10,000 포인트)" />
               </div>
               <div className="mt-3">

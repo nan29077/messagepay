@@ -1,5 +1,6 @@
 import { env, isLocal } from '@/lib/env';
 import { verifySignature } from '@/lib/crypto';
+import { isAllowedIp } from '@/server/rate-limit';
 import type { AdapterInfo } from '../types';
 // mtonet.ts 는 이 파일에서 타입과 verifyMoRequest 만 가져온다 (아래에서 정의됨 → 함수 호출 시점에 해석).
 import { mtonetMoAdapter } from './mtonet';
@@ -19,7 +20,9 @@ export function verifyMoRequest(
 ): { ok: boolean; reason?: string } {
   if (env.mo.allowedIps.length > 0) {
     if (!ip) return { ok: false, reason: '발신 IP 를 확인할 수 없습니다.' };
-    if (!env.mo.allowedIps.includes(ip)) return { ok: false, reason: `허용되지 않은 IP: ${ip}` };
+    // 문자열 그대로 비교하면 `::ffff:203.0.113.10` 처럼 IPv6 로 감싸 도착한 같은 주소를
+    // 거절해 MO 가 전건 401 이 된다. 양쪽을 같은 규칙으로 정규화한 뒤 비교한다.
+    if (!isAllowedIp(ip, env.mo.allowedIps)) return { ok: false, reason: `허용되지 않은 IP: ${ip}` };
   } else if (!isLocal) {
     return { ok: false, reason: 'MO_ALLOWED_IPS 미설정 (운영 환경에서는 IP 허용목록이 필수입니다)' };
   }

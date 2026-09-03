@@ -44,6 +44,48 @@ export function clientIpFromRequest(req: Request): string | null {
 }
 
 /**
+ * 허용목록 비교를 위한 IP 정규화.
+ *
+ * 같은 주소가 여러 표기로 도착한다. 문자열을 그대로 비교하면 허용목록에 적어 둔 주소인데도
+ * 거절되어 결제 콜백·MO 웹훅이 전건 401 이 된다(반대로 느슨하게 비교하면 우회를 허용한다).
+ *
+ *  - IPv4-mapped IPv6 : `::ffff:203.0.113.10` → `203.0.113.10`
+ *  - 대괄호 표기       : `[2001:db8::1]`       → `2001:db8::1`
+ *  - 포트 동반         : `203.0.113.10:51514`  → `203.0.113.10`
+ *                       `[2001:db8::1]:51514`  → `2001:db8::1`
+ *  - IPv6 대소문자     : 소문자로 접는다
+ *
+ * IPv6 축약형(`2001:0db8::1` vs `2001:db8::1`)까지 같게 보지는 않는다. 그 정규화는
+ * 주소 파서가 필요하고, 허용목록은 운영자가 적는 값이므로 표기를 맞추는 편이 안전하다.
+ */
+export function normalizeIp(value: string | null | undefined): string {
+  let v = (value ?? '').trim().toLowerCase();
+  if (!v) return '';
+
+  // [2001:db8::1]:51514 / [2001:db8::1]
+  const bracketed = /^\[([^\]]+)\](?::\d+)?$/.exec(v);
+  if (bracketed) {
+    v = bracketed[1]!;
+  } else if (v.split(':').length === 2) {
+    // 콜론이 하나면 IPv4:port 다 (IPv6 는 콜론이 둘 이상).
+    v = v.slice(0, v.lastIndexOf(':'));
+  }
+
+  // IPv4-mapped IPv6 (::ffff:203.0.113.10, 0:0:0:0:0:ffff:203.0.113.10)
+  const mapped = /^(?:0*:)*(?:0*f{4}:)?((?:\d{1,3}\.){3}\d{1,3})$/.exec(v);
+  if (mapped) return mapped[1]!;
+
+  return v;
+}
+
+/** 정규화한 뒤 허용목록에 있는지 확인한다. 허용목록 항목도 같은 규칙으로 정규화한다. */
+export function isAllowedIp(ip: string | null | undefined, allowList: readonly string[]): boolean {
+  const target = normalizeIp(ip);
+  if (!target) return false;
+  return allowList.some((entry) => normalizeIp(entry) === target);
+}
+
+/**
  * 서버 액션에서 호출자의 IP 를 얻는다.
  *
  * 요청 헤더를 읽을 수 없는 실행 맥락(단위 테스트, 백그라운드 작업)에서도 예외를 던지지 않는다.

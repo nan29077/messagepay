@@ -59,6 +59,33 @@ const APP_ENV = resolveAppEnv();
 const IS_LOCAL = APP_ENV === 'local';
 
 /**
+ * PIN 완료 콜백의 "성공 코드" 기본값.
+ *
+ * 계약 전 mock 검수를 돌리기 위한 값이다. 실제 결제사 규격의 성공 코드로 반드시 교체해야 하며,
+ * 이 값이 그대로 남아 있는 채로 운영에 나가면 결제사가 어떤 코드를 보내든 'OK'/'SUCCESS' 같은
+ * 흔한 문자열만 맞추면 승인(출금)이 실행된다. 그래서 운영 부팅 점검에서 이 기본값을 거부한다.
+ */
+const DEFAULT_PIN_SUCCESS_CODES = '0000,OK,SUCCESS,MOCK';
+/** 어떤 환경에서도 실제 결제 성공으로 인정하면 안 되는 코드(mock 전용). */
+const MOCK_ONLY_PIN_CODES = ['MOCK'];
+
+/**
+ * 헥토 PIN 인증창 발급이 아직 mock 구현인지 여부.
+ *
+ * `src/server/adapters/payment/hecto.ts` 의 `requestPinLink()` 는 연동규격서를 받지 못해
+ * 메시지페이 내부 모의 PIN 화면 주소를 돌려주고 `mock: true` 를 세운다. 즉 결제사를 붙여도
+ * **인증 단계만 우리 화면**이다. 실제 출금이 가능한 빌키를 든 채 인증만 모의로 통과시키는
+ * 조합이므로 부팅 점검에서 막는다. 실연동을 완성하면 이 값을 false 로 바꾼다.
+ *
+ * env 모듈은 서버 어댑터를 import 할 수 없으므로(순환 참조) 여기에 상수로 둔다.
+ */
+const HECTO_PIN_LINK_IS_MOCK = true;
+
+function isMockPinLink(): boolean {
+  return HECTO_PIN_LINK_IS_MOCK;
+}
+
+/**
  * 운영/스테이징에서 반드시 있어야 하는 시크릿.
  * 로컬에서만 개발용 기본값을 허용하고, 그 외 환경에서는 모듈 로드 시점에 즉시 예외를 던진다.
  * (기본값으로 조용히 기동해 세션 위조·전화번호 해시 충돌이 발생하는 fail-open 을 막는다)
@@ -123,10 +150,47 @@ export const env = {
      * 이 목록에 없는 코드는 인증 실패로 처리하고 승인(출금)을 실행하지 않는다.
      * 실연동 시 결제사 규격의 성공 코드로 교체한다.
      */
-    pinSuccessCodes: str('PAYMENT_PIN_SUCCESS_CODES', '0000,OK,SUCCESS,MOCK')
+    pinSuccessCodes: str('PAYMENT_PIN_SUCCESS_CODES', DEFAULT_PIN_SUCCESS_CODES)
       .split(',')
       .map((v) => v.trim().toUpperCase())
       .filter(Boolean),
+    /**
+     * PIN 완료 콜백을 보낼 수 있는 결제사 IP 허용목록 (콤마 구분).
+     *
+     * 공유 비밀(X-Pin-Secret) 하나만으로 막으면 비밀이 유출되는 순간 어디서든
+     * "인증 성공" 통지를 만들어 출금을 일으킬 수 있다. 발신 IP 를 함께 봐서 2중으로 막는다.
+     * 비어 있으면 로컬에서만 검사를 생략한다(운영에서는 부팅 점검이 설정을 요구한다).
+     */
+    pinCallbackIps: str('PIN_CALLBACK_IPS')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  },
+
+  emma: {
+    /** EMMA(인포뱅크 온프레미스 에이전트) 연동 사용 여부. */
+    enabled: bool('EMMA_ENABLED', false),
+    /**
+     * EMMA 전용 DB 접속 URL. 비우면 앱과 같은 DB(DATABASE_URL)를 쓴다.
+     * EMMA 는 테이블·프로시저 생성 권한을 요구하므로 **분리를 권장**한다.
+     */
+    dbUrl: str('EMMA_DB_URL'),
+    poolMax: num('EMMA_DB_POOL_MAX', 4),
+    /**
+     * 계약한 대표번호(숫자만).
+     * 설정하면 이 대표번호로 들어온 수신만 처리한다. 한 EMMA 에 여러 서비스의 번호가 물린
+     * 구성에서 서로의 문자를 가로채는 사고를 막는 안전판이다.
+     */
+    baseNumber: str('EMMA_MO_BASE_NUMBER'),
+    /**
+     * EMMA 이중화 인스턴스 ID(2자리). **이중화를 실제로 쓸 때만** 설정한다.
+     * 값이 EMMA 설정과 다르면 MT 가 큐에 쌓이기만 하고 발송되지 않는다(emma/mt-sender.ts 주석 참고).
+     */
+    emmaId: str('EMMA_ID'),
+    /** 폴링 1회에 가져올 최대 건수. */
+    batchSize: num('EMMA_MO_BATCH_SIZE', 200),
+    /** 선점된 채 이 시간(초)을 넘긴 건은 중단된 것으로 보고 되살린다. */
+    staleSec: num('EMMA_MO_STALE_SEC', 300),
   },
 
   mo: {
@@ -139,9 +203,23 @@ export const env = {
     /** MTONET 050/MO 연동 값. */
     mtonetUserId: str('MTONET_USER_ID'),
     mtonetApiKey: str('MTONET_API_KEY'),
+
+    /**
+     * 이미 가입한 이용자의 MO 폭주 상한 (가맹점 × 전화번호 단위).
+     *
+     * MO 문자 1건마다 금액 선택 링크 MT 가 한 통 나간다. 같은 번호가 문자를 연달아 보내면
+     * (오해·장난·단말 자동 재전송) 그만큼 문자가 나가고 비용이 청구된다.
+     *
+     * 1차 방어는 "직전 링크가 아직 유효하면 다시 보내지 않는다"(charge-flow 의 checkMoThrottle)로,
+     * 사실상 링크 유효시간(PAYMENT_SELECT_TTL_SEC, 기본 10분)당 1건이 된다.
+     * 여기 값은 그 위에 얹는 안전판이다. **정상 이용자가 닿을 수 없는 값**으로 잡아
+     * 실수로 결제를 막지 않게 한다. 0 이면 상한을 쓰지 않는다.
+     */
+    chargeThrottleWindowSec: num('MO_CHARGE_THROTTLE_WINDOW_SEC', 1800),
+    chargeThrottleMax: num('MO_CHARGE_THROTTLE_MAX', 10),
   },
 
-  /** 문자 발송(MT). provider 는 mock | coolsms 를 지원한다. */
+  /** 문자 발송(MT). provider 는 mock | coolsms | emma 를 지원한다. */
   mt: {
     provider: str('MT_PROVIDER', 'mock') as ProviderMode,
     apiKey: str('MT_API_KEY'),
@@ -239,11 +317,45 @@ export function assertProductionSafety(): string[] {
   if (env.crypto.sessionSecret.startsWith('dev-only')) problems.push('SESSION_SECRET 이 기본값입니다.');
   if (env.crypto.phoneHashSecret.startsWith('dev-only')) problems.push('PHONE_HASH_SECRET 이 기본값입니다.');
   if (env.allowInMemoryFallback) problems.push('운영에서는 ALLOW_INMEMORY_FALLBACK=false 여야 합니다.');
-  if (env.mo.allowedIps.length === 0) problems.push('MO_ALLOWED_IPS 가 비어 있습니다.');
-  if (!env.mo.webhookSecret) problems.push('MO_WEBHOOK_SECRET 이 비어 있습니다.');
+  // EMMA 는 HTTP 웹훅을 쓰지 않고 DB 폴링으로 붙는다(/api/cron/emma-mo).
+  // 그 구성에서는 MO 웹훅 설정이 아예 필요 없으므로 요구하지 않는다.
+  if (!env.emma.enabled) {
+    if (env.mo.allowedIps.length === 0) problems.push('MO_ALLOWED_IPS 가 비어 있습니다.');
+    if (!env.mo.webhookSecret) problems.push('MO_WEBHOOK_SECRET 이 비어 있습니다.');
+  } else if (!env.cron.secret) {
+    // EMMA 폴링은 크론 비밀로만 보호된다. 비어 있으면 폴링이 전건 401 로 막혀 수신이 멈춘다.
+    problems.push('EMMA_ENABLED=true 인데 CRON_SECRET 이 비어 있습니다. (MO 폴링이 전건 거절됩니다)');
+  }
   // 비어 있으면 PIN 완료 콜백이 전건 거절되어 결제가 영원히 완료되지 않는다.
   if (!env.payment.pinCallbackSecret) problems.push('PAYMENT_PIN_CALLBACK_SECRET 이 비어 있습니다.');
+  // 공유 비밀 하나가 유출되면 임의의 출금 통지를 만들 수 있다. 발신 IP 로 2중 방어한다.
+  if (env.payment.pinCallbackIps.length === 0) {
+    problems.push('PIN_CALLBACK_IPS 가 비어 있습니다. (결제사 발신 IP 허용목록은 운영에서 필수입니다)');
+  }
+  // 기본 성공 코드('0000,OK,SUCCESS,MOCK')는 mock 검수용이다. 그대로 두면 결제사가 실패를
+  // 통지해도 흔한 문자열 하나만 맞으면 승인이 실행된다. 실제 규격 코드로 교체해야 한다.
+  if (!process.env.PAYMENT_PIN_SUCCESS_CODES || process.env.PAYMENT_PIN_SUCCESS_CODES.trim() === '') {
+    problems.push(
+      'PAYMENT_PIN_SUCCESS_CODES 가 설정되지 않았습니다. 운영에서는 결제사 규격의 실제 성공 코드를 지정해야 합니다.',
+    );
+  }
+  const mockCodes = env.payment.pinSuccessCodes.filter((c) => MOCK_ONLY_PIN_CODES.includes(c));
+  if (mockCodes.length > 0) {
+    problems.push(`PAYMENT_PIN_SUCCESS_CODES 에 mock 전용 코드가 남아 있습니다: ${mockCodes.join(', ')}`);
+  }
   if (env.payment.provider === 'mock') problems.push('PAYMENT_PROVIDER 가 mock 입니다.');
+  // 결제사(헥토)를 붙였는데 PIN 인증만 mock 으로 남아 있으면, 실제 출금이 가능한 빌키를 든 채
+  // 인증 단계만 모의 화면으로 통과시키게 된다. 조합 자체를 막는다.
+  if (env.payment.provider === 'hecto' && isMockPinLink()) {
+    problems.push(
+      'PAYMENT_PROVIDER=hecto 인데 PIN 인증 링크가 아직 mock 구현입니다. ' +
+        '(src/server/adapters/payment/hecto.ts 의 requestPinLink 실연동을 완료하고 ' +
+        'src/lib/env.ts 의 HECTO_PIN_LINK_IS_MOCK 을 false 로 바꾸십시오)',
+    );
+  }
+  // 문자 수신·발신이 mock 이면 결제 요청을 아예 못 받거나, 링크 문자가 나가지 않는다.
+  if (env.mo.provider === 'mock' && !env.emma.enabled) problems.push('MO_PROVIDER 가 mock 입니다.');
+  if (env.mt.provider === 'mock') problems.push('MT_PROVIDER 가 mock 입니다. (링크 문자가 실제로 발송되지 않습니다)');
   // SAFE_MODE 기본값이 true 라, 운영 배포에서 이 값을 빠뜨리면 결제·문자 어댑터가
   // 조용히 mock 으로 바뀐다. 아무에게도 청구하지 않고 "결제 완료" 문자가 나가고,
   // 며칠 뒤 자동 정산이 실재하지 않는 결제에 대해 가맹점에 실제 이체를 한다.
@@ -295,6 +407,39 @@ export function bootWarnings(): string[] {
   // provider=local 인데 마스터키가 없으면 개인정보 암호화가 호출 시점에 예외가 된다.
   if (env.crypto.provider === 'local' && !env.crypto.masterKey) {
     warnings.push('CRYPTO_MASTER_KEY 가 비어 있습니다. 개인정보 암호화가 호출 시점에 실패합니다.');
+  }
+
+  // ── local 이 아닌 환경(staging 포함)에서 mock 사업자가 남아 있는지 ─────────────────
+  //
+  // 운영(prod)은 assertProductionSafety() 가 기동을 중단시킨다. 스테이징은 검수를 위해
+  // mock 을 켜 두는 경우가 있으므로 막지 않되, "실제 문자가 나가지 않는 상태"임을
+  // 부팅 로그에 반드시 남긴다. 이 경고가 없으면 스테이징에서 문자를 못 받은 원인을
+  // 코드에서 찾다가 시간을 버린다.
+  if (!isLocal) {
+    if (env.mo.provider === 'mock' && !env.emma.enabled) {
+      warnings.push(
+        `MO_PROVIDER=mock 입니다 (APP_ENV=${env.appEnv}). 실제 수신 문자를 받을 수 없고 시뮬레이터 경로만 동작합니다.`,
+      );
+    }
+    if (env.mt.provider === 'mock') {
+      warnings.push(
+        `MT_PROVIDER=mock 입니다 (APP_ENV=${env.appEnv}). 실제 문자가 발송되지 않고 개발 아웃박스에만 쌓입니다.`,
+      );
+    }
+    if (env.safety.safeMode) {
+      warnings.push(
+        `SAFE_MODE=true 입니다 (APP_ENV=${env.appEnv}). 결제·문자 어댑터가 mock 으로 대체됩니다.`,
+      );
+    }
+    if (env.payment.provider === 'hecto' && isMockPinLink()) {
+      warnings.push(
+        'PAYMENT_PROVIDER=hecto 이지만 PIN 인증창은 아직 mock 구현입니다. ' +
+          '(hecto.ts requestPinLink — 연동규격서 수령 후 교체 필요)',
+      );
+    }
+    if (env.payment.pinCallbackIps.length === 0) {
+      warnings.push('PIN_CALLBACK_IPS 가 비어 있습니다. PIN 완료 콜백의 발신 IP 검사가 생략됩니다.');
+    }
   }
   return warnings;
 }

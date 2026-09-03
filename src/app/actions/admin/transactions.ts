@@ -6,6 +6,7 @@ import { writeAudit } from '@/server/auth';
 import { newId } from '@/lib/id';
 import { requestRefund, approveRefund, rejectRefund, reopenRefund } from '@/server/services/refund';
 import { reconcileUnknownPayment } from '@/server/services/payment-reconcile';
+import { isValidKeyword, normalizeKeyword } from '@/server/services/content-filter';
 import type { AdminActionState } from '@/components/admin/state';
 import { run, text, optText, money, enumValue, requiredId, assertMoneyAdmin } from './shared';
 
@@ -29,9 +30,15 @@ export async function createMoNumber(_prev: AdminActionState, fd: FormData): Pro
 
     const mode = enumValue(fd, 'mode', ['DEDICATED', 'SHARED_PREFIX'] as const, '수신 모드');
     const rawKeyword = optText(fd, 'keyword');
-    const keyword = rawKeyword ? rawKeyword.toUpperCase().replace(/\s+/g, '') : null;
+    // 등록 시 정규화와 수신 문자 매칭 시 정규화는 **반드시 같은 함수**를 써야 한다.
+    // 규칙이 갈라지면 화면상 같은 키워드인데 실제로는 영원히 매칭되지 않는다
+    // (예전: 등록은 공백만, 매칭은 하이픈만 제거 → "MSG-1234" 가 전건 UNKNOWN_ROUTE).
+    const keyword = rawKeyword ? normalizeKeyword(rawKeyword) || null : null;
     if (mode === 'SHARED_PREFIX' && !keyword) {
       throw new Error('대표번호 공유 모드에서는 키워드가 반드시 필요합니다.');
+    }
+    if (keyword && !isValidKeyword(keyword)) {
+      throw new Error('키워드는 한글·영문·숫자 2~16자로 입력해 주세요. (공백·하이픈은 무시됩니다)');
     }
     // 전용번호에는 키워드를 붙이지 않는다. (붙으면 유니크 키가 갈라져 중복 등록이 뚫린다)
     const effectiveKeyword = mode === 'DEDICATED' ? null : keyword;

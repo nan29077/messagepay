@@ -1,17 +1,14 @@
+import { createHmac, randomBytes } from 'node:crypto';
 import { env } from '@/lib/env';
+import { logger } from '@/lib/logger';
 import type { AdapterInfo, ProviderResult } from '../types';
 import { decideMessageType, type MtAdapter, type MtSendRequest, type MtSendResult } from './index';
 
 /**
- * CoolSMS(SOLAPI) MT 발송 어댑터 — **껍데기(미연동)**.
+ * CoolSMS(SOLAPI) MT 발송 어댑터.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * 계약 전 상태에서 "연결만 하면 되는" 자리를 미리 만들어 둔 것이다.
- * send() 는 언제나 예외를 던진다. 실제 문자 사업자 계약과 연동규격서 수령 전에는
- * 절대로 성공을 반환하지 않는다 (CLAUDE.md 절대규칙 2).
- * ─────────────────────────────────────────────────────────────────────────────
- *
- * 연동 시 확인해야 할 것 (규격서 대조 항목)
+ * 규격 (SOLAPI Messages v4)
  *
  *  1) 엔드포인트
  *     POST https://api.coolsms.co.kr/messages/v4/send
@@ -24,26 +21,27 @@ import { decideMessageType, type MtAdapter, type MtSendRequest, type MtSendResul
  *     Authorization: HMAC-SHA256 apiKey=<MT_API_KEY>, date=<date>, salt=<salt>, signature=<signature>
  *
  *  3) 요청 본문
- *     {
- *       "message": {
- *         "to":   "01012345678",          // 하이픈 없는 숫자만
- *         "from": "<MT_SENDER_NUMBER>",   // 사전등록(발신번호 등록) 완료된 번호여야 한다
- *         "text": "<본문>",
- *         "type": "SMS" | "LMS"           // 90byte 초과 시 LMS. decideMessageType() 참고
- *       }
- *     }
+ *     { "message": { "to", "from", "text", "type": "SMS" | "LMS" } }
  *
  *  4) 응답 본문 (성공)
  *     { "messageId": "M4V2...", "statusCode": "2000", "statusMessage": "정상 접수(이통사로 접수 예정)" }
- *     → providerMessageId 는 messageId 를 쓴다.
- *     → statusCode 가 '2000' 계열이 아니면 실패로 처리한다. 임의로 성공 처리하지 않는다.
+ * ─────────────────────────────────────────────────────────────────────────────
  *
- *  5) 주의
- *     - 발신번호 사전등록(전기통신사업법)이 끝난 번호만 from 에 넣을 수 있다.
- *     - 접수 성공(2000)은 "이통사 접수"이지 "단말 수신"이 아니다.
- *       최종 수신 결과는 리포트 웹훅으로 따로 받아야 하며, 그 값으로 결제 결과를 바꾸지 않는다
- *       (CLAUDE.md 절대규칙 3 — 발송 실패가 결제 결과를 바꾸지 않는다).
+ * 이 어댑터가 지키는 것
+ *
+ *  - **키가 없으면 성공을 돌려주지 않는다.** mock 으로 조용히 대체하면 문자가 나가지 않았는데
+ *    "발송 완료"로 기록되고, 이용자는 결제 링크를 영영 못 받는다 (절대규칙 2).
+ *    mock 이 필요하면 MT_PROVIDER=mock 으로 명시하거나 SAFE_MODE=true 를 쓴다.
+ *  - **접수 성공(2000)은 "이통사 접수"이지 "단말 수신"이 아니다.** 최종 수신 결과는 리포트
+ *    웹훅으로 따로 받아야 하며, 그 값으로 결제 결과를 바꾸지 않는다 (절대규칙 3).
+ *  - 발신번호 사전등록(전기통신사업법)이 끝난 번호만 from 에 넣을 수 있다.
  */
+
+const SOLAPI_SEND_URL = 'https://api.coolsms.co.kr/messages/v4/send';
+/** 문자 사업자 응답이 늦어도 결제 흐름 전체를 붙잡지 않도록 상한을 둔다. */
+const REQUEST_TIMEOUT_MS = 10_000;
+/** SOLAPI 접수 성공 코드. 2000 계열만 접수로 인정한다. */
+const ACCEPTED_STATUS_CODES = new Set(['2000']);
 
 /** 실연동에 필요한데 아직 없는 설정 항목. */
 function missingCredentials(): string[] {
@@ -54,41 +52,129 @@ function missingCredentials(): string[] {
   return missing;
 }
 
+/** SOLAPI 인증 헤더를 만든다. */
+function authorizationHeader(): string {
+  const date = new Date().toISOString();
+  const salt = randomBytes(16).toString('hex');
+  const signature = createHmac('sha256', env.mt.apiSecret).update(date + salt).digest('hex');
+  return `HMAC-SHA256 apiKey=${env.mt.apiKey}, date=${date}, salt=${salt}, signature=${signature}`;
+}
+
+function digitsOnly(value: string): string {
+  return (value ?? '').replace(/\D/g, '');
+}
+
+/** 로그·감사에 남길 응답 요약. 본문·수신번호는 담지 않는다. */
+function summarize(body: unknown): Record<string, unknown> {
+  const b = (body ?? {}) as Record<string, unknown>;
+  return {
+    messageId: b.messageId ?? null,
+    statusCode: b.statusCode ?? null,
+    statusMessage: b.statusMessage ?? null,
+    errorCode: b.errorCode ?? null,
+    errorMessage: b.errorMessage ?? null,
+  };
+}
+
 export const coolsmsMtAdapter: MtAdapter = {
   info(): AdapterInfo {
-    // 구현 자체가 아직 없으므로 키가 모두 채워져 있어도 live 라고 말하지 않는다.
-    return { provider: 'coolsms', mode: 'mock', missingCredentials: missingCredentials() };
+    const missing = missingCredentials();
+    return { provider: 'coolsms', mode: missing.length > 0 ? 'mock' : 'live', missingCredentials: missing };
   },
 
   async send(req: MtSendRequest): Promise<ProviderResult<MtSendResult>> {
-    // TODO: 업체 API 명세 확인 후 구현
-    //   const date = new Date().toISOString();
-    //   const salt = randomHex(16);
-    //   const signature = createHmac('sha256', env.mt.apiSecret).update(date + salt).digest('hex');
-    //   const res = await fetch('https://api.coolsms.co.kr/messages/v4/send', {
-    //     method: 'POST',
-    //     headers: {
-    //       'Content-Type': 'application/json',
-    //       Authorization: `HMAC-SHA256 apiKey=${env.mt.apiKey}, date=${date}, salt=${salt}, signature=${signature}`,
-    //     },
-    //     body: JSON.stringify({
-    //       message: {
-    //         to: req.to,
-    //         from: env.mt.senderNumber,
-    //         text: req.text,
-    //         type: decideMessageType(req.text, req.forceType),
-    //       },
-    //     }),
-    //   });
-    // 규격서 수령 전이라 실제 호출은 하지 않지만, 본문 길이에 따른 SMS/LMS 판정은
-    // 연동 시 그대로 쓰는 값이므로 여기서 미리 확정해 둔다.
-    const messageType = decideMessageType(req.text, req.forceType);
-    void messageType;
+    const missing = missingCredentials();
+    if (missing.length > 0) {
+      // 설정 누락을 "성공"으로 덮지 않는다. 호출부(sendMt)가 실패로 기록하고 후속 처리를 되돌린다.
+      logger.error('CoolSMS 설정 누락 — 문자를 발송하지 않습니다.', {
+        missing,
+        template: req.templateCode,
+      });
+      return {
+        ok: false,
+        code: 'MT_NOT_CONFIGURED',
+        message:
+          `CoolSMS(SOLAPI) 설정이 완료되지 않았습니다. (미설정: ${missing.join(', ')}) ` +
+          '모의 발송이 필요하면 MT_PROVIDER=mock 으로 명시하십시오.',
+      };
+    }
 
-    throw new Error(
-      'SMS 업체 미연동: CoolSMS(SOLAPI) 어댑터는 아직 구현되지 않았습니다. ' +
-        '계약과 연동규격서 확인 후 src/server/adapters/mt/coolsms.ts 를 완성하십시오.' +
-        (missingCredentials().length > 0 ? ` (미설정: ${missingCredentials().join(', ')})` : ''),
-    );
+    const started = Date.now();
+    const messageType = decideMessageType(req.text, req.forceType);
+    const to = digitsOnly(req.to);
+    if (!to) {
+      return { ok: false, code: 'MT_INVALID_TO', message: '수신번호가 비어 있습니다.' };
+    }
+
+    let res: Response;
+    try {
+      res = await fetch(SOLAPI_SEND_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: authorizationHeader(),
+        },
+        body: JSON.stringify({
+          message: {
+            to,
+            from: digitsOnly(env.mt.senderNumber),
+            text: req.text,
+            type: messageType,
+          },
+        }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch (e) {
+      const message = (e as Error).message;
+      logger.error('CoolSMS 발송 요청 실패', { message, template: req.templateCode });
+      return {
+        ok: false,
+        code: 'MT_NETWORK_ERROR',
+        message: `문자 사업자에 연결하지 못했습니다: ${message}`,
+        latencyMs: Date.now() - started,
+      };
+    }
+
+    let body: unknown = null;
+    try {
+      body = await res.json();
+    } catch {
+      body = null;
+    }
+    const raw = summarize(body);
+    const latencyMs = Date.now() - started;
+
+    if (!res.ok) {
+      logger.error('CoolSMS 발송 거절', { status: res.status, ...raw, template: req.templateCode });
+      return {
+        ok: false,
+        code: String(raw.errorCode ?? raw.statusCode ?? `HTTP_${res.status}`),
+        message: String(raw.errorMessage ?? raw.statusMessage ?? `문자 발송이 거절되었습니다 (HTTP ${res.status})`),
+        raw,
+        latencyMs,
+      };
+    }
+
+    const statusCode = raw.statusCode == null ? '' : String(raw.statusCode);
+    const messageId = raw.messageId == null ? '' : String(raw.messageId);
+
+    // 2000 계열이 아니면 접수되지 않은 것이다. 임의로 성공 처리하지 않는다.
+    if (!ACCEPTED_STATUS_CODES.has(statusCode) || !messageId) {
+      logger.error('CoolSMS 접수 실패', { ...raw, template: req.templateCode });
+      return {
+        ok: false,
+        code: statusCode || 'MT_NOT_ACCEPTED',
+        message: String(raw.statusMessage ?? '문자가 접수되지 않았습니다.'),
+        raw,
+        latencyMs,
+      };
+    }
+
+    return {
+      ok: true,
+      data: { providerMessageId: messageId, messageType },
+      raw,
+      latencyMs,
+    };
   },
 };

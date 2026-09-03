@@ -95,6 +95,25 @@ export function phoneHash(phone: string): string {
   return hmac(normalizePhone(phone));
 }
 
+/**
+ * 가맹점별 이용자 식별자(payerRef).
+ *
+ * 파트너 API 로 내보내는 "같은 번호 = 같은 값" 식별자다. 예전에는 전역 phoneHash 를 그대로
+ * 내보냈는데, 그러면 **가맹점 A 와 가맹점 B 가 각자 받은 값을 맞춰 보는 것만으로 같은 사람임을
+ * 알 수 있다.** 가맹점 두 곳의 데이터가 합쳐지면(제휴·유출) 전역 식별자 하나로 이용자의
+ * 서비스 이용 내역이 통째로 연결된다.
+ *
+ * 그래서 가맹점마다 다른 값이 나오도록 한 번 더 파생시킨다.
+ *   payerRef = HMAC(secret, "payerref:" + merchantId + ":" + phoneHash)
+ *
+ * 같은 가맹점 안에서는 여전히 결정적이라 회원 매칭 용도는 그대로 유지된다.
+ * 전역 phoneHash 자체는 절대 외부로 내보내지 않는다.
+ */
+export function merchantPayerRef(merchantId: string, phoneHashValue: string): string {
+  if (!merchantId || !phoneHashValue) return '';
+  return hmac(`payerref:${merchantId}:${phoneHashValue}`);
+}
+
 export function maskPhone(phone: string): string {
   const p = normalizePhone(phone);
   if (p.length < 9) return '***';

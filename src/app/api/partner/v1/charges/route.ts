@@ -1,5 +1,5 @@
 import { prisma } from '@/server/db';
-import { decrypt } from '@/lib/crypto';
+import { decrypt, merchantPayerRef } from '@/lib/crypto';
 import { authenticatePartner } from '@/server/services/partner-auth';
 import { PAID_STATUSES } from '@/components/studio/shared';
 import { authError, jsonError, jsonOk, logPartnerCall } from '../_shared';
@@ -143,8 +143,10 @@ export async function GET(req: Request) {
       // 이용자 식별: 마스킹된 번호로 표시, 해시로 가맹점 회원과 매칭한다.
       // 원문 전화번호는 보안상 반환하지 않는다 (키 유출 시 대량 개인정보 노출 방지).
       payerPhoneMasked: r.payer?.phoneMasked ?? null,
-      // 번호를 저장하고 싶지 않은 가맹점을 위한 고정 해시(같은 번호 = 같은 값).
-      payerRef: r.payer?.phoneHash ?? null,
+      // 번호를 저장하고 싶지 않은 가맹점을 위한 고정 식별자(같은 번호 = 같은 값).
+      // 전역 phoneHash 를 그대로 내보내면 가맹점끼리 값을 맞춰 보는 것만으로 같은 사람임을
+      // 알 수 있다. 가맹점마다 다른 값이 나오도록 한 번 더 파생시킨다.
+      payerRef: r.payer?.phoneHash ? merchantPayerRef(auth.merchantId, r.payer.phoneHash) : null,
       message: r.message,
       channel: r.channel,
       chargeStatus: r.status,

@@ -7,9 +7,10 @@ import { env, allowLegacyConfirmLink } from '@/lib/env';
 import type { MoInbound } from '@/server/adapters/mo';
 import { getMtAdapter, decideMessageType } from '@/server/adapters/mt';
 import { getPaymentAdapter, MockPaymentTimeout } from '@/server/adapters/payment';
-import { filterContent, splitKeyword, type BannedWordRule } from './content-filter';
+import { filterContent, normalizeKeyword, splitKeyword, type BannedWordRule } from './content-filter';
 import { checkLimits, commitCounters, rollbackCounters, registerFailure, clearFailures, resolvePolicy } from './limits';
 import { withAdvisoryLock } from '@/server/db';
+import { consumeRateLimit } from '@/server/rate-limit';
 import { acquireIdempotency } from './idempotency';
 import { issueSecureLink, LINK_TTL_SEC } from './secure-link';
 import * as tpl from './mt-templates';
@@ -231,7 +232,9 @@ export async function routeMerchant(receivedNumber: string, content: string) {
   // 2) 대표번호 + 키워드
   const { keyword, rest } = splitKeyword(content);
   if (keyword) {
-    const shared = sharedRows.find((r) => r.keyword === keyword);
+    // 저장된 키워드도 같은 규칙으로 접어서 비교한다.
+    // 정규화 규칙을 통일하기 전에 등록된 행("MSG-1234" 처럼 기호가 남은 값)도 그대로 매칭된다.
+    const shared = sharedRows.find((r) => normalizeKeyword(r.keyword) === keyword);
     if (shared?.merchant) {
       return { route: shared, merchant: shared.merchant, keyword, body: rest };
     }
@@ -280,6 +283,76 @@ async function releaseRegistrationGuideClaim(payerId: string, claimedAt: Date) {
   });
 }
 
+/**
+ * 등록 이용자의 MO 속도 제한.
+ *
+ * 두 겹으로 본다.
+ *
+ *  1) **직전 링크가 아직 유효한가** (정확한 판정)
+ *     같은 가맹점·같은 이용자에게 이미 금액 선택 대기(PENDING_AMOUNT) 결제가 있고 그 링크가
+ *     아직 만료되지 않았다면, 문자를 한 통 더 보낼 이유가 없다. 이용자는 이미 링크를 들고 있다.
+ *     링크가 만료된 뒤의 문자는 정상적으로 새 링크를 받는다(막다른 길을 만들지 않는다).
+ *
+ *  2) **폭주 상한** (안전판)
+ *     1)만으로는 링크를 매번 소진(결제/실패)시키며 문자를 반복하는 경우를 막지 못한다.
+ *     가맹점 × 번호 단위로 창(기본 30분) 안의 건수를 세어 상한(기본 10건)을 넘으면 끊는다.
+ *     정상 이용자가 닿을 수 없는 값으로 잡아, 실수로 결제를 막는 일이 없게 한다.
+ *     `MO_CHARGE_THROTTLE_MAX=0` 이면 이 상한을 쓰지 않는다.
+ *
+ * @returns 제한에 걸렸으면 기록·응답 문구, 통과면 null
+ */
+async function checkMoThrottle(
+  merchantId: string,
+  payerId: string,
+  phoneHashValue: string,
+  fromNumber: string,
+): Promise<{ detail: string; message: string } | null> {
+  // (1) 아직 유효한 금액 선택 링크가 있는가.
+  const liveSince = new Date(Date.now() - env.payment.selectTtlSec * 1000);
+  const pending = await prisma.charge.findFirst({
+    where: {
+      merchantId,
+      payerId,
+      status: 'PENDING_AMOUNT',
+      createdAt: { gt: liveSince },
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, transactionNo: true },
+  });
+  if (pending) {
+    logger.info('MO 속도 제한 — 유효한 금액 선택 링크가 이미 있음', {
+      merchantId,
+      transactionNo: pending.transactionNo,
+      from: maskPhone(fromNumber),
+    });
+    return {
+      detail: `직전 금액 선택 링크 유효 (${pending.transactionNo})`,
+      message: '직전에 보낸 결제 링크가 아직 유효합니다. 새 링크를 보내지 않았습니다.',
+    };
+  }
+
+  // (2) 폭주 상한.
+  if (env.mo.chargeThrottleMax <= 0) return null;
+  const flood = await consumeRateLimit(
+    'mo-charge',
+    `${merchantId}:${phoneHashValue}`,
+    env.mo.chargeThrottleMax,
+    env.mo.chargeThrottleWindowSec,
+  );
+  if (flood.ok) return null;
+
+  const windowMin = Math.max(1, Math.round(env.mo.chargeThrottleWindowSec / 60));
+  logger.warn('MO 속도 제한 — 폭주 상한 초과', {
+    merchantId,
+    from: maskPhone(fromNumber),
+    count: flood.count,
+  });
+  return {
+    detail: `MO 폭주 상한 초과 (${windowMin}분 ${env.mo.chargeThrottleMax}건 / 현재 ${flood.count}건)`,
+    message: '단시간에 너무 많은 문자를 보냈습니다. 잠시 후 다시 시도해 주세요.',
+  };
+}
+
 export function resolvePaymentMode(
   merchantMode: PaymentMode | null,
   allowDirectTrigger: boolean = env.safety.allowDirectTrigger,
@@ -315,8 +388,16 @@ export async function handleMoInbound(inbound: MoInbound): Promise<MoHandleResul
   const ph = hashPhone(inbound.fromNumber);
 
   // (1) 사업자 메시지 ID 기준 중복 차단
+  //     사업자 코드를 함께 봐야 한다. 사업자마다 채번 체계가 달라 값이 겹칠 수 있고,
+  //     겹치면 다른 사람의 새 문자가 DUPLICATE 로 조용히 버려진다.
+  const providerKey = {
+    providerCode_providerMessageId: {
+      providerCode: inbound.providerCode,
+      providerMessageId: inbound.providerMessageId,
+    },
+  };
   const dup = await prisma.moInboundMessage.findUnique({
-    where: { providerMessageId: inbound.providerMessageId },
+    where: providerKey,
     select: { id: true, result: true, charge: { select: { id: true, status: true } } },
   });
   // 이전 수신이 결제 생성 전에 예외로 끝난 건(result=ERROR, 결제 없음)은 사업자 재전송 시 다시 처리한다.
@@ -340,7 +421,7 @@ export async function handleMoInbound(inbound: MoInbound): Promise<MoHandleResul
   } catch {
     // 동시 재전송 경합
     const again = await prisma.moInboundMessage.findUnique({
-      where: { providerMessageId: inbound.providerMessageId },
+      where: providerKey,
       select: { id: true },
     });
     return { result: 'DUPLICATE', moMessageId: again?.id, message: '중복 수신(경합)으로 무시되었습니다.' };
@@ -537,6 +618,24 @@ async function processMoRow(
     });
   }
 
+  // (3-1) 등록 이용자의 MO 속도 제한.
+  //
+  // 미등록 이용자는 onboardingStatus(LINK_SENT)로 안내 문자가 한 번만 나가도록 이미 막혀 있는데,
+  // 등록 이용자에게는 그런 장치가 없었다. MO 1건마다 금액 선택 링크 MT 가 한 통 나가므로,
+  // 같은 번호가 문자를 연달아 보내면(오해·장난·단말 자동 재전송) 그대로 문자가 폭주하고
+  // 쓸 수 없는 PENDING_AMOUNT 결제 행이 함께 쌓인다.
+  //
+  // 제한에 걸리면 **아무 문자도 보내지 않는다.** "너무 잦습니다" 안내를 보내면 그 자체가
+  // 또 한 통이라 제한의 의미가 없다. 수신 기록만 남겨 관리자 화면에 드러낸다.
+  const throttled = await checkMoThrottle(merchant.id, payer.id, ph, inbound.fromNumber);
+  if (throttled) {
+    await prisma.moInboundMessage.update({
+      where: { id: moRow.id },
+      data: { result: 'BLOCKED', resultDetail: throttled.detail, processedAt: new Date() },
+    });
+    return { result: 'BLOCKED', moMessageId: moRow.id, message: throttled.message };
+  }
+
   // (4) 콘텐츠 필터
   // 문자 본문은 외부에 노출되지 않고 가맹점·최고관리자만 문자 관리에서 본다.
   // 그래서 금칙어는 결제를 막지 않고 기록만 마스킹한다(filtered.clean 이 마스킹된 값이다).
@@ -555,7 +654,12 @@ async function processMoRow(
   // MO 문자에는 금액이 없다. 이용자가 링크에서 충전 금액을 고른 뒤에야 금액이 정해지므로
   // 여기서는 금액 0 · PENDING_AMOUNT 로 만들어 두고, 금액 확정 시점에 채운다.
   // 한도 확인도 금액이 정해지는 그때 한다(금액 없이 한도를 볼 수 없다).
-  const idem = await acquireIdempotency('charge', `${merchant.id}:${inbound.providerMessageId}`);
+  // 멱등키에도 사업자 코드를 넣는다. 사업자별 채번이 겹칠 때 서로 다른 문자가
+  // 같은 키를 만들어 두 번째 결제가 DUPLICATE 로 사라지는 것을 막는다.
+  const idem = await acquireIdempotency(
+    'charge',
+    `${merchant.id}:${inbound.providerCode}:${inbound.providerMessageId}`,
+  );
   if (idem.status === 'DUPLICATE') {
     return {
       result: 'DUPLICATE',

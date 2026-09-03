@@ -804,7 +804,9 @@ model MerchantMoNumber {
 model MoInboundMessage {
   id                String          @id
   /// MO 사업자 메시지 ID. 중복 수신 차단의 1차 방어선
-  providerMessageId String          @unique @map("provider_message_id")
+  /// 사업자마다 채번 체계가 달라 값이 겹칠 수 있다(예: MTONET 의 "1" 과 EMMA 의 "1").
+  /// 그래서 단독 unique 가 아니라 (provider_code, provider_message_id) 복합 unique 로 막는다.
+  providerMessageId String          @map("provider_message_id")
   providerCode      String          @map("provider_code")
   receivedNumber    String          @map("received_number")
   phoneHash         String          @map("phone_hash")
@@ -827,6 +829,8 @@ model MoInboundMessage {
   merchant MerchantProfile? @relation(fields: [merchantId], references: [id])
   charge   Charge?
 
+  /// 중복 수신 차단 키. 사업자를 함께 묶어야 사업자별 채번이 서로 충돌하지 않는다.
+  @@unique([providerCode, providerMessageId])
   @@index([merchantId, receivedAt])
   @@index([phoneHash, receivedAt])
   @@index([result])

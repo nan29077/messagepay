@@ -5,6 +5,7 @@ import { resetMockPaymentState } from '@/server/adapters/payment';
 import { resetMockPayoutState } from '@/server/adapters/payout';
 import { clearMockOutbox, readMockOutbox, setMockMtFailure } from '@/server/adapters/mt';
 import { clearMtTemplateOverrideCache } from '@/server/services/mt-templates';
+import { clearMemoryKv } from '@/server/redis';
 
 /** 테스트마다 DB 를 비운다. 순서는 FK 역순. */
 export async function resetDb() {
@@ -40,6 +41,8 @@ export async function resetDb() {
   // mt_message_template 을 비웠으므로 프로세스 캐시도 함께 버린다.
   // 남겨 두면 앞 테스트가 저장한 커스텀 본문이 TTL 동안 계속 적용된다.
   clearMtTemplateOverrideCache();
+  // 속도 제한 카운터(MO 결제 요청 제한 등)도 프로세스 전역이라 테스트 간에 살아남는다.
+  clearMemoryKv();
 }
 
 export interface Fixture {

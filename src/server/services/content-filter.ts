@@ -153,12 +153,57 @@ function maskBannedWord(text: string, word: string): { text: string; hit: boolea
   return { text: out + text.slice(cursor), hit: true };
 }
 
-/** SHARED_PREFIX 모드에서 문자 맨 앞 키워드를 분리한다. */
+// ---------------------------------------------------------------------------
+// 키워드 정규화
+//
+// 등록(관리자 화면)과 매칭(수신 문자 파싱)이 서로 다른 규칙을 쓰면, 화면에서 보기에는
+// 같은 키워드인데 실제로는 영원히 매칭되지 않는다. 예전에는
+//   등록: toUpperCase() + 공백 제거
+//   매칭: toUpperCase() + 하이픈 제거
+// 라서 "MSG-1234" 로 등록하면 등록값은 `MSG-1234`, 수신 파싱값은 `MSG1234` 가 되어
+// 그 가맹점의 결제가 전건 UNKNOWN_ROUTE 로 떨어졌다. 아래 한 함수로 통일한다.
+// ---------------------------------------------------------------------------
+
+/** 키워드 비교에서 무시하는 구분 문자. 등록·매칭 양쪽에서 같은 값을 쓴다. */
+const KEYWORD_SEPARATOR = /[\s._\-*~/+#]/gu;
+
+/**
+ * 키워드를 비교용 표준형으로 바꾼다.
+ *
+ *  - NFKC 로 접어 전각(ＭＳＧ)·호환 문자를 같은 글자로 본다
+ *  - 공백·하이픈·밑줄·점 등 구분 기호를 제거한다 ("MSG-1234" = "msg 1234" = "MSG1234")
+ *  - 대문자로 접는다 (한글에는 영향이 없다)
+ */
+export function normalizeKeyword(raw: string | null | undefined): string {
+  return (raw ?? '')
+    .normalize('NFKC')
+    .replace(KEYWORD_SEPARATOR, '')
+    .toUpperCase();
+}
+
+/**
+ * 키워드로 쓸 수 있는 값인지 검사한다(정규화 후 기준).
+ * 한글·영문·숫자 2~16자만 허용한다. 기호만으로 이뤄진 키워드는 매칭이 불가능하다.
+ */
+export function isValidKeyword(raw: string | null | undefined): boolean {
+  const k = normalizeKeyword(raw);
+  return /^[\p{L}\p{N}]{2,16}$/u.test(k);
+}
+
+/**
+ * SHARED_PREFIX 모드에서 문자 맨 앞 키워드를 분리한다.
+ *
+ * 한글 키워드("충전 1만원")도 받는다. 예전 정규식은 ASCII 만 봐서, 관리자 화면에서
+ * 한글 키워드를 등록할 수 있는데 수신 쪽에서는 절대 매칭되지 않았다.
+ */
 export function splitKeyword(text: string): { keyword: string | null; rest: string } {
   const t = normalizeText(text);
-  const m = t.match(/^([A-Za-z]{2,10}[-]?\d{2,8}|[A-Za-z0-9]{4,12})\s+(.*)$/);
+  // 첫 토큰이 글자/숫자로 시작하고, 안쪽에 구분 기호(-, _, .)를 품을 수 있다.
+  const m = t.match(/^([\p{L}\p{N}][\p{L}\p{N}._-]{1,19})\s+([\s\S]*)$/u);
   if (!m) return { keyword: null, rest: t };
-  return { keyword: m[1].toUpperCase().replace(/-/g, ''), rest: m[2] };
+  const keyword = normalizeKeyword(m[1]);
+  if (!isValidKeyword(keyword)) return { keyword: null, rest: t };
+  return { keyword, rest: m[2] };
 }
 
 export function filterContent(
