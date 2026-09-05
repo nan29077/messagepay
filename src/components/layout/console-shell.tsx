@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Activity, BadgeCheck, BookOpenText, CalendarDays, ClipboardList, CreditCard, FlaskConical,
+  Activity, BadgeCheck, BookOpenText, CalendarDays, ClipboardList, Code2, CreditCard, FlaskConical,
   FilePen, Flag, Gauge, HeartHandshake, Home, Images, KeyRound, LayoutDashboard, LogOut,
   Menu, MessageCircleQuestion, MessageSquareText, Package, Percent, PhoneCall, Truck,
   ScrollText, Send, ServerCog, ShieldAlert, ShieldBan,
@@ -47,7 +47,7 @@ export type ConsoleIconName =
   | 'moderation' | 'numbers' | 'payments' | 'policies' | 'profile'
   | 'refunds' | 'reports' | 'risk' | 'settlement' | 'simulator'
   | 'system' | 'templates' | 'terms' | 'users' | 'settings' | 'send'
-  | 'products' | 'orders';
+  | 'products' | 'orders' | 'apidocs';
 
 const CONSOLE_ICONS = {
   activity: Activity,
@@ -82,6 +82,7 @@ const CONSOLE_ICONS = {
   send: Send,
   products: Package,
   orders: Truck,
+  apidocs: Code2,
 } satisfies Record<ConsoleIconName, typeof Home>;
 
 export function ConsoleShell({

@@ -55,6 +55,15 @@ function buildGroups(pending: { orders: number; points: number; reports: number 
       title: '계정',
       items: [{ href: '/studio/profile', label: '프로필 설정', icon: 'profile' }],
     },
+    // 메뉴 맨 아래에 둔다. 매일 쓰는 업무 메뉴가 아니라 연동할 때만 찾는 자료라서,
+    // 위쪽에 두면 판매 업무 흐름(현황 → 판매 → 정산)이 끊긴다.
+    {
+      title: '개발자',
+      items: [
+        { href: '/studio/docs', label: 'API 문서', icon: 'apidocs' },
+        { href: '/studio/settings?tab=api', label: 'API 키', icon: 'codes' },
+      ],
+    },
   ];
 }
 
