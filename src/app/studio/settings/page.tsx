@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ExternalLink } from 'lucide-react';
 import {
-  Badge, Card, CardTitle, DataRow, Field, Input, LinkButton, Notice, SectionTitle, Textarea, cx,
+  Badge, Card, CardTitle, DataRow, Field, Input, LinkButton, Notice, SectionTitle, Select, Textarea, cx,
 } from '@/components/ui';
 import { DEFAULT_BANNERS, defaultBannerFor } from '@/lib/banners';
 import { PageHeader } from '@/components/layout/console-shell';
@@ -19,6 +19,11 @@ import {
   createApiKeyAction,
   revokeApiKeyAction,
   updateApiKeyIpsAction,
+  saveMtTemplateAction,
+  deleteMtTemplateAction,
+  createWebhookAction,
+  deleteWebhookAction,
+  testWebhookAction,
 } from '@/app/actions/studio';
 import {
   THANKS_MT_MAX_LENGTH, THANKS_MT_VARIABLES, tplChargeSuccess,
@@ -31,6 +36,8 @@ import { shippingPolicyOf } from '@/server/services/products';
 import { env } from '@/lib/env';
 import { formatKst } from '@/lib/datetime';
 import { formatWon } from '@/lib/money';
+import { MERCHANT_MT_MAX_LENGTH } from '@/server/services/merchant-mt';
+import { WEBHOOK_EVENT_META } from '@/server/services/webhooks';
 import { moNumberStatusLabel, paymentModeLabel } from '@/lib/labels';
 import { getPublicBaseUrl } from '@/server/public-base-url';
 
@@ -76,7 +83,8 @@ export default async function StudioSettingsPage({
   const requested = (await searchParams).tab;
   const tab: Tab = TABS.some((t) => t.key === requested) ? (requested as Tab) : 'amount';
 
-  const [merchant, products, moNumbers, policy, apiKeys, shippingRow, callLogs] = await Promise.all([
+  const [merchant, products, moNumbers, policy, apiKeys, shippingRow, callLogs, mtTemplates, webhooks, deliveries] =
+    await Promise.all([
     prisma.merchantProfile.findUnique({
       where: { id: merchantId },
       select: {
@@ -101,13 +109,28 @@ export default async function StudioSettingsPage({
       where: { merchantId },
       orderBy: [{ revokedAt: 'asc' }, { createdAt: 'desc' }],
       take: 20,
-      select: { id: true, name: true, prefix: true, allowedIps: true, lastUsedAt: true, revokedAt: true, createdAt: true },
+      select: { id: true, name: true, prefix: true, mode: true, allowedIps: true, lastUsedAt: true, revokedAt: true, createdAt: true },
     }),
     prisma.merchantShippingPolicy.findUnique({ where: { merchantId } }),
     prisma.merchantApiCallLog.findMany({
       where: { merchantId },
       orderBy: { createdAt: 'desc' },
       take: 20,
+    }),
+    prisma.merchantMtTemplate.findMany({
+      where: { merchantId },
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+    }),
+    prisma.merchantWebhook.findMany({
+      where: { merchantId },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    }),
+    prisma.webhookDelivery.findMany({
+      where: { merchantId },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
     }),
   ]);
 
@@ -452,6 +475,92 @@ export default async function StudioSettingsPage({
                 </Notice>
               }
             />
+
+            <SectionTitle
+              title="발송 템플릿"
+              description="가맹점 사이트에서 연동 API 로 직접 보내는 문자입니다. 쓰지 않으셔도 됩니다."
+            />
+
+            <Notice tone="brand" title="거래 안내 문자만 보낼 수 있습니다">
+              주문·배송·지급처럼 <strong>거래와 직접 관련된 안내</strong>만 보낼 수 있고, 광고·홍보 문구는 보낼 수
+              없습니다. 발신번호는 메시지페이 번호로 고정되며, 수신자는 <strong>이 가맹점에 거래 이력이 있는 이용자</strong>
+              만 지정할 수 있습니다. 그래서 가맹점이 따로 준비하실 것이 없습니다.
+            </Notice>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardTitle>템플릿 등록</CardTitle>
+                <p className="mb-3 mt-1 text-[12px] leading-relaxed text-ink-400">
+                  검수는 등록할 때 한 번만 합니다. 통과하면 바로 쓸 수 있고, 광고성 표현이 있으면 검수 대기로
+                  저장됩니다. 같은 코드로 다시 저장하면 본문이 바뀌고 검수를 다시 받습니다.
+                </p>
+                <ActionForm action={saveMtTemplateAction} submitLabel="등록">
+                  <Field label="템플릿 코드" hint="가맹점 서버에서 이 코드로 템플릿을 고릅니다. 영문·숫자·_- 2~40자.">
+                    <Input name="code" maxLength={40} placeholder="ORDER_DELAY" autoComplete="off" />
+                  </Field>
+                  <Field label="템플릿 이름" hint="어떤 안내인지 알아볼 수 있게 적어 주세요.">
+                    <Input name="name" maxLength={40} placeholder="출고 지연 안내" autoComplete="off" />
+                  </Field>
+                  <Field
+                    label="본문"
+                    hint={`${MERCHANT_MT_MAX_LENGTH}자 이내. {가맹점} 은 자동으로 채워지고, 그 밖의 {이름} 은 발송할 때 값을 넘겨야 합니다. 링크는 넣을 수 없습니다.`}
+                  >
+                    <Textarea
+                      name="body"
+                      rows={4}
+                      maxLength={MERCHANT_MT_MAX_LENGTH}
+                      placeholder={'{가맹점} 주문하신 {상품} 출고가 {일수}일 늦어집니다. 불편을 드려 죄송합니다.'}
+                    />
+                  </Field>
+                </ActionForm>
+              </Card>
+
+              <Card>
+                <CardTitle>등록된 템플릿</CardTitle>
+                {mtTemplates.length === 0 ? (
+                  <p className="mt-3 text-[13px] text-ink-400">등록된 템플릿이 없습니다.</p>
+                ) : (
+                  <ul className="mt-3 space-y-2">
+                    {mtTemplates.map((t) => (
+                      <li key={t.id} className="rounded-xl border border-ink-200 bg-white px-3 py-2.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[13px] font-bold text-ink-900">{t.name}</span>
+                          {t.status === 'APPROVED' ? (
+                            <Badge tone="success">사용 가능</Badge>
+                          ) : t.status === 'PENDING' ? (
+                            <Badge tone="warning">검수 대기</Badge>
+                          ) : (
+                            <Badge tone="danger">반려</Badge>
+                          )}
+                          <code className="font-mono text-[11.5px] text-ink-500">{t.code}</code>
+                        </div>
+                        <p className="mt-1.5 whitespace-pre-wrap text-[12.5px] leading-relaxed text-ink-700">
+                          {t.body}
+                        </p>
+                        {t.variables ? (
+                          <p className="mt-1 text-[11.5px] text-ink-400">
+                            발송 시 넘겨야 할 값: {t.variables.split(',').filter(Boolean).join(', ')}
+                          </p>
+                        ) : null}
+                        {t.reviewNote ? (
+                          <p className="mt-1 text-[11.5px] leading-relaxed text-warning-500">{t.reviewNote}</p>
+                        ) : null}
+                        <div className="mt-2 flex items-center justify-between">
+                          <span className="text-[11.5px] text-ink-400">발송 {t.sentCount}건</span>
+                          <InlineActionForm
+                            action={deleteMtTemplateAction}
+                            fields={{ templateId: t.id }}
+                            submitLabel="삭제"
+                            variant="danger"
+                            confirmMessage="이 템플릿으로는 더 이상 발송할 수 없습니다. 삭제할까요?"
+                          />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            </div>
           </section>
         ) : null}
 
@@ -588,6 +697,15 @@ export default async function StudioSettingsPage({
                   없고, 분실하면 폐기 후 재발급해야 합니다.
                 </p>
                 <ActionForm action={createApiKeyAction} submitLabel="키 발급">
+                  <Field
+                    label="키 모드"
+                    hint="테스트 키는 문자가 나가지 않고 돈도 빠지지 않습니다. 정산에도 잡히지 않습니다."
+                  >
+                    <Select name="mode" defaultValue="LIVE">
+                      <option value="LIVE">운영 (mp_live_) — 실제 결제·정산</option>
+                      <option value="TEST">테스트 (mp_test_) — 샌드박스 전용</option>
+                    </Select>
+                  </Field>
                   <Field label="키 이름" hint="어디에 쓰는 키인지 적어 두세요. (예: 운영 서버)">
                     <Input name="name" maxLength={40} placeholder="운영 서버" autoComplete="off" />
                   </Field>
@@ -616,6 +734,7 @@ export default async function StudioSettingsPage({
                       >
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-[13px] font-bold text-ink-900">{k.name}</span>
+                          {k.mode === 'TEST' ? <Badge tone="warning">테스트</Badge> : <Badge tone="brand">운영</Badge>}
                           {k.revokedAt ? <Badge tone="neutral">폐기됨</Badge> : <Badge tone="success">사용 중</Badge>}
                           {k.allowedIps ? <Badge tone="brand">IP 제한</Badge> : null}
                         </div>
@@ -646,6 +765,117 @@ export default async function StudioSettingsPage({
                 )}
               </Card>
             </div>
+
+            <SectionTitle
+              title="웹훅 (이벤트 구독)"
+              description="결제가 완료되거나 문자가 오면 가맹점 서버로 바로 알려 드립니다. 선택 기능입니다."
+            />
+
+            <Notice tone="warning" title="받은 요청은 반드시 서명을 검증하세요">
+              검증하지 않으면 누구나 가짜 결제 완료 이벤트를 보낼 수 있습니다. 서명 비밀키는{' '}
+              <strong>등록 직후 한 번만</strong> 보여 드립니다. 같은 이벤트가 두 번 도착할 수 있으니(실패 시
+              재전송) 받는 쪽에서 이벤트 id 로 걸러 주세요. 검증 예제는 API 문서 → 웹훅에 있습니다.
+            </Notice>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardTitle>수신 URL 등록</CardTitle>
+                <p className="mb-3 mt-1 text-[12px] leading-relaxed text-ink-400">
+                  https 주소만 등록할 수 있습니다. 이벤트를 하나도 고르지 않으면 전부 받습니다.
+                </p>
+                <ActionForm action={createWebhookAction} submitLabel="등록">
+                  <Field label="수신 URL" hint="예: https://example.com/messagepay/webhook">
+                    <Input name="url" maxLength={300} placeholder="https://" autoComplete="off" />
+                  </Field>
+                  <Field label="메모 (선택)">
+                    <Input name="description" maxLength={100} placeholder="운영 서버" autoComplete="off" />
+                  </Field>
+                  <div className="mt-1">
+                    <p className="mb-1.5 text-[12.5px] font-bold text-ink-700">받을 이벤트</p>
+                    <div className="grid gap-1.5 sm:grid-cols-2">
+                      {WEBHOOK_EVENT_META.map((e) => (
+                        <label key={e.type} className="flex items-start gap-2 text-[12px] text-ink-700">
+                          <input type="checkbox" name={`event:${e.type}`} className="mt-0.5" />
+                          <span>
+                            <code className="font-mono text-[11.5px]">{e.type}</code>
+                            <span className="block text-[11px] text-ink-400">
+                              {e.label}
+                              {e.live ? '' : ' (아직 발생하지 않습니다)'}
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </ActionForm>
+              </Card>
+
+              <Card>
+                <CardTitle>등록된 수신 URL</CardTitle>
+                {webhooks.length === 0 ? (
+                  <p className="mt-3 text-[13px] text-ink-400">등록된 수신 URL 이 없습니다.</p>
+                ) : (
+                  <ul className="mt-3 space-y-2">
+                    {webhooks.map((w) => (
+                      <li key={w.id} className="rounded-xl border border-ink-200 bg-white px-3 py-2.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {w.active ? <Badge tone="success">사용 중</Badge> : <Badge tone="neutral">중지</Badge>}
+                          {w.lastStatus ? (
+                            <Badge tone={w.lastStatus < 300 ? 'success' : 'danger'}>{`최근 ${w.lastStatus}`}</Badge>
+                          ) : null}
+                          {w.description ? <span className="text-[12px] text-ink-500">{w.description}</span> : null}
+                        </div>
+                        <p className="mt-1 break-all font-mono text-[11.5px] text-ink-700">{w.url}</p>
+                        <p className="mt-0.5 text-[11.5px] text-ink-400">
+                          {w.events ? w.events.split(',').filter(Boolean).join(', ') : '모든 이벤트'}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <InlineActionForm
+                            action={testWebhookAction}
+                            fields={{ webhookId: w.id }}
+                            submitLabel="테스트 발송"
+                            variant="secondary"
+                          />
+                          <InlineActionForm
+                            action={deleteWebhookAction}
+                            fields={{ webhookId: w.id }}
+                            submitLabel="해제"
+                            variant="danger"
+                            confirmMessage="이 주소로는 더 이상 이벤트가 가지 않습니다. 해제할까요?"
+                          />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            </div>
+
+            {deliveries.length > 0 ? (
+              <Card className="mt-4">
+                <CardTitle>최근 웹훅 전송</CardTitle>
+                <p className="mb-3 mt-1 text-[12px] leading-relaxed text-ink-400">
+                  최근 10건입니다. 실패한 건은 간격을 늘려 가며 자동으로 다시 보냅니다.
+                </p>
+                <ul className="space-y-1.5">
+                  {deliveries.map((d) => (
+                    <li
+                      key={d.id}
+                      className="flex flex-wrap items-center gap-2 rounded-lg border border-ink-100 px-3 py-2 text-[12px]"
+                    >
+                      <Badge tone={d.status === 'SENT' ? 'success' : d.status === 'DEAD' ? 'danger' : 'warning'}>
+                        {d.status === 'SENT' ? '성공' : d.status === 'DEAD' ? '실패(중단)' : '재시도 대기'}
+                      </Badge>
+                      <span className="font-mono text-[11.5px] font-bold text-ink-700">{d.eventType}</span>
+                      <span className="text-ink-400">{`${d.attempts}회 시도`}</span>
+                      {d.responseStatus ? <span className="text-ink-400">{`응답 ${d.responseStatus}`}</span> : null}
+                      {d.error ? <span className="min-w-0 flex-1 truncate text-danger-500">{d.error}</span> : null}
+                      <span className="ml-auto tabular-nums text-ink-400">{formatKst(d.createdAt)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            ) : null}
 
             <Card className="mt-4">
               <CardTitle>최근 호출 기록</CardTitle>

@@ -88,7 +88,7 @@ describe('API 문서 레지스트리', () => {
     expect(counts.total).toBe(allEndpoints().length);
   });
 
-  it('현재 제공 중인 4개 엔드포인트가 LIVE 로 등록되어 있다', () => {
+  it('제공 중인 엔드포인트 목록이 실제 구현과 일치한다', () => {
     const live = allEndpoints()
       .filter(({ endpoint }) => endpoint.status === 'LIVE')
       .map(({ endpoint }) => `${endpoint.method} ${endpoint.path}`)
@@ -99,8 +99,58 @@ describe('API 문서 레지스트리', () => {
         'GET /charges',
         'POST /charges/ack',
         'POST /charges/shipment',
+        // 샌드박스 (2단계)
+        'POST /sandbox/mo',
+        'POST /sandbox/charges/{transactionNo}/succeed',
+        'POST /sandbox/charges/{transactionNo}/fail',
+        'GET /sandbox/outbox',
+        'POST /sandbox/reset',
+        'POST /sandbox/webhooks/fire',
+        // MT 발송 v1 (3단계)
+        'POST /mt/messages',
+        'GET /mt/messages',
+        'GET /mt/messages/{id}',
+        'GET /mt/templates',
+        'POST /mt/templates',
+        'GET /mt/quota',
+        // 웹훅 (4단계)
+        'POST /webhooks',
+        'GET /webhooks',
+        'DELETE /webhooks/{id}',
+        'POST /webhooks/{id}/test',
+        'GET /webhooks/deliveries',
+        'POST /webhooks/deliveries/{id}/retry',
+        // 상품·이용자 (5단계)
+        'GET /products',
+        'POST /products',
+        'PATCH /products/{id}',
+        'DELETE /products/{id}',
+        'PATCH /products/{id}/stock',
+        'POST /products/bulk',
+        'GET /products/{id}/options',
+        'GET /payers/{payerRef}',
+        'POST /payers/link',
+        'GET /payers/{payerRef}/charges',
+        'DELETE /payers/link/{payerRef}',
+        // 정산·통계·도구 (6단계)
+        'GET /settlements',
+        'GET /settlements/{id}',
+        'GET /settlements/{id}/export',
+        'GET /fees',
+        'GET /stats/daily',
+        'GET /stats/products',
+        'GET /stats/messages',
+        'GET /openapi.json',
       ].sort(),
     );
+  });
+
+  it('샌드박스 엔드포인트는 모두 테스트 키 전용으로 표시되어 있다', () => {
+    const sandboxEndpoints = allEndpoints().filter(({ endpoint }) => endpoint.path.startsWith('/sandbox/'));
+    expect(sandboxEndpoints.length).toBeGreaterThan(0);
+    for (const { endpoint } of sandboxEndpoints) {
+      expect(endpoint.sandboxOnly, `${endpoint.method} ${endpoint.path}`).toBe(true);
+    }
   });
 
   /**

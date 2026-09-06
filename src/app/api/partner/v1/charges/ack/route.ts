@@ -1,6 +1,7 @@
 import { prisma } from '@/server/db';
 import { authenticatePartner } from '@/server/services/partner-auth';
 import { PAID_STATUSES } from '@/components/studio/shared';
+import { sandboxAck } from '@/server/services/sandbox';
 import { authError, jsonError, jsonOk, logPartnerCall } from '../../_shared';
 
 export const runtime = 'nodejs';
@@ -82,6 +83,23 @@ export async function POST(req: Request) {
       req, merchantId: auth.merchantId, keyId: auth.keyId,
       status: 400, errorCode: 'NOTE_REQUIRED',
     }).then(() => jsonError(400, 'NOTE_REQUIRED', '보류(FAILED) 처리에는 note 가 필요합니다.'));
+  }
+
+  // ── 테스트 키 ────────────────────────────────────────────────
+  // 샌드박스 건만 갱신한다. 운영 charge 는 한 줄도 건드리지 않는다.
+  if (auth.mode === 'TEST') {
+    const sandbox = await sandboxAck({
+      merchantId: auth.merchantId,
+      transactionNos: nos,
+      status,
+      note,
+      keyId: auth.keyId,
+    });
+    await logPartnerCall({
+      req, merchantId: auth.merchantId, keyId: auth.keyId, status: 200,
+      message: `sandbox ack updated=${sandbox.updated}`,
+    });
+    return jsonOk(sandbox);
   }
 
   // 변경 전 상태를 먼저 읽는다.

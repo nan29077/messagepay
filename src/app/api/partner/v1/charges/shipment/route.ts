@@ -1,6 +1,8 @@
 import { prisma } from '@/server/db';
 import { authenticatePartner } from '@/server/services/partner-auth';
 import { PAID_STATUSES } from '@/components/studio/shared';
+import { sandboxShipment } from '@/server/services/sandbox';
+import { emitMerchantEvent } from '@/server/services/webhooks';
 import { authError, jsonError, jsonOk, logPartnerCall } from '../../_shared';
 
 export const runtime = 'nodejs';
@@ -78,6 +80,36 @@ export async function POST(req: Request) {
         : String(body.trackingNo).replace(/[^0-9A-Za-z-]/g, '').slice(0, 40) || null;
   const memo = body.memo === undefined ? undefined : body.memo === null ? null : String(body.memo).slice(0, 100) || null;
 
+  // ── 테스트 키 ────────────────────────────────────────────────
+  // 샌드박스 건만 갱신한다. 운영 주문·배송 데이터는 건드리지 않는다.
+  if (auth.mode === 'TEST') {
+    if (status === 'SHIPPED' && (!carrier || !trackingNo)) {
+      return logPartnerCall({
+        req, merchantId: auth.merchantId, keyId: auth.keyId,
+        status: 400, errorCode: 'TRACKING_REQUIRED',
+      }).then(() => jsonError(400, 'TRACKING_REQUIRED', '발송(SHIPPED) 처리에는 carrier 와 trackingNo 가 필요합니다.'));
+    }
+    const updated = await sandboxShipment({
+      merchantId: auth.merchantId,
+      transactionNo,
+      status,
+      carrier: carrier ?? null,
+      trackingNo: trackingNo ?? null,
+    });
+    if (!updated) {
+      return logPartnerCall({
+        req, merchantId: auth.merchantId, keyId: auth.keyId, status: 404, errorCode: 'NOT_FOUND',
+      }).then(() => jsonError(404, 'NOT_FOUND', '해당 테스트 거래를 찾을 수 없습니다.'));
+    }
+    await logPartnerCall({ req, merchantId: auth.merchantId, keyId: auth.keyId, status: 200, message: 'sandbox shipment' });
+    return jsonOk({
+      transactionNo,
+      status,
+      carrier: updated.carrier,
+      trackingNo: updated.trackingNo,
+    });
+  }
+
   // 본인 가맹점의 결제 완료 실물 주문인지 확인한다.
   const charge = await prisma.charge.findFirst({
     where: { transactionNo, merchantId: auth.merchantId, status: { in: PAID_STATUSES } },
@@ -126,6 +158,13 @@ export async function POST(req: Request) {
             ? null
             : charge.shipment.deliveredAt,
     },
+  });
+
+  await emitMerchantEvent(auth.merchantId, 'shipment.updated', {
+    transactionNo,
+    status,
+    carrier: effectiveCarrier,
+    trackingNo: effectiveTrackingNo,
   });
 
   await logPartnerCall({ req, merchantId: auth.merchantId, keyId: auth.keyId, status: 200 });

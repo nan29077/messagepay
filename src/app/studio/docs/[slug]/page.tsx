@@ -37,7 +37,11 @@ export default async function StudioDocsCategoryPage({ params }: { params: Promi
 
   const status = API_STATUS_LABEL[category.status];
   const endpoints = category.endpoints ?? [];
-  const hasPlanned = endpoints.some((e) => e.status === 'PLANNED') || category.status === 'PLANNED';
+  // 카테고리 전체가 준비 중인 경우와, 제공 중이지만 일부 항목만 준비 중인 경우를 구분한다.
+  // 둘을 같은 문구로 묶으면 이미 쓸 수 있는 문서에도 "아직 제공되지 않습니다" 가 붙어
+  // 가맹점이 멀쩡한 API 를 못 쓰는 것으로 오해한다.
+  const allPlanned = category.status === 'PLANNED';
+  const somePlanned = !allPlanned && endpoints.some((e) => e.status === 'PLANNED');
 
   return (
     <>
@@ -59,9 +63,14 @@ export default async function StudioDocsCategoryPage({ params }: { params: Promi
           </span>
         </div>
 
-        {hasPlanned ? (
-          <Notice tone="warning" title="준비 중인 내용이 포함되어 있습니다">
+        {allPlanned ? (
+          <Notice tone="warning" title="아직 제공되지 않는 항목입니다">
             {PLANNED_NOTICE}
+          </Notice>
+        ) : somePlanned ? (
+          <Notice tone="neutral" title="일부 항목이 준비 중입니다">
+            아래 목록에서 <strong>준비 중</strong> 배지가 붙은 항목은 아직 호출되지 않습니다. 그 항목의 규격은 예고이며
+            바뀔 수 있습니다. <strong>제공 중</strong> 항목은 지금 그대로 쓰실 수 있습니다.
           </Notice>
         ) : null}
 

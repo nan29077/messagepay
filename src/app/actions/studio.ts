@@ -20,6 +20,8 @@ import {
 import { env } from '@/lib/env';
 import { getPublicBaseUrl } from '@/server/public-base-url';
 import { bannedNeedle, filterContent } from '@/server/services/content-filter';
+import { upsertMerchantTemplate } from '@/server/services/merchant-mt';
+import { WEBHOOK_EVENT_META, deliverOnce, registerWebhook } from '@/server/services/webhooks';
 import {
   MAX_EXTRA_IMAGES, noticeCategoryOf, optionsToStorage, parseOptionLines, parseOptionsJson,
 } from '@/server/services/products';
@@ -1652,7 +1654,10 @@ export async function createApiKeyAction(
     }
 
     const name = text(formData, 'name').slice(0, 40) || '연동 키';
-    const issued = await issueMerchantApiKey(merchantId, name);
+    // 모드는 발급 시에만 정하고 나중에 바꿀 수 없다. 운영 키가 조용히 테스트로
+    // 바뀌면(또는 그 반대면) 어느 쪽 데이터를 건드리는지 아무도 알 수 없게 된다.
+    const mode = text(formData, 'mode') === 'TEST' ? 'TEST' : 'LIVE';
+    const issued = await issueMerchantApiKey(merchantId, name, mode);
 
     // 발급과 동시에 IP 를 제한할 수 있게 한다(나중에 따로 저장할 수도 있다).
     const ips = text(formData, 'allowedIps')
@@ -1667,7 +1672,10 @@ export async function createApiKeyAction(
     revalidatePath('/studio/settings');
     return {
       ok: true,
-      message: `연동 키 "${issued.name}" 를 발급했습니다. 아래 값은 지금만 볼 수 있습니다.`,
+      message:
+        mode === 'TEST'
+          ? `테스트 키 "${issued.name}" 를 발급했습니다. 이 키로는 문자가 나가지 않고 결제도 일어나지 않습니다. 아래 값은 지금만 볼 수 있습니다.`
+          : `운영 키 "${issued.name}" 를 발급했습니다. 실제 결제·정산에 영향을 줍니다. 아래 값은 지금만 볼 수 있습니다.`,
       secret: `API 키\n${issued.apiKey}\n\n서명 비밀키\n${issued.signingSecret}`,
       secretLabel: '연동 키 (지금만 확인 가능)',
       secretHint: '이 화면을 벗어나면 다시 볼 수 없습니다. 안전한 곳에 보관하고, 유출되면 즉시 폐기 후 재발급하세요.',
@@ -2022,5 +2030,168 @@ export async function requestChargeRefundAction(
       ok: true,
       message: `${charge.transactionNo} 환불을 요청했습니다. 통합 관리자 승인 후 처리됩니다.`,
     };
+  });
+}
+
+// ===========================================================================
+// 발송 템플릿 (MT 발송 v1)
+// ===========================================================================
+
+/**
+ * 가맹점 발송 템플릿 등록·수정.
+ *
+ * 검수는 등록할 때 한 번만 한다. 자동 검사를 통과하면 바로 승인되고,
+ * 광고성 표현이나 금칙어가 걸리면 검수 대기로 저장돼 관리자가 본다.
+ * 같은 코드로 다시 저장하면 본문이 바뀌고 검수를 다시 받는다.
+ */
+export async function saveMtTemplateAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withMerchant(async (merchantId) => {
+    const result = await upsertMerchantTemplate({
+      merchantId,
+      code: text(formData, 'code'),
+      name: text(formData, 'name'),
+      body: text(formData, 'body'),
+    });
+    if (!result.ok) return { ok: false, message: result.message };
+
+    revalidatePath('/studio/settings');
+    return {
+      ok: true,
+      message:
+        result.template.status === 'APPROVED'
+          ? `템플릿 "${result.template.code}" 을 등록했습니다. 바로 발송에 쓸 수 있습니다.`
+          : `템플릿 "${result.template.code}" 을 등록했습니다. 검수가 필요해 지금은 발송에 쓸 수 없습니다. ${result.reviewNote ?? ''}`.trim(),
+    };
+  });
+}
+
+/** 발송 템플릿 삭제. 이미 나간 문자 이력은 남는다. */
+export async function deleteMtTemplateAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withMerchant(async (merchantId) => {
+    const id = text(formData, 'templateId');
+    if (!id) return { ok: false, message: '삭제할 템플릿을 선택해 주세요.' };
+
+    // 본인 가맹점 템플릿인지 반드시 확인한다.
+    const result = await prisma.merchantMtTemplate.deleteMany({ where: { id, merchantId } });
+    if (result.count === 0) return { ok: false, message: '이미 삭제되었거나 존재하지 않는 템플릿입니다.' };
+
+    revalidatePath('/studio/settings');
+    return { ok: true, message: '템플릿을 삭제했습니다.' };
+  });
+}
+
+// ===========================================================================
+// 웹훅 (이벤트 구독)
+// ===========================================================================
+
+/** 가맹점당 등록할 수 있는 수신 URL 수. API 라우트와 같은 값을 쓴다. */
+const WEBHOOK_MAX = 5;
+
+/**
+ * 수신 URL 등록.
+ *
+ * 서명 비밀키는 이 응답에서 한 번만 보여 주고 저장하지 않는다.
+ * 이벤트를 하나도 고르지 않으면 전부 받는다.
+ */
+export async function createWebhookAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withMerchant(async (merchantId) => {
+    const count = await prisma.merchantWebhook.count({ where: { merchantId } });
+    if (count >= WEBHOOK_MAX) {
+      return { ok: false, message: `수신 URL 은 최대 ${WEBHOOK_MAX}개까지 등록할 수 있습니다.` };
+    }
+
+    // 체크박스로 고른 이벤트만 받는다. 아무것도 고르지 않으면 전체 구독이다.
+    const events = WEBHOOK_EVENT_META.map((e) => e.type).filter((type) => formData.get(`event:${type}`) === 'on');
+
+    const result = await registerWebhook({
+      merchantId,
+      url: text(formData, 'url'),
+      events,
+      description: text(formData, 'description') || null,
+    });
+    if (!result.ok) return { ok: false, message: result.message };
+
+    revalidatePath('/studio/settings');
+    return {
+      ok: true,
+      message: '수신 URL 을 등록했습니다. 아래 서명 비밀키는 지금만 볼 수 있습니다.',
+      secret: result.secret,
+      secretLabel: '웹훅 서명 비밀키 (지금만 확인 가능)',
+      secretHint:
+        '받은 요청이 진짜 메시지페이가 보낸 것인지 확인할 때 씁니다. 검증하지 않으면 누구나 가짜 결제 완료 이벤트를 보낼 수 있습니다.',
+    };
+  });
+}
+
+/** 수신 URL 해제. 전송 이력도 함께 지워진다. */
+export async function deleteWebhookAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withMerchant(async (merchantId) => {
+    const id = text(formData, 'webhookId');
+    if (!id) return { ok: false, message: '해제할 수신 URL 을 선택해 주세요.' };
+
+    const result = await prisma.merchantWebhook.deleteMany({ where: { id, merchantId } });
+    if (result.count === 0) return { ok: false, message: '이미 해제되었거나 존재하지 않는 수신 URL 입니다.' };
+
+    revalidatePath('/studio/settings');
+    return { ok: true, message: '수신 URL 을 해제했습니다.' };
+  });
+}
+
+/** 테스트 이벤트 1건 발송. 수신 처리와 서명 검증이 되는지 확인한다. */
+export async function testWebhookAction(
+  _prev: StudioActionState,
+  formData: FormData,
+): Promise<StudioActionState> {
+  return withMerchant(async (merchantId) => {
+    const id = text(formData, 'webhookId');
+    const hook = await prisma.merchantWebhook.findFirst({ where: { id, merchantId } });
+    if (!hook) return { ok: false, message: '존재하지 않는 수신 URL 입니다.' };
+
+    const eventId = newId();
+    const delivery = await prisma.merchantWebhook.update({ where: { id: hook.id }, data: {} }).then(() =>
+      prisma.webhookDelivery.create({
+        data: {
+          id: newId(),
+          merchantId,
+          webhookId: hook.id,
+          eventId,
+          eventType: 'webhook.test',
+          payload: JSON.stringify({
+            eventId,
+            type: 'webhook.test',
+            occurredAt: new Date().toISOString(),
+            merchantId,
+            data: { message: '메시지페이 웹훅 테스트입니다.' },
+          }),
+          nextAttemptAt: new Date(),
+        },
+      }),
+    );
+
+    const ok = await deliverOnce(delivery.id);
+    const after = await prisma.webhookDelivery.findUnique({
+      where: { id: delivery.id },
+      select: { responseStatus: true, error: true },
+    });
+
+    revalidatePath('/studio/settings');
+    return ok
+      ? { ok: true, message: `테스트 이벤트를 보냈고 정상 응답(${after?.responseStatus})을 받았습니다.` }
+      : {
+          ok: false,
+          message: `테스트 이벤트를 보냈지만 응답이 정상이 아닙니다. ${after?.responseStatus ?? ''} ${after?.error ?? ''}`.trim(),
+        };
   });
 }

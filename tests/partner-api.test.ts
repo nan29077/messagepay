@@ -183,8 +183,15 @@ describe('충전 건 조회', () => {
     expect(body.ok).toBe(true);
     expect(body.items).toHaveLength(3);
     expect(body.items[0].amount).toBe(body.items[0].points);
-    expect(body.items[0].payerPhone).toMatch(/^0\d{9,10}$/);
     expect(body.items[0].pointStatus).toBe('PENDING');
+
+    // 이용자 식별은 마스킹 번호와 가맹점 전용 식별자(payerRef)로만 한다.
+    // 원문 번호를 내보내면 키 하나가 유출됐을 때 대량 개인정보 반출이 된다.
+    // 예전 기대값(payerPhone 원문)은 그 변경을 따라오지 못한 것이라 여기서 바로잡는다.
+    expect(body.items[0].payerPhoneMasked).toMatch(/^\d{3}-\*{4}-\d{4}$/);
+    expect(body.items[0].payerRef).toBeTruthy();
+    expect(body.items[0].payerPhone).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain(fx.payerPhone.replace(/\D/g, ''));
   });
 
   it('[12] 남의 가맹점 결제는 나오지 않는다', async () => {

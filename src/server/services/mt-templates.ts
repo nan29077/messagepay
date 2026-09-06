@@ -31,6 +31,11 @@ export const MT_TEMPLATE = {
   SHIPMENT_SENT: 'SHIPMENT_SENT',
   /** 비실물 상품 즉시 지급 안내(코드·다운로드 주소) */
   FULFILLMENT_INSTANT: 'FULFILLMENT_INSTANT',
+  /**
+   * 가맹점이 연동 API 로 직접 보내는 거래 안내 문자.
+   * 본문은 가맹점이 등록해 검수받은 템플릿에서 나온다. 관리자 공통 문구로 덮어쓰지 않는다.
+   */
+  MERCHANT_NOTICE: 'MERCHANT_NOTICE',
 } as const;
 
 export type MtTemplateCode = (typeof MT_TEMPLATE)[keyof typeof MT_TEMPLATE];
@@ -451,6 +456,14 @@ export const MT_TEMPLATE_META: Record<MtTemplateCode, MtTemplateMeta> = {
     defaultBody:
       '{가맹점} 가맹점에 {금액} 결제를 진행합니다. 아직 결제되지 않았습니다. 결제 PIN 입력 링크: [보안링크]',
     variables: [V.merchant, V.amount],
+  },
+  [MT_TEMPLATE.MERCHANT_NOTICE]: {
+    label: '가맹점 발송 문자',
+    description:
+      '가맹점이 연동 API 로 직접 보내는 거래 안내입니다. 본문은 가맹점이 등록해 검수받은 템플릿에서 나오므로 여기서 바꾸지 않습니다.',
+    editable: false,
+    defaultBody: '(가맹점이 등록한 템플릿 본문)',
+    variables: [V.merchant],
   },
   [MT_TEMPLATE.CHARGE_SUCCESS]: {
     label: '결제 완료 감사 문자',

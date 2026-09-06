@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { prisma } from '@/server/db';
+import type { ApiKeyMode } from '@/generated/prisma/client';
 import { decrypt, encrypt, generateToken, safeEqual, tokenHash } from '@/lib/crypto';
 import { newId } from '@/lib/id';
 import { kv } from '@/server/redis';
@@ -36,6 +37,11 @@ export interface PartnerAuthOk {
   ok: true;
   merchantId: string;
   keyId: string;
+  /**
+   * 키 모드. TEST 키로 온 요청은 샌드박스 데이터만 보고 바꾼다.
+   * 라우트가 이 값을 보고 갈라야 하며, 확인하지 않으면 테스트 호출이 운영 데이터를 건드린다.
+   */
+  mode: ApiKeyMode;
 }
 
 export interface PartnerAuthFail {
@@ -121,8 +127,10 @@ export function signPartnerRequest(
  * 새 API 키 발급.
  * 반환한 apiKey / signingSecret 은 저장하지 않는다. 호출자가 화면에 1회 노출한 뒤 버려야 한다.
  */
-export async function issueMerchantApiKey(merchantId: string, name: string) {
-  const apiKey = `mp_live_${generateToken(24)}`;
+export async function issueMerchantApiKey(merchantId: string, name: string, mode: ApiKeyMode = 'LIVE') {
+  // 접두사를 모드별로 갈라 둔다. 운영 키를 테스트 코드에 붙여 놓고 실제 결제가
+  // 나가는 사고가 가장 흔한데, 눈으로 바로 구분되면 대부분 걸러진다.
+  const apiKey = `${mode === 'TEST' ? 'mp_test_' : 'mp_live_'}${generateToken(24)}`;
   const signingSecret = generateToken(32);
 
   const row = await prisma.merchantApiKey.create({
@@ -133,8 +141,9 @@ export async function issueMerchantApiKey(merchantId: string, name: string) {
       prefix: apiKey.slice(0, PREFIX_LEN),
       keyHash: tokenHash(apiKey),
       signingEnc: encrypt(signingSecret),
+      mode,
     },
-    select: { id: true, prefix: true, name: true, createdAt: true },
+    select: { id: true, prefix: true, name: true, mode: true, createdAt: true },
   });
 
   return { ...row, apiKey, signingSecret };
@@ -158,7 +167,7 @@ export async function authenticatePartner(
   const key = await prisma.merchantApiKey.findUnique({
     where: { keyHash: tokenHash(presented) },
     select: {
-      id: true, merchantId: true, revokedAt: true, signingEnc: true, allowedIps: true,
+      id: true, merchantId: true, revokedAt: true, signingEnc: true, allowedIps: true, mode: true,
       merchant: { select: { status: true } },
     },
   });
@@ -236,5 +245,5 @@ export async function authenticatePartner(
     .update({ where: { id: key.id }, data: { lastUsedAt: now } })
     .catch((e) => logger.warn('API 키 사용 시각 기록 실패', { message: (e as Error).message }));
 
-  return { ok: true, merchantId: key.merchantId, keyId: key.id };
+  return { ok: true, merchantId: key.merchantId, keyId: key.id, mode: key.mode };
 }

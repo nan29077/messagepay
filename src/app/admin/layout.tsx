@@ -36,6 +36,7 @@ const groups: NavGroup[] = [
       { href: '/admin/mo-messages', label: '수신 문자', icon: 'messages' },
       { href: '/admin/mt-messages', label: 'MT 발송', icon: 'send' },
       { href: '/admin/mt-templates', label: 'MT 메시지 관리', icon: 'templates' },
+      { href: '/admin/merchant-mt-templates', label: '가맹점 발송 템플릿', icon: 'moderation' },
       { href: '/admin/payments', label: '결제', icon: 'payments' },
       { href: '/admin/products', label: '상품·주문', icon: 'products' },
       { href: '/admin/refunds', label: '환불', icon: 'refunds' },

@@ -30,6 +30,10 @@ export async function GET(req: Request) {
   return jsonOk({
     merchantCode: merchant?.code ?? null,
     merchantName: merchant?.displayName ?? null,
+    // 어떤 모드의 키로 붙었는지 알려 준다. 운영 키를 테스트 환경에 넣어 둔 것을
+    // 실제 결제가 나가기 전에 알아챌 수 있는 가장 빠른 지점이다.
+    mode: auth.mode,
+    sandbox: auth.mode === 'TEST',
     serverTime: new Date().toISOString(),
   });
 }

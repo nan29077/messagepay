@@ -8,6 +8,7 @@ import type { MoInbound } from '@/server/adapters/mo';
 import { getMtAdapter, decideMessageType } from '@/server/adapters/mt';
 import { getPaymentAdapter, MockPaymentTimeout } from '@/server/adapters/payment';
 import { filterContent, normalizeKeyword, splitKeyword, type BannedWordRule } from './content-filter';
+import { emitMerchantEvent } from './webhooks';
 import { checkLimits, commitCounters, rollbackCounters, registerFailure, clearFailures, resolvePolicy } from './limits';
 import { withAdvisoryLock } from '@/server/db';
 import { consumeRateLimit } from '@/server/rate-limit';
@@ -45,15 +46,26 @@ export interface MoHandleResult {
 
 /**
  * MT 문자 1건 발송 + 발송 이력(MtOutboundMessage) 기록.
- * 발송 성공 여부를 boolean 으로 돌려주며, 어댑터 예외는 내부에서 흡수해 이력만 FAILED 로 남긴다.
- * (MO 흐름 외에 PC 웹 가입 안내에서도 같은 이력 규칙을 쓴다 — 파일 하단에서 export)
+ *
+ * 발송 이력의 행 id 까지 돌려준다. 가맹점 API 발송은 이 id 로 상태를 조회하므로
+ * boolean 만으로는 부족하다. 기존 호출부는 아래 `sendMt` 래퍼를 그대로 쓴다.
+ * 어댑터 예외는 내부에서 흡수해 이력만 FAILED 로 남긴다.
  */
-async function sendMt(input: {
+async function sendMtDetailed(input: {
   phone: string;
   template: TemplateOutput;
   chargeId?: string | null;
   merchantId?: string | null;
-}) {
+  /** 가맹점 API 발송의 멱등키. 시스템 발송에는 없다. */
+  idempotencyKey?: string | null;
+  /** 가맹점이 API 로 직접 보낸 문자인지. */
+  merchantSent?: boolean;
+  /**
+   * 발송 이력에 남길 템플릿 코드. 지정하지 않으면 템플릿의 코드를 그대로 쓴다.
+   * 가맹점 발송은 어느 가맹점 템플릿이었는지 남겨야 해서 따로 넘긴다.
+   */
+  templateCodeLabel?: string | null;
+}): Promise<{ ok: boolean; id: string }> {
   const adapter = getMtAdapter();
   // 관리자가 화면에서 저장한 본문이 있으면 그 문구로 바꿔 보낸다.
   // (조회 실패 시에는 원본 템플릿이 그대로 돌아오므로 발송 자체는 막히지 않는다)
@@ -66,10 +78,12 @@ async function sendMt(input: {
       phoneMasked: maskPhone(input.phone),
       fromNumber: env.mt.fromNumber,
       messageType: decideMessageType(template.text),
-      templateCode: template.code,
+      templateCode: input.templateCodeLabel ?? template.code,
       bodyMasked: template.masked,
       chargeId: input.chargeId ?? null,
       merchantId: input.merchantId ?? null,
+      idempotencyKey: input.idempotencyKey ?? null,
+      merchantSent: input.merchantSent ?? false,
     },
   });
 
@@ -93,15 +107,28 @@ async function sendMt(input: {
         data: { mtStatus: res.ok ? 'SENT' : 'FAILED' },
       });
     }
-    return res.ok;
+    return { ok: res.ok, id: row.id };
   } catch (e) {
     await prisma.mtOutboundMessage.update({
       where: { id: row.id },
       data: { status: 'FAILED', resultMessage: (e as Error).message, attempts: { increment: 1 } },
     });
     logger.error('MT 발송 실패', { message: (e as Error).message });
-    return false;
+    return { ok: false, id: row.id };
   }
+}
+
+/**
+ * 기존 호출부용 얇은 래퍼. 발송 성공 여부만 돌려준다.
+ * (MO 흐름 외에 PC 웹 가입 안내에서도 같은 이력 규칙을 쓴다 — 파일 하단에서 export)
+ */
+async function sendMt(input: {
+  phone: string;
+  template: TemplateOutput;
+  chargeId?: string | null;
+  merchantId?: string | null;
+}): Promise<boolean> {
+  return (await sendMtDetailed(input)).ok;
 }
 
 /**
@@ -700,6 +727,13 @@ async function processMoRow(
     data: { result: 'ROUTED', contentFiltered: filtered.clean, processedAt: new Date() },
   });
 
+  // 웹훅. 이 시점에는 아직 결제가 일어나지 않았다(이용자가 문자를 보낸 단계).
+  await emitMerchantEvent(merchant.id, 'mo.received', {
+    transactionNo: charge.transactionNo,
+    text: filtered.clean,
+    receivedAt: new Date().toISOString(),
+  });
+
   // (6) 이용자가 차단됐는지 먼저 본다.
   // 금액과 무관하게 결정되므로 링크를 보내기 전에 확인해 헛걸음을 막는다.
   const blocked = await prisma.blockedPayer.findUnique({
@@ -1243,6 +1277,12 @@ export async function executePayment(chargeId: string): Promise<PaymentOutcome> 
     const policy = await resolvePolicy(charge.merchantId, charge.payerId);
     const locked = await registerFailure(charge.payerId!, policy.failureLockThreshold);
     await sendMtForPayer(charge.payerId!, tpl.tplChargeFailed(charge.merchant.displayName, failure?.message), chargeId, charge.merchantId);
+    await emitMerchantEvent(charge.merchantId, 'charge.failed', {
+      transactionNo: charge.transactionNo,
+      amount: Number(charge.amount),
+      reason: failure?.message ?? null,
+      code: failure?.code ?? null,
+    });
     logger.warn('결제 실패', { chargeId, phone, locked, code: failure?.code });
     return { ok: false, status: 'PAYMENT_FAILED', message: failure?.message ?? '결제에 실패했습니다.' };
   }
@@ -1361,6 +1401,16 @@ export async function executePayment(chargeId: string): Promise<PaymentOutcome> 
   // 가맹점이 미리 적어 둔 안내를 그대로 보내면 끝나는 상품이라, 사람이 개입할 필요가 없다.
   await deliverInstantFulfillment(chargeId);
 
+  // 웹훅. 발행은 적재까지만 하고 전송은 따로 돌기 때문에 여기서 지연되지 않는다.
+  // emitMerchantEvent 는 어떤 경우에도 예외를 던지지 않는다(결제 성공 처리를 막지 않는다).
+  await emitMerchantEvent(charge.merchantId, 'charge.succeeded', {
+    transactionNo: charge.transactionNo,
+    amount: Number(charge.amount),
+    points: Number(charge.amount),
+    message: charge.message,
+    paidAt: new Date().toISOString(),
+  });
+
   return { ok: true, status: 'PAYMENT_SUCCESS', message: '결제가 완료되었습니다.' };
 }
 
@@ -1444,4 +1494,4 @@ async function sendMtForPayer(payerId: string, template: TemplateOutput, chargeI
   return sendMt({ phone, template, chargeId, merchantId });
 }
 
-export { sendMt, sendMtForPayer, setStatus };
+export { sendMt, sendMtDetailed, sendMtForPayer, setStatus };

@@ -494,6 +494,16 @@ model PayerMerchantLink {
   totalAmount    BigInt    @default(0) @map("total_amount")
   totalCount     Int       @default(0) @map("total_count")
   lastDonatedAt  DateTime? @map("last_donated_at") @db.Timestamptz(3)
+  /// 가맹점 API 가 쓰는 이용자 식별자(payerRef) 캐시.
+  ///
+  /// payerRef 는 merchantId 와 phoneHash 로 만든 HMAC 이라 되돌릴 수 없다.
+  /// 가맹점이 payerRef 로 문자를 보내려면 그 값으로 이용자를 찾아야 하는데,
+  /// 매번 이 가맹점의 이용자 전부를 훑어 계산할 수는 없어 여기에 저장해 둔다.
+  /// 값이 비어 있는 옛 행은 필요할 때 채운다(backfillPayerRefs).
+  payerRef       String?   @map("payer_ref")
+  /// 가맹점 사이트의 회원 ID. 가맹점이 API 로 연결해 둔다(선택).
+  /// 이 값이 있으면 가맹점은 자기 회원 ID 만으로 결제 이력을 찾을 수 있다.
+  merchantMemberId String? @map("merchant_member_id")
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -502,6 +512,8 @@ model PayerMerchantLink {
 
   @@unique([payerId, merchantId])
   @@index([merchantId])
+  @@index([merchantId, payerRef])
+  @@index([merchantId, merchantMemberId])
   @@map("payer_merchant_link")
 }
 
@@ -587,6 +599,11 @@ model MerchantProfile {
   moMessages         MoInboundMessage[]
   chargeProducts     ChargeProduct[]
   apiCallLogs        MerchantApiCallLog[]
+  sandboxCharges     SandboxCharge[]
+  sandboxMessages    SandboxMessage[]
+  mtTemplates        MerchantMtTemplate[]
+  webhooks           MerchantWebhook[]
+  webhookDeliveries  WebhookDelivery[]
 
   @@index([status])
   @@map("merchant_profile")
@@ -858,6 +875,11 @@ model MtOutboundMessage {
   chargeId          String?        @map("charge_id")
   merchantId        String?        @map("merchant_id")
   attempts          Int            @default(0)
+  /// 가맹점이 API 로 보낸 문자의 멱등키. 재시도로 같은 문자가 두 번 나가는 것을 막는다.
+  /// 시스템이 보내는 문자에는 없다(null).
+  idempotencyKey    String?        @map("idempotency_key")
+  /// 가맹점이 API 로 직접 보낸 문자인지. 통계와 한도 계산을 시스템 발송과 분리한다.
+  merchantSent      Boolean        @default(false) @map("merchant_sent")
   sentAt            DateTime?      @map("sent_at") @db.Timestamptz(3)
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -870,6 +892,8 @@ model MtOutboundMessage {
   @@index([merchantId, createdAt])
   // MT 발송 관리 목록도 기본 진입이 필터 없는 최신순이다.
   @@index([createdAt])
+  // 같은 가맹점이 같은 멱등키를 다시 보내면 새로 발송하지 않고 첫 결과를 돌려준다.
+  @@unique([merchantId, idempotencyKey])
   @@map("mt_outbound_message")
 }
 
@@ -1568,6 +1592,15 @@ model AdminAuditLog {
   @@map("admin_audit_log")
 }
 
+/// 연동 API 키 모드.
+/// LIVE 는 실제 결제·정산에 영향을 주고, TEST 는 샌드박스 데이터에서만 동작한다.
+enum ApiKeyMode {
+  LIVE
+  TEST
+
+  @@map("api_key_mode")
+}
+
 /// 가맹점 연동 API 키.
 ///
 /// 메시지페이는 가맹점에 API 호출을 요구하지 않는다(관리자 화면에서 확인·지급 처리 가능).
@@ -1585,6 +1618,10 @@ model MerchantApiKey {
   signingEnc String    @map("signing_enc")
   /// 이 키로 호출을 허용할 IP 목록(쉼표 구분). 비우면 제한 없음.
   allowedIps String?   @map("allowed_ips")
+  /// 키 모드. LIVE 는 실제 결제·정산, TEST 는 샌드박스 전용이다.
+  /// 접두사도 함께 갈린다(mp_live_ / mp_test_). 운영 키를 테스트 코드에 넣는 사고를
+  /// 눈으로 걸러내기 위한 것이다.
+  mode       ApiKeyMode @default(LIVE)
   lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(3)
   revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -1734,4 +1771,203 @@ model MtMessageTemplate {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("mt_message_template")
+}
+
+// ===========================================================================
+// 샌드박스 (테스트 키 전용)
+//
+// 테스트 데이터는 실제 결제·정산 테이블에 **한 줄도 들어가지 않는다.**
+// Charge 에 플래그를 두는 방식은 정산·통계·한도 집계 어디 한 곳만 빠뜨려도
+// 테스트 금액이 실제 정산에 섞인다. 그래서 아예 별도 테이블로 분리했다.
+//
+// 응답 모양은 실제 API 와 같게 유지한다(같은 직렬화 함수를 쓴다).
+// 가맹점은 테스트 키로 연동을 다 만들어 본 뒤 키만 바꿔 운영으로 넘어간다.
+// ===========================================================================
+
+/// 샌드박스 충전 건. 실제 Charge 와 완전히 분리된 테스트 전용 데이터다.
+model SandboxCharge {
+  id               String    @id
+  merchantId       String    @map("merchant_id")
+  /// 실제 거래번호와 겹치지 않게 TEST 접두사를 붙인다.
+  transactionNo    String    @unique @map("transaction_no")
+  amount           BigInt
+  shippingFee      BigInt    @default(0) @map("shipping_fee")
+  message          String    @default("")
+  /// 이용자 표시용 마스킹 번호. 원문은 저장하지 않는다(테스트라도 마찬가지다).
+  payerPhoneMasked String    @map("payer_phone_masked")
+  /// 가맹점 전용 고정 식별자. 실제 API 와 같은 방식으로 만든다.
+  payerRef         String    @map("payer_ref")
+  productName      String?   @map("product_name")
+  /// DIGITAL | PHYSICAL
+  productKind      String?   @map("product_kind")
+  /// PENDING_PAYMENT | PAYMENT_SUCCESS | PAYMENT_FAILED
+  status           String    @default("PENDING_PAYMENT")
+  failReason       String?   @map("fail_reason")
+  /// PENDING | SENT | FAILED  (가맹점의 지급 처리 상태)
+  pointStatus      String    @default("PENDING") @map("point_status")
+  pointNote        String?   @map("point_note")
+  /// PREPARING | SHIPPED | DELIVERED 등. 실물 주문에만 쓴다.
+  shipmentStatus   String?   @map("shipment_status")
+  carrier          String?
+  trackingNo       String?   @map("tracking_no")
+  paidAt           DateTime? @map("paid_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  merchant MerchantProfile @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId, paidAt])
+  @@index([merchantId, pointStatus])
+  @@map("sandbox_charge")
+}
+
+/// 샌드박스 문자함. 테스트 중 "나갔을" 문자와 "받은 것으로 친" 문자를 남긴다.
+/// 실제로는 아무것도 발송되지 않는다.
+model SandboxMessage {
+  id            String   @id
+  merchantId    String   @map("merchant_id")
+  /// MO(이용자가 보낸 것으로 친 문자) | MT(메시지페이가 보냈을 문자)
+  direction     String
+  phoneMasked   String   @map("phone_masked")
+  /// MT 인 경우의 템플릿 코드
+  templateCode  String?  @map("template_code")
+  body          String
+  transactionNo String?  @map("transaction_no")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  merchant MerchantProfile @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId, createdAt])
+  @@map("sandbox_message")
+}
+
+// ===========================================================================
+// 가맹점 발송 템플릿 (MT 발송 v1)
+//
+// 가맹점이 자기 이용자에게 거래 안내 문자를 보내는 기능이다. 범위를 좁혀서 연다.
+//  1. 발신번호는 메시지페이 번호 고정 — 가맹점이 발신번호를 등록할 필요가 없다
+//  2. 정보성 문자만 — 광고·홍보는 보낼 수 없다
+//  3. 수신자는 그 가맹점에 거래 이력이 있는 이용자만
+//  4. 미리 등록해 검수받은 템플릿만 — 자유 본문은 보낼 수 없다
+//
+// 이 네 가지가 있으면 광고성 정보에 붙는 사전 동의·야간 발송 제한·수신거부 의무가
+// 적용 대상이 아니게 된다. 그래서 가맹점이 준비할 것이 거의 없다.
+// 제약을 푸는 순간 그 의무가 전부 따라오므로, 넓힐 때는 규제 검토를 함께 해야 한다.
+// ===========================================================================
+
+/// 가맹점 발송 템플릿 검수 상태.
+enum MerchantMtTemplateStatus {
+  /// 자동 검사에서 걸려 사람이 봐야 하는 상태. 발송에 쓸 수 없다.
+  PENDING
+  /// 발송에 쓸 수 있다.
+  APPROVED
+  /// 반려. 사유를 보고 고쳐 다시 올린다.
+  REJECTED
+
+  @@map("merchant_mt_template_status")
+}
+
+/// 가맹점이 등록한 발송 템플릿.
+///
+/// 검수는 등록 시점에 한 번만 한다. 통과한 템플릿은 발송 때 다시 검사하지 않는다.
+/// (발송마다 검수하면 대량 발송에서 지연이 쌓이고, 검수 기준이 바뀌면 이미 쓰던
+///  템플릿이 갑자기 막혀 가맹점 서비스가 멈춘다)
+model MerchantMtTemplate {
+  id          String                   @id
+  merchantId  String                   @map("merchant_id")
+  /// 가맹점이 정하는 코드. 발송 API 에서 이 값으로 템플릿을 고른다.
+  code        String
+  name        String
+  /// 치환자를 포함한 본문. 발신 주체 표기([메시지페이])는 발송 때 시스템이 붙인다.
+  body        String
+  /// 본문에서 뽑아 둔 치환자 이름 목록(쉼표 구분). 발송 때 이 값이 모두 채워져야 한다.
+  variables   String                   @default("")
+  status      MerchantMtTemplateStatus @default(PENDING)
+  /// 보류·반려 사유. 가맹점이 무엇을 고쳐야 하는지 알 수 있어야 한다.
+  reviewNote  String?                  @map("review_note")
+  reviewedAt  DateTime?                @map("reviewed_at") @db.Timestamptz(3)
+  reviewedBy  String?                  @map("reviewed_by")
+  /// 이 템플릿으로 나간 문자 수(누적). 어떤 템플릿이 실제로 쓰이는지 보기 위한 값이다.
+  sentCount   Int                      @default(0) @map("sent_count")
+  createdAt   DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  merchant MerchantProfile @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, code])
+  @@index([status, createdAt])
+  @@map("merchant_mt_template")
+}
+
+// ===========================================================================
+// 웹훅 (가맹점 이벤트 구독)
+//
+// 가맹점이 주기적으로 가져가는(pull) 대신, 일이 생긴 순간 밀어 준다.
+//
+// 지켜야 하는 것
+//  - 발행이 본 흐름을 막지 않는다. 결제 성공 처리가 웹훅 때문에 실패하면 안 된다.
+//    그래서 발행은 "적재"까지만 하고 전송은 별도로 돈다.
+//  - 중복 도착을 전제로 한다. 실패하면 재전송하므로 같은 이벤트가 두 번 갈 수 있다.
+//    받는 쪽이 eventId 로 걸러야 하며, 문서에 그렇게 적어 두었다.
+// ===========================================================================
+
+enum WebhookDeliveryStatus {
+  /// 아직 보내지 않았거나 재시도를 기다리는 중
+  PENDING
+  SENT
+  /// 재시도 한도를 다 쓴 상태. 수동 재전송만 남는다.
+  DEAD
+
+  @@map("webhook_delivery_status")
+}
+
+/// 가맹점이 등록한 수신 URL.
+model MerchantWebhook {
+  id          String    @id
+  merchantId  String    @map("merchant_id")
+  url         String
+  /// 서명 비밀키(암호화 저장). 발급 시 1회만 노출한다.
+  secretEnc   String    @map("secret_enc")
+  /// 받을 이벤트 목록(쉼표 구분). 비우면 모든 이벤트를 받는다.
+  events      String    @default("")
+  description String?
+  active      Boolean   @default(true)
+  /// 마지막 전송의 응답 코드. 연동이 살아 있는지 한눈에 보기 위한 값이다.
+  lastStatus  Int?      @map("last_status")
+  lastAt      DateTime? @map("last_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  merchant   MerchantProfile   @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([merchantId, active])
+  @@map("merchant_webhook")
+}
+
+/// 전송 1건. 이벤트마다 수신 URL 수만큼 만들어진다.
+model WebhookDelivery {
+  id             String                @id
+  merchantId     String                @map("merchant_id")
+  webhookId      String                @map("webhook_id")
+  /// 이벤트 고유 id. 받는 쪽이 중복을 거를 때 쓰는 값이다.
+  eventId        String                @map("event_id")
+  eventType      String                @map("event_type")
+  /// 보낼 본문(JSON 문자열). 재전송할 때 같은 본문을 그대로 다시 보낸다.
+  payload        String
+  status         WebhookDeliveryStatus @default(PENDING)
+  attempts       Int                   @default(0)
+  responseStatus Int?                  @map("response_status")
+  error          String?
+  /// 다음 재시도 시각. PENDING 이면서 이 시각이 지난 건을 크론이 집어간다.
+  nextAttemptAt  DateTime?             @map("next_attempt_at") @db.Timestamptz(3)
+  deliveredAt    DateTime?             @map("delivered_at") @db.Timestamptz(3)
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  merchant MerchantProfile @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  webhook  MerchantWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@index([merchantId, createdAt])
+  @@map("webhook_delivery")
 }

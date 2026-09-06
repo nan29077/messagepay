@@ -2,6 +2,7 @@ import { prisma } from '@/server/db';
 import { decrypt, merchantPayerRef } from '@/lib/crypto';
 import { authenticatePartner } from '@/server/services/partner-auth';
 import { PAID_STATUSES } from '@/components/studio/shared';
+import { sandboxListCharges, sandboxOwnsCharge } from '@/server/services/sandbox';
 import { authError, jsonError, jsonOk, logPartnerCall } from '../_shared';
 import type { Prisma } from '@/generated/prisma/client';
 
@@ -72,14 +73,36 @@ export async function GET(req: Request) {
   const cursor = url.searchParams.get('cursor') ?? undefined;
   if (cursor) {
     // 남의 가맹점 결제 ID 를 커서로 넣어 목록을 훔쳐보지 못하게 소유를 확인한다.
-    const owned = await prisma.charge.findFirst({
-      where: { id: cursor, merchantId: auth.merchantId },
-      select: { id: true },
-    });
+    // 테스트 키는 샌드박스 테이블에서 확인한다(운영 데이터를 조회하지 않는다).
+    const owned =
+      auth.mode === 'TEST'
+        ? await sandboxOwnsCharge(auth.merchantId, cursor)
+        : (await prisma.charge.findFirst({
+            where: { id: cursor, merchantId: auth.merchantId },
+            select: { id: true },
+          })) !== null;
     if (!owned) return logPartnerCall({
    req, merchantId: auth.merchantId, keyId: auth.keyId,
    status: 400, errorCode: 'INVALID_CURSOR',
  }).then(() => jsonError(400, 'INVALID_CURSOR', 'cursor 가 올바르지 않습니다.'));
+  }
+
+  // ── 테스트 키 ────────────────────────────────────────────────
+  // 샌드박스 데이터만 보고 돌려준다. 운영 charge 테이블은 건드리지 않는다.
+  // 응답 모양은 아래 운영 경로와 같게 유지한다(serializeSandboxCharge).
+  if (auth.mode === 'TEST') {
+    const result = await sandboxListCharges({
+      merchantId: auth.merchantId,
+      status: status as 'pending' | 'all',
+      since,
+      limit: limitRaw,
+      cursor,
+    });
+    await logPartnerCall({
+      req, merchantId: auth.merchantId, keyId: auth.keyId, status: 200,
+      message: `sandbox items=${result.items.length}`,
+    });
+    return jsonOk(result);
   }
 
   const where: Prisma.ChargeWhereInput = {

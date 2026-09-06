@@ -64,3 +64,18 @@ export async function logPartnerCall(input: {
     logger.warn('연동 API 호출 기록 실패', { message: (e as Error).message });
   }
 }
+
+/**
+ * 샌드박스 전용 라우트 가드.
+ *
+ * 운영 키로 샌드박스를 호출하면 막는다. 반대(테스트 키로 운영 데이터 조회)는
+ * 각 라우트가 mode 를 보고 샌드박스 쪽으로 갈라서 처리한다.
+ */
+export function sandboxOnly(mode: 'LIVE' | 'TEST') {
+  if (mode === 'TEST') return null;
+  return jsonError(
+    403,
+    'TEST_KEY_REQUIRED',
+    '샌드박스는 테스트 키(mp_test_)로만 호출할 수 있습니다. 판매 설정 → 연동 탭에서 테스트 키를 발급해 주세요.',
+  );
+}
