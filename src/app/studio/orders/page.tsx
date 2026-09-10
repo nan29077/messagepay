@@ -11,6 +11,7 @@ import { PointBulkPanel } from '@/components/studio/point-bulk-panel';
 import { requestChargeRefundAction, updateShipmentAction } from '@/app/actions/studio';
 import { requireMerchant } from '@/server/auth';
 import { prisma } from '@/server/db';
+import { scrubText } from '@/lib/logger';
 import { formatWon, formatNumber } from '@/lib/money';
 import { formatKst } from '@/lib/datetime';
 import {
@@ -485,7 +486,13 @@ async function ShipmentList({
 
                   {s.memo ? (
                     <p className="mt-2 rounded-lg bg-warning-50 px-2.5 py-1.5 text-[11.5px] text-ink-700">
-                      이용자 요청: {s.memo}
+                      {/*
+                        배송 요청 메모는 이용자가 자유롭게 쓰는 칸이라 "부재 시 010-1234-5678 로
+                        연락 주세요" 처럼 연락처가 자주 들어온다. 배송지 원문은 열람 기록을 남기고
+                        보여 주는데(revealShipmentAddressAction) 메모만 목록에서 그대로 보이면
+                        같은 개인정보가 기록 없이 노출된다. 번호는 가려서 보여 준다.
+                      */}
+                      이용자 요청: {scrubText(s.memo)}
                     </p>
                   ) : null}
                   {s.merchantMemo ? (

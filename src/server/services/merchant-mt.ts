@@ -2,6 +2,7 @@ import { prisma } from '@/server/db';
 import { newId } from '@/lib/id';
 import { decrypt, merchantPayerRef } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
+import { kstStartOfDay } from '@/lib/datetime';
 import { filterContent } from './content-filter';
 import { loadBannedWords, sendMtDetailed } from './charge-flow';
 import { MT_TEMPLATE } from './mt-templates';
@@ -32,8 +33,16 @@ const CODE_RE = /^[A-Za-z0-9_-]{2,40}$/;
 /** 가맹점당 등록할 수 있는 템플릿 수. */
 export const MERCHANT_MT_TEMPLATE_MAX = 30;
 
-/** 가맹점당 하루 발송 한도. 넘으면 다음 날까지 막힌다. */
-export const MERCHANT_MT_DAILY_LIMIT = Number(process.env.MERCHANT_MT_DAILY_LIMIT ?? 500);
+/**
+ * 가맹점당 하루 발송 한도. 넘으면 다음 날까지 막힌다.
+ *
+ * 환경변수에 숫자가 아닌 값이 들어오면 NaN 이 되고, `remaining <= 0` 비교가 항상 false 라
+ * **한도가 통째로 사라진다.** 잘못 적은 값은 조용히 기본값으로 되돌린다.
+ */
+export const MERCHANT_MT_DAILY_LIMIT = (() => {
+  const raw = Number(process.env.MERCHANT_MT_DAILY_LIMIT ?? 500);
+  return Number.isInteger(raw) && raw > 0 ? raw : 500;
+})();
 
 /** 본문에서 시스템이 자동으로 채우는 치환자. 가맹점이 값을 보내지 않아도 된다. */
 const SYSTEM_TOKENS = ['가맹점'] as const;
@@ -141,6 +150,79 @@ export async function reviewTemplateBody(merchantId: string, rawBody: string): P
   return { ok: true, status: 'APPROVED', variables };
 }
 
+/** 치환값 하나의 최대 길이. 상품명·주문번호·날짜를 담기엔 넉넉하고, 문장을 밀어 넣기엔 짧다. */
+export const MERCHANT_MT_VARIABLE_MAX_LENGTH = 40;
+
+/**
+ * 치환값 검수.
+ *
+ * 검수는 등록 시점 한 번(`reviewTemplateBody`)이라는 원칙은 **본문**에 대한 것이다.
+ * 치환값은 발송할 때마다 가맹점이 새로 보내는 값이라 등록 시점에 볼 수가 없다.
+ * 그래서 여기서만은 발송할 때 본다.
+ *
+ * 이 검사가 없으면 "{가맹점} 주문하신 {상품} 이(가) 발송되었습니다" 처럼 무해하게 승인받은
+ * 템플릿의 `{상품}` 자리에 광고 문구와 단축 URL 을 넣어, 메시지페이 발신 이름으로 광고
+ * 문자를 보낼 수 있다. 정보성 문자만 보낸다는 전제가 깨지면 광고 표기·수신거부 의무가
+ * 통째로 따라오고, 그 책임은 발신자인 메시지페이가 진다.
+ *
+ * 본문 검수와 달리 여기서는 광고 표현도 **거부**한다. 보류시킬 사람이 없기 때문이다.
+ */
+export async function reviewVariableValues(
+  merchantId: string,
+  values: Record<string, string>,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const entries = Object.entries(values);
+  if (entries.length === 0) return { ok: true };
+
+  for (const [name, value] of entries) {
+    if (value.length > MERCHANT_MT_VARIABLE_MAX_LENGTH) {
+      return {
+        ok: false,
+        message: `치환값 "${name}" 이 너무 깁니다. ${MERCHANT_MT_VARIABLE_MAX_LENGTH}자 이내로 보내 주세요.`,
+      };
+    }
+    // 줄바꿈을 넣으면 한 문자 안에 다른 안내문을 덧붙인 것처럼 보이게 만들 수 있다.
+    if (/[\r\n]/.test(value)) {
+      return { ok: false, message: `치환값 "${name}" 에는 줄바꿈을 넣을 수 없습니다.` };
+    }
+    if (/https?:\/\/|www\.|[a-z0-9-]+\.(?:com|net|co\.kr|kr|io|ly|me|link)\b/i.test(value)) {
+      return {
+        ok: false,
+        message: `치환값 "${name}" 에는 링크를 넣을 수 없습니다. 문자 본문에 링크가 들어가면 통신사 스팸 필터에 걸리고 이용자는 피싱으로 오인합니다.`,
+      };
+    }
+    // 치환자 문법을 값으로 넣어 다른 치환자를 만들어 내는 것을 막는다.
+    if (/[{}]/.test(value)) {
+      return { ok: false, message: `치환값 "${name}" 에는 중괄호를 넣을 수 없습니다.` };
+    }
+    const ad = AD_PATTERNS.find((word) => value.includes(word));
+    if (ad) {
+      return {
+        ok: false,
+        message:
+          `치환값 "${name}" 에 광고·홍보 표현이 있습니다: "${ad}". ` +
+          'v1 은 거래·주문·지급과 직접 관련된 안내만 보낼 수 있습니다.',
+      };
+    }
+  }
+
+  // 금칙어·개인정보는 가맹점별 규칙까지 적용해 한 번에 본다.
+  const joined = entries.map(([, v]) => v).join(' ');
+  const rules = await loadBannedWords(merchantId);
+  const filtered = filterContent(joined, { bannedWords: rules, maxLength: MERCHANT_MT_MAX_LENGTH });
+  if (filtered.containsPersonalInfo) {
+    return {
+      ok: false,
+      message: '치환값에 전화번호·계좌번호·이메일 같은 개인정보를 넣을 수 없습니다.',
+    };
+  }
+  if (filtered.flagged.length > 0) {
+    return { ok: false, message: `치환값에 금칙어가 있습니다: ${filtered.flagged.slice(0, 3).join(', ')}` };
+  }
+
+  return { ok: true };
+}
+
 /** 템플릿 등록. 같은 코드가 있으면 본문을 갈아 끼우고 다시 검수한다. */
 export async function upsertMerchantTemplate(input: {
   merchantId: string;
@@ -218,7 +300,7 @@ export async function resolveRecipient(
   merchantId: string,
   query: RecipientQuery,
 ): Promise<{ payerId: string; phone: string; phoneMasked: string } | null> {
-  if (query.transactionNo) {
+  if (typeof query.transactionNo === 'string' && query.transactionNo.trim()) {
     const charge = await prisma.charge.findFirst({
       where: { transactionNo: query.transactionNo.trim(), merchantId },
       select: { payer: { select: { id: true, phoneEnc: true, phoneMasked: true } } },
@@ -231,7 +313,8 @@ export async function resolveRecipient(
     };
   }
 
-  const ref = query.payerRef?.trim();
+  // 가맹점이 문자열이 아닌 값을 보낼 수 있다. `.trim()` 을 바로 부르면 500 이 난다.
+  const ref = typeof query.payerRef === 'string' ? query.payerRef.trim() : '';
   if (!ref) return null;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -246,7 +329,8 @@ export async function resolveRecipient(
         phoneMasked: link.payer.phoneMasked,
       };
     }
-    if (attempt === 0) await backfillPayerRefs(merchantId);
+    // 캐시가 비어 있어서 못 찾은 것일 수 있다. 남은 것을 모두 채운 뒤 한 번 더 본다.
+    if (attempt === 0 && (await backfillPayerRefs(merchantId)) === 0) break;
   }
   return null;
 }
@@ -256,33 +340,51 @@ export async function resolveRecipient(
  *
  * 이 기능이 생기기 전에 만들어진 연결 행에는 payerRef 가 없다.
  * HMAC 비밀키가 애플리케이션에만 있어 마이그레이션 SQL 로는 채울 수 없으므로 여기서 채운다.
- * 한 번에 다 채우려 하지 않고 상한을 둔다(대형 가맹점에서 요청 하나가 오래 잡히지 않게).
+ *
+ * 이용자가 1000명을 넘는 가맹점에서 한 번에 1000건만 채우면, 그 뒤에 있는 옛 이용자는
+ * 몇 번을 호출해도 영원히 찾지 못한다(매번 같은 앞쪽 1000건만 다시 보게 된다).
+ * 그래서 배치로 나눠 남은 것이 없을 때까지 채운다. 배치 크기는 요청 하나가 지나치게
+ * 오래 잡히지 않도록 두고, 전체 상한으로 폭주를 막는다.
  */
-export async function backfillPayerRefs(merchantId: string, limit = 1000): Promise<number> {
-  const rows = await prisma.payerMerchantLink.findMany({
-    where: { merchantId, payerRef: null },
-    take: limit,
-    select: { id: true, payer: { select: { phoneHash: true } } },
-  });
+const BACKFILL_BATCH = 500;
+const BACKFILL_MAX = 50_000;
+
+export async function backfillPayerRefs(merchantId: string, max = BACKFILL_MAX): Promise<number> {
   let filled = 0;
-  for (const row of rows) {
-    if (!row.payer?.phoneHash) continue;
-    await prisma.payerMerchantLink.update({
-      where: { id: row.id },
-      data: { payerRef: merchantPayerRef(merchantId, row.payer.phoneHash) },
+  while (filled < max) {
+    const rows = await prisma.payerMerchantLink.findMany({
+      where: { merchantId, payerRef: null },
+      take: Math.min(BACKFILL_BATCH, max - filled),
+      select: { id: true, payer: { select: { phoneHash: true } } },
     });
-    filled += 1;
+    if (rows.length === 0) break;
+
+    let filledInBatch = 0;
+    for (const row of rows) {
+      if (!row.payer?.phoneHash) continue;
+      await prisma.payerMerchantLink.update({
+        where: { id: row.id },
+        data: { payerRef: merchantPayerRef(merchantId, row.payer.phoneHash) },
+      });
+      filledInBatch += 1;
+    }
+    filled += filledInBatch;
+    // 이용자 행이 없어 채울 수 없는 연결만 남았다면 같은 배치를 무한히 다시 읽게 된다.
+    if (filledInBatch === 0) break;
   }
   if (filled > 0) logger.info('payerRef 캐시를 채웠습니다', { merchantId, filled });
   return filled;
 }
 
-/** 오늘 이 가맹점이 API 로 보낸 문자 수와 남은 한도. */
+/**
+ * 오늘 이 가맹점이 API 로 보낸 문자 수와 남은 한도.
+ *
+ * 하루의 경계는 **KST 자정**이다. `setHours(0,0,0,0)` 은 서버 시간대를 따르므로
+ * 서버가 UTC 로 뜨면 한국 시간 아침 9시에 한도가 초기화된다(문서는 KST 라고 안내한다).
+ */
 export async function merchantMtQuota(merchantId: string) {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
   const used = await prisma.mtOutboundMessage.count({
-    where: { merchantId, merchantSent: true, createdAt: { gte: start } },
+    where: { merchantId, merchantSent: true, createdAt: { gte: kstStartOfDay() } },
   });
   return { limit: MERCHANT_MT_DAILY_LIMIT, used, remaining: Math.max(0, MERCHANT_MT_DAILY_LIMIT - used) };
 }
@@ -361,8 +463,9 @@ export async function sendMerchantMt(input: {
     };
   }
 
-  // 이용자가 이 가맹점을 차단했거나 가맹점이 이용자를 차단했으면 보내지 않는다.
-  const [link, blocked] = await Promise.all([
+  // 세 가지 차단을 모두 본다. 하나라도 빠지면 차단한 사람에게 문자가 계속 간다.
+  //  1) 이용자가 이 가맹점을 차단  2) 가맹점이 이용자를 차단  3) 플랫폼이 이용자를 차단
+  const [link, blocked, payer] = await Promise.all([
     prisma.payerMerchantLink.findUnique({
       where: { payerId_merchantId: { payerId: recipient.payerId, merchantId: input.merchantId } },
       select: { payerBlockedAt: true },
@@ -371,8 +474,12 @@ export async function sendMerchantMt(input: {
       where: { merchantId: input.merchantId, payerId: recipient.payerId },
       select: { id: true },
     }),
+    prisma.payerProfile.findUnique({
+      where: { id: recipient.payerId },
+      select: { blockedAt: true },
+    }),
   ]);
-  if (link?.payerBlockedAt || blocked) {
+  if (link?.payerBlockedAt || blocked || payer?.blockedAt) {
     return { ok: false, code: 'RECIPIENT_BLOCKED', message: '차단된 이용자에게는 발송할 수 없습니다.' };
   }
 
@@ -390,7 +497,13 @@ export async function sendMerchantMt(input: {
   const rendered = renderMerchantTemplate(template.body, input.variables, input.merchantName);
   const text = `[메시지페이] ${rendered}`;
 
-  const result = await sendMtDetailed({
+  // 멱등키 확인(1)과 발송 사이에 같은 키의 요청이 하나 더 들어오면 둘 다 통과한다.
+  // 그때는 (merchantId, idempotencyKey) 유니크 제약이 뒤에 온 쪽을 P2002 로 막는데,
+  // 그대로 두면 재시도 클라이언트가 가장 흔히 만드는 상황이 500 으로 돌아간다.
+  // 문자는 이미 앞선 요청이 보내고 있으므로, 진 쪽은 그 결과를 돌려주면 된다.
+  let result: { ok: boolean; id: string };
+  try {
+    result = await sendMtDetailed({
     phone: recipient.phone,
     template: {
       code: MT_TEMPLATE.MERCHANT_NOTICE,
@@ -403,11 +516,30 @@ export async function sendMerchantMt(input: {
     merchantId: input.merchantId,
     idempotencyKey: input.idempotencyKey,
     merchantSent: true,
-  });
+    });
+  } catch (e) {
+    if ((e as { code?: string }).code !== 'P2002') throw e;
+    const winner = await prisma.mtOutboundMessage.findFirst({
+      where: { merchantId: input.merchantId, idempotencyKey: input.idempotencyKey },
+      select: { id: true, status: true, bodyMasked: true, phoneMasked: true },
+    });
+    if (!winner) throw e;
+    return {
+      ok: true,
+      id: winner.id,
+      status: winner.status,
+      reused: true,
+      bodyMasked: winner.bodyMasked,
+      phoneMasked: winner.phoneMasked,
+    };
+  }
 
-  await prisma.merchantMtTemplate
-    .update({ where: { id: template.id }, data: { sentCount: { increment: 1 } } })
-    .catch(() => undefined);
+  // 실제로 나간 것만 센다. 실패까지 세면 "이 템플릿으로 몇 통 나갔나"를 못 본다.
+  if (result.ok) {
+    await prisma.merchantMtTemplate
+      .update({ where: { id: template.id }, data: { sentCount: { increment: 1 } } })
+      .catch(() => undefined);
+  }
 
   return {
     ok: true,

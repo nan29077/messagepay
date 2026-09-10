@@ -1,7 +1,7 @@
 import { prisma } from '@/server/db';
 import { authenticatePartner } from '@/server/services/partner-auth';
 import { deliverOnce } from '@/server/services/webhooks';
-import { authError, jsonError, jsonOk, logPartnerCall } from '../../../../_shared';
+import { authError, denyTestKey, jsonError, jsonOk, logPartnerCall } from '../../../../_shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,6 +21,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return authError(auth);
   }
 
+  // 테스트 키는 운영 데이터에 닿지 않는다. (_shared.liveOnly 주석 참고)
+  const testDenied = await denyTestKey(req, auth);
+  if (testDenied) return testDenied;
+
   const { id } = await ctx.params;
   const delivery = await prisma.webhookDelivery.findFirst({
     where: { id, merchantId: auth.merchantId },
@@ -36,9 +40,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   }
 
   // DEAD 였던 건도 다시 보낼 수 있게 상태를 되돌린 뒤 시도한다.
+  // 이때 다음 시도 시각을 뒤로 밀어 크론이 같은 건을 동시에 집어가지 않게 선점한다.
+  // (밀지 않으면 수동 재시도와 크론이 겹쳐 같은 이벤트가 두 번 나간다)
   await prisma.webhookDelivery.update({
     where: { id: delivery.id },
-    data: { status: 'PENDING', nextAttemptAt: new Date() },
+    data: { status: 'PENDING', nextAttemptAt: new Date(Date.now() + 60_000) },
   });
   const ok = await deliverOnce(delivery.id);
   const after = await prisma.webhookDelivery.findUnique({

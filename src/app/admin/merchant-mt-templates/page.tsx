@@ -8,6 +8,7 @@ import {
 } from '@/app/actions/admin/merchant-mt-templates';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/auth';
+import { canManageMoney } from '@/components/admin/constants';
 import { formatKst } from '@/lib/datetime';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +23,9 @@ export const dynamic = 'force-dynamic';
  * 수신거부 의무가 따라오고, 스팸 신고가 쌓이면 제재받는 것은 우리 대표번호다.
  */
 export default async function AdminMerchantMtTemplatesPage() {
-  await requireAdmin();
+  const me = await requireAdmin();
+  // 서버 액션과 같은 기준으로 화면의 검수 버튼을 잠근다(눌러야 알게 되는 죽은 버튼 방지).
+  const canReview = canManageMoney(me.adminPermission);
 
   const [pending, recent] = await Promise.all([
     prisma.merchantMtTemplate.findMany({
@@ -86,21 +89,27 @@ export default async function AdminMerchantMtTemplatesPage() {
                   </p>
                 ) : null}
 
-                <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                  <ActionForm action={approveMerchantMtTemplate} submitLabel="승인" variant="primary">
-                    <input type="hidden" name="templateId" value={t.id} />
-                    <AdminField label="승인 메모 (선택)">
-                      <AdminInput name="note" maxLength={200} placeholder="거래 안내로 확인함" />
-                    </AdminField>
-                  </ActionForm>
+                {canReview ? (
+                  <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                    <ActionForm action={approveMerchantMtTemplate} submitLabel="승인" variant="primary">
+                      <input type="hidden" name="templateId" value={t.id} />
+                      <AdminField label="승인 메모 (선택)">
+                        <AdminInput name="note" maxLength={200} placeholder="거래 안내로 확인함" />
+                      </AdminField>
+                    </ActionForm>
 
-                  <ActionForm action={rejectMerchantMtTemplate} submitLabel="반려" variant="danger">
-                    <input type="hidden" name="templateId" value={t.id} />
-                    <AdminField label="반려 사유 (필수)" hint="가맹점이 무엇을 고쳐야 하는지 적어 주세요.">
-                      <AdminInput name="note" maxLength={200} placeholder="광고 문구는 보낼 수 없습니다" />
-                    </AdminField>
-                  </ActionForm>
-                </div>
+                    <ActionForm action={rejectMerchantMtTemplate} submitLabel="반려" variant="danger">
+                      <input type="hidden" name="templateId" value={t.id} />
+                      <AdminField label="반려 사유 (필수)" hint="가맹점이 무엇을 고쳐야 하는지 적어 주세요.">
+                        <AdminInput name="note" maxLength={200} placeholder="광고 문구는 보낼 수 없습니다" />
+                      </AdminField>
+                    </ActionForm>
+                  </div>
+                ) : (
+                  <p className="mt-3 rounded-lg bg-ink-50 px-3 py-2 text-[12.5px] text-ink-500">
+                    검수(승인·반려)는 최고관리자·운영·재무 권한에서만 할 수 있습니다.
+                  </p>
+                )}
               </Card>
             ))}
           </div>

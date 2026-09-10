@@ -2,7 +2,7 @@
 
 import { cookies } from 'next/headers';
 import { prisma } from '@/server/db';
-import { kv } from '@/server/redis';
+import { kv, consumeAttempt } from '@/server/redis';
 import { consumeIpRateLimit } from '@/server/rate-limit';
 import { newId } from '@/lib/id';
 import { decrypt, encrypt, generateNumericCode, hmac, maskPhone, normalizePhone, phoneHash, safeEqual } from '@/lib/crypto';
@@ -33,6 +33,8 @@ const SEND_MAX = 3;
 const SESSION_SEC = 1800;
 
 const codeKey = (t: string) => `webdon:code:${t}`;
+/** 오입력 횟수 카운터. 레코드와 분리해 원자적으로 센다. */
+const attemptKey = (t: string) => `webdon:try:${t}`;
 const sessionKey = (t: string) => `webdon:session:${t}`;
 const sendPhoneKey = (ph: string) => `webdon:send:${ph}`;
 
@@ -162,16 +164,21 @@ export async function verifyWebDonateCode(_prev: WebDonateState, formData: FormD
   }
 
   if (!safeEqual(digest(code), rec.ch)) {
-    const remain = rec.at - 1;
+    const remain = await consumeAttempt(attemptKey(ticket), MAX_ATTEMPTS, CODE_TTL_SEC);
     if (remain <= 0) {
       await kv.del(codeKey(ticket));
-      return { ok: false, step: 'phone', message: '인증번호를 5회 잘못 입력했습니다. 처음부터 다시 시도해 주세요.' };
+      await kv.del(attemptKey(ticket));
+      return {
+        ok: false,
+        step: 'phone',
+        message: `인증번호를 ${MAX_ATTEMPTS}회 잘못 입력했습니다. 처음부터 다시 시도해 주세요.`,
+      };
     }
-    await kv.set(codeKey(ticket), JSON.stringify({ ...rec, at: remain }), CODE_TTL_SEC);
     return { ok: false, step: 'code', ticket, phoneMasked: rec.pm, message: `인증번호가 일치하지 않습니다. (남은 시도 ${remain}회)` };
   }
 
   await kv.del(codeKey(ticket));
+  await kv.del(attemptKey(ticket));
   // 세션 토큰은 HttpOnly 쿠키로만 내려보낸다. 클라이언트 상태에는 표식만 담는다.
   const sessionToken = newId();
   await kv.set(sessionKey(sessionToken), rec.ph, SESSION_SEC);

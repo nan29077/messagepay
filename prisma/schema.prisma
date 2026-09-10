@@ -690,6 +690,10 @@ model ChargeProduct {
 
   @@index([merchantId, active, sortOrder])
   @@index([merchantId, kind, active])
+  /// 가맹점 안에서 sku 는 유일하다. 일괄 동기화(POST /products/bulk)가 sku 로 기존 상품을
+  /// 찾아 갱신하므로, 같은 sku 가 두 건이면 어느 쪽이 갱신될지 알 수 없고 동시 호출에서
+  /// 중복이 생긴다. sku 가 없는 상품(null)은 제약을 받지 않는다(Postgres 는 null 을 중복으로 보지 않는다).
+  @@unique([merchantId, sku])
   @@map("charge_product")
 }
 

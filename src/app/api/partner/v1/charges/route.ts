@@ -3,7 +3,7 @@ import { decrypt, merchantPayerRef } from '@/lib/crypto';
 import { authenticatePartner } from '@/server/services/partner-auth';
 import { PAID_STATUSES } from '@/components/studio/shared';
 import { sandboxListCharges, sandboxOwnsCharge } from '@/server/services/sandbox';
-import { authError, jsonError, jsonOk, logPartnerCall } from '../_shared';
+import { authError, jsonError, jsonOk, logPartnerCall, logShippingReveal } from '../_shared';
 import type { Prisma } from '@/generated/prisma/client';
 
 export const runtime = 'nodejs';
@@ -154,6 +154,14 @@ export async function GET(req: Request) {
     keyId: auth.keyId,
     status: 200,
     message: `items=${rows.length}`,
+  });
+
+  // 배송지 원문이 함께 나가는 응답은 "열람"이다. 콘솔과 같은 감사 기록을 남긴다.
+  await logShippingReveal({
+    req,
+    merchantId: auth.merchantId,
+    keyId: auth.keyId,
+    transactionNos: rows.filter((r) => r.shipment).map((r) => r.transactionNo),
   });
 
   return jsonOk({

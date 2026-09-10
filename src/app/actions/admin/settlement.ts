@@ -13,6 +13,7 @@ import {
 import { runScheduledPayouts, retryPayout } from '@/server/services/auto-settlement';
 import { notifyUser } from '@/server/services/notifications';
 import { formatWon } from '@/lib/money';
+import { logger } from '@/lib/logger';
 import type { AdminActionState } from '@/components/admin/state';
 import { run, text, optText, money, percentRate, enumValue, requiredId, optDate, assertMoneyAdmin } from './shared';
 
@@ -51,8 +52,21 @@ export async function updateSettlementRequestStatus(
     if (before.status === 'REJECTED') throw new Error('이미 반려된 요청입니다.');
     // 이체파일이 이미 발급된 건을 반려/검토로 되돌리면, 이후 지급대행 결과(SUCCESS)를 반영할 수 없어
     // 돈은 나갔는데 원장에 지급 분개가 없는 상태가 된다. 지급 실패 결과를 먼저 반영해야 한다.
-    if (before.payoutIssuedAt && (status === 'REJECTED' || status === 'REVIEWING')) {
+    //
+    // 단, 이미 PAYOUT_FAILED 인 회차는 그 "먼저 반영" 이 끝난 상태다. 여기서까지 막으면
+    // 실패한 회차를 반려할 방법이 영영 없어져(payoutIssuedAt 은 지워지지 않는다), 묶인 결제 건이
+    // 어떤 회차에도 잡히지 않고 영원히 미지급으로 남는다.
+    if (
+      before.payoutIssuedAt &&
+      before.status !== 'PAYOUT_FAILED' &&
+      (status === 'REJECTED' || status === 'REVIEWING')
+    ) {
       throw new Error('이체파일이 이미 발급된 요청입니다. 지급대행 결과(성공/실패)를 먼저 반영한 뒤 처리해 주세요.');
+    }
+    // 실패 회차를 검토중으로 되돌리는 것은 막는다. 그 상태에서는 재시도(retryPayout)도
+    // 반려도 할 수 없어 오히려 갇힌다. 되살리려면 반려하고 다음 회차에 다시 잡히게 한다.
+    if (before.status === 'PAYOUT_FAILED' && status === 'REVIEWING') {
+      throw new Error('지급 실패 회차는 검토중으로 되돌릴 수 없습니다. 재시도하거나 반려해 주세요.');
     }
 
     // 반려·지급실패는 사유가 반드시 있어야 가맹점이 원인을 안다.
@@ -84,10 +98,21 @@ export async function updateSettlementRequestStatus(
       if (updated.count === 0) throw new Error('상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
       if (status === 'REJECTED') {
         // 회차를 버렸으므로 묶여 있던 결제 건을 지급 대상 풀로 되돌린다.
+        // (풀지 않으면 그 결제 건은 어떤 회차에도 잡히지 않아 영원히 미지급으로 남는다)
         await prisma.charge.updateMany({
           where: { settlementRequestId: requestId, settledAt: null },
           data: { settlementRequestId: null },
         });
+        // 이미 정산 완료로 확정된 건이 남아 있으면 그 회차는 실제로 지급된 것이다.
+        // 반려 상태와 앞뒤가 맞지 않으므로 흔적을 남겨 사람이 확인하게 한다.
+        const settledLeft = await prisma.charge.count({
+          where: { settlementRequestId: requestId, settledAt: { not: null } },
+        });
+        if (settledLeft > 0) {
+          logger.error('반려한 회차에 정산 완료된 결제 건이 남아 있습니다 — 확인 필요', {
+            requestId, merchantId: before.merchantId, settledLeft,
+          });
+        }
       }
       if (status === 'APPROVED') await notifySettlement(before.merchantId, '정산 요청이 승인되었습니다', '지급대행을 통해 곧 지급됩니다.');
       if (status === 'REJECTED') await notifySettlement(before.merchantId, '정산 요청이 반려되었습니다', `사유: ${memo}`);
@@ -158,7 +183,9 @@ export async function bulkUpdateSettlementAction(
             errors.push(`${id.slice(-6)}: 반려 불가 상태(${req.status})`);
             continue;
           }
-          if (req.payoutIssuedAt) {
+          // 이미 지급 실패로 확정된 회차는 "결과 반영"이 끝난 상태라 반려할 수 있다.
+          // (단건 처리와 같은 규칙 — 그렇지 않으면 실패 회차가 영영 풀리지 않는다)
+          if (req.payoutIssuedAt && req.status !== 'PAYOUT_FAILED') {
             errors.push(`${id.slice(-6)}: 이체파일 발급 건은 지급대행 결과를 먼저 반영해야 합니다`);
             continue;
           }
@@ -226,6 +253,8 @@ export async function applyPayoutResultsAction(
     let ok = 0;
     let failed = 0;
     const errors: string[] = [];
+    /** 감사 로그에 남길 "어느 회차가 어떻게 바뀌었는지". 요약 숫자만으로는 추적이 안 된다. */
+    const appliedIds: string[] = [];
 
     for (const line of lines) {
       const [id, result, ...rest] = line.split(',').map((s) => s.trim());
@@ -261,6 +290,7 @@ export async function applyPayoutResultsAction(
           if (req.status === 'PAID') { ok += 1; continue; } // 이미 반영됨 (멱등)
           await markSettlementPaid(id, admin.id, reason || undefined);
           await notifySettlement(req.merchantId, '정산 지급이 완료되었습니다', `${formatWon(req.payoutAmount)}이 지급 처리되었습니다.`);
+          appliedIds.push(`${id}:PAID`);
           ok += 1;
         } else if (up === 'FAIL' || up === 'ERROR' || up === '실패') {
           if (req.status === 'PAYOUT_FAILED') { failed += 1; continue; } // 이미 반영됨 (멱등)
@@ -268,6 +298,7 @@ export async function applyPayoutResultsAction(
           await notifySettlement(req.merchantId, '정산 지급이 실패했습니다', `사유: ${reason || '지급대행 실패'}. 계좌를 확인하고 다시 요청해 주세요.`);
           // 지급 실패 건도 신고 대상이 아니므로 주민등록번호를 파기한다.
           await purgeResidentIfNotFilable(id);
+          appliedIds.push(`${id}:PAYOUT_FAILED`);
           failed += 1;
         } else {
           errors.push(`${id.slice(-6)}: 알 수 없는 결과 '${result}'`);
@@ -277,11 +308,14 @@ export async function applyPayoutResultsAction(
       }
     }
 
+    // 요약만 남기면 "몇 건 반영" 은 알아도 어느 회차가 왜 바뀌었는지 추적할 수 없다.
+    // 돈이 움직인 회차 목록을 함께 남긴다(개별 감사는 markSettlement* 호출부에서 이어진다).
     await writeAudit({
       adminUserId: admin.id,
       action: 'SETTLEMENT_PAYOUT_RESULT',
       targetType: 'SettlementRequest',
-      after: { ok, failed, lines: lines.length },
+      targetId: appliedIds.join(',').slice(0, 500) || undefined,
+      after: { ok, failed, lines: lines.length, applied: appliedIds.slice(0, 100) },
     });
     revalidatePath('/admin/settlements');
     const base = `지급 완료 ${ok}건, 지급 실패 ${failed}건 반영했습니다.`;
@@ -350,6 +384,14 @@ export async function createFeePolicy(_prev: AdminActionState, fd: FormData): Pr
     }
     const settlementDays = settlementDaysRaw;
     const effectiveFrom = optDate(fd, 'effectiveFrom', '적용 시작일') ?? new Date();
+    // 지난 날짜로 시작일을 잡으면 이미 그 사이에 분개가 끝난 결제들이 생긴다.
+    // 원장은 append-only 라 소급해 다시 계산할 수 없고, 화면의 요율과 실제 차감액이 어긋난다.
+    // 하루치 여유(시차·자정 경계)만 허용한다.
+    if (effectiveFrom.getTime() < Date.now() - 86_400_000) {
+      throw new Error(
+        '적용 시작일을 과거로 잡을 수 없습니다. 이미 정산 분개가 끝난 결제는 소급 적용되지 않아 화면 요율과 실제 차감액이 어긋납니다.',
+      );
+    }
 
     // 각 요율만 0~1 로 보면 0.95 + 0.1 같은 조합이 통과한다.
     // 그러면 수수료 합이 결제 금액을 넘어 가맹점 정산금이 음수가 되고,

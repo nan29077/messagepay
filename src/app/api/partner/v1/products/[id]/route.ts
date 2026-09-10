@@ -1,7 +1,7 @@
 import { prisma } from '@/server/db';
 import { authenticatePartner } from '@/server/services/partner-auth';
 import { serializeProduct, validateProduct } from '@/server/services/partner-products';
-import { authError, jsonError, jsonOk, logPartnerCall } from '../../_shared';
+import { authError, denyTestKey, jsonError, jsonOk, logPartnerCall } from '../../_shared';
 import type { Prisma } from '@/generated/prisma/client';
 
 export const runtime = 'nodejs';
@@ -23,6 +23,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     });
     return authError(auth);
   }
+
+  // 테스트 키는 운영 데이터에 닿지 않는다. (_shared.liveOnly 주석 참고)
+  const testDenied = await denyTestKey(req, auth);
+  if (testDenied) return testDenied;
 
   const { id } = await ctx.params;
   const owned = await prisma.chargeProduct.findFirst({
@@ -65,6 +69,10 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
     });
     return authError(auth);
   }
+
+  // 테스트 키는 운영 데이터에 닿지 않는다. (_shared.liveOnly 주석 참고)
+  const testDenied = await denyTestKey(req, auth);
+  if (testDenied) return testDenied;
 
   const { id } = await ctx.params;
   const result = await prisma.chargeProduct.updateMany({

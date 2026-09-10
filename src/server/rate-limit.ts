@@ -78,11 +78,47 @@ export function normalizeIp(value: string | null | undefined): string {
   return v;
 }
 
-/** 정규화한 뒤 허용목록에 있는지 확인한다. 허용목록 항목도 같은 규칙으로 정규화한다. */
+/** 점 4개짜리 IPv4 를 32비트 정수로. 형식이 아니면 null. */
+function ipv4ToInt(ip: string): number | null {
+  const parts = ip.split('.');
+  if (parts.length !== 4) return null;
+  let out = 0;
+  for (const part of parts) {
+    if (!/^\d{1,3}$/.test(part)) return null;
+    const n = Number(part);
+    if (n > 255) return null;
+    out = out * 256 + n;
+  }
+  return out >>> 0;
+}
+
+/**
+ * 정규화한 뒤 허용목록에 있는지 확인한다. 허용목록 항목도 같은 규칙으로 정규화한다.
+ *
+ * 항목이 CIDR(203.0.113.0/24)이면 대역으로 판정한다. 예전에는 문자열이 같은지만 봐서,
+ * 운영자가 결제사에게 받은 대역을 그대로 적어 두면 어떤 주소와도 맞지 않아
+ * 콜백이 전건 거절되고 결제가 완료되지 않았다.
+ */
 export function isAllowedIp(ip: string | null | undefined, allowList: readonly string[]): boolean {
   const target = normalizeIp(ip);
   if (!target) return false;
-  return allowList.some((entry) => normalizeIp(entry) === target);
+  const targetInt = ipv4ToInt(target);
+
+  return allowList.some((raw) => {
+    const entry = raw.trim();
+    if (!entry) return false;
+
+    const slash = entry.indexOf('/');
+    if (slash < 0) return normalizeIp(entry) === target;
+
+    // CIDR 은 IPv4 만 지원한다(허용목록에 쓰이는 값이 사실상 IPv4 다).
+    if (targetInt === null) return false;
+    const base = ipv4ToInt(normalizeIp(entry.slice(0, slash)));
+    const bits = Number(entry.slice(slash + 1));
+    if (base === null || !Number.isInteger(bits) || bits < 0 || bits > 32) return false;
+    const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+    return (base & mask) === (targetInt & mask);
+  });
 }
 
 /**

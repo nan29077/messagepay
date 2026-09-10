@@ -19,6 +19,9 @@ import { run, text, optText, money, optMoney, enumValue, requiredId, assertMoney
 
 export async function updateUserStatus(_prev: AdminActionState, fd: FormData): Promise<AdminActionState> {
   return run(async (admin) => {
+    // 회원 정지·탈퇴는 그 사람의 결제·정산 접근을 통째로 끊는 조치다.
+    // 되돌리더라도 그 사이의 결제 시도는 이미 막힌 뒤라, 고객 응대(SUPPORT) 권한으로는 막는다.
+    assertMoneyAdmin(admin, '회원 상태 변경은 최고관리자·운영·재무 권한에서만 가능합니다.');
     const userId = requiredId(fd, 'userId', '회원');
     const status = enumValue(fd, 'status', ['ACTIVE', 'SUSPENDED', 'WITHDRAWN'] as const, '회원 상태');
 
@@ -35,6 +38,20 @@ export async function updateUserStatus(_prev: AdminActionState, fd: FormData): P
       throw new Error('관리자 계정의 상태 변경은 SUPER_ADMIN 만 수행할 수 있습니다.');
     }
     if (before.status === status) throw new Error('이미 해당 상태입니다.');
+    // 마지막으로 쓸 수 있는 최고관리자를 정지시키면 아무도 권한을 되돌릴 수 없다.
+    // 등급 강등과 같은 기준으로 막는다.
+    if (before.role === 'ADMIN' && status !== 'ACTIVE') {
+      const superLeft = await prisma.adminProfile.count({
+        where: { permission: 'SUPER_ADMIN', user: { status: 'ACTIVE' }, userId: { not: userId } },
+      });
+      const target = await prisma.adminProfile.findUnique({
+        where: { userId },
+        select: { permission: true },
+      });
+      if (target?.permission === 'SUPER_ADMIN' && superLeft === 0) {
+        throw new Error('마지막으로 사용 가능한 SUPER_ADMIN 계정은 정지·탈퇴 처리할 수 없습니다.');
+      }
+    }
 
     await prisma.user.update({ where: { id: userId }, data: { status } });
     if (status !== 'ACTIVE') {
@@ -549,8 +566,13 @@ export async function updateAdminPermission(_prev: AdminActionState, fd: FormDat
     if (before.permission === permission) throw new Error('이미 해당 권한입니다.');
 
     if (before.permission === 'SUPER_ADMIN' && permission !== 'SUPER_ADMIN') {
-      const superCount = await prisma.adminProfile.count({ where: { permission: 'SUPER_ADMIN' } });
-      if (superCount <= 1) throw new Error('마지막 SUPER_ADMIN 의 권한은 강등할 수 없습니다.');
+      // **쓸 수 있는** SUPER_ADMIN 만 센다. 정지·탈퇴된 계정까지 세면
+      // "정지된 SUPER_ADMIN 한 명 + 활성 한 명" 일 때 활성 쪽을 강등할 수 있고,
+      // 그 순간 권한을 되돌릴 사람이 아무도 없어 DB 를 직접 고쳐야 한다.
+      const superCount = await prisma.adminProfile.count({
+        where: { permission: 'SUPER_ADMIN', user: { status: 'ACTIVE' } },
+      });
+      if (superCount <= 1) throw new Error('마지막으로 사용 가능한 SUPER_ADMIN 의 권한은 강등할 수 없습니다.');
     }
 
     await prisma.adminProfile.update({ where: { id: profileId }, data: { permission } });

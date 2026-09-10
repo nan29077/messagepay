@@ -1,7 +1,7 @@
 import { prisma } from '@/server/db';
 import { authenticatePartner } from '@/server/services/partner-auth';
 import { MERCHANT_MT_MAX_LENGTH, upsertMerchantTemplate } from '@/server/services/merchant-mt';
-import { authError, jsonError, jsonOk, logPartnerCall } from '../../_shared';
+import { authError, denyTestKey, jsonError, jsonOk, logPartnerCall } from '../../_shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -65,6 +65,11 @@ export async function POST(req: Request) {
     });
     return authError(auth);
   }
+
+  // 목록 조회는 테스트 키도 되지만(샌드박스 발송에 같은 템플릿을 쓴다) 등록·수정은 운영 키만.
+  // 템플릿은 승인되면 운영 발송에 그대로 쓰이는 설정이므로, 테스트 키로 바꿀 수 있으면 안 된다.
+  const testDenied = await denyTestKey(req, auth);
+  if (testDenied) return testDenied;
 
   let body: TemplateBody;
   try {

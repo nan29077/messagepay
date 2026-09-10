@@ -70,6 +70,7 @@ export const API_CATEGORIES: ApiCategory[] = [
         body: [
           '운영 키(mp_live_) — 실제 결제·실제 문자·정산 대상입니다.',
           '테스트 키(mp_test_) — 샌드박스 전용입니다. 문자가 나가지 않고, 돈이 빠지지 않고, 정산에 잡히지 않습니다.',
+          '테스트 키가 닿는 범위는 /sandbox/*, /charges 계열, /mt/* 뿐입니다. 상품·웹훅·이용자·정산·통계·수수료 API 는 운영 키로만 호출할 수 있습니다(403 LIVE_KEY_REQUIRED).',
           '모드는 발급할 때 고르며 나중에 바꿀 수 없습니다. 운영 키가 조용히 테스트로 바뀌면 어느 쪽 데이터를 건드리는지 알 수 없게 되기 때문입니다. 판매 설정 → 연동 탭에서 각각 발급하세요.',
           '접두사를 다르게 두는 이유는 운영 키를 테스트 코드에 넣는 사고를 눈으로 걸러내기 위해서입니다.',
         ],
@@ -187,9 +188,11 @@ export const API_CATEGORIES: ApiCategory[] = [
       {
         heading: '테스트 키로 무엇이 달라지나',
         body: [
-          '테스트 키로 `/charges`, `/charges/ack`, `/charges/shipment` 를 호출하면 샌드박스 데이터를 대상으로 동작합니다. 경로도 응답 모양도 운영과 같습니다.',
-          '그래서 연동을 테스트 키로 전부 완성한 뒤, 키만 운영 키로 바꾸면 그대로 동작합니다. 코드를 고칠 필요가 없습니다.',
+          '테스트 키로 `/charges`, `/charges/ack`, `/charges/shipment`, `/mt/*` 를 호출하면 샌드박스 데이터를 대상으로 동작합니다. 경로도 응답 모양도 운영과 같습니다.',
+          '그래서 결제 연동과 문자 발송을 테스트 키로 완성한 뒤, 키만 운영 키로 바꾸면 그대로 동작합니다. 코드를 고칠 필요가 없습니다.',
           '아래 `/sandbox/*` 엔드포인트는 테스트 키로만 호출할 수 있습니다. 운영 키로 부르면 403 TEST_KEY_REQUIRED 가 납니다.',
+          '반대로 위에 적힌 것 밖의 API — 상품(/products), 웹훅(/webhooks), 이용자(/payers), 정산(/settlements), 통계(/stats), 수수료(/fees) — 는 테스트 키로 호출할 수 없습니다. 403 LIVE_KEY_REQUIRED 가 납니다.',
+          '샌드박스 사본이 없는 영역이라, 테스트 키를 허용하면 시험 삼아 돌린 스크립트가 운영 상품을 지우고 운영 웹훅을 갈아 끼우게 됩니다. 이 API 들은 운영 키로만 부르고, 지워도 되는 값으로 시험해 주세요.',
         ],
       },
       {
@@ -289,7 +292,7 @@ export const API_CATEGORIES: ApiCategory[] = [
     status: 'LIVE',
     intro: [
       '가장 먼저 붙이는 연동입니다. 결제가 완료된 건을 오래된 순으로 가져가 자기 서비스에 반영한 뒤, 처리했다고 알려주면 다음 조회에서 빠집니다.',
-      '이용자 식별은 마스킹된 휴대폰 번호 또는 가맹점 전용 고정 식별자(payerRef)로 합니다. 원문 번호는 내려가지 않습니다.',
+      '이용자 식별은 마스킹된 휴대폰 번호 또는 가맹점 전용 고정 식별자(payerRef)로 합니다. 이용자 원문 번호는 내려가지 않습니다(실물 주문의 배송지 연락처는 배송에 필요해 예외입니다).',
     ],
     sections: [
       {
@@ -319,7 +322,7 @@ export const API_CATEGORIES: ApiCategory[] = [
           { name: 'cursor', in: 'query', type: 'string', description: '직전 응답의 nextCursor' },
         ],
         responseExample:
-          '{\n  "ok": true,\n  "data": [\n    {\n      "transactionNo": "MP...",\n      "amount": 10000,\n      "message": "응원합니다",\n      "payerRef": "...",\n      "payerPhoneMasked": "010--5678",\n      "paidAt": "2026-09-05T12:34:56+09:00",\n      "product": { "name": "포인트 10,000", "kind": "DIGITAL" }\n    }\n  ],\n  "nextCursor": null\n}',
+          '{\n  "ok": true,\n  "items": [\n    {\n      "transactionNo": "MP...",\n      "amount": 10000,\n      "message": "응원합니다",\n      "payerRef": "...",\n      "payerPhoneMasked": "010--5678",\n      "paidAt": "2026-09-05T03:34:56.000Z",\n      "product": { "name": "포인트 10,000", "kind": "DIGITAL" }\n    }\n  ],\n  "nextCursor": null\n}',
       },
       {
         method: 'POST',
@@ -485,7 +488,7 @@ export const API_CATEGORIES: ApiCategory[] = [
         ],
         notes: [
           '멱등입니다. 같은 값을 다시 보내도 결과가 같습니다.',
-          'SHIPPED 로 바꾸면 이용자에게 발송 안내 문자가 자동으로 나갑니다.',
+          '이 API 로 바꿀 때는 안내 문자가 나가지 않습니다. 발송 안내 문자는 가맹점 콘솔(주문·판매)에서 발송 처리할 때만 나갑니다. API 로 처리한 뒤 문자를 보내려면 문자 발송 API 를 함께 호출해 주세요.',
         ],
       },
       { method: 'GET', path: '/orders', summary: '주문 목록', status: 'PLANNED', signed: false },
@@ -603,6 +606,8 @@ export const API_CATEGORIES: ApiCategory[] = [
           '본문에 {이름} 형태로 넣습니다. {가맹점} 은 시스템이 자동으로 채우므로 값을 넘기지 않아도 됩니다.',
           '그 밖의 치환자는 발송할 때 variables 로 값을 모두 넘겨야 합니다. 하나라도 빠지면 발송이 거절됩니다 — 이용자에게 {상품} 이 그대로 나가는 것을 막기 위해서입니다.',
           '예: "{가맹점} 주문하신 {상품} 출고가 {일수}일 늦어집니다." → variables 로 상품과 일수를 넘깁니다.',
+          '치환값도 검사합니다. 값 하나는 40자 이내여야 하고, 링크·줄바꿈·중괄호·광고 표현·금칙어·개인정보(전화번호·계좌·이메일)가 들어가면 발송이 거절됩니다(INVALID_VARIABLES).',
+          '본문 검수를 통과한 템플릿이라도 빈칸에 광고 문구를 넣으면 광고 문자가 되기 때문입니다. 치환값에는 상품명·주문번호·날짜처럼 그 거래를 가리키는 짧은 값만 넣어 주세요.',
         ],
       },
       {
@@ -639,7 +644,7 @@ export const API_CATEGORIES: ApiCategory[] = [
           { name: 'templateCode', in: 'body', type: 'string', required: true, description: '승인된 템플릿 코드' },
           { name: 'payerRef', in: 'body', type: 'string', description: '수신자. 거래 이력이 있는 이용자만' },
           { name: 'transactionNo', in: 'body', type: 'string', description: 'payerRef 대신 거래번호로도 지정할 수 있습니다' },
-          { name: 'variables', in: 'body', type: 'object', description: '템플릿 치환값. 문자열·숫자만' },
+          { name: 'variables', in: 'body', type: 'object', description: '템플릿 치환값. 문자열·숫자만, 값 하나당 40자 이내' },
         ],
         notes: [
           'payerRef 와 transactionNo 중 하나는 반드시 있어야 합니다. 임의의 전화번호로는 보낼 수 없습니다.',
@@ -831,7 +836,7 @@ export const API_CATEGORIES: ApiCategory[] = [
     status: 'LIVE',
     intro: [
       '가맹점 자체 대시보드에 메시지페이 지표를 함께 띄우기 위한 연동입니다.',
-      '집계된 값만 내려가므로 개인정보가 포함되지 않습니다. 날짜는 KST 기준입니다.',
+      '집계된 값만 내려가므로 개인정보가 포함되지 않습니다. 날짜 묶음(date)은 KST 자정 기준입니다.',
     ],
     endpoints: [
       {
@@ -922,19 +927,23 @@ export const API_CATEGORIES: ApiCategory[] = [
       },
       {
         heading: '응답 형식',
-        body: ['성공과 실패 모두 같은 껍데기를 씁니다. HTTP 상태 코드만 보고 판단하지 말고 ok 값을 확인해 주세요.'],
+        body: [
+          '성공과 실패 모두 같은 껍데기를 씁니다. HTTP 상태 코드만 보고 판단하지 말고 ok 값을 확인해 주세요.',
+          '성공 응답의 결과는 data 로 한 번 더 감싸지 않고 최상위에 바로 놓입니다(목록은 items, 단건은 그 이름 그대로). 실패 응답의 code 와 message 도 최상위입니다.',
+        ],
         code: {
           label: '응답',
           text: [
             '{',
             '  "ok": true,',
-            '  "data": { },',
+            '  "items": [ ],',
             '  "nextCursor": null',
             '}',
             '',
             '{',
             '  "ok": false,',
-            '  "error": { "code": "INVALID_SIGNATURE", "message": "서명이 올바르지 않습니다." }',
+            '  "code": "INVALID_SIGNATURE",',
+            '  "message": "서명이 올바르지 않습니다."',
             '}',
           ].join('\n'),
         },
@@ -942,7 +951,8 @@ export const API_CATEGORIES: ApiCategory[] = [
       {
         heading: '멱등성',
         body: [
-          '쓰기 요청에는 Idempotency-Key 헤더를 넣어 주세요. 같은 키로 다시 보내면 처음 결과를 그대로 돌려줍니다.',
+          '문자 발송(POST /mt/messages)에는 Idempotency-Key 헤더가 필수입니다. 같은 키로 다시 보내면 새로 발송하지 않고 처음 결과를 그대로 돌려줍니다.',
+          '다른 쓰기 요청은 아직 이 헤더를 받지 않습니다. 넣어도 무시되며, 재시도하면 다시 실행되므로 호출 전에 결과를 확인해 주세요.',
           '네트워크가 끊겨 재시도할 때 같은 작업이 두 번 일어나는 것을 막습니다. 결제·발송처럼 되돌리기 어려운 작업에서 특히 중요합니다.',
         ],
       },
@@ -953,15 +963,16 @@ export const API_CATEGORIES: ApiCategory[] = [
       {
         heading: '시간과 금액',
         body: [
-          '모든 시각은 ISO8601 이며 KST(UTC+9) 기준입니다.',
+          '모든 시각은 ISO8601 문자열이며 UTC(끝에 Z)로 내려갑니다. 예: 2026-09-05T03:34:56.000Z — 한국 시간으로는 12시 34분입니다.',
+          '일·월 단위로 묶어 세는 값(통계·발송 한도)의 하루 경계만 KST 자정 기준입니다.',
           '모든 금액은 원 단위 정수입니다. 소수점이 없습니다.',
         ],
       },
       {
         heading: '개인정보',
         body: [
-          '휴대폰 번호는 마스킹된 형태 또는 payerRef 로만 내려갑니다. 원문 번호는 API 로 나가지 않습니다.',
-          '배송지 주소처럼 민감한 값은 열람 시 감사 로그가 남습니다.',
+          '이용자 휴대폰 번호는 마스킹된 형태 또는 payerRef 로만 내려갑니다. 원문 번호는 API 로 나가지 않습니다.',
+          '실물 주문의 배송지(shipping)는 예외입니다. 배송에 필요하므로 수령인·연락처·주소가 원문으로 내려가며, 내려간 건은 감사 로그(SHIPMENT_ADDRESS_VIEW)에 남습니다. 배송·CS 목적으로만 쓰고 그 외 이용·제공은 금지됩니다.',
           '받은 개인정보는 목적 범위 안에서만 쓰고, 보관 기간이 지나면 파기해 주세요.',
         ],
       },

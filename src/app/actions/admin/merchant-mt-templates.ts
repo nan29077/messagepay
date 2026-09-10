@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { prisma } from '@/server/db';
 import { writeAudit } from '@/server/auth';
 import type { AdminActionState } from '@/components/admin/state';
-import { run, text, optText, requiredId } from './shared';
+import { run, text, optText, requiredId, assertMoneyAdmin } from './shared';
 
 /**
  * 가맹점 발송 템플릿 검수.
@@ -22,6 +22,9 @@ export async function approveMerchantMtTemplate(
   fd: FormData,
 ): Promise<AdminActionState> {
   return run(async (admin) => {
+    // 템플릿 승인은 그 문구로 실제 문자가 나가게 하는 결정이다. 광고성 문구를 잘못 통과시키면
+    // 표기 의무 위반의 책임이 발신자인 메시지페이에 온다. 고객 응대(SUPPORT) 권한으로는 막는다.
+    assertMoneyAdmin(admin, '가맹점 문자 템플릿 검수는 최고관리자·운영·재무 권한에서만 가능합니다.');
     const id = requiredId(fd, 'templateId', '템플릿');
     const before = await prisma.merchantMtTemplate.findUnique({
       where: { id },
@@ -58,6 +61,7 @@ export async function rejectMerchantMtTemplate(
   fd: FormData,
 ): Promise<AdminActionState> {
   return run(async (admin) => {
+    assertMoneyAdmin(admin, '가맹점 문자 템플릿 검수는 최고관리자·운영·재무 권한에서만 가능합니다.');
     const id = requiredId(fd, 'templateId', '템플릿');
     const note = text(fd, 'note');
     // 사유 없이 반려하면 가맹점은 무엇을 고쳐야 하는지 알 수 없어 그대로 다시 올린다.

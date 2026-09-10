@@ -174,7 +174,36 @@ export async function completePinAuthorization(input: PinCallbackInput): Promise
   }
 
   // (5) 승인. 한도 재검사·멱등·정산 분개는 모두 executePayment 안에서 처리된다.
-  const paid = await executePayment(session.chargeId);
+  //
+  // executePayment 가 값으로 실패를 돌려주지 않고 **예외를 던지면**(DB 장애 등) 세션은
+  // 이미 COMPLETED 로 선점돼 있고 결제는 PENDING_PIN 에 남는다. 이용자는 다시 인증할 수 없고
+  // (선점 때문에 재통지가 DUPLICATE 로 걸린다) 관리자 대사도 닿지 않아 영영 멈춘다.
+  // 승인 자체가 시작되지 않았으므로 세션을 되돌려 다시 시도할 수 있게 만든다.
+  let paid: Awaited<ReturnType<typeof executePayment>>;
+  try {
+    paid = await executePayment(session.chargeId);
+  } catch (e) {
+    await prisma.paymentPinSession
+      .updateMany({
+        where: { id: session.id, status: 'COMPLETED' },
+        data: {
+          status: 'PENDING',
+          completedAt: null,
+          resultNote: `승인 처리 중 오류: ${(e as Error).message}`.slice(0, 500),
+        },
+      })
+      .catch(() => undefined);
+    logger.error('PIN 승인 처리 중 예외 — 인증 세션을 되돌립니다', {
+      sessionId: session.id, chargeId: session.chargeId, message: (e as Error).message,
+    });
+    return {
+      ok: false,
+      code: 'PAYMENT_FAILED',
+      chargeId: session.chargeId,
+      status: charge.status,
+      message: '결제를 처리하는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+    };
+  }
 
   if (!paid.ok) {
     await prisma.paymentPinSession.update({

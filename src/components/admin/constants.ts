@@ -14,8 +14,12 @@ export const PAID_CHARGE_STATUSES: ChargeStatus[] = [
 export const PAGE_SIZE = 25;
 
 export function parsePage(raw?: string): number {
-  const n = Number.parseInt(raw ?? '1', 10);
-  return Number.isFinite(n) && n > 0 ? n : 1;
+  // 전체가 숫자일 때만 받는다. parseInt 는 '1.5' 를 1 로, '3abc' 를 3 으로 읽어
+  // 잘못 만든 링크가 조용히 다른 페이지를 열게 한다.
+  const text = (raw ?? '1').trim();
+  if (!/^\d+$/.test(text)) return 1;
+  const n = Number(text);
+  return Number.isSafeInteger(n) && n > 0 ? n : 1;
 }
 
 /**

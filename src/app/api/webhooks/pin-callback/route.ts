@@ -6,7 +6,7 @@ import { safeEqual } from '@/lib/crypto';
 import { logger, scrub } from '@/lib/logger';
 import { completePinAuthorization, failPinAuthorization } from '@/server/services/pin-authorization';
 import { isMockPaymentAllowed } from '@/server/mock-guard';
-import { clientIpFromRequest, isAllowedIp } from '@/server/rate-limit';
+import { clientIpFromRequest, consumeRateLimit, isAllowedIp } from '@/server/rate-limit';
 import { readTextWithLimit } from '@/server/request-guard';
 
 export const runtime = 'nodejs';
@@ -117,6 +117,17 @@ export async function POST(req: Request) {
   const ip = clientIpFromRequest(req) ?? undefined;
 
   const verified = verifyCallback(headerMap['x-pin-secret'] ?? null, ip);
+
+  // 검증에 실패한 요청도 기록은 남긴다(누가 두드렸는지 봐야 한다).
+  // 다만 인증 없이 로그 테이블을 채울 수 있으면 그 자체가 공격 통로가 되므로,
+  // 실패 건은 발신 IP 당 횟수를 제한한다. 넘어선 요청은 기록 없이 그대로 거절한다.
+  if (!verified.ok) {
+    const quota = await consumeRateLimit('pin-callback-reject', ip, 20, 600);
+    if (!quota.ok) {
+      logger.warn('PIN 콜백 검증 실패 폭주 — 기록 없이 거절', { ip, count: quota.count });
+      return NextResponse.json({ ok: false, message: '인증되지 않은 요청입니다.' }, { status: 401 });
+    }
+  }
 
   let parsed: PinCallbackBody = {};
   try {

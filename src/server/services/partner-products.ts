@@ -191,37 +191,59 @@ export async function syncPartnerProducts(
   const existing = await prisma.chargeProduct.findMany({ where: { merchantId, sku: { in: skus } } });
   const bySku = new Map(existing.map((p) => [p.sku!, p]));
 
-  let created = 0;
-  let updated = 0;
+  // 쓰기를 시작하기 전에 전부 검사한다.
+  // 100건 중 50번째에서 형식 오류가 나면 앞 49건만 반영된 채 400 이 돌아가고,
+  // 가맹점은 어디까지 반영됐는지 모른 채 같은 요청을 다시 보낸다.
+  const plan: { sku: string; found: (typeof existing)[number] | undefined; data: Record<string, unknown> }[] = [];
   for (const item of withSku) {
     const sku = String(item.sku).trim();
     const found = bySku.get(sku);
     const checked = validateProduct(item, { partial: Boolean(found) });
     if (!checked.ok) return { ok: false as const, message: `${sku}: ${checked.message}` };
-
-    if (found) {
-      await prisma.chargeProduct.update({
-        where: { id: found.id },
-        // 되살리기: 보관 처리됐던 상품이 목록에 다시 오면 판매 상태로 돌린다.
-        data: { ...checked.data, archivedAt: null } as Prisma.ChargeProductUncheckedUpdateInput,
-      });
-      updated += 1;
-    } else {
-      await prisma.chargeProduct.create({
-        data: { id: newId(), merchantId, sku, ...checked.data } as Prisma.ChargeProductUncheckedCreateInput,
-      });
-      created += 1;
-    }
+    plan.push({ sku, found, data: checked.data as Record<string, unknown> });
   }
 
-  let archived = 0;
-  if (archiveMissing) {
-    const result = await prisma.chargeProduct.updateMany({
-      where: { merchantId, archivedAt: null, sku: { notIn: skus } },
-      data: { archivedAt: new Date(), active: false },
+  // 반영은 한 트랜잭션에서. 도중에 실패하면 아무것도 바뀌지 않은 상태로 되돌아간다.
+  try {
+    return await prisma.$transaction(async (tx) => {
+      let created = 0;
+      let updated = 0;
+      for (const row of plan) {
+        if (row.found) {
+          await tx.chargeProduct.update({
+            where: { id: row.found.id },
+            // 되살리기: 보관 처리됐던 상품이 목록에 다시 오면 판매 상태로 돌린다.
+            data: { ...row.data, archivedAt: null } as Prisma.ChargeProductUncheckedUpdateInput,
+          });
+          updated += 1;
+        } else {
+          await tx.chargeProduct.create({
+            data: { id: newId(), merchantId, sku: row.sku, ...row.data } as Prisma.ChargeProductUncheckedCreateInput,
+          });
+          created += 1;
+        }
+      }
+
+      let archived = 0;
+      if (archiveMissing) {
+        const result = await tx.chargeProduct.updateMany({
+          where: { merchantId, archivedAt: null, sku: { notIn: skus } },
+          data: { archivedAt: new Date(), active: false },
+        });
+        archived = result.count;
+      }
+
+      return { ok: true as const, created, updated, archived };
     });
-    archived = result.count;
+  } catch (e) {
+    // (merchantId, sku) 유니크 위반 — 같은 요청이 동시에 두 번 들어와 둘 다 "없음" 으로
+    // 판단한 경우다. 재시도하면 뒤 요청은 갱신 경로를 타므로 그대로 다시 보내면 된다.
+    if ((e as { code?: string }).code === 'P2002') {
+      return {
+        ok: false as const,
+        message: '같은 sku 로 동시에 처리 중인 요청이 있습니다. 잠시 후 다시 보내 주세요.',
+      };
+    }
+    throw e;
   }
-
-  return { ok: true as const, created, updated, archived };
 }

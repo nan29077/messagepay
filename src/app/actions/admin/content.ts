@@ -11,7 +11,14 @@ import { run, text, optText, int, bool, enumValue, requiredId, optDate } from '.
  * 배너 / 공지·FAQ 관리 액션.
  */
 
-const SAFE_URL = /^(https?:\/\/|\/)[^\s"'<>]*$/;
+/**
+ * 배너·공지의 이동 주소.
+ *
+ * `//evil.example` 은 `/` 로 시작하므로 "내부 경로" 검사를 통과하지만, 브라우저는 이것을
+ * 프로토콜 상대 URL 로 읽어 외부 사이트로 보낸다. 내부 경로는 `/` **하나로만** 시작해야 한다.
+ * 역슬래시(`/\evil.example`)도 일부 브라우저가 같은 뜻으로 읽으므로 함께 막는다.
+ */
+const SAFE_URL = /^(?:https?:\/\/|\/(?![/\\]))[^\s"'<>]*$/;
 
 function checkUrl(value: string | null, label: string): string | null {
   if (!value) return null;

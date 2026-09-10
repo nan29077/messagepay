@@ -1,7 +1,7 @@
 'use server';
 
 import { prisma } from '@/server/db';
-import { kv } from '@/server/redis';
+import { kv, consumeAttempt } from '@/server/redis';
 import { consumeIpRateLimit } from '@/server/rate-limit';
 import { newId } from '@/lib/id';
 import { generateNumericCode, hmac, maskPhone, normalizePhone, phoneHash, safeEqual } from '@/lib/crypto';
@@ -62,6 +62,8 @@ export interface LookupResult {
 }
 
 const codeKey = (ticket: string) => `lookup:code:${ticket}`;
+/** 오입력 횟수 카운터. 레코드와 분리해 원자적으로 센다(web-charge 와 같은 이유). */
+const attemptKey = (ticket: string) => `lookup:try:${ticket}`;
 const sessionKey = (ticket: string) => `lookup:session:${ticket}`;
 const sendPhoneKey = (ph: string) => `lookup:send:${ph}`;
 
@@ -142,12 +144,16 @@ export async function verifyAndLookup(_prev: LookupState, formData: FormData): P
   }
 
   if (!safeEqual(digest(code), rec.ch)) {
-    const remain = rec.at - 1;
+    const remain = await consumeAttempt(attemptKey(ticket), MAX_ATTEMPTS, TTL_SEC);
     if (remain <= 0) {
       await kv.del(codeKey(ticket));
-      return { ok: false, step: 'phone', message: '인증번호를 5회 잘못 입력했습니다. 처음부터 다시 시도해 주세요.' };
+      await kv.del(attemptKey(ticket));
+      return {
+        ok: false,
+        step: 'phone',
+        message: `인증번호를 ${MAX_ATTEMPTS}회 잘못 입력했습니다. 처음부터 다시 시도해 주세요.`,
+      };
     }
-    await kv.set(codeKey(ticket), JSON.stringify({ ...rec, at: remain }), TTL_SEC);
     return {
       ok: false,
       step: 'code',
@@ -158,6 +164,7 @@ export async function verifyAndLookup(_prev: LookupState, formData: FormData): P
   }
 
   await kv.del(codeKey(ticket));
+  await kv.del(attemptKey(ticket));
   await kv.set(sessionKey(ticket), rec.ph, SESSION_SEC);
 
   const result = await loadResult(rec.ph, rec.pm);

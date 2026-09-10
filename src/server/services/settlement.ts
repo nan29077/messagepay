@@ -4,6 +4,7 @@ import { encrypt, decrypt, maskResident, normalizeResident } from '@/lib/crypto'
 import { applyRate } from '@/lib/money';
 import { kstMonthKey } from '@/lib/datetime';
 import { logger } from '@/lib/logger';
+import { PAID_STATUSES } from '@/components/studio/shared';
 import type { LedgerEntryType } from '@/generated/prisma/enums';
 
 /**
@@ -655,6 +656,23 @@ export async function markSettlementPaid(requestId: string, adminId?: string, pa
           requestId, merchantId: req.merchantId, warnings,
         });
       }
+
+      // 이 회차에 묶인 결제 건을 정산 완료로 확정한다.
+      //
+      // 지급 분개와 같은 트랜잭션 안에서 한다. 호출부(자동 배치 · 재시도 · 관리자 화면)마다
+      // 따로 하면 어느 한 곳이 빠져도 티가 나지 않는다 — 실제로 관리자 화면에서 수동으로
+      // 지급 완료한 회차는 결제 건이 영원히 "정산 대기" 로 남아 있었다.
+      //
+      // 이미 환불된 건(REFUNDED · REFUND_REQUESTED)은 건드리지 않는다. 지급 실패와 재시도
+      // 사이에 환불이 승인되면 그 건이 "정산 완료" 로 되살아나 목록·통계가 어긋난다.
+      await tx.charge.updateMany({
+        where: {
+          settlementRequestId: requestId,
+          settledAt: null,
+          status: { in: PAID_STATUSES },
+        },
+        data: { settledAt: now, status: 'SETTLED' },
+      });
 
       return tx.settlementRequest.update({
         where: { id: requestId },

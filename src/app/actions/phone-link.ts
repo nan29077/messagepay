@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@/server/db';
-import { kv } from '@/server/redis';
+import { kv, consumeAttempt } from '@/server/redis';
 import { getSessionUser } from '@/server/auth';
 import { newId } from '@/lib/id';
 import { encrypt, generateNumericCode, hmac, maskPhone, normalizePhone, phoneHash, safeEqual } from '@/lib/crypto';
@@ -55,6 +55,8 @@ interface VerifyRecord {
 }
 
 const stateKey = (userId: string) => `phonelink:state:${userId}`;
+/** 오입력 횟수 카운터. 레코드와 분리해 원자적으로 센다(web-charge 와 같은 이유). */
+const attemptKey = (userId: string) => `phonelink:try:${userId}`;
 const sendUserKey = (userId: string) => `phonelink:send:user:${userId}`;
 const sendPhoneKey = (ph: string) => `phonelink:send:phone:${ph}`;
 
@@ -116,6 +118,9 @@ export async function requestPhoneVerification(
 
   const record: VerifyRecord = { ph, pe: encrypt(phone), pm: masked, ch: codeDigest(code), at: MAX_ATTEMPTS };
   await kv.set(stateKey(user.id), JSON.stringify(record), TTL_SEC);
+  // 시도 카운터는 회원 단위 키라 새 인증번호를 받으면 함께 비워야 한다.
+  // (티켓 단위인 다른 인증과 달리 그냥 두면 지난 오입력이 계속 쌓인다)
+  await kv.del(attemptKey(user.id));
   logger.info('휴대폰 인증번호 발송', { userId: user.id, phone: masked });
 
   return {
@@ -155,17 +160,18 @@ export async function confirmPhoneVerification(
   }
 
   if (!safeEqual(codeDigest(code), record.ch)) {
-    const remain = record.at - 1;
+    const remain = await consumeAttempt(attemptKey(user.id), MAX_ATTEMPTS, TTL_SEC);
     if (remain <= 0) {
       await kv.del(stateKey(user.id));
-      return { ok: false, message: '인증번호를 5회 잘못 입력했습니다. 처음부터 다시 시도해 주세요.' };
+      await kv.del(attemptKey(user.id));
+      return { ok: false, message: `인증번호를 ${MAX_ATTEMPTS}회 잘못 입력했습니다. 처음부터 다시 시도해 주세요.` };
     }
-    await kv.set(stateKey(user.id), JSON.stringify({ ...record, at: remain }), TTL_SEC);
     return { ok: false, codeSent: true, message: `인증번호가 일치하지 않습니다. (남은 시도 ${remain}회)` };
   }
 
   // 성공 → 인증 상태는 즉시 폐기 (재사용 차단)
   await kv.del(stateKey(user.id));
+  await kv.del(attemptKey(user.id));
 
   // 연결 시점에 한 번 더 소유권을 검증한다 (발송~확인 사이의 상태 변화 대비).
   const existing = await prisma.payerProfile.findUnique({

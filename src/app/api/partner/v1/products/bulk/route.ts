@@ -1,6 +1,6 @@
 import { authenticatePartner } from '@/server/services/partner-auth';
 import { syncPartnerProducts } from '@/server/services/partner-products';
-import { authError, jsonError, jsonOk, logPartnerCall } from '../../_shared';
+import { authError, denyTestKey, jsonError, jsonOk, logPartnerCall } from '../../_shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,6 +24,10 @@ export async function POST(req: Request) {
     });
     return authError(auth);
   }
+
+  // 테스트 키는 운영 데이터에 닿지 않는다. (_shared.liveOnly 주석 참고)
+  const testDenied = await denyTestKey(req, auth);
+  if (testDenied) return testDenied;
 
   let body: { items?: unknown[]; archiveMissing?: boolean };
   try {

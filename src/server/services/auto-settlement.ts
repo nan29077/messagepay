@@ -236,12 +236,8 @@ export async function runMerchantPayout(
       return { status: 'FAILED', amount, reason: result.message, requestId: request.id };
     }
 
-    // 지급 완료: 원장 분개 + 회차 확정 + 포함된 결제 건에 정산 시각 기록
+    // 지급 완료: 원장 분개 + 회차 확정 + 포함된 결제 건에 정산 시각 기록(한 트랜잭션)
     await markSettlementPaid(request.id, undefined, result.referenceNo);
-    await prisma.charge.updateMany({
-      where: { settlementRequestId: request.id, settledAt: null },
-      data: { settledAt: now, status: 'SETTLED' },
-    });
     await prisma.idempotencyKey
       .update({
         where: { scope_key: { scope: 'payout', key: `${merchantId}:${dateKey}` } },
@@ -378,6 +374,21 @@ export async function retryPayout(
   let result = prior;
   if (!prior.ok && !prior.unknown) {
     // 대행사에도 성공 기록이 없다 → 다시 이체한다.
+    //
+    // 다만 그 전에 잔액을 다시 본다. 지급 실패와 재시도 사이에 환불이 승인되면
+    // 회차에 적힌 금액이 지금 잔액보다 커지고, 그대로 보내면 없는 돈이 나간다.
+    // (돈은 아직 나가지 않았으므로 여기서는 경고가 아니라 거절이 맞다)
+    const summary = await getSettlementSummary(request.merchantId);
+    if (request.amount > summary.balance) {
+      const reason =
+        `재시도할 수 없습니다 — 지급 요청액 ${request.amount.toString()}원이 현재 잔액 ${summary.balance.toString()}원을 넘습니다. ` +
+        '지급 실패 이후 환불이 있었는지 확인하고, 이 회차를 반려한 뒤 새로 요청해 주세요.';
+      await prisma.settlementRequest.update({
+        where: { id: requestId },
+        data: { payoutFailReason: `BALANCE_SHORT: ${reason}` },
+      });
+      return { ok: false, message: reason };
+    }
     result = await adapter.transfer({
       requestId,
       merchantName: merchant.displayName,
@@ -398,14 +409,10 @@ export async function retryPayout(
     return { ok: false, message: `재시도 실패 — ${result.message}` };
   }
 
+  // 이 회차에 묶인 결제 건을 정산 완료로 확정하는 것까지 markSettlementPaid 안에서 한다.
+  // (목록을 다시 유도하면 실패~재시도 사이에 구성이 바뀌어 지급액과 어긋난다.
+  //  환불된 건은 건드리지 않는다 — settlement.markSettlementPaid 주석 참고)
   await markSettlementPaid(requestId, undefined, result.referenceNo);
-  // 이 회차에 묶인 결제 건만 정산 완료로 확정한다.
-  // 목록을 다시 유도하면(그때그때 지급액만큼 오래된 순으로 세면) 실패~재시도 사이에
-  // 환불·신규 결제로 구성이 바뀌어 지급액보다 많은 건이 잠기거나 적게 잠긴다.
-  await prisma.charge.updateMany({
-    where: { settlementRequestId: requestId, settledAt: null },
-    data: { settledAt: now, status: 'SETTLED' },
-  });
   return { ok: true, message: '지급을 완료했습니다.' };
 }
 

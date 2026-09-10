@@ -1,6 +1,6 @@
 import { prisma } from '@/server/db';
 import { authenticatePartner } from '@/server/services/partner-auth';
-import { authError, jsonError, jsonOk, logPartnerCall } from '../../../_shared';
+import { authError, denyTestKey, jsonError, jsonOk, logPartnerCall } from '../../../_shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,6 +21,10 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ payerRef: st
     });
     return authError(auth);
   }
+
+  // 테스트 키는 운영 데이터에 닿지 않는다. (_shared.liveOnly 주석 참고)
+  const testDenied = await denyTestKey(req, auth);
+  if (testDenied) return testDenied;
 
   const { payerRef } = await ctx.params;
   const result = await prisma.payerMerchantLink.updateMany({

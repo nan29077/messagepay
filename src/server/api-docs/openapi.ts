@@ -61,16 +61,32 @@ function operationOf(categoryTitle: string, endpoint: ApiEndpoint) {
         ? '[베타] 규격이 바뀔 수 있습니다. '
         : '[준비 중] 아직 제공되지 않습니다. 규격은 예고이며 바뀔 수 있습니다. ';
 
-  const parameters = (endpoint.params ?? [])
+  const declared = (endpoint.params ?? [])
     .filter((p) => p.in !== 'body')
     .map((p) => ({
       name: p.name,
       in: p.in === 'header' ? 'header' : p.in,
       required: Boolean(p.required) || p.in === 'path',
       description: p.description,
-      schema: { type: p.type === 'number' ? 'integer' : 'string' },
+      schema: schemaOf(p.type),
       ...(p.example ? { example: p.example } : {}),
     }));
+
+  // 경로에 `{id}` 같은 자리가 있는데 params 에 적어 두지 않은 엔드포인트가 있다.
+  // OpenAPI 는 경로 변수가 parameters 에 없으면 잘못된 문서로 보고, 코드 생성기가
+  // 호출할 수 없는 클라이언트를 만든다. 빠진 것은 여기서 채워 넣는다.
+  const pathVars = [...endpoint.path.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]!);
+  const missing = pathVars
+    .filter((name) => !declared.some((p) => p.in === 'path' && p.name === name))
+    .map((name) => ({
+      name,
+      in: 'path' as const,
+      required: true,
+      description: `경로 변수 ${name}`,
+      schema: { type: 'string' },
+    }));
+
+  const parameters = [...missing, ...declared];
 
   const bodyParams = (endpoint.params ?? []).filter((p) => p.in === 'body');
   const requestBody =
@@ -83,13 +99,7 @@ function operationOf(categoryTitle: string, endpoint: ApiEndpoint) {
                 type: 'object',
                 required: bodyParams.filter((p) => p.required).map((p) => p.name),
                 properties: Object.fromEntries(
-                  bodyParams.map((p) => [
-                    p.name,
-                    {
-                      type: p.type === 'number' ? 'integer' : p.type === 'object' ? 'object' : p.type === 'string[]' ? 'array' : 'string',
-                      description: p.description,
-                    },
-                  ]),
+                  bodyParams.map((p) => [p.name, { ...schemaOf(p.type), description: p.description }]),
                 ),
               },
             },
@@ -118,6 +128,32 @@ function operationOf(categoryTitle: string, endpoint: ApiEndpoint) {
     ...(endpoint.sandboxOnly ? { 'x-sandbox-only': true } : {}),
     'x-status': endpoint.status,
   };
+}
+
+/**
+ * 레지스트리의 타입 표기를 OpenAPI 스키마로 옮긴다.
+ *
+ * 예전에는 number 만 integer 로 바꾸고 나머지를 전부 string 으로 내보냈다.
+ * boolean·배열·날짜가 모두 문자열로 나가서, 코드 생성기가 만든 클라이언트는
+ * `true` 를 `"true"` 로 보내 서버가 거절했다.
+ */
+function schemaOf(type: string): Record<string, unknown> {
+  switch (type) {
+    case 'number':
+      return { type: 'integer' };
+    case 'boolean':
+      return { type: 'boolean' };
+    case 'object':
+      return { type: 'object', additionalProperties: true };
+    case 'string[]':
+      return { type: 'array', items: { type: 'string' } };
+    case 'number[]':
+      return { type: 'array', items: { type: 'integer' } };
+    case 'ISO8601':
+      return { type: 'string', format: 'date-time' };
+    default:
+      return { type: 'string' };
+  }
 }
 
 /** 예시 문자열이 JSON 이 아니어도 문서 생성이 멈추지 않게 한다. */

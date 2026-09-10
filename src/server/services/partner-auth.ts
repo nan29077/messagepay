@@ -5,7 +5,7 @@ import { decrypt, encrypt, generateToken, safeEqual, tokenHash } from '@/lib/cry
 import { newId } from '@/lib/id';
 import { kv } from '@/server/redis';
 import { logger } from '@/lib/logger';
-import { clientIpFromRequest } from '@/server/rate-limit';
+import { clientIpFromRequest, normalizeIp } from '@/server/rate-limit';
 
 /**
  * 가맹점 연동 API 인증.
@@ -181,7 +181,10 @@ export async function authenticatePartner(
   // IP 허용목록. 키가 유출되어도 등록한 서버 밖에서는 쓸 수 없게 한다.
   // 값이 없으면 제한하지 않는다(기존 연동을 끊지 않기 위해서다).
   if (key.allowedIps) {
-    const ip = clientIpFromRequest(req);
+    // 프록시가 붙인 값은 `::ffff:203.0.113.10` 이나 `203.0.113.10:51514` 처럼 올 수 있다.
+    // 정규화하지 않으면 ipv4ToInt 가 그대로 실패해, 허용목록에 제대로 적어 둔 가맹점이
+    // 이유 없이 403 을 받는다.
+    const ip = normalizeIp(clientIpFromRequest(req));
     if (!ip || !ipAllowed(ip, key.allowedIps)) {
       return fail(403, 'IP_NOT_ALLOWED', '허용되지 않은 IP 에서의 요청입니다.', owner);
     }

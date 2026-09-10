@@ -1166,11 +1166,34 @@ export async function executePayment(chargeId: string): Promise<PaymentOutcome> 
   }
   const txn = decision.txn!;
 
-  await setStatus(chargeId, 'PENDING_PAYMENT', '결제 승인 요청');
-
+  // 여기부터 결제대행 호출 직전까지의 구간.
+  //
+  // 판정 트랜잭션은 이미 커밋돼 한도와 재고가 "예약" 된 상태다. 이 구간에서 예외가 나면
+  // 결제대행은 부르지도 않았는데 예약만 잡힌 채 거래가 PENDING 으로 남는다.
+  // 수동 대사(payment-reconcile)는 UNKNOWN·TIMEOUT 만 다루므로 이 건은 아무도 풀지 못한다.
+  //
+  // 결제대행을 부르기 전이라는 것이 확실한 구간이므로, 여기서는 조용히 되돌리는 것이 안전하다.
   const adapter = getPaymentAdapter();
   const started = Date.now();
-  let attemptNo = (await prisma.paymentAttempt.count({ where: { transactionId: txn.id } })) + 1;
+  let attemptNo: number;
+  try {
+    await setStatus(chargeId, 'PENDING_PAYMENT', '결제 승인 요청');
+    attemptNo = (await prisma.paymentAttempt.count({ where: { transactionId: txn.id } })) + 1;
+  } catch (e) {
+    logger.error('결제 승인 요청 준비 중 오류 — 예약을 되돌립니다', {
+      chargeId, transactionId: txn.id, message: (e as Error).message,
+    });
+    await prisma.paymentTransaction
+      .update({
+        where: { id: txn.id },
+        data: { status: 'FAILED', resultCode: 'PREPARE_ERROR', resultMessage: (e as Error).message.slice(0, 200) },
+      })
+      .catch(() => undefined);
+    await rollbackCounters(payer.id, charge.merchantId, charge.amount, reservedAt).catch(() => undefined);
+    await restoreStock(charge.productId, charge.quantity).catch(() => undefined);
+    await setStatus(chargeId, 'PAYMENT_FAILED', '결제 준비 중 오류가 발생했습니다.').catch(() => undefined);
+    return { ok: false, status: 'PAYMENT_FAILED', message: '결제를 준비하는 중 오류가 발생했습니다. 다시 시도해 주세요.' };
+  }
 
   let approved: { providerTid: string; approvedAt: Date } | null = null;
   let failure: { code?: string; message?: string } | null = null;

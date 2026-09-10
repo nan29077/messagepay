@@ -36,7 +36,12 @@ function ratePercent(rate: string): string {
 function monthRange(ym: string) {
   const m = /^(\d{4})-(\d{2})$/.exec(ym);
   const now = kstMonthKey();
-  const key = m && Number(m[2]) >= 1 && Number(m[2]) <= 12 ? ym : now;
+  // 연도 범위도 함께 본다. `?month=9999-12` 는 다음 달 키가 10000-01 이 되고
+  // `new Date('10000-01-01T00:00:00+09:00')` 은 Invalid Date 라 화면이 500 으로 죽는다.
+  const year = m ? Number(m[1]) : 0;
+  const month = m ? Number(m[2]) : 0;
+  const valid = Boolean(m) && year >= 2000 && year <= 2999 && month >= 1 && month <= 12;
+  const key = valid ? ym : now;
   const [y, mo] = key.split('-').map(Number);
   const start = new Date(`${key}-01T00:00:00+09:00`);
   const nextKey = mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;

@@ -129,11 +129,14 @@ export async function changeMoNumberStatus(_prev: AdminActionState, fd: FormData
     const before = await prisma.merchantMoNumber.findUnique({ where: { id } });
     if (!before) throw new Error('MO 번호를 찾을 수 없습니다.');
 
+    // 회수·비활성은 그 번호를 가맹점에서 떼는 조치다. 배정을 함께 풀지 않으면
+    // 번호는 쓰지 못하는데 가맹점 화면에는 여전히 "내 번호" 로 남아, 이용자가 보낸 문자가
+    // 어디에도 붙지 않는 상태가 된다. AVAILABLE 로 되돌릴 때도 배정은 비워야 재배정할 수 있다.
     const data =
-      status === 'RECLAIMED'
+      status === 'RECLAIMED' || status === 'DISABLED'
         ? { status, merchantId: null, releasedAt: new Date() }
-        : status === 'DISABLED'
-          ? { status, merchantId: null, releasedAt: new Date() }
+        : status === 'AVAILABLE'
+          ? { status, merchantId: null, releasedAt: before.merchantId ? new Date() : before.releasedAt }
           : { status };
 
     await prisma.merchantMoNumber.update({ where: { id }, data });

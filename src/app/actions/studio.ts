@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { requireMerchant, writeAudit } from '@/server/auth';
-import { RETURN_SHIPMENT_STATUSES } from '@/lib/labels';
+import { RETURN_SHIPMENT_STATUSES, shipmentStatusLabel } from '@/lib/labels';
 import { newId } from '@/lib/id';
 import { accountTail4, decrypt, encrypt, isValidResident, maskName, maskResident, normalizeResident } from '@/lib/crypto';
 import { resolvePolicy } from '@/server/services/limits';
@@ -241,7 +241,9 @@ export async function markPointsHeldAction(
 
     const result = await prisma.charge.updateMany({
       where: { id: { in: ids }, merchantId, pointStatus: { in: ['PENDING', 'SENT'] } },
-      data: { pointStatus: 'FAILED', pointNote: note, pointBy: userId },
+      // 지급 완료였던 건을 보류로 되돌릴 때 지급 시각을 지운다.
+      // 남겨 두면 "보류 중인데 지급 시각이 있는" 건이 되어 지급 여부를 판단할 수 없다.
+      data: { pointStatus: 'FAILED', pointNote: note, pointBy: userId, pointGivenAt: null },
     });
 
     revalidatePath('/studio/charges');
@@ -334,6 +336,11 @@ export async function updateChargeSettingsAction(
     }
     if (customMax !== null && customMax > range.max) {
       return { ok: false, message: `직접 입력 최대 금액은 ${formatWon(range.max)} 이하여야 합니다. (플랫폼 한도)` };
+    }
+    // 최소값만 검사하면 "최대 100원" 처럼 플랫폼 하한보다 낮은 최대값이 저장된다.
+    // 그러면 이용자가 입력할 수 있는 금액이 하나도 없는 화면이 된다.
+    if (customMax !== null && customMax < range.min) {
+      return { ok: false, message: `직접 입력 최대 금액은 ${formatWon(range.min)} 이상이어야 합니다. (플랫폼 한도)` };
     }
     if (customMin !== null && customMax !== null && customMin > customMax) {
       return { ok: false, message: '직접 입력 최소 금액이 최대 금액보다 큽니다.' };
@@ -445,7 +452,7 @@ export async function updateApiKeyIpsAction(
       .filter(Boolean)
       .slice(0, 20);
     // IPv4 주소 또는 CIDR 만 받는다. 형식이 틀린 값을 저장하면 조용히 전부 막힌다.
-    const bad = list.find((v) => !/^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$/.test(v));
+    const bad = list.find((v) => !isIpv4OrCidr(v));
     if (bad) return { ok: false, message: `IP 형식이 올바르지 않습니다: ${bad} (예: 203.0.113.10 또는 203.0.113.0/24)` };
 
     await prisma.merchantApiKey.update({
@@ -476,11 +483,45 @@ function textList(formData: FormData, key: string): string[] {
 }
 
 /** 0 이상 정수. 비어 있으면 null, 형식이 틀리면 'ERR'. */
+/**
+ * IPv4 주소 또는 CIDR 표기인지 확인한다.
+ *
+ * `/^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$/` 는 자릿수만 보기 때문에 `300.1.1.1` 이나
+ * `10.0.0.0/99` 를 통과시킨다. 그런 값이 허용목록에 저장되면 어떤 주소와도 맞지 않아
+ * 그 키로 오는 요청이 전부 조용히 막힌다 — 가맹점은 이유를 알 수 없다.
+ * 그래서 각 자리 값과 프리픽스 길이까지 확인한다.
+ */
+function isIpv4OrCidr(value: string): boolean {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\/(\d{1,2}))?$/.exec(value);
+  if (!m) return false;
+  for (let i = 1; i <= 4; i += 1) {
+    const part = m[i]!;
+    // 앞자리 0 은 8진수로 읽는 구현이 있어 해석이 갈린다. 받지 않는다.
+    if (part.length > 1 && part.startsWith('0')) return false;
+    if (Number(part) > 255) return false;
+  }
+  if (m[5] !== undefined) {
+    if (m[5].length > 1 && m[5].startsWith('0')) return false;
+    if (Number(m[5]) > 32) return false;
+  }
+  return true;
+}
+
+/**
+ * 0 이상 정수. 비어 있으면 null, 형식이 틀리면 'ERR'.
+ *
+ * `Number.parseInt` 는 앞에서부터 읽다가 숫자가 아닌 글자를 만나면 **거기서 멈춘다.**
+ * 그래서 "1,000" 은 오류가 아니라 조용히 1 이 되고, "10개" 는 10 이 된다.
+ * 입력란이 숫자 전용(type=number)이 아니라 텍스트라 실제로 이런 값이 들어온다.
+ * 전체가 숫자인지 먼저 확인하고, 천 단위 쉼표만 사람이 흔히 넣는 표기라 받아 준다.
+ */
 function intOrNull(formData: FormData, key: string, max: number): number | null | 'ERR' {
   const raw = text(formData, key);
   if (!raw) return null;
-  const n = Number.parseInt(raw, 10);
-  if (!Number.isInteger(n) || n < 0 || n > max) return 'ERR';
+  const cleaned = raw.replace(/,/g, '');
+  if (!/^\d+$/.test(cleaned)) return 'ERR';
+  const n = Number(cleaned);
+  if (!Number.isSafeInteger(n) || n < 0 || n > max) return 'ERR';
   return n;
 }
 
@@ -589,8 +630,9 @@ async function parseProductForm(
     const validRaw = text(formData, 'validDays');
     let validDays: number | null = null;
     if (validRaw) {
-      const n = Number.parseInt(validRaw, 10);
-      if (!Number.isInteger(n) || n < 1 || n > 3650) {
+      // parseInt 의 "앞부분만 읽기" 를 쓰지 않는다. ("30일" 이 30 으로 조용히 통과한다)
+      const n = /^\d+$/.test(validRaw.replace(/,/g, '')) ? Number(validRaw.replace(/,/g, '')) : NaN;
+      if (!Number.isSafeInteger(n) || n < 1 || n > 3650) {
         return { ok: false, message: '유효기간은 1~3650일 사이 정수로 입력해 주세요.' };
       }
       validDays = n;
@@ -787,7 +829,7 @@ export async function archiveChargeProductAction(
 
     const current = await prisma.chargeProduct.findFirst({
       where: { id, merchantId, archivedAt: null },
-      select: { id: true, name: true },
+      select: { id: true, name: true, active: true },
     });
     if (!current) return { ok: false, message: '상품을 찾을 수 없습니다.' };
 
@@ -798,10 +840,13 @@ export async function archiveChargeProductAction(
     const remain = await prisma.chargeProduct.count({
       where: { merchantId, active: true, archivedAt: null, id: { not: id } },
     });
-    if (remain === 0 && !merchant.allowCustomAmount) {
+    // 이미 판매를 끈(active=false) 상품은 결제 페이지에 노출되지 않으므로, 보관해도
+    // 이용자가 고를 수 있는 항목이 줄지 않는다. 그런데도 막으면 "판매 중인 상품이 하나도
+    // 없는데 마지막 상품이라 보관도 못 하는" 상태가 된다.
+    if (remain === 0 && current.active && !merchant.allowCustomAmount) {
       return {
         ok: false,
-        message: '마지막 상품입니다. 먼저 직접 입력을 허용하거나 다른 상품을 추가해 주세요.',
+        message: '마지막 판매 중인 상품입니다. 먼저 직접 입력을 허용하거나 다른 상품을 추가해 주세요.',
       };
     }
 
@@ -985,8 +1030,9 @@ export async function adjustProductStockAction(
       return { ok: true, message: `${current.name} 재고를 무제한으로 바꿨습니다.` };
     }
 
-    const n = Number.parseInt(raw, 10);
-    if (!Number.isInteger(n) || n < 0 || n > 1_000_000) {
+    // "1,000" 이 1 로 저장되던 자리다. 전체가 숫자인지 보고, 천 단위 쉼표만 받아 준다.
+    const n = /^\d+$/.test(raw.replace(/,/g, '')) ? Number(raw.replace(/,/g, '')) : NaN;
+    if (!Number.isSafeInteger(n) || n < 0 || n > 1_000_000) {
       return { ok: false, message: '재고는 0 이상 1,000,000 이하 정수로 입력해 주세요.' };
     }
     await prisma.chargeProduct.update({ where: { id }, data: { stock: n } });
@@ -1657,14 +1703,22 @@ export async function createApiKeyAction(
     // 모드는 발급 시에만 정하고 나중에 바꿀 수 없다. 운영 키가 조용히 테스트로
     // 바뀌면(또는 그 반대면) 어느 쪽 데이터를 건드리는지 아무도 알 수 없게 된다.
     const mode = text(formData, 'mode') === 'TEST' ? 'TEST' : 'LIVE';
-    const issued = await issueMerchantApiKey(merchantId, name, mode);
 
     // 발급과 동시에 IP 를 제한할 수 있게 한다(나중에 따로 저장할 수도 있다).
+    // 형식이 틀린 값을 조용히 버리면(filter) 가맹점은 IP 를 제한했다고 믿는데 실제로는
+    // 아무 제한도 걸리지 않는다. 수정 화면과 같게 오류로 알려 준다.
+    // 검사는 **발급 전에** 한다. 발급 뒤에 오류를 내면 쓰지 못할 키만 남는다.
     const ips = text(formData, 'allowedIps')
       .split(/[,\s]+/)
       .map((v) => v.trim())
-      .filter((v) => /^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$/.test(v))
+      .filter(Boolean)
       .slice(0, 20);
+    const badIp = ips.find((v) => !isIpv4OrCidr(v));
+    if (badIp) {
+      return { ok: false, message: `IP 형식이 올바르지 않습니다: ${badIp} (예: 203.0.113.10 또는 203.0.113.0/24)` };
+    }
+
+    const issued = await issueMerchantApiKey(merchantId, name, mode);
     if (ips.length > 0) {
       await prisma.merchantApiKey.update({ where: { id: issued.id }, data: { allowedIps: ips.join(',') } });
     }
@@ -1724,6 +1778,38 @@ const RETURN_FLOW: ShipmentStatusValue[] = [
   'RETURN_REQUESTED', 'RETURNING', 'RETURNED', 'EXCHANGE_REQUESTED', 'EXCHANGE_SHIPPED',
 ];
 
+/**
+ * 상태별로 넘어갈 수 있는 다음 상태.
+ *
+ * 이 표가 없으면 드롭다운의 아홉 값 사이를 아무렇게나 오갈 수 있다. 그때 실제로 벌어지는 일:
+ *  - DELIVERED → PREPARING 으로 되돌리면 발송·완료 시각이 null 로 지워진다.
+ *    배송 지연 통계의 근거와 분쟁 대응 자료가 함께 사라진다.
+ *  - 그 상태에서 다시 SHIPPED 로 바꾸면 "처음 발송" 으로 인식돼 이용자에게 발송 안내
+ *    문자가 한 번 더 나간다. 받는 사람에게는 중복 청구로 읽힌다.
+ *  - 반품이 끝난(RETURNED) 주문을 발송 완료로 덮으면 반품 탭에서 사라진다.
+ *
+ * 같은 상태로 다시 저장하는 것(송장·메모만 고치기)은 언제나 허용한다.
+ */
+const SHIPMENT_TRANSITIONS: Record<ShipmentStatusValue, ShipmentStatusValue[]> = {
+  // 준비 중에는 발송하거나, 주문 자체를 취소하거나, 이용자 요청으로 반품·교환을 받을 수 있다.
+  PREPARING: ['SHIPPED', 'CANCELED', 'RETURN_REQUESTED', 'EXCHANGE_REQUESTED'],
+  // 발송했으면 배송 완료로 가거나, 도착 전에 반품·교환 요청이 들어올 수 있다.
+  SHIPPED: ['DELIVERED', 'RETURN_REQUESTED', 'EXCHANGE_REQUESTED'],
+  // 배송이 끝난 뒤에는 반품·교환만 남는다. 준비 중으로 되돌릴 수 없다.
+  DELIVERED: ['RETURN_REQUESTED', 'EXCHANGE_REQUESTED'],
+  // 취소한 주문은 되살리지 않는다. 다시 팔려면 새 주문이어야 한다.
+  CANCELED: [],
+  RETURN_REQUESTED: ['RETURNING', 'RETURNED', 'DELIVERED'],
+  RETURNING: ['RETURNED'],
+  // 반품이 끝나면 그것으로 종결이다. 환불은 별도 절차(환불 요청)로 처리한다.
+  RETURNED: [],
+  EXCHANGE_REQUESTED: ['EXCHANGE_SHIPPED', 'RETURNING', 'RETURNED'],
+  EXCHANGE_SHIPPED: ['DELIVERED', 'RETURN_REQUESTED'],
+};
+
+/** 이 상태로 바꾸려면 결제가 살아 있어야 한다(환불된 주문을 발송할 수는 없다). */
+const NEEDS_LIVE_PAYMENT: ShipmentStatusValue[] = ['SHIPPED', 'DELIVERED', 'EXCHANGE_SHIPPED'];
+
 function shipmentTimestamps(
   status: ShipmentStatusValue,
   current: { shippedAt: Date | null; deliveredAt: Date | null; returnRequestedAt: Date | null; returnClosedAt: Date | null },
@@ -1773,9 +1859,28 @@ export async function updateShipmentAction(
       select: {
         id: true, status: true, shippedAt: true, deliveredAt: true,
         returnRequestedAt: true, returnClosedAt: true,
+        charge: { select: { status: true } },
       },
     });
     if (!current) return { ok: false, message: '주문을 찾을 수 없습니다.' };
+
+    // 허용된 전이인지 먼저 본다(같은 상태로 다시 저장하는 것은 송장·메모 수정이므로 통과).
+    if (status !== current.status && !SHIPMENT_TRANSITIONS[current.status].includes(status)) {
+      return {
+        ok: false,
+        message:
+          `${shipmentStatusLabel[current.status].text} 상태에서 ${shipmentStatusLabel[status].text} 로는 바꿀 수 없습니다. ` +
+          '되돌리기가 필요하면 고객센터로 문의해 주세요. (배송 시각과 발송 안내 문자 이력이 어긋나지 않도록 막고 있습니다)',
+      };
+    }
+    // 환불되었거나 환불 요청 중인 주문은 발송 단계로 보낼 수 없다.
+    // 막지 않으면 이미 돈을 돌려준 주문에 물건이 나가고, 이용자에게 발송 안내 문자까지 간다.
+    if (NEEDS_LIVE_PAYMENT.includes(status) && !PAID_STATUSES.includes(current.charge.status)) {
+      return {
+        ok: false,
+        message: '환불되었거나 환불 요청 중인 주문은 발송 처리할 수 없습니다.',
+      };
+    }
 
     const carrier = text(formData, 'carrier').slice(0, 30) || null;
     const trackingNo = text(formData, 'trackingNo').replace(/[^0-9A-Za-z-]/g, '').slice(0, 40) || null;
@@ -1911,6 +2016,12 @@ export async function bulkShipAction(
       // 붙여넣기에 섞여 들어온 거래번호를 조용히 처리하지 않는다.
       if (RETURN_SHIPMENT_STATUSES.includes(charge.shipment.status)) {
         failed.push(`${transactionNo} (반품·교환 진행 중)`);
+        continue;
+      }
+      // 배송이 끝났거나 취소된 주문도 마찬가지다. 단건 화면과 같은 전이표를 쓴다.
+      // (전에는 SHIPPED 와 반품만 걸러 DELIVERED·CANCELED 주문을 조용히 덮었다)
+      if (!SHIPMENT_TRANSITIONS[charge.shipment.status].includes('SHIPPED')) {
+        failed.push(`${transactionNo} (${shipmentStatusLabel[charge.shipment.status].text} 상태라 발송 처리할 수 없음)`);
         continue;
       }
 

@@ -356,6 +356,14 @@ export function assertProductionSafety(): string[] {
   // 문자 수신·발신이 mock 이면 결제 요청을 아예 못 받거나, 링크 문자가 나가지 않는다.
   if (env.mo.provider === 'mock' && !env.emma.enabled) problems.push('MO_PROVIDER 가 mock 입니다.');
   if (env.mt.provider === 'mock') problems.push('MT_PROVIDER 가 mock 입니다. (링크 문자가 실제로 발송되지 않습니다)');
+  // 발신번호 기본값(15880000)은 형식만 맞춘 자리표시자다. 그대로 두면 사업자에 등록되지 않은
+  // 번호로 발송을 시도해 전건 실패하거나, 남의 번호로 문자가 나간다.
+  if (!process.env.MT_FROM_NUMBER || process.env.MT_FROM_NUMBER.trim() === '') {
+    problems.push('MT_FROM_NUMBER 가 설정되지 않았습니다. (기본값 15880000 은 자리표시자입니다)');
+  }
+  if (env.mt.fromNumber === '15880000' || env.mt.senderNumber === '15880000') {
+    problems.push('MT 발신번호가 기본값(15880000) 그대로입니다. 사업자에 등록한 발신번호로 바꿔 주세요.');
+  }
   // SAFE_MODE 기본값이 true 라, 운영 배포에서 이 값을 빠뜨리면 결제·문자 어댑터가
   // 조용히 mock 으로 바뀐다. 아무에게도 청구하지 않고 "결제 완료" 문자가 나가고,
   // 며칠 뒤 자동 정산이 실재하지 않는 결제에 대해 가맹점에 실제 이체를 한다.

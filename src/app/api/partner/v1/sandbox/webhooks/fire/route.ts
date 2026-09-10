@@ -45,9 +45,12 @@ export async function POST(req: Request) {
   }
 
   const before = await prisma.webhookDelivery.count({ where: { merchantId: auth.merchantId } });
+  // sandbox 표식은 마지막에 덮어쓴다.
+  // 먼저 두면 요청 본문의 `"sandbox": false` 가 이겨서, 가맹점 서버가 이 플래그로 테스트를
+  // 걸러내는 순간 아무 거래번호·금액이나 "실결제"로 밀어 넣을 수 있다.
   await emitMerchantEvent(auth.merchantId, type as WebhookEvent, {
-    sandbox: true,
     ...(body.data ?? {}),
+    sandbox: true,
   });
   const after = await prisma.webhookDelivery.count({ where: { merchantId: auth.merchantId } });
 

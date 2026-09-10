@@ -4,6 +4,7 @@ import {
   listMerchantMtMessages,
   merchantMtQuota,
   renderMerchantTemplate,
+  reviewVariableValues,
   sendMerchantMt,
 } from '@/server/services/merchant-mt';
 import { sandboxResolveRecipient, sandboxSendMerchantMt } from '@/server/services/sandbox';
@@ -157,7 +158,17 @@ export async function POST(req: Request) {
         req, merchantId: auth.merchantId, keyId: auth.keyId, status: 400, errorCode: 'INVALID_VARIABLES',
       }).then(() => jsonError(400, 'INVALID_VARIABLES', `치환값은 문자열이나 숫자여야 합니다: ${key}`));
     }
-    variables[key] = String(value).slice(0, 100);
+    variables[key] = String(value);
+  }
+
+  // 본문은 등록 때 검수했지만 치환값은 발송할 때 처음 들어온다.
+  // 여기서 보지 않으면 승인된 정보성 템플릿의 빈칸으로 광고 문구가 그대로 나간다.
+  const varReview = await reviewVariableValues(auth.merchantId, variables);
+  if (!varReview.ok) {
+    await logPartnerCall({
+      req, merchantId: auth.merchantId, keyId: auth.keyId, status: 400, errorCode: 'INVALID_VARIABLES',
+    });
+    return jsonError(400, 'INVALID_VARIABLES', varReview.message);
   }
 
   const merchant = await prisma.merchantProfile.findUnique({

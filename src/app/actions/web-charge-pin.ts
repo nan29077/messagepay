@@ -5,7 +5,7 @@ import { prisma } from '@/server/db';
 import { kv } from '@/server/redis';
 import { consumeIpRateLimit, consumeRateLimit } from '@/server/rate-limit';
 import { newId } from '@/lib/id';
-import { encrypt, maskPhone, normalizePhone, phoneHash } from '@/lib/crypto';
+import { encrypt, hmac, maskPhone, normalizePhone, phoneHash, safeEqual } from '@/lib/crypto';
 import { env, isLocal } from '@/lib/env';
 import { logger } from '@/lib/logger';
 import { issueSecureLink } from '@/server/services/secure-link';
@@ -36,12 +36,43 @@ const PIN_SEND_WINDOW_SEC = 600;
 const PIN_SEND_MAX = 3;
 const pinSendKey = (ph: string) => `webdon:pinsend:${ph}`;
 
+/**
+ * 같은 번호로 하루에 보낼 수 있는 결제 요청 문자 수.
+ *
+ * 이 액션은 비로그인 상태에서 번호만 받는다. 10분 창(3건)만으로는 창이 지날 때마다
+ * 다시 3건씩, 하루 400건 넘게 남의 번호로 결제 요청 문자를 보낼 수 있다.
+ * 실제 이용자가 하루에 이 화면에서 결제를 시작하는 횟수를 훨씬 웃도는 선에서 하루치를 막는다.
+ */
+const PIN_SEND_DAILY_MAX = 10;
+const PIN_SEND_DAY_SEC = 86_400;
+const pinSendDayKey = (ph: string) => `webdon:pinsendday:${ph}`;
+
 /** 진행 중인 웹 결제 ID. 상태 조회의 유일한 근거다. */
 const PIN_COOKIE = 'webdon_pin';
 
+/**
+ * 쿠키에는 결제 ID 를 그대로 담지 않고 서명을 붙인다.
+ *
+ * HttpOnly 는 자바스크립트가 못 읽게 할 뿐, 브라우저 개발자도구나 다른 클라이언트로
+ * 값을 **써 넣는** 것은 막지 못한다. 서명이 없으면 남의 결제 ID 를 적어 넣는 것만으로
+ * 그 결제의 상태·거래번호를 들여다볼 수 있다.
+ */
+function signPinCookie(chargeId: string): string {
+  return `${chargeId}.${hmac(`pincookie:${chargeId}`, env.crypto.sessionSecret)}`;
+}
+
+function readSignedPinCookie(raw: string | null): string | null {
+  if (!raw) return null;
+  const dot = raw.lastIndexOf('.');
+  if (dot <= 0) return null;
+  const chargeId = raw.slice(0, dot);
+  const signature = raw.slice(dot + 1);
+  return safeEqual(signature, hmac(`pincookie:${chargeId}`, env.crypto.sessionSecret)) ? chargeId : null;
+}
+
 async function setPinCookie(chargeId: string) {
   const jar = await cookies();
-  jar.set(PIN_COOKIE, chargeId, {
+  jar.set(PIN_COOKIE, signPinCookie(chargeId), {
     httpOnly: true,
     sameSite: 'lax',
     secure: !isLocal && env.baseUrl.startsWith('https'),
@@ -53,7 +84,7 @@ async function setPinCookie(chargeId: string) {
 
 async function readPinCookie(): Promise<string | null> {
   const jar = await cookies();
-  return jar.get(PIN_COOKIE)?.value ?? null;
+  return readSignedPinCookie(jar.get(PIN_COOKIE)?.value ?? null);
 }
 
 export type WebPinStep = 'compose' | 'phone' | 'register' | 'waiting' | 'done' | 'failed';
@@ -101,6 +132,16 @@ export async function startWebPinCharge(_prev: WebPinState, formData: FormData):
   const byMerchant = await consumeRateLimit('webpin-merchant', merchantId, 200, PIN_SEND_WINDOW_SEC);
   if (!byMerchant.ok) {
     return { ok: false, step: 'phone', phoneMasked: masked, message: '요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.' };
+  }
+
+  const daily = await kv.incr(pinSendDayKey(ph), PIN_SEND_DAY_SEC);
+  if (daily > PIN_SEND_DAILY_MAX) {
+    return {
+      ok: false,
+      step: 'phone',
+      phoneMasked: masked,
+      message: '오늘은 이 번호로 결제를 더 시작할 수 없습니다. 내일 다시 시도해 주세요.',
+    };
   }
 
   const sent = await kv.incr(pinSendKey(ph), PIN_SEND_WINDOW_SEC);

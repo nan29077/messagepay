@@ -40,8 +40,11 @@ export default async function AdminUsersPage({
   const now = new Date();
   const page = parsePage(sp.page);
   const q = (sp.q ?? '').trim();
-  const role = sp.role && sp.role in roleLabel ? (sp.role as UserRole) : undefined;
-  const status = sp.status && sp.status in statusLabel ? (sp.status as UserStatus) : undefined;
+  // `in` 은 프로토타입 체인까지 본다. `?role=constructor` · `?status=toString` 이
+  // 통과해 Prisma 에 enum 이 아닌 값이 넘어가고 목록이 500 으로 죽는다.
+  // 객체가 직접 가진 키만 본다.
+  const role = sp.role && Object.hasOwn(roleLabel, sp.role) ? (sp.role as UserRole) : undefined;
+  const status = sp.status && Object.hasOwn(statusLabel, sp.status) ? (sp.status as UserStatus) : undefined;
 
   const where: Prisma.UserWhereInput = {
     ...(role ? { role } : {}),

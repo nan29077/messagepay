@@ -11,6 +11,8 @@ import {
   type SearchParamsRecord,
 } from '@/components/studio/shared';
 import { ChargeCardGrid } from '@/components/studio/charge-cards';
+import { ActionForm } from '@/components/studio/action-form';
+import { undoPointsGivenAction } from '@/app/actions/studio';
 import { PAID_STATUSES } from '@/components/studio/shared';
 import { productKindShort } from '@/server/services/products';
 import { requireMerchant } from '@/server/auth';
@@ -70,7 +72,10 @@ export default async function StudioChargesPage({
   const status = one(sp.status);
   const q = one(sp.q).trim();
   const point = one(sp.point);
-  const page = Math.max(1, Number(one(sp.page)) || 1);
+  // Number('1.5') 는 1.5 다. 그대로 skip 에 넣으면 Prisma 가 정수를 요구하며 500 이 난다.
+  // 소수·문자·음수 모두 1페이지로 본다.
+  const pageRaw = Number(one(sp.page));
+  const page = Number.isSafeInteger(pageRaw) && pageRaw > 0 ? pageRaw : 1;
   const rawView = one(sp.view);
   const view: ViewMode = VIEWS.some((v) => v.value === rawView) ? (rawView as ViewMode) : 'card';
 
@@ -316,7 +321,26 @@ export default async function StudioChargesPage({
                       <Badge tone={mt.tone}>{mt.text}</Badge>
                     </Td>
                     <Td>
-                      <Badge tone={rf.tone}>{rf.text}</Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Badge tone={rf.tone}>{rf.text}</Badge>
+                        {/*
+                          일괄 처리 화면이 "잘못 눌렀으면 되돌릴 수 있습니다" 라고 안내하므로
+                          되돌리는 자리가 실제로 있어야 한다. 지급 완료 건에만 보인다.
+                        */}
+                        {d.pointStatus === 'SENT' ? (
+                          <ActionForm
+                            action={undoPointsGivenAction}
+                            submitLabel="되돌리기"
+                            variant="ghost"
+                            size="sm"
+                            confirmTitle="지급 대기로 되돌릴까요?"
+                            confirmMessage="지급 완료 표시를 지우고 대기 목록으로 되돌립니다. 내 서비스에 넣은 포인트는 직접 회수해 주세요."
+                            doneTitle="지급 대기로 되돌렸습니다"
+                          >
+                            <input type="hidden" name="chargeIds" value={d.id} />
+                          </ActionForm>
+                        ) : null}
+                      </div>
                     </Td>
                     <Td>{refund ? <Badge tone={refund.tone}>{refund.text}</Badge> : <span className="text-ink-300">-</span>}</Td>
                   </tr>

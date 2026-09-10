@@ -93,18 +93,33 @@ export async function completeRegistrationAction(input: {
 
     // 로그인 상태에서 계좌 등록을 마쳤다면 이용자 프로필을 계정에 자동 연결한다.
     // (연결돼 있어야 마이페이지에서 결제·결제 내역을 볼 수 있다)
+    //
+    // 다만 **번호가 같을 때만** 붙인다. 이 링크는 로그인과 무관하게 열리므로,
+    // 남이 만든 등록 링크를 로그인한 사람이 열게 만들면(로그인 CSRF) 그 사람 계정에
+    // 남의 전화번호 프로필이 붙는다. 그러면 그 계정으로 남의 결제 내역이 보이고,
+    // 반대로 그 번호의 진짜 주인은 자기 프로필을 자기 계정에 연결하지 못한다.
+    //
+    // 계정에 인증된 번호가 없으면 자동 연결하지 않는다. 마이페이지에서 번호 인증을
+    // 거쳐 직접 연결하면 된다(phone-link.ts — 인증번호로 소유를 확인하는 경로).
     try {
       const user = await getSessionUser();
       if (user && res.payerId) {
-        const alreadyLinked = await prisma.payerProfile.findUnique({
-          where: { userId: user.id },
-          select: { id: true },
-        });
-        if (!alreadyLinked) {
-          await prisma.payerProfile.updateMany({
-            where: { id: res.payerId, userId: null },
-            data: { userId: user.id },
+        const [account, payer] = await Promise.all([
+          prisma.user.findUnique({ where: { id: user.id }, select: { phoneHash: true } }),
+          prisma.payerProfile.findUnique({ where: { id: res.payerId }, select: { phoneHash: true } }),
+        ]);
+        const sameOwner = Boolean(account?.phoneHash) && account!.phoneHash === payer?.phoneHash;
+        if (sameOwner) {
+          const alreadyLinked = await prisma.payerProfile.findUnique({
+            where: { userId: user.id },
+            select: { id: true },
           });
+          if (!alreadyLinked) {
+            await prisma.payerProfile.updateMany({
+              where: { id: res.payerId, userId: null },
+              data: { userId: user.id },
+            });
+          }
         }
       }
     } catch {

@@ -29,12 +29,12 @@ export const WEBHOOK_EVENT_META = [
   { type: 'charge.failed', live: true, label: '결제가 실패했습니다' },
   { type: 'mo.received', live: true, label: '이용자가 문자를 보냈습니다' },
   { type: 'shipment.updated', live: true, label: '배송 상태가 바뀌었습니다' },
+  { type: 'payer.linked', live: true, label: '이용자 연결이 만들어졌습니다' },
+  { type: 'product.stock_low', live: true, label: '재고가 기준 아래로 떨어졌습니다' },
   { type: 'charge.refunded', live: false, label: '결제가 환불되었습니다' },
   { type: 'mt.delivered', live: false, label: '보낸 문자가 도달했습니다' },
   { type: 'mt.failed', live: false, label: '보낸 문자가 실패했습니다' },
   { type: 'settlement.paid', live: false, label: '정산금이 지급되었습니다' },
-  { type: 'payer.linked', live: false, label: '이용자 연결이 만들어졌습니다' },
-  { type: 'product.stock_low', live: false, label: '재고가 기준 아래로 떨어졌습니다' },
 ] as const;
 
 /** 가맹점이 구독할 수 있는 이벤트. 문서와 검증이 같은 목록을 쓴다. */
@@ -47,6 +47,14 @@ const RETRY_DELAYS_SEC = [30, 120, 600, 3600, 21600];
 
 /** 전송 타임아웃. 받는 쪽이 느리면 재시도가 쌓이므로 짧게 끊는다. */
 const TIMEOUT_MS = 10_000;
+
+/**
+ * 큐에서 집어 온 건을 붙잡아 두는 시간.
+ *
+ * 전송이 타임아웃까지 걸려도 이 안에 끝난다. 처리 중에 프로세스가 죽어도 이 시간이 지나면
+ * 다음 크론이 다시 집어가므로 건이 영원히 묻히지 않는다.
+ */
+const CLAIM_LEASE_MS = 60_000;
 
 export const WEBHOOK_HEADERS = {
   id: 'x-messagepay-event-id',
@@ -64,6 +72,46 @@ export function signWebhook(secret: string, timestamp: string, eventId: string, 
   return crypto.createHmac('sha256', secret).update(webhookSignaturePayload(timestamp, eventId, rawBody)).digest('hex');
 }
 
+/**
+ * 이 IP 로는 절대 요청을 보내지 않는다.
+ *
+ * 문자열 패턴만 보면 `127.0.0.2`·`0.0.0.0`·`[::1]`·`169.254.169.254`(클라우드 메타데이터)가
+ * 전부 빠져나간다. 실제 주소로 파싱해서 대역으로 판정한다.
+ */
+function isBlockedIp(ip: string): boolean {
+  // IPv4
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    if (a === 0) return true; // 0.0.0.0/8 — "이 호스트"
+    if (a === 10) return true; // 사설
+    if (a === 127) return true; // 루프백 전체(127.0.0.2 포함)
+    if (a === 169 && b === 254) return true; // 링크로컬 · 클라우드 메타데이터(169.254.169.254)
+    if (a === 172 && b >= 16 && b <= 31) return true; // 사설
+    if (a === 192 && b === 168) return true; // 사설
+    if (a === 100 && b >= 64 && b <= 127) return true; // 통신사 대규모 NAT
+    if (a >= 224) return true; // 멀티캐스트 · 예약
+    return false;
+  }
+  // IPv6 (대괄호는 벗겨서 들어온다)
+  const v6 = ip.toLowerCase();
+  if (v6 === '::' || v6 === '::1') return true; // 미지정 · 루프백
+  if (v6.startsWith('fe80:')) return true; // 링크로컬
+  if (/^f[cd][0-9a-f]{2}:/.test(v6)) return true; // 유니크 로컬 (fc00::/7)
+  // IPv4 사상 주소(::ffff:127.0.0.1)는 안쪽 주소로 다시 판정한다.
+  const mapped = /::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(v6);
+  if (mapped) return isBlockedIp(mapped[1]!);
+  return false;
+}
+
+/** 호스트 이름이 곧 IP 인지(도메인이 아니라) 본다. */
+function hostAsIp(host: string): string | null {
+  const bare = host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(bare)) return bare;
+  if (bare.includes(':')) return bare;
+  return null;
+}
+
 /** 수신 URL 형식 검사. 평문 http 와 사설망 주소는 받지 않는다. */
 export function validateWebhookUrl(raw: string): { ok: true; url: string } | { ok: false; message: string } {
   let parsed: URL;
@@ -77,18 +125,48 @@ export function validateWebhookUrl(raw: string): { ok: true; url: string } | { o
     return { ok: false, message: '수신 URL 은 https 여야 합니다.' };
   }
   const host = parsed.hostname.toLowerCase();
+  const ip = hostAsIp(host);
   const isPrivate =
     host === 'localhost' ||
-    host === '127.0.0.1' ||
     host.endsWith('.local') ||
-    /^10\./.test(host) ||
-    /^192\.168\./.test(host) ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+    host.endsWith('.internal') ||
+    host === 'metadata.google.internal' ||
+    (ip !== null && isBlockedIp(ip));
   if (isPrivate) {
     // 사설망 주소를 받아 두면 우리 서버가 내부망을 긁는 통로가 된다(SSRF).
     return { ok: false, message: '내부망 주소는 수신 URL 로 등록할 수 없습니다.' };
   }
   return { ok: true, url: parsed.toString() };
+}
+
+/**
+ * 전송 직전 최종 확인.
+ *
+ * 등록 시점 검사만으로는 두 가지를 못 막는다.
+ *  1) DNS 리바인딩 — 등록할 때는 공인 IP 를 주고, 보낼 때 내부 IP 를 준다.
+ *  2) 리다이렉트 — 공인 주소가 302 로 내부 주소를 가리킨다.
+ * 그래서 보낼 때마다 이름을 직접 풀어 보고, 리다이렉트는 따라가지 않는다(redirect: 'manual').
+ *
+ * 이름 풀이 자체가 실패하면 막지 않고 그대로 보낸다. 막아야 할 것은 "**풀렸는데** 내부망인
+ * 주소" 이고, 풀리지 않는 이름은 fetch 도 똑같이 실패하므로 여기서 따로 거절할 이유가 없다.
+ * (조회 실패를 차단으로 다루면 사내 DNS 가 잠깐 흔들릴 때 전 가맹점 웹훅이 함께 멈춘다)
+ */
+async function assertSafeTarget(rawUrl: string): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const checked = validateWebhookUrl(rawUrl);
+  if (!checked.ok) return { ok: false, reason: checked.message };
+
+  const host = new URL(checked.url).hostname.toLowerCase();
+  if (hostAsIp(host)) return { ok: true }; // 위에서 이미 대역을 봤다
+
+  try {
+    const { lookup } = await import('node:dns/promises');
+    const records = await lookup(host, { all: true });
+    const bad = records.find((r) => isBlockedIp(r.address));
+    if (bad) return { ok: false, reason: `내부망 주소로 연결됩니다(${bad.address}).` };
+  } catch {
+    // 조회 실패 — 아래 fetch 가 같은 이유로 실패하며 오류를 기록한다.
+  }
+  return { ok: true };
 }
 
 /** 수신 URL 등록. 서명 비밀키는 이때 한 번만 돌려준다. */
@@ -185,23 +263,33 @@ export async function deliverOnce(deliveryId: string): Promise<boolean> {
 
   let responseStatus: number | null = null;
   let error: string | null = null;
-  try {
-    const res = await fetch(delivery.webhook.url, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        [WEBHOOK_HEADERS.id]: delivery.eventId,
-        [WEBHOOK_HEADERS.type]: delivery.eventType,
-        [WEBHOOK_HEADERS.timestamp]: timestamp,
-        [WEBHOOK_HEADERS.signature]: signature,
-      },
-      body: delivery.payload,
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    responseStatus = res.status;
-    if (!res.ok) error = `HTTP ${res.status}`;
-  } catch (e) {
-    error = (e as Error).message.slice(0, 200);
+
+  const safe = await assertSafeTarget(delivery.webhook.url);
+  if (!safe.ok) {
+    error = `차단된 주소: ${safe.reason}`.slice(0, 200);
+    logger.warn('웹훅 전송 차단', { deliveryId, webhookId: delivery.webhookId, reason: safe.reason });
+  } else {
+    try {
+      const res = await fetch(delivery.webhook.url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          [WEBHOOK_HEADERS.id]: delivery.eventId,
+          [WEBHOOK_HEADERS.type]: delivery.eventType,
+          [WEBHOOK_HEADERS.timestamp]: timestamp,
+          [WEBHOOK_HEADERS.signature]: signature,
+        },
+        body: delivery.payload,
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+        // 리다이렉트를 따라가면 공인 주소가 302 로 내부망을 가리키는 것을 막을 수 없다.
+        // 3xx 는 그대로 "실패" 로 본다(정상 수신 서버라면 2xx 를 준다).
+        redirect: 'manual',
+      });
+      responseStatus = res.status;
+      if (!res.ok) error = `HTTP ${res.status}`;
+    } catch (e) {
+      error = (e as Error).message.slice(0, 200);
+    }
   }
 
   const ok = responseStatus !== null && responseStatus >= 200 && responseStatus < 300;
@@ -226,17 +314,35 @@ export async function deliverOnce(deliveryId: string): Promise<boolean> {
   return ok;
 }
 
-/** 재시도 시각이 된 전송 건을 처리한다. 크론이 부른다. */
+/**
+ * 재시도 시각이 된 전송 건을 처리한다. 크론이 부른다.
+ *
+ * 집어 온 건은 곧바로 다음 시도 시각을 미뤄 **선점**한다.
+ * 선점하지 않으면 크론이 겹쳐 돌거나 가맹점이 수동 재시도를 누를 때 같은 이벤트가
+ * 두 번 나가고, 받는 쪽은 그것을 두 건의 결제로 처리한다.
+ */
 export async function drainWebhookQueue(limit = 50): Promise<{ tried: number; sent: number }> {
+  const now = new Date();
   const rows = await prisma.webhookDelivery.findMany({
-    where: { status: 'PENDING', nextAttemptAt: { lte: new Date() } },
+    where: { status: 'PENDING', nextAttemptAt: { lte: now } },
     orderBy: { nextAttemptAt: 'asc' },
     take: limit,
-    select: { id: true },
+    select: { id: true, nextAttemptAt: true },
   });
-  let sent = 0;
+
+  const claimed: string[] = [];
   for (const row of rows) {
-    if (await deliverOnce(row.id).catch(() => false)) sent += 1;
+    // nextAttemptAt 을 조건에 함께 걸어, 그 사이 다른 실행이 집어간 건은 건너뛴다.
+    const took = await prisma.webhookDelivery.updateMany({
+      where: { id: row.id, status: 'PENDING', nextAttemptAt: row.nextAttemptAt },
+      data: { nextAttemptAt: new Date(now.getTime() + CLAIM_LEASE_MS) },
+    });
+    if (took.count === 1) claimed.push(row.id);
   }
-  return { tried: rows.length, sent };
+
+  let sent = 0;
+  for (const id of claimed) {
+    if (await deliverOnce(id).catch(() => false)) sent += 1;
+  }
+  return { tried: claimed.length, sent };
 }

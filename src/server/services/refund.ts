@@ -27,35 +27,46 @@ export async function requestRefund(input: {
   });
   if (existing) throw new Error('이미 환불이 요청된 거래입니다.');
 
-  // 더블클릭·동시 요청으로 REQUESTED 가 두 건 생기지 않도록, 결제 상태 전이를 조건부 UPDATE 로 선점한다.
-  const claimed = await prisma.charge.updateMany({
-    where: { id: charge.id, status: charge.status },
-    data: { status: 'REFUND_REQUESTED' },
-  });
-  if (claimed.count !== 1) throw new Error('이미 환불이 요청된 거래입니다.');
+  // 선점과 요청 생성은 한 트랜잭션이어야 한다.
+  // 나누면 선점만 되고 요청 행이 안 생기는 경우가 있고, 그때 결제는 REFUND_REQUESTED 로
+  // 잠긴 채 승인할 환불 요청이 없어 아무도 풀 수 없다.
+  return prisma.$transaction(async (tx) => {
+    // 더블클릭·동시 요청으로 REQUESTED 가 두 건 생기지 않도록, 결제 상태 전이를 조건부 UPDATE 로 선점한다.
+    const claimed = await tx.charge.updateMany({
+      where: { id: charge.id, status: charge.status },
+      data: { status: 'REFUND_REQUESTED' },
+    });
+    if (claimed.count !== 1) throw new Error('이미 환불이 요청된 거래입니다.');
 
-  const refund = await prisma.refund.create({
-    data: {
-      id: newId(),
-      chargeId: charge.id,
-      amount: charge.amount,
-      reason: input.reason,
-      requestedBy: input.requestedBy ?? null,
-    },
+    const refund = await tx.refund.create({
+      data: {
+        id: newId(),
+        chargeId: charge.id,
+        amount: charge.amount,
+        reason: input.reason,
+        requestedBy: input.requestedBy ?? null,
+      },
+    });
+    // 거절 시 이전 상태로 되돌릴 수 있도록 전이 이력을 남긴다.
+    await tx.chargeStatusLog.create({
+      data: {
+        id: newId(),
+        chargeId: charge.id,
+        fromStatus: charge.status,
+        toStatus: 'REFUND_REQUESTED',
+        actor: input.requestedBy ?? 'system',
+        reason: input.reason.slice(0, 200),
+      },
+    });
+    return refund;
   });
-  // 거절 시 이전 상태로 되돌릴 수 있도록 전이 이력을 남긴다.
-  await prisma.chargeStatusLog.create({
-    data: {
-      id: newId(),
-      chargeId: charge.id,
-      fromStatus: charge.status,
-      toStatus: 'REFUND_REQUESTED',
-      actor: input.requestedBy ?? 'system',
-      reason: input.reason.slice(0, 200),
-    },
-  });
-  return refund;
 }
+
+/**
+ * 승인 선점 후 이만큼 지나도 끝나지 않은 건만 "멈춘 것" 으로 보고 되돌릴 수 있다.
+ * PG 취소 호출은 타임아웃까지 잡아도 이 시간 안에 끝난다.
+ */
+const REOPEN_STALE_MS = 5 * 60_000;
 
 export async function approveRefund(refundId: string, adminUserId?: string) {
   const refund = await prisma.refund.findUnique({
@@ -79,9 +90,12 @@ export async function approveRefund(refundId: string, adminUserId?: string) {
   const txn = refund.charge.transactions.find((t) => t.status === 'APPROVED');
   if (!txn) throw new Error('승인된 결제 거래가 없습니다.');
 
+  // 선점 시각을 함께 남긴다. reopenRefund 가 "지금 처리 중인 건" 과
+  // "멈춘 지 오래된 건" 을 구분하는 근거가 된다. (DONE 으로 넘어갈 때 완료 시각으로 덮인다)
+  const claimedAt = new Date();
   const claimed = await prisma.refund.updateMany({
     where: { id: refundId, status: 'REQUESTED' },
-    data: { status: 'APPROVED' },
+    data: { status: 'APPROVED', processedAt: claimedAt },
   });
   if (claimed.count === 0) {
     throw new Error('이미 다른 처리가 진행 중인 환불입니다. 잠시 후 상태를 다시 확인해 주세요.');
@@ -112,10 +126,18 @@ export async function approveRefund(refundId: string, adminUserId?: string) {
   // 환불 확정 기록과 정산 원장 반대 분개는 반드시 같은 트랜잭션이어야 한다.
   // 분리하면 커밋 사이에 프로세스가 죽었을 때 "환불은 완료인데 원장에는 없는" 상태가 된다.
   await prisma.$transaction(async (tx) => {
-    await tx.refund.update({
-      where: { id: refundId },
+    // 선점한 그 건이 아직 그대로인지 다시 확인한다.
+    // PG 취소를 기다리는 사이 관리자가 reopenRefund 로 되돌리고 다른 관리자가 또 승인하면,
+    // 여기까지 두 흐름이 도달해 append-only 원장에 반대분개가 두 번 쌓인다. 되돌릴 수 없다.
+    const stillMine = await tx.refund.updateMany({
+      where: { id: refundId, status: 'APPROVED', processedAt: claimedAt },
       data: { status: 'DONE', approvedBy: adminUserId ?? null, processedAt: now, providerTid: txn.providerTid },
     });
+    if (stillMine.count === 0) {
+      throw new Error(
+        '처리 중에 환불 상태가 바뀌었습니다. PG 취소는 이미 요청되었을 수 있으니 결제대행 내역을 확인한 뒤 다시 처리해 주세요.',
+      );
+    }
     await tx.paymentTransaction.update({ where: { id: txn.id }, data: { status: 'CANCELED', canceledAt: now } });
     await tx.charge.update({
       where: { id: refund.chargeId },
@@ -165,12 +187,11 @@ export async function approveRefund(refundId: string, adminUserId?: string) {
     // 한도 집계는 결제를 "예약" 한 시각(paymentTransaction.requestedAt)으로 키가 잡힌다.
     // charge.paidAt 은 결과 미확인 건을 관리자가 나중에 확정하면 그 시점으로 덮이므로,
     // 그 값으로 되돌리면 다른 달 카운터에서 빼게 된다.
-    const approvedTxn = await prisma.paymentTransaction.findFirst({
-      where: { chargeId: refund.chargeId, status: 'APPROVED' },
-      orderBy: { requestedAt: 'asc' },
-      select: { requestedAt: true },
-    });
-    const counterBasis = approvedTxn?.requestedAt ?? refund.charge.paidAt;
+    //
+    // 위 트랜잭션에서 이 거래를 이미 CANCELED 로 바꿨으므로 여기서 status:'APPROVED' 로
+    // 다시 찾으면 **항상 null** 이고, 결국 쓰면 안 된다고 적어 둔 paidAt 으로 되돌아간다.
+    // 승인 거래는 선점 전에 잡아 둔 txn 이 그대로 들고 있다.
+    const counterBasis = txn.requestedAt ?? refund.charge.paidAt;
     await rollbackCounters(refund.charge.payerId, refund.charge.merchantId, refund.amount, counterBasis);
     await prisma.payerMerchantLink.updateMany({
       where: { payerId: refund.charge.payerId, merchantId: refund.charge.merchantId },
@@ -229,11 +250,22 @@ export async function rejectRefund(refundId: string, adminUserId?: string, memo?
 export async function reopenRefund(refundId: string, adminUserId?: string, memo?: string) {
   const refund = await prisma.refund.findUnique({
     where: { id: refundId },
-    select: { id: true, status: true, chargeId: true, resultMessage: true },
+    select: { id: true, status: true, chargeId: true, resultMessage: true, processedAt: true },
   });
   if (!refund) throw new Error('환불 요청을 찾을 수 없습니다.');
   if (refund.status !== 'FAILED' && refund.status !== 'APPROVED') {
     throw new Error('처리가 멈춘 환불(실패·승인)만 요청 상태로 되돌릴 수 있습니다.');
+  }
+  // APPROVED 는 "선점하고 PG 취소를 기다리는 중" 일 수도 있다. 그 사이에 되돌리면
+  // 다른 관리자가 다시 승인해 PG 취소와 원장 반대분개가 두 번 일어난다.
+  // 충분히 오래 멈춰 있는 건만 되돌린다(진행 중인 승인은 이 시간 안에 끝난다).
+  if (refund.status === 'APPROVED') {
+    const claimedAt = refund.processedAt?.getTime() ?? 0;
+    if (Date.now() - claimedAt < REOPEN_STALE_MS) {
+      throw new Error(
+        '방금 승인 처리가 시작된 환불입니다. 결제대행 응답을 기다리는 중일 수 있으니 몇 분 뒤에 다시 시도해 주세요.',
+      );
+    }
   }
 
   await prisma.$transaction(async (tx) => {
