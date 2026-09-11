@@ -23,7 +23,7 @@ const groups: NavGroup[] = [
   {
     title: '회원·가맹점',
     items: [
-      { href: '/admin/users', label: '회원', icon: 'users' },
+      { href: '/admin/users', label: '회원관리', icon: 'users' },
       { href: '/admin/payers', label: '이용자', icon: 'payers' },
       { href: '/admin/merchants', label: '가맹점 심사', icon: 'merchants' },
       { href: '/admin/codes', label: '가맹점 코드', icon: 'codes' },

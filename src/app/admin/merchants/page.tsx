@@ -5,6 +5,7 @@ import { AdminField, AdminInput, AdminSelect, FilterBar, Pager } from '@/compone
 import { ActionForm, SelectActionForm } from '@/components/admin/action-form';
 import { PAGE_SIZE, parsePage, clampPage, canManageMoney } from '@/components/admin/constants';
 import { updateMerchantStatus, applyGlobalAmountBounds } from '@/app/actions/admin/accounts';
+import { assignMoNumber } from '@/app/actions/admin/transactions';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/server/auth';
 import { formatNumber } from '@/lib/money';
@@ -39,9 +40,11 @@ const merchantSelect = {
 function MerchantRows({
   merchants,
   canEdit,
+  availableMoNumbers,
 }: {
   /** 권한이 없으면 심사 상태 변경을 잠근다. */
   canEdit: boolean;
+  availableMoNumbers: Array<{ id: string; phoneNumber: string; keyword: string | null }>;
   merchants: Array<{
     id: string;
     displayName: string;
@@ -73,15 +76,28 @@ function MerchantRows({
           </Td>
           <Td className="text-right tabular-nums">{c._count.chargeProducts}개{c.allowCustomAmount ? " + 직접" : ""}</Td>
           <Td>
-            {c.moRoutes.length === 0 ? (
-              <Badge tone="warning">미배정</Badge>
-            ) : (
+            {c.moRoutes.length > 0 ? (
               c.moRoutes.map((m) => (
                 <span key={`${m.phoneNumber}-${m.keyword ?? ''}`} className="block text-[12px]">
                   {m.phoneNumber}
                   {m.keyword ? ` (${m.keyword})` : ''}
                 </span>
               ))
+            ) : c.status === 'APPROVED' && availableMoNumbers.length > 0 ? (
+              <SelectActionForm
+                disabled={!canEdit}
+                action={assignMoNumber}
+                values={{ merchantId: c.id }}
+                name="id"
+                options={availableMoNumbers.map((m) => ({
+                  value: m.id,
+                  label: m.phoneNumber + (m.keyword ? ` (${m.keyword})` : ''),
+                }))}
+                submitLabel="배정"
+                confirm={`${c.displayName} 에게 선택한 MO 번호를 배정합니다.`}
+              />
+            ) : (
+              <Badge tone="warning">미배정</Badge>
             )}
           </Td>
           <Td className="text-right tabular-nums">{formatNumber(c._count.charges)}</Td>
@@ -154,7 +170,7 @@ export default async function AdminMerchantsPage({
       : {}),
   };
 
-  const [pending, pendingTotal, total, merchants, byStatus] = await Promise.all([
+  const [pending, pendingTotal, total, merchants, byStatus, availableMoNumbers] = await Promise.all([
     prisma.merchantProfile.findMany({
       where: { status: 'PENDING' },
       orderBy: { createdAt: 'asc' },
@@ -171,6 +187,11 @@ export default async function AdminMerchantsPage({
       select: merchantSelect,
     }),
     prisma.merchantProfile.groupBy({ by: ['status'], _count: { _all: true } }),
+    prisma.merchantMoNumber.findMany({
+      where: { status: 'AVAILABLE' },
+      select: { id: true, phoneNumber: true, keyword: true },
+      orderBy: { phoneNumber: 'asc' },
+    }),
   ]);
 
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -237,7 +258,7 @@ export default async function AdminMerchantsPage({
           <div className="mt-3">
             <Table className="min-w-[1100px]">
               {HEAD}
-              <MerchantRows merchants={pending} canEdit={canEdit} />
+              <MerchantRows merchants={pending} canEdit={canEdit} availableMoNumbers={availableMoNumbers} />
             </Table>
           </div>
         </section>
@@ -271,7 +292,7 @@ export default async function AdminMerchantsPage({
         <>
           <Table className="min-w-[1100px]">
             {HEAD}
-            <MerchantRows merchants={merchants} canEdit={canEdit} />
+            <MerchantRows merchants={merchants} canEdit={canEdit} availableMoNumbers={availableMoNumbers} />
           </Table>
           <Pager
             basePath="/admin/merchants"
