@@ -13,7 +13,7 @@ import { PAID_STATUSES } from '@/components/studio/shared';
  * `product.kind = DIGITAL` 단독이라 직접 입력 결제를 세지 않아, 사이드바 배지와 수치가 달랐다.
  */
 export const getStudioPendingCounts = cache(async (merchantId: string) => {
-  const [orders, points, reports] = await Promise.all([
+  const [orders, points, reports, documents] = await Promise.all([
     prisma.chargeShipment.count({
       where: { merchantId, status: 'PREPARING', charge: { status: { in: PAID_STATUSES } } },
     }),
@@ -27,7 +27,9 @@ export const getStudioPendingCounts = cache(async (merchantId: string) => {
       },
     }),
     prisma.report.count({ where: { merchantId, status: 'OPEN' } }),
+    // 제출됐지만 아직 확인하지 않은 문서. 작성 대기(DRAFT)는 이용자 차례라 세지 않는다.
+    prisma.documentSubmission.count({ where: { merchantId, status: 'SUBMITTED' } }),
   ]);
 
-  return { orders, points, reports };
+  return { orders, points, reports, documents };
 });

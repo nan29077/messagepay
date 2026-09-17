@@ -19,11 +19,25 @@ const MIME: Record<string, string> = {
   gif: 'image/gif',
 };
 
-export async function GET(_req: Request, { params }: { params: Promise<{ name: string }> }) {
+/**
+ * 문서 서식 파일(문서 상품).
+ *
+ * 이미지와 달리 화면에 그리지 않고 **내려받게** 한다. 브라우저가 열어 버리면
+ * 같은 origin 에서 렌더되므로 Content-Disposition 으로 첨부로 못박는다.
+ */
+const DOC_MIME: Record<string, string> = {
+  pdf: 'application/pdf',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  doc: 'application/msword',
+  hwp: 'application/x-hwp',
+  hwpx: 'application/hwp+zip',
+};
+
+export async function GET(req: Request, { params }: { params: Promise<{ name: string }> }) {
   const { name } = await params;
 
   // 경로 조작 방지: 허용된 파일명 형식만 받는다.
-  if (!/^[a-f0-9]{32}\.(jpg|jpeg|png|webp|gif)$/i.test(name)) {
+  if (!/^[a-f0-9]{32}\.(jpg|jpeg|png|webp|gif|pdf|docx|doc|hwpx|hwp)$/i.test(name)) {
     return new Response('Not found', { status: 404 });
   }
 
@@ -31,15 +45,24 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
   const buf = await getObject(name);
   if (!buf) return new Response('Not found', { status: 404 });
 
-  return new Response(new Uint8Array(buf), {
-    status: 200,
-    headers: {
-      'Content-Type': MIME[ext] ?? 'application/octet-stream',
-      'Cache-Control': 'public, max-age=31536000, immutable',
-      // 업로드 검사는 매직바이트만 보므로 'GIF89a' 로 시작하는 HTML 폴리글롯이 통과할 수 있다.
-      // 스니핑을 끄고 문서로 해석될 여지를 없앤다(세션 쿠키가 같은 origin 이다).
-      'X-Content-Type-Options': 'nosniff',
-      'Content-Security-Policy': "default-src 'none'; sandbox",
-    },
-  });
+  const isDoc = DOC_MIME[ext] !== undefined;
+  const headers: Record<string, string> = {
+    'Content-Type': (isDoc ? DOC_MIME[ext] : MIME[ext]) ?? 'application/octet-stream',
+    'Cache-Control': 'public, max-age=31536000, immutable',
+    // 업로드 검사는 매직바이트만 보므로 'GIF89a' 로 시작하는 HTML 폴리글롯이 통과할 수 있다.
+    // 스니핑을 끄고 문서로 해석될 여지를 없앤다(세션 쿠키가 같은 origin 이다).
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "default-src 'none'; sandbox",
+  };
+
+  if (isDoc) {
+    // 내려받을 때 보여 줄 이름. 쿼리로 받되 경로·따옴표가 섞이지 않게 정리한다.
+    const asked = new URL(req.url).searchParams.get('name') ?? '';
+    const safe = asked.replace(/[^\p{L}\p{N}._ -]/gu, '').slice(0, 80);
+    const filename = safe || `document.${ext}`;
+    headers['Content-Disposition'] =
+      `attachment; filename="document.${ext}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+  }
+
+  return new Response(new Uint8Array(buf), { status: 200, headers });
 }

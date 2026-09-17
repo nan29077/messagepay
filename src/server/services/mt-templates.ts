@@ -31,6 +31,8 @@ export const MT_TEMPLATE = {
   SHIPMENT_SENT: 'SHIPMENT_SENT',
   /** 비실물 상품 즉시 지급 안내(코드·다운로드 주소) */
   FULFILLMENT_INSTANT: 'FULFILLMENT_INSTANT',
+  /** 문서 상품 작성 안내(약정서·주문서 작성 링크) */
+  DOCUMENT_REQUEST: 'DOCUMENT_REQUEST',
   /**
    * 가맹점이 연동 API 로 직접 보내는 거래 안내 문자.
    * 본문은 가맹점이 등록해 검수받은 템플릿에서 나온다. 관리자 공통 문구로 덮어쓰지 않는다.
@@ -301,6 +303,29 @@ export function tplFulfillmentInstant(input: {
   };
 }
 
+/**
+ * 문서 상품 작성 안내.
+ *
+ * 결제 감사 문자와 따로 보낸다. 감사 문자 본문은 가맹점이 바꿀 수 있어서
+ * 거기에 링크를 끼워 넣으면 문구를 고치는 순간 링크가 사라진다 —
+ * 그러면 이용자는 결제만 하고 문서를 쓸 방법이 없다.
+ *
+ * vars 를 두지 않는다(관리자 커스텀 본문 대상에서 제외). 링크가 빠지면 흐름이 끊긴다.
+ */
+export function tplDocumentRequest(input: {
+  merchantName: string;
+  documentName: string;
+  link: string;
+  ttlDays: number;
+}): TemplateOutput {
+  const text = withLink(
+    `[메시지페이] ${input.merchantName} ${input.documentName} 작성이 필요합니다. ` +
+      `아래 링크에서 내용을 확인하고 작성해 주세요. ${input.ttlDays}일 안에 작성해 주세요. 작성:`,
+    input.link,
+  );
+  return { code: MT_TEMPLATE.DOCUMENT_REQUEST, text, masked: maskLink(text) };
+}
+
 export function tplChargeFailed(merchantName: string, reason?: string): TemplateOutput {
   const text =
     `[메시지페이] ${merchantName} 가맹점 결제가 완료되지 않았습니다. ` +
@@ -423,6 +448,7 @@ const V = {
   carrier: { token: '{택배사}', label: '택배사 이름' },
   tracking: { token: '{송장번호}', label: '송장번호' },
   fulfillNote: { token: '{안내}', label: '가맹점이 상품에 적어 둔 지급 안내 문구' },
+  document: { token: '{문서}', label: '작성할 문서 서식 이름' },
 } as const;
 
 export const MT_TEMPLATE_META: Record<MtTemplateCode, MtTemplateMeta> = {
@@ -554,6 +580,15 @@ export const MT_TEMPLATE_META: Record<MtTemplateCode, MtTemplateMeta> = {
     editable: true,
     defaultBody: '{가맹점} {상품} 결제가 완료되었습니다. {안내}',
     variables: [V.merchant, V.product, V.fulfillNote],
+  },
+  [MT_TEMPLATE.DOCUMENT_REQUEST]: {
+    label: '문서 작성 안내',
+    description:
+      '문서 상품(약정서·주문서 등)이 결제되면 작성 링크를 보냅니다. 링크가 빠지면 이용자가 문서를 작성할 수 없어 화면에서 수정할 수 없습니다.',
+    editable: false,
+    defaultBody:
+      '{가맹점} {문서} 작성이 필요합니다. 아래 링크에서 내용을 확인하고 작성해 주세요. (작성 링크 포함)',
+    variables: [V.merchant, V.document],
   },
 };
 

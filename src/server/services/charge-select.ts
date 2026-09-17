@@ -44,6 +44,8 @@ export interface ChargeProductOption {
   give: string | null;
   /** 청약철회 제한 안내(디지털 콘텐츠 특례). 비실물에만 쓴다. */
   withdrawalNotice: string | null;
+  /** 결제 뒤 작성할 문서 서식 이름 (문서 상품만). */
+  documentName: string | null;
   // ── 실물 전용 ──
   /** 남은 재고. null 이면 무제한 */
   stock: number | null;
@@ -121,6 +123,8 @@ export async function loadSelectAmountContext(
     prisma.chargeProduct.findMany({
       where: { merchantId: charge.merchantId, active: true, archivedAt: null },
       orderBy: [{ kind: 'asc' }, { sortOrder: 'asc' }, { amount: 'asc' }],
+      // 문서 상품은 결제 화면에서 "무엇을 작성하게 되는지" 를 미리 알려야 한다.
+      include: { documentTemplate: { select: { name: true, active: true } } },
     }),
     resolvePolicy(charge.merchantId, charge.payerId),
     loadShippingPolicy(charge.merchantId),
@@ -144,6 +148,10 @@ export async function loadSelectAmountContext(
 
   const products: ChargeProductOption[] = [];
   for (const p of rows) {
+    // 문서 상품은 작성할 서식이 살아 있어야 판다. 서식이 없거나 중지 상태면 결제해도
+    // 이용자에게 작성 화면을 그려 줄 수 없다 — 돈만 받고 끝나는 상품이 된다.
+    if (p.kind === 'DOCUMENT' && !p.documentTemplate?.active) continue;
+
     const quote = quoteShipping(
       { kind: p.kind, amount: p.amount, shippingFee: p.shippingFee, freeShipOver: p.freeShipOver, freeShipping: p.freeShipping },
       1,
@@ -151,9 +159,9 @@ export async function loadSelectAmountContext(
     );
     // 1개도 한도 안에 들어오지 않는 상품은 아예 고를 수 없다.
     const payable = quote.total >= minAmount && quote.total <= maxAmount;
-    // 비실물은 한도 밖이면 목록에서 뺀다(과거 동작 유지).
+    // 비실물·문서는 한도 밖이면 목록에서 뺀다(과거 동작 유지).
     // 실물은 목록에 남기되 고를 수 없게 표시한다 — 사라지면 가맹점이 원인을 못 찾는다.
-    if (p.kind === 'DIGITAL' && !payable) continue;
+    if (p.kind !== 'PHYSICAL' && !payable) continue;
 
     const delivery = effectiveDelivery(p, shipping);
     products.push({
@@ -167,6 +175,7 @@ export async function loadSelectAmountContext(
       images: parseImages(p.images),
       give: giveText(p),
       withdrawalNotice: p.kind === 'DIGITAL' ? p.withdrawalNotice : null,
+      documentName: p.kind === 'DOCUMENT' ? (p.documentTemplate?.name ?? null) : null,
       stock: p.stock,
       soldOut: p.kind === 'PHYSICAL' && p.stock !== null && p.stock <= 0,
       maxPerOrder: p.maxPerOrder,
@@ -391,9 +400,9 @@ export async function confirmChargeAmount(input: {
 
   // 금액 확정. PENDING_AMOUNT 일 때만 바뀌므로 동시 요청이 두 번 확정하지 못한다.
   //
-  // pointStatus 는 여기서 정한다. 실물 주문은 포인트·상품권을 주는 거래가 아니므로
-  // SKIPPED 로 둔다. 이걸 기본값(PENDING)으로 두면 실물 주문이 "지급 대기" 목록과
-  // 연동 API 의 pending 응답에 섞여 들어가 가맹점이 실물 주문에 포인트를 또 준다.
+  // pointStatus 는 여기서 정한다. 실물 주문과 문서 상품은 포인트·상품권을 주는 거래가
+  // 아니므로 SKIPPED 로 둔다. 이걸 기본값(PENDING)으로 두면 그 주문이 "지급 대기" 목록과
+  // 연동 API 의 pending 응답에 섞여 들어가 가맹점이 포인트를 또 준다.
   const claimed = await prisma.charge.updateMany({
     where: { id: charge.id, status: 'PENDING_AMOUNT' },
     data: {
@@ -404,7 +413,7 @@ export async function confirmChargeAmount(input: {
       quantity,
       optionText,
       shippingFee,
-      pointStatus: selected?.kind === 'PHYSICAL' ? 'SKIPPED' : 'PENDING',
+      pointStatus: selected && selected.kind !== 'DIGITAL' ? 'SKIPPED' : 'PENDING',
     },
   });
   if (claimed.count === 0) return { ok: false, message: '이미 처리된 결제입니다.' };

@@ -66,6 +66,7 @@ export function ProductForm({
   effMin,
   effMax,
   submitLabel,
+  documentTemplates = [],
 }: {
   action: Action;
   kind: ProductKind;
@@ -77,8 +78,11 @@ export function ProductForm({
   effMin: bigint;
   effMax: bigint;
   submitLabel: string;
+  /** 문서 상품에 연결할 수 있는 서식. 문서 종류에서만 쓴다. */
+  documentTemplates?: Array<{ id: string; name: string }>;
 }) {
   const isPhysical = kind === 'PHYSICAL';
+  const isDocument = kind === 'DOCUMENT';
   const editorOptions: EditorOption[] = options.map((o) => ({
     name: o.name,
     values: o.values.map((v) => ({ label: v.label, addPrice: v.addPrice.toString(), soldOut: v.soldOut })),
@@ -105,6 +109,31 @@ export function ProductForm({
           {isPhysical ? (
             <Field label="상품 코드 (SKU)" hint="가맹점 내부 관리용. 주문서 엑셀에 함께 나갑니다.">
               <Input name="sku" maxLength={40} defaultValue={product?.sku ?? ''} placeholder="TS-001" />
+            </Field>
+          ) : isDocument ? (
+            <Field
+              label="연결할 문서 서식"
+              hint="결제가 끝나면 이 서식의 작성 링크를 문자로 보냅니다."
+              required
+            >
+              {documentTemplates.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-ink-200 px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-400">
+                  사용 중인 서식이 없습니다.{' '}
+                  <Link href="/studio/documents/new" className="font-bold text-brand-700">
+                    문서 관리
+                  </Link>{' '}
+                  에서 서식을 먼저 등록해 주세요.
+                </p>
+              ) : (
+                <Select name="documentTemplateId" defaultValue={product?.documentTemplateId ?? ''}>
+                  <option value="">서식을 골라 주세요</option>
+                  {documentTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
             </Field>
           ) : (
             <Field label="유형" required>
@@ -160,7 +189,7 @@ export function ProductForm({
           </div>
         </div>
 
-        {isPhysical ? (
+        {isDocument ? null : isPhysical ? (
           <div className="grid gap-3 sm:grid-cols-3">
             <Field label="재고" hint="비우면 무제한. 결제 승인 시 차감됩니다.">
               <Input
@@ -217,7 +246,7 @@ export function ProductForm({
         )}
       </Section>
 
-      {/* ── 3. 옵션 / 지급 방식 ────────────────────────────────── */}
+      {/* ── 3. 옵션 / 지급 방식 / 문서 작성 ────────────────────── */}
       {isPhysical ? (
         <Section step={3} title="옵션" description="색상·사이즈처럼 이용자가 고르는 항목입니다.">
           <OptionEditor
@@ -226,6 +255,23 @@ export function ProductForm({
             maxGroups={OPTION_LIMIT.groups}
             maxValues={OPTION_LIMIT.values}
           />
+        </Section>
+      ) : isDocument ? (
+        <Section
+          step={3}
+          title="문서 작성"
+          description="결제가 끝난 뒤 이용자가 무엇을 하게 되는지 정리한 내용입니다."
+        >
+          <Notice tone="neutral" title="결제 완료 즉시 작성 링크가 문자로 갑니다">
+            이용자는 링크에서 서식 내용을 확인하고 작성·서명해 제출합니다. 제출된 문서는{' '}
+            <Link href="/studio/documents?tab=submissions" className="font-bold text-brand-700">
+              문서 관리 &gt; 제출된 문서
+            </Link>{' '}
+            에서 확인합니다. 배송과 포인트 지급은 일어나지 않습니다.
+          </Notice>
+          <Notice tone="warning" title="서식을 중지하면 결제할 수 없습니다">
+            연결한 서식을 중지·보관하면 이 상품은 결제 화면에서 고를 수 없습니다. 판매 중에는 서식을 그대로 두세요.
+          </Notice>
         </Section>
       ) : (
         <Section step={3} title="지급 방식" description="결제가 끝난 뒤 이용자에게 무엇을 어떻게 주는지 정합니다.">

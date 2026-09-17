@@ -439,12 +439,14 @@ export function parseImages(raw: unknown): string[] {
 export const productKindLabel: Record<ProductKind, string> = {
   DIGITAL: '비실물(컨텐츠)',
   PHYSICAL: '실물',
+  DOCUMENT: '문서(약정서·주문서)',
 };
 
 /** 좁은 자리(뱃지 등)에 쓰는 짧은 표기 */
 export const productKindShort: Record<ProductKind, string> = {
   DIGITAL: '비실물',
   PHYSICAL: '실물',
+  DOCUMENT: '문서',
 };
 
 export const digitalTypeLabel: Record<DigitalProductType, string> = {

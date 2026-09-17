@@ -165,7 +165,7 @@ export default async function StudioChargeDetailPage({ params }: { params: Promi
                         value={
                           charge.product.kind === 'DIGITAL'
                             ? `${productKindLabel.DIGITAL} · ${digitalTypeLabel[charge.product.digitalType ?? 'POINT']} · ${fulfillmentLabel[charge.product.fulfillment].text}`
-                            : productKindLabel.PHYSICAL
+                            : productKindLabel[charge.product.kind]
                         }
                       />
                     ) : null}

@@ -8,6 +8,7 @@ import {
   normalizePeriod,
   periodStart,
 } from '@/components/studio/shared';
+import { productKindLabel } from '@/server/services/products';
 import type { ChargeStatus, Prisma } from '@/generated/prisma/client';
 
 /**
@@ -108,7 +109,7 @@ export async function GET(req: Request) {
         csvCell(r.paidAt ? formatKst(r.paidAt) : ''),
         csvCell(r.amount.toString()),
         csvCell(chargeStatusLabel[r.status].text),
-        csvCell(r.product ? (r.product.kind === 'PHYSICAL' ? '실물' : '비실물(컨텐츠)') : '직접입력'),
+        csvCell(r.product ? productKindLabel[r.product.kind] : '직접입력'),
         csvCell(r.product?.name ?? ''),
         csvCell(r.product?.sku ?? ''),
         csvCell(r.optionText ?? ''),

@@ -545,7 +545,7 @@ async function parseProductForm(
   formData: FormData,
 ): Promise<{ ok: false; message: string } | { ok: true; data: Prisma.ChargeProductUncheckedCreateInput }> {
   const kindRaw = text(formData, 'kind').toUpperCase();
-  if (kindRaw !== 'DIGITAL' && kindRaw !== 'PHYSICAL') {
+  if (kindRaw !== 'DIGITAL' && kindRaw !== 'PHYSICAL' && kindRaw !== 'DOCUMENT') {
     return { ok: false, message: '상품 종류를 선택해 주세요.' };
   }
   const kind = kindRaw as ProductKind;
@@ -682,6 +682,44 @@ async function parseProductForm(
     };
   }
 
+  // ── 문서 (약정서·주문서·계약서) ────────────────────────────────────
+  //
+  // 결제만으로 끝나지 않는 상품이다. 결제가 완료되면 연결된 서식으로 작성 링크를 만들어
+  // 문자로 보낸다. 서식이 없으면 이용자는 결제만 하고 작성할 곳이 없으므로 필수로 받는다.
+  if (kind === 'DOCUMENT') {
+    const templateId = text(formData, 'documentTemplateId');
+    if (!templateId) {
+      return { ok: false, message: '연결할 문서 서식을 골라 주세요. 문서 관리에서 먼저 서식을 등록해야 합니다.' };
+    }
+    // 남의 서식을 붙일 수 없도록 merchantId 를 조건에 함께 건다.
+    const template = await prisma.documentTemplate.findFirst({
+      where: { id: templateId, merchantId, archivedAt: null },
+      select: { id: true, name: true, active: true },
+    });
+    if (!template) return { ok: false, message: '문서 서식을 찾을 수 없습니다.' };
+    // 이미 이 상품에 붙어 있던 서식은 중지 상태여도 그대로 저장할 수 있게 둔다.
+    // 그러지 않으면 서식을 잠시 중지해 둔 사이에 상품 가격 하나 고치는 것조차 막힌다.
+    // (중지된 서식을 쓰는 상품은 결제 화면 목록에서 빠진다 — charge-select)
+    const keeping = text(formData, 'currentDocumentTemplateId') === template.id;
+    if (!template.active && !keeping) {
+      return {
+        ok: false,
+        message: `${template.name} 서식이 중지 상태입니다. 문서 관리에서 사용을 켠 뒤 연결해 주세요.`,
+      };
+    }
+
+    return {
+      ok: true,
+      data: {
+        ...base,
+        documentTemplateId: template.id,
+        // 문서 상품은 포인트·상품권을 주는 거래가 아니다. 지급 대기 목록에 섞이지 않게
+        // 결제 확정(charge-select)에서 pointStatus 를 SKIPPED 로 둔다.
+        fulfillment: 'MANUAL',
+      },
+    };
+  }
+
   // ── 실물 ──────────────────────────────────────────────────────────
   const stock = intOrNull(formData, 'stock', 1_000_000);
   if (stock === 'ERR') return { ok: false, message: '재고는 0 이상 1,000,000 이하 정수로 입력해 주세요. (비우면 무제한)' };
@@ -793,12 +831,14 @@ export async function updateChargeProductAction(
     // 남의 상품을 수정할 수 없도록 merchantId 를 조건에 함께 건다.
     const current = await prisma.chargeProduct.findFirst({
       where: { id, merchantId, archivedAt: null },
-      select: { id: true, kind: true },
+      select: { id: true, kind: true, documentTemplateId: true },
     });
     if (!current) return { ok: false, message: '상품을 찾을 수 없습니다.' };
 
     // 종류가 바뀌면 이미 팔린 주문의 배송 유무가 뒤집힌다. 폼 값 대신 저장된 종류를 쓴다.
     formData.set('kind', current.kind);
+    // 지금 붙어 있는 서식이 무엇인지 알려 준다(중지된 서식을 유지하는 저장을 허용하기 위함).
+    formData.set('currentDocumentTemplateId', current.documentTemplateId ?? '');
     const parsed = await parseProductForm(merchantId, formData);
     if (!parsed.ok) return { ok: false, message: parsed.message };
 

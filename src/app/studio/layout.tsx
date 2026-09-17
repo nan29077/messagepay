@@ -20,7 +20,12 @@ export const metadata: Metadata = {
  *
  * 처리 대기 건수는 매 요청마다 세어 뱃지로 붙인다.
  */
-function buildGroups(pending: { orders: number; points: number; reports: number }): NavGroup[] {
+function buildGroups(pending: {
+  orders: number;
+  points: number;
+  reports: number;
+  documents: number;
+}): NavGroup[] {
   return [
     {
       title: '현황',
@@ -39,6 +44,13 @@ function buildGroups(pending: { orders: number; points: number; reports: number 
           label: '주문·판매',
           icon: 'orders',
           badge: pending.orders + pending.points,
+        },
+        {
+          // 문서 상품(약정서·주문서)의 서식 등록과 제출 확인. 주문·판매와 성격이 달라 따로 둔다.
+          href: '/studio/documents',
+          label: '문서 관리',
+          icon: 'documents',
+          badge: pending.documents,
         },
         { href: '/studio/settings', label: '판매 설정', icon: 'settings' },
         { href: '/studio/moderation', label: '금칙어·차단', icon: 'moderation' },
@@ -117,7 +129,12 @@ export default async function StudioLayout({ children }: { children: React.React
   return (
     <ConsoleShell
       title="가맹점 관리자"
-      groups={buildGroups({ orders: pending.orders, points: pending.points, reports: pending.reports })}
+      groups={buildGroups({
+        orders: pending.orders,
+        points: pending.points,
+        reports: pending.reports,
+        documents: pending.documents,
+      })}
       user={{
         id: user.id,
         name: user.name ?? '가맹점',

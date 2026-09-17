@@ -14,6 +14,7 @@ import { withAdvisoryLock } from '@/server/db';
 import { consumeRateLimit } from '@/server/rate-limit';
 import { acquireIdempotency } from './idempotency';
 import { issueSecureLink, LINK_TTL_SEC } from './secure-link';
+import { DOCUMENT_LINK_TTL_DAYS, ensureDocumentSubmission, isDocumentProduct } from './documents';
 import * as tpl from './mt-templates';
 import { calculateFees, postChargeSettlement } from './settlement';
 import { notifySuperAdmins } from './notifications';
@@ -1424,6 +1425,11 @@ export async function executePayment(chargeId: string): Promise<PaymentOutcome> 
   // 가맹점이 미리 적어 둔 안내를 그대로 보내면 끝나는 상품이라, 사람이 개입할 필요가 없다.
   await deliverInstantFulfillment(chargeId);
 
+  // 문서 상품(약정서·주문서)은 결제만으로 끝나지 않는다. 작성 링크를 따로 보낸다.
+  // 감사 문자에 끼워 넣지 않는 이유는 그 본문을 가맹점이 바꿀 수 있어서다 —
+  // 문구를 고치는 순간 링크가 사라지면 이용자는 문서를 쓸 방법이 없다.
+  await deliverDocumentRequest(chargeId);
+
   // 웹훅. 발행은 적재까지만 하고 전송은 따로 돌기 때문에 여기서 지연되지 않는다.
   // emitMerchantEvent 는 어떤 경우에도 예외를 던지지 않는다(결제 성공 처리를 막지 않는다).
   await emitMerchantEvent(charge.merchantId, 'charge.succeeded', {
@@ -1490,6 +1496,46 @@ async function deliverInstantFulfillment(chargeId: string): Promise<void> {
     });
   } catch (e) {
     logger.error('즉시 지급 처리 실패', { chargeId, message: (e as Error).message });
+  }
+}
+
+/**
+ * 문서 상품의 작성 링크 발송.
+ *
+ * 문자 발송이 실패해도 결제를 되돌리지 않는다(원칙 3: 결제 성공과 그 뒤 처리는 다른 상태다).
+ * 제출 기록은 이미 만들어져 있으므로, 문자가 안 갔더라도 가맹점이 콘솔에서
+ * 작성 링크를 다시 보낼 수 있다.
+ */
+async function deliverDocumentRequest(chargeId: string): Promise<void> {
+  try {
+    const charge = await prisma.charge.findUnique({
+      where: { id: chargeId },
+      select: {
+        payerId: true,
+        merchantId: true,
+        merchant: { select: { displayName: true } },
+        product: { select: { kind: true, documentTemplateId: true } },
+      },
+    });
+    if (!charge?.payerId || !isDocumentProduct(charge.product)) return;
+
+    const ensured = await ensureDocumentSubmission(chargeId);
+    // 이미 만들어 둔 기록이면 토큰 원문을 알 수 없다(해시만 저장한다). 문자를 다시 보내지 않는다.
+    if (!ensured.ok || !ensured.url) return;
+
+    await sendMtForPayer(
+      charge.payerId,
+      tpl.tplDocumentRequest({
+        merchantName: charge.merchant.displayName,
+        documentName: ensured.templateName,
+        link: ensured.url,
+        ttlDays: DOCUMENT_LINK_TTL_DAYS,
+      }),
+      chargeId,
+      charge.merchantId,
+    );
+  } catch (e) {
+    logger.error('문서 작성 안내 발송 실패', { chargeId, message: (e as Error).message });
   }
 }
 

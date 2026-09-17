@@ -35,6 +35,7 @@ export const dynamic = 'force-dynamic';
 const TABS = [
   { key: 'physical', label: '실물 상품' },
   { key: 'digital', label: '비실물(컨텐츠)' },
+  { key: 'document', label: '문서' },
   { key: 'archived', label: '보관함' },
 ] as const;
 
@@ -57,11 +58,15 @@ export default async function StudioProductsPage({
     prisma.chargeProduct.findMany({
       where: { merchantId, archivedAt: null },
       orderBy: [{ kind: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
+      // 문서 상품은 어떤 서식을 가리키는지 목록에서 바로 보여야 한다.
+      include: { documentTemplate: { select: { name: true, active: true } } },
     }),
     prisma.chargeProduct.findMany({
       where: { merchantId, archivedAt: { not: null } },
       orderBy: { archivedAt: 'desc' },
       take: 50,
+      // 보관 목록도 같은 카드로 그린다. include 가 다르면 두 목록의 타입이 갈린다.
+      include: { documentTemplate: { select: { name: true, active: true } } },
     }),
     // 배지에 잘린 목록 길이를 쓰면 보관 상품이 50개를 넘을 때 숫자가 50 에서 멈춘다.
     prisma.chargeProduct.count({ where: { merchantId, archivedAt: { not: null } } }),
@@ -81,6 +86,7 @@ export default async function StudioProductsPage({
 
   const digital = products.filter((p) => p.kind === 'DIGITAL');
   const physical = products.filter((p) => p.kind === 'PHYSICAL');
+  const documents = products.filter((p) => p.kind === 'DOCUMENT');
   const soldOf = (id: string) => soldByProduct.find((s) => s.productId === id)?._count._all ?? 0;
 
   const lowStock = physical.filter(
@@ -88,8 +94,9 @@ export default async function StudioProductsPage({
   );
   const soldOut = physical.filter((p) => p.stock !== null && p.stock <= 0);
 
-  const rows = tab === 'physical' ? physical : tab === 'digital' ? digital : archived;
-  const newKind = tab === 'digital' ? 'DIGITAL' : 'PHYSICAL';
+  const rows =
+    tab === 'physical' ? physical : tab === 'digital' ? digital : tab === 'document' ? documents : archived;
+  const newKind = tab === 'digital' ? 'DIGITAL' : tab === 'document' ? 'DOCUMENT' : 'PHYSICAL';
 
   return (
     <>
@@ -126,7 +133,7 @@ export default async function StudioProductsPage({
 
       <nav
         aria-label="상품 관리 메뉴"
-        className="mb-4 grid grid-cols-3 overflow-hidden rounded-2xl border border-ink-100 bg-white p-1 shadow-[0_8px_24px_rgba(23,22,26,0.05)]"
+        className="mb-4 grid grid-cols-2 overflow-hidden rounded-2xl border border-ink-100 bg-white p-1 shadow-[0_8px_24px_rgba(23,22,26,0.05)] sm:grid-cols-4"
       >
         {TABS.map((t) => (
           <Link
@@ -140,7 +147,13 @@ export default async function StudioProductsPage({
           >
             {t.label}
             <span className="ml-1 tabular-nums opacity-60">
-              {t.key === 'physical' ? physical.length : t.key === 'digital' ? digital.length : archivedTotal}
+              {t.key === 'physical'
+                ? physical.length
+                : t.key === 'digital'
+                  ? digital.length
+                  : t.key === 'document'
+                    ? documents.length
+                    : archivedTotal}
             </span>
           </Link>
         ))}
@@ -149,11 +162,13 @@ export default async function StudioProductsPage({
       {tab !== 'archived' ? (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <SectionTitle
-            title={tab === 'physical' ? '실물 상품' : '비실물(컨텐츠) 상품'}
+            title={tab === 'physical' ? '실물 상품' : tab === 'document' ? '문서 상품' : '비실물(컨텐츠) 상품'}
             description={
               tab === 'physical'
                 ? '배송이 필요한 상품입니다. 배송비·재고·옵션·반품 조건을 상품별로 지정합니다.'
-                : '포인트 · 상품권 · 이용권 · 컨텐츠처럼 배송이 없는 상품입니다.'
+                : tab === 'document'
+                  ? '약정서 · 주문서 · 계약서처럼 결제 뒤 이용자가 작성해 제출하는 상품입니다.'
+                  : '포인트 · 상품권 · 이용권 · 컨텐츠처럼 배송이 없는 상품입니다.'
             }
           />
           <LinkButton href={`/studio/products/new?kind=${newKind.toLowerCase()}`} variant="primary">
@@ -175,6 +190,19 @@ export default async function StudioProductsPage({
           <Notice tone="neutral" title="지급은 가맹점이 합니다">
             메시지페이는 결제와 정산만 대행합니다. 포인트·상품권·이용권의 발행과 지급은 가맹점이 하며, 상품마다
             지급 방식(수동 / 연동 API / 결제 즉시 문자 발급)을 정할 수 있습니다.
+          </Notice>
+        </div>
+      ) : null}
+
+      {tab === 'document' ? (
+        <div className="mb-4">
+          <Notice tone="neutral" title="서식을 먼저 등록해야 합니다">
+            문서 상품은{' '}
+            <Link href="/studio/documents" className="font-bold text-brand-700">
+              문서 관리
+            </Link>{' '}
+            에 등록한 서식을 가리킵니다. 결제가 끝나면 이용자에게 작성 링크가 문자로 가고, 제출된 문서는 문서 관리에서
+            확인합니다. 배송과 포인트 지급은 일어나지 않습니다.
           </Notice>
         </div>
       ) : null}
@@ -238,6 +266,8 @@ export default async function StudioProductsPage({
                         )}
                         {p.kind === 'DIGITAL' ? (
                           <Badge tone="brand">{digitalTypeLabel[p.digitalType ?? 'POINT']}</Badge>
+                        ) : p.kind === 'DOCUMENT' ? (
+                          <Badge tone="brand">문서</Badge>
                         ) : null}
                         {tab === 'archived' ? (
                           <Badge tone="neutral">보관됨</Badge>
@@ -269,6 +299,10 @@ export default async function StudioProductsPage({
                             + 배송비 {quote.fee === 0n ? '무료' : formatWon(quote.fee)} = 결제{' '}
                             <span className="font-bold tabular-nums text-ink-800">{formatWon(quote.total)}</span>
                           </span>
+                        ) : p.kind === 'DOCUMENT' ? (
+                          <span className="ml-1.5">
+                            {p.documentTemplate ? `${p.documentTemplate.name} 작성` : '서식 미연결'}
+                          </span>
                         ) : (
                           <span className="ml-1.5">{giveText(p) ? `${giveText(p)} 지급` : ''}</span>
                         )}
@@ -283,6 +317,12 @@ export default async function StudioProductsPage({
                       {overLimit ? (
                         <p className="mt-1 text-[11.5px] font-bold text-danger-500">
                           배송비를 더하면 결제 한도({formatWon(effMax)})를 넘어 이용자가 결제할 수 없습니다.
+                        </p>
+                      ) : null}
+
+                      {p.kind === 'DOCUMENT' && (!p.documentTemplate || !p.documentTemplate.active) ? (
+                        <p className="mt-1 text-[11.5px] font-bold text-danger-500">
+                          연결된 문서 서식이 없거나 중지 상태입니다. 이용자가 결제해도 작성할 문서가 없습니다.
                         </p>
                       ) : null}
                     </div>

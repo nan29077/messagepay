@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ChevronLeft, Package } from 'lucide-react';
+import { ChevronLeft, FileSignature, Package } from 'lucide-react';
 import { Badge, Card, CardTitle, DataRow, Field, Input, Notice, cx } from '@/components/ui';
 import { PageHeader } from '@/components/layout/console-shell';
 import { ActionForm, InlineActionForm } from '@/components/studio/action-form';
@@ -16,7 +16,7 @@ import { prisma } from '@/server/db';
 import { resolvePolicy } from '@/server/services/limits';
 import {
   digitalTypeLabel, effectiveDelivery, fulfillmentLabel, giveText, noticeCategoryOf, noticeMissing,
-  parseImages, parseNoticeInfo, parseOptions, quoteShipping, shippingPolicyOf,
+  parseImages, parseNoticeInfo, parseOptions, productKindLabel, quoteShipping, shippingPolicyOf,
 } from '@/server/services/products';
 import { formatNumber, formatWon } from '@/lib/money';
 
@@ -27,8 +27,11 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
   const { merchantId } = await requireMerchant();
   const { id } = await params;
 
-  const [product, merchant, policy, shippingRow, sold] = await Promise.all([
-    prisma.chargeProduct.findFirst({ where: { id, merchantId } }),
+  const [product, merchant, policy, shippingRow, sold, documentTemplates] = await Promise.all([
+    prisma.chargeProduct.findFirst({
+      where: { id, merchantId },
+      include: { documentTemplate: { select: { id: true, name: true, active: true } } },
+    }),
     prisma.merchantProfile.findUnique({
       where: { id: merchantId },
       select: { displayName: true, minAmount: true, maxAmount: true },
@@ -36,6 +39,11 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
     resolvePolicy(merchantId, null),
     prisma.merchantShippingPolicy.findUnique({ where: { merchantId } }),
     prisma.charge.count({ where: { merchantId, productId: id } }),
+    prisma.documentTemplate.findMany({
+      where: { merchantId, active: true, archivedAt: null },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, name: true },
+    }),
   ]);
   if (!product || !merchant) notFound();
 
@@ -47,6 +55,13 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
   const notice = parseNoticeInfo(product.noticeInfo);
   const images = parseImages(product.images);
   const isPhysical = product.kind === 'PHYSICAL';
+  const isDocument = product.kind === 'DOCUMENT';
+  // 수정 화면에서는 현재 연결된 서식도 목록에 남아 있어야 한다.
+  // 그 서식이 중지되면 드롭다운에서 사라져, 저장할 때마다 다른 서식으로 바뀔 위험이 생긴다.
+  const templateOptions =
+    product.documentTemplate && !documentTemplates.some((t) => t.id === product.documentTemplate!.id)
+      ? [...documentTemplates, { id: product.documentTemplate.id, name: `${product.documentTemplate.name} (중지)` }]
+      : documentTemplates;
   const delivery = effectiveDelivery(product, shipping);
 
   // 미리보기 금액: 1개 주문 + 가장 비싼 옵션 조합 기준.
@@ -61,7 +76,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
   return (
     <>
       <Link
-        href={`/studio/products?tab=${isPhysical ? 'physical' : 'digital'}`}
+        href={`/studio/products?tab=${isPhysical ? 'physical' : isDocument ? 'document' : 'digital'}`}
         className="mb-2 inline-flex items-center gap-1 text-[12.5px] font-bold text-ink-500 hover:text-ink-900"
       >
         <ChevronLeft size={15} strokeWidth={1.8} />
@@ -70,7 +85,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
 
       <PageHeader
         title={product.name}
-        description={`${isPhysical ? '실물' : '비실물(컨텐츠)'} 상품 · 판매 ${formatNumber(sold)}건${
+        description={`${productKindLabel[product.kind]} 상품 · 판매 ${formatNumber(sold)}건${
           product.archivedAt ? ' · 보관됨' : ''
         }`}
       />
@@ -97,6 +112,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
               effMin={effMin}
               effMax={effMax}
               submitLabel="상품 저장"
+              documentTemplates={templateOptions}
             />
 
             <Card className="mt-4">
@@ -153,6 +169,8 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
                     <img src={product.imageUrl} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
                   ) : isPhysical ? (
                     <Package size={13} strokeWidth={1.6} className="shrink-0 opacity-70" />
+                  ) : isDocument ? (
+                    <FileSignature size={13} strokeWidth={1.6} className="shrink-0 opacity-70" />
                   ) : null}
                   <span className="block text-[13.5px] font-bold leading-tight">{product.name}</span>
                 </span>
@@ -162,6 +180,8 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
                     <span className="ml-1 opacity-70">
                       {quote.freeReason ? '· 배송비 무료' : `· 배송비 ${formatWon(quote.fee)}`}
                     </span>
+                  ) : isDocument ? (
+                    <span className="ml-1 opacity-70">· 문서 작성</span>
                   ) : product.digitalType ? (
                     <span className="ml-1 opacity-70">· {digitalTypeLabel[product.digitalType]}</span>
                   ) : null}
@@ -199,10 +219,51 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
                     />
                     <DataRow label="고시 품목" value={notice ? noticeCategoryOf(notice.category).label : '미작성'} />
                   </>
+                ) : isDocument ? (
+                  <>
+                    <DataRow
+                      label="연결된 서식"
+                      value={
+                        product.documentTemplate ? (
+                          <Link
+                            href={`/studio/documents/${product.documentTemplate.id}`}
+                            className="text-brand-700 hover:underline"
+                          >
+                            {product.documentTemplate.name}
+                          </Link>
+                        ) : (
+                          <Badge tone="danger">미연결</Badge>
+                        )
+                      }
+                    />
+                    <DataRow
+                      label="서식 상태"
+                      value={
+                        product.documentTemplate?.active ? (
+                          <Badge tone="success">사용 중</Badge>
+                        ) : (
+                          <Badge tone="danger">중지</Badge>
+                        )
+                      }
+                    />
+                  </>
                 ) : (
                   <DataRow label="지급 방식" value={fulfillmentLabel[product.fulfillment].text} />
                 )}
               </div>
+
+              {isDocument && !product.documentTemplate?.active ? (
+                <div className="mt-3">
+                  <Notice tone="danger" title="이 상품은 결제되지 않습니다">
+                    연결된 문서 서식이 없거나 중지 상태입니다. 결제해도 이용자가 작성할 문서가 없으므로 결제 화면
+                    목록에서 빠집니다.{' '}
+                    <Link href="/studio/documents" className="font-bold text-brand-700">
+                      문서 관리
+                    </Link>{' '}
+                    에서 서식 사용을 켜 주세요.
+                  </Notice>
+                </div>
+              ) : null}
 
               {quoteMax.total > effMax ? (
                 <div className="mt-3">

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Pencil, Package, Truck } from 'lucide-react';
+import { FileSignature, Pencil, Package, Truck } from 'lucide-react';
 import { cx } from '@/components/ui';
 import { formatWon } from '@/lib/money';
 import { confirmChargeAmountAction, type SelectAmountState } from '@/app/actions/charge-select';
@@ -28,7 +28,9 @@ export interface PanelOptionValue {
 
 export interface PanelProduct {
   id: string;
-  kind: 'DIGITAL' | 'PHYSICAL';
+  kind: 'DIGITAL' | 'PHYSICAL' | 'DOCUMENT';
+  /** 문서 상품이면 결제 뒤 작성할 서식 이름. 다른 종류는 null 이다. */
+  documentName: string | null;
   digitalType: 'POINT' | 'VOUCHER' | 'PASS' | 'CONTENT' | null;
   name: string;
   amount: string;
@@ -258,6 +260,8 @@ export function SelectAmountPanel({
                     />
                   ) : p.kind === 'PHYSICAL' ? (
                     <Package size={13} strokeWidth={1.6} className="shrink-0 opacity-70" />
+                  ) : p.kind === 'DOCUMENT' ? (
+                    <FileSignature size={13} strokeWidth={1.6} className="shrink-0 opacity-70" />
                   ) : null}
                   <span className="block text-[13.5px] font-bold leading-tight">{p.name}</span>
                 </span>
@@ -267,6 +271,8 @@ export function SelectAmountPanel({
                     <span className="ml-1 opacity-70">
                       {p.freeReason ? '· 배송비 무료' : `· 배송비 ${formatWon(BigInt(p.shippingFee))}`}
                     </span>
+                  ) : p.kind === 'DOCUMENT' ? (
+                    <span className="ml-1 opacity-70">· 문서 작성</span>
                   ) : p.digitalType ? (
                     <span className="ml-1 opacity-70">· {KIND_BADGE[p.digitalType]}</span>
                   ) : null}
@@ -325,6 +331,14 @@ export function SelectAmountPanel({
             {selected.description ? (
               <p className="whitespace-pre-wrap rounded-xl bg-ink-50 px-3.5 py-2 text-[12px] leading-relaxed text-ink-600">
                 {selected.description}
+              </p>
+            ) : null}
+
+            {selected.kind === 'DOCUMENT' ? (
+              // 결제만으로 끝나지 않는 상품이다. 무엇을 더 해야 하는지 결제 전에 알려야 한다.
+              <p className="rounded-xl border border-brand-300/50 bg-brand-50 px-3.5 py-2 text-[12px] leading-relaxed text-ink-700">
+                결제가 끝나면 {selected.documentName ?? '문서'} 작성 링크를 문자로 보내 드립니다. 링크에서 내용을
+                확인하고 작성해 주세요.
               </p>
             ) : null}
 

@@ -78,9 +78,14 @@ enum MessageType {
 }
 
 /// 상품 종류. 실물은 배송·재고를 함께 관리한다.
+///
+/// DOCUMENT 는 약정서·주문서·계약서처럼 결제한 뒤 이용자가 **문서를 작성해 제출**하는
+/// 상품이다. 배송도 포인트 지급도 없으므로 실물·비실물 어느 쪽으로도 묶을 수 없다.
+/// (배송비 계산은 실물만 한다 — quoteShipping 은 PHYSICAL 이 아니면 0원을 돌려준다)
 enum ProductKind {
   DIGITAL
   PHYSICAL
+  DOCUMENT
 
   @@map("product_kind")
 }
@@ -97,6 +102,31 @@ enum DigitalProductType {
   CONTENT
 
   @@map("digital_product_type")
+}
+
+/// 문서 상품 서식을 만드는 방식.
+enum DocumentTemplateType {
+  /// 콘솔 에디터에서 본문과 빈칸(입력 항목)을 직접 만든다. 이용자는 화면에서 작성한다.
+  EDITOR
+  /// 가맹점이 PDF·워드 서식을 올린다. 이용자는 내려받아 작성한다.
+  FILE
+  /// 메시지페이가 준비한 기본 서식에서 고른다. 내용은 에디터에서 다시 손볼 수 있다.
+  PRESET
+
+  @@map("document_template_type")
+}
+
+/// 문서 제출 상태.
+///
+/// 결제가 끝나면 먼저 DRAFT 로 만들고 그 링크를 문자로 보낸다.
+/// 제출 전에는 몇 번이든 다시 열 수 있고, 제출하면 더 고칠 수 없다.
+enum DocumentSubmissionStatus {
+  DRAFT
+  SUBMITTED
+  /// 가맹점이 내용을 확인했다.
+  REVIEWED
+
+  @@map("document_submission_status")
 }
 
 /// 실물 주문 배송 상태.
@@ -604,6 +634,8 @@ model MerchantProfile {
   mtTemplates        MerchantMtTemplate[]
   webhooks           MerchantWebhook[]
   webhookDeliveries  WebhookDelivery[]
+  documentTemplates  DocumentTemplate[]
+  documentSubmissions DocumentSubmission[]
 
   @@index([status])
   @@map("merchant_profile")
@@ -682,14 +714,21 @@ model ChargeProduct {
   /// 청약철회 제한 안내(디지털 콘텐츠 특례). 결제 화면에 그대로 노출한다.
   withdrawalNotice String?         @map("withdrawal_notice")
 
+  // ── 문서 상품 전용 ─────────────────────────────────────────────
+  /// 결제 후 이용자가 작성할 문서 서식. kind=DOCUMENT 일 때만 값이 있다.
+  /// 서식을 지우지 못하도록(제출 기록이 참조한다) Restrict 로 묶는다.
+  documentTemplateId String? @map("document_template_id")
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  merchant MerchantProfile @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  charges  Charge[]
+  merchant         MerchantProfile   @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  charges          Charge[]
+  documentTemplate DocumentTemplate? @relation(fields: [documentTemplateId], references: [id], onDelete: Restrict)
 
   @@index([merchantId, active, sortOrder])
   @@index([merchantId, kind, active])
+  @@index([documentTemplateId])
   /// 가맹점 안에서 sku 는 유일하다. 일괄 동기화(POST /products/bulk)가 sku 로 기존 상품을
   /// 찾아 갱신하므로, 같은 sku 가 두 건이면 어느 쪽이 갱신될지 알 수 없고 동시 호출에서
   /// 중복이 생긴다. sku 가 없는 상품(null)은 제약을 받지 않는다(Postgres 는 null 을 중복으로 보지 않는다).
@@ -776,6 +815,101 @@ model ChargeShipment {
 
   @@index([merchantId, status])
   @@map("charge_shipment")
+}
+
+/// 가맹점이 등록해 두는 문서 서식 (약정서·주문서·계약서 등).
+///
+/// 만드는 방법은 셋이다: 에디터에서 직접 쓰기(EDITOR) · 파일 올리기(FILE) ·
+/// 기본 서식 고르기(PRESET). 어느 쪽이든 이용자가 채우는 입력 항목(fields)을 붙일 수 있다.
+///
+/// 지난 제출 기록이 서식을 참조하므로 삭제하지 않고 archivedAt 으로 보관 처리한다.
+model DocumentTemplate {
+  id           String               @id
+  merchantId   String               @map("merchant_id")
+  /// 서식 이름 (예: 후원약정서)
+  name         String
+  /// 콘솔 목록·결제 화면에 쓰는 한 줄 설명
+  description  String?
+  templateType DocumentTemplateType @map("template_type")
+  /// EDITOR·PRESET 서식의 본문. 이용자가 작성 화면에서 그대로 읽는다.
+  body         String?
+  /// 이용자가 채우는 입력 항목 정의.
+  /// [{ "id": "name", "label": "성명", "type": "TEXT", "required": true, "hint": null }]
+  /// 유형은 TEXT · LONGTEXT · DATE · NUMBER · PHONE · CHECKBOX (documents.ts 의 파서가 판정한다)
+  fields       Json?
+  /// FILE 서식으로 올린 파일 주소(/api/media/...)
+  fileUrl      String?              @map("file_url")
+  /// 내려받을 때 이용자에게 보여 줄 파일 이름
+  fileName     String?              @map("file_name")
+  /// PRESET 서식으로 고른 기본 서식 키 (documents.ts 의 DOCUMENT_PRESETS)
+  presetKey    String?              @map("preset_key")
+  /// 자필 서명을 받을지. 약정서·계약서는 켜 두는 것이 기본이다.
+  requireSignature Boolean          @default(true) @map("require_signature")
+  active       Boolean              @default(true)
+  archivedAt   DateTime?            @map("archived_at") @db.Timestamptz(3)
+  createdAt    DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  merchant    MerchantProfile      @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  submissions DocumentSubmission[]
+  products    ChargeProduct[]
+
+  @@index([merchantId, active])
+  @@map("document_template")
+}
+
+/// 이용자가 작성해 제출하는 문서 한 건.
+///
+/// 결제가 완료되면 문서 상품마다 이 행을 먼저 DRAFT 로 만들고, 여기 토큰으로 만든
+/// 작성 링크를 감사 문자에 넣어 보낸다. 제출 전에는 몇 번이든 다시 열 수 있다
+/// (보안링크와 달리 1회용이 아니다 — 작성 중 창을 닫은 이용자가 링크를 잃으면
+///  가맹점이 대신 만들어 줄 방법이 없기 때문이다). 제출하면 더 고칠 수 없다.
+///
+/// 이용자가 적는 값은 성명·연락처·주소 같은 개인정보다. 배송지와 같은 기준으로
+/// 암호화해 보관하고(valuesEnc) 목록에는 마스킹만 노출한다.
+/// 원문 열람은 감사로그(DOCUMENT_SUBMISSION_VIEW)를 남긴다.
+model DocumentSubmission {
+  id         String  @id
+  templateId String  @map("template_id")
+  merchantId String  @map("merchant_id")
+  /// 연결된 결제. 결제 한 건에 문서 한 건이다.
+  chargeId   String? @unique @map("charge_id")
+
+  /// 작성 링크 토큰의 HMAC 해시. 토큰 원문은 저장하지 않는다.
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+
+  payerNameEnc     String? @map("payer_name_enc")
+  payerNameMasked  String? @map("payer_name_masked")
+  payerPhoneEnc    String? @map("payer_phone_enc")
+  payerPhoneMasked String? @map("payer_phone_masked")
+
+  /// 항목별 입력값 JSON( { "fieldId": "값" } )을 암호화해 담는다.
+  valuesEnc    String? @map("values_enc")
+  /// 자필 서명 이미지 주소. 이용자가 화면에서 그린 서명을 PNG 로 저장한다.
+  signatureUrl String? @map("signature_url")
+
+  status      DocumentSubmissionStatus @default(DRAFT)
+  submittedAt DateTime?                @map("submitted_at") @db.Timestamptz(3)
+  reviewedAt  DateTime?                @map("reviewed_at") @db.Timestamptz(3)
+  /// 가맹점 내부 메모. 이용자에게 보이지 않는다.
+  merchantMemo String?                 @map("merchant_memo")
+  /// 제출 시점의 접속 정보. 전자문서 분쟁 대응 근거로 남긴다.
+  submitIp    String?                  @map("submit_ip")
+  submitAgent String?                  @map("submit_agent")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  // 서식을 보관해도 제출 기록은 남아야 한다(분쟁 대응).
+  template DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  merchant MerchantProfile  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  charge   Charge?          @relation(fields: [chargeId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId, status, createdAt])
+  @@index([templateId])
+  @@index([expiresAt])
+  @@map("document_submission")
 }
 
 model MerchantCode {
@@ -1057,6 +1191,8 @@ model Charge {
   secureLink    SecureLink?
   pinSession    PaymentPinSession?
   statusLogs    ChargeStatusLog[]
+  /// 문서 상품 결제라면 작성·제출 기록 1건이 붙는다.
+  documentSubmission DocumentSubmission?
 
   @@index([merchantId, receivedAt])
   @@index([payerId, receivedAt])

@@ -363,6 +363,7 @@ async function SelectAmountScreen({ token }: { token: string }) {
           images: p.images,
           give: p.give,
           withdrawalNotice: p.withdrawalNotice,
+          documentName: p.documentName,
           stock: p.stock,
           soldOut: p.soldOut,
           maxPerOrder: p.maxPerOrder,
