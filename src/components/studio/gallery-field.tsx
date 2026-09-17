@@ -127,7 +127,7 @@ export function GalleryField({
                 onClick={() => setItems((prev) => prev.filter((v) => v !== src))}
                 className="absolute -right-1.5 -top-1.5 grid h-6 w-6 place-items-center rounded-full border border-ink-200 bg-white text-ink-500 shadow-sm hover:text-danger-500"
               >
-                <X size={13} strokeWidth={2} />
+                <X size={13} strokeWidth={1.6} />
               </button>
               <input type="hidden" name={name} value={src} />
             </li>

@@ -257,7 +257,7 @@ export function SelectAmountPanel({
                       className={cx('h-10 w-10 shrink-0 rounded-lg object-cover', disabled && 'opacity-40')}
                     />
                   ) : p.kind === 'PHYSICAL' ? (
-                    <Package size={13} strokeWidth={2} className="shrink-0 opacity-70" />
+                    <Package size={13} strokeWidth={1.6} className="shrink-0 opacity-70" />
                   ) : null}
                   <span className="block text-[13.5px] font-bold leading-tight">{p.name}</span>
                 </span>

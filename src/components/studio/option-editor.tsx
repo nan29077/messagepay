@@ -70,7 +70,7 @@ export function OptionEditor({
           disabled={groups.length >= maxGroups}
           className="flex items-center gap-1 rounded-lg border border-ink-200 px-2.5 py-1.5 text-[12px] font-bold text-ink-700 hover:bg-ink-50 disabled:opacity-50"
         >
-          <Plus size={13} strokeWidth={2} /> 옵션 추가
+          <Plus size={13} strokeWidth={1.6} /> 옵션 추가
         </button>
       </div>
 
@@ -180,7 +180,7 @@ export function OptionEditor({
               disabled={g.values.length >= maxValues}
               className="mt-2 flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-bold text-brand-700 hover:bg-brand-50 disabled:opacity-50"
             >
-              <Plus size={13} strokeWidth={2} /> 값 추가
+              <Plus size={13} strokeWidth={1.6} /> 값 추가
             </button>
           </div>
         ))}

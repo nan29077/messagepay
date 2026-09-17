@@ -69,7 +69,7 @@ export function MoNumberPanel({ numbers, guideText }: { numbers: MoNumberView[];
               {n.keyword ? (
                 <div className="rounded-xl bg-ink-50 px-3 py-2">
                   <p className="flex items-center gap-1 text-[11px] font-semibold text-ink-400">
-                    <Hash size={12} strokeWidth={2} />
+                    <Hash size={12} strokeWidth={1.6} />
                     맨 앞에 붙여야 하는 키워드
                   </p>
                   <p className="mt-0.5 font-mono text-[15px] font-extrabold text-ink-900">{n.keyword}</p>
@@ -120,7 +120,7 @@ function CopyButton({ text }: { text: string }) {
         done ? 'border-success-500/40 bg-success-50 text-success-500' : 'border-ink-200 bg-white text-ink-700 hover:bg-ink-50',
       )}
     >
-      {done ? <Check size={14} strokeWidth={2} /> : <Copy size={14} strokeWidth={1.8} />}
+      {done ? <Check size={14} strokeWidth={1.6} /> : <Copy size={14} strokeWidth={1.8} />}
       {done ? '복사됨' : '복사'}
     </button>
   );

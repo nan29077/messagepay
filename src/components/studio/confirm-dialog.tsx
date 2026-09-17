@@ -169,7 +169,7 @@ export function ConfirmDialog({
               >
                 {busy ? (
                   <>
-                    <Loader2 size={16} strokeWidth={2} className="animate-spin" />
+                    <Loader2 size={16} strokeWidth={1.6} className="animate-spin" />
                     {busyLabel}
                   </>
                 ) : (

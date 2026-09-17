@@ -131,7 +131,7 @@ export default async function StudioDocsPage() {
                   </span>
                   <ChevronRight
                     size={16}
-                    strokeWidth={2}
+                    strokeWidth={1.6}
                     className="text-ink-300 transition-transform group-hover:translate-x-0.5 group-hover:text-brand-600"
                   />
                 </div>

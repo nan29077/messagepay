@@ -154,7 +154,7 @@ export function ChargeLookupSheet({ open, onClose }: { open: boolean; onClose: (
             <form action={sendAction} className="space-y-4">
               <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3.5">
                 <p className="flex items-center gap-1.5 text-[12.5px] font-bold text-brand-800">
-                  <Info size={14} strokeWidth={2} />
+                  <Info size={14} strokeWidth={1.6} />
                   결제내역 확인 안내
                 </p>
                 <ul className="mt-2 space-y-1.5 text-[12.5px] leading-relaxed text-ink-700">
@@ -240,7 +240,7 @@ export function ChargeLookupSheet({ open, onClose }: { open: boolean; onClose: (
               <div className="flex items-center justify-between gap-3 rounded-2xl bg-ink-50 px-4 py-3">
                 <div>
                   <p className="flex items-center gap-1.5 text-[12px] font-bold text-ink-500">
-                    <ShieldCheck size={14} strokeWidth={2} className="text-success-500" />
+                    <ShieldCheck size={14} strokeWidth={1.6} className="text-success-500" />
                     {result.phoneMasked} 확인 완료
                   </p>
                   <p className="mt-1 text-[13px] font-semibold text-ink-900">

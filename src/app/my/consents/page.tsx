@@ -116,12 +116,12 @@ export default async function MyConsentsPage() {
                   <span className="shrink-0">
                     {r.agreed ? (
                       <Badge tone="success">
-                        <Check size={13} strokeWidth={2} />
+                        <Check size={13} strokeWidth={1.6} />
                         <span className="ml-1">동의</span>
                       </Badge>
                     ) : (
                       <Badge tone="neutral">
-                        <X size={13} strokeWidth={2} />
+                        <X size={13} strokeWidth={1.6} />
                         <span className="ml-1">미동의</span>
                       </Badge>
                     )}

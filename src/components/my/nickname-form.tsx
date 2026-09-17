@@ -53,7 +53,7 @@ export function NicknameForm({
 
         <div className="rounded-xl bg-brand-50 px-3.5 py-3">
           <p className="flex items-center gap-1.5 text-[11.5px] font-bold text-brand-700">
-            <Sparkles size={13} strokeWidth={2} />
+            <Sparkles size={13} strokeWidth={1.6} />
             결제 내역에 이렇게 표시됩니다
           </p>
           <p className="mt-1 text-[14px] font-bold text-ink-900">

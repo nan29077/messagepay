@@ -407,7 +407,7 @@ export function WebChargePanel({
           {phase === 'done' ? (
             <div className="space-y-3 text-center">
               <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-brand-100 text-brand-700">
-                <Check size={26} strokeWidth={2.2} />
+                <Check size={26} strokeWidth={1.7} />
               </span>
               <p className="text-[16px] font-extrabold text-ink-900">결제가 완료되었습니다</p>
               <p className="text-[13px] leading-relaxed text-ink-500">

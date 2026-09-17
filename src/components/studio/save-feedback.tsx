@@ -126,7 +126,7 @@ export function SaveToast({ feedback }: { feedback: SaveFeedback }) {
             toast.ok ? 'bg-success-500/20 text-success-500' : 'bg-white/20 text-white',
           )}
         >
-          {toast.ok ? <Check size={15} strokeWidth={2.2} /> : <CircleAlert size={15} strokeWidth={2} />}
+          {toast.ok ? <Check size={15} strokeWidth={1.7} /> : <CircleAlert size={15} strokeWidth={1.6} />}
         </span>
         <span className="min-w-0 text-[13px] font-bold leading-snug">{toast.message}</span>
         <span className="shrink-0 text-[11px] font-semibold tabular-nums text-white/55">{toast.at}</span>
@@ -156,7 +156,7 @@ export function SaveButtonLabel({
   if (pending) {
     return (
       <>
-        <Loader2 size={16} strokeWidth={2} className="animate-spin" />
+        <Loader2 size={16} strokeWidth={1.6} className="animate-spin" />
         {pendingLabel}
       </>
     );
@@ -164,7 +164,7 @@ export function SaveButtonLabel({
   if (justSaved) {
     return (
       <>
-        <Check size={16} strokeWidth={2.2} />
+        <Check size={16} strokeWidth={1.7} />
         {doneLabel}
       </>
     );

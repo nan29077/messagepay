@@ -252,7 +252,7 @@ export default async function HomePage({
           {[
             ['결제 전 금액 확인', '대상과 금액을 확인한 뒤 승인'], ['중복 결제 차단', '한 요청이 여러 번 처리되지 않게 보호'],
             ['거래번호 추적', '모든 결제 결과를 문자로 안내'], ['이용 한도 관리', '과도한 반복 결제를 사전에 방지'],
-          ].map(([title, body]) => <div key={title}><p className="flex items-center gap-1.5 text-[13px] font-extrabold"><Check size={15} className="text-[#b7f34a]" strokeWidth={2.2} />{title}</p><p className="mt-1 text-[11.5px] leading-relaxed text-white/52">{body}</p></div>)}
+          ].map(([title, body]) => <div key={title}><p className="flex items-center gap-1.5 text-[13px] font-extrabold"><Check size={15} className="text-[#b7f34a]" strokeWidth={1.7} />{title}</p><p className="mt-1 text-[11.5px] leading-relaxed text-white/52">{body}</p></div>)}
         </div>
         </div>
       </section>

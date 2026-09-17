@@ -157,7 +157,7 @@ export default async function StudioProductsPage({
             }
           />
           <LinkButton href={`/studio/products/new?kind=${newKind.toLowerCase()}`} variant="primary">
-            <Plus size={15} strokeWidth={2} />
+            <Plus size={15} strokeWidth={1.6} />
             상품 등록
           </LinkButton>
         </div>
@@ -190,7 +190,7 @@ export default async function StudioProductsPage({
           action={
             tab !== 'archived' ? (
               <LinkButton href={`/studio/products/new?kind=${newKind.toLowerCase()}`} variant="primary">
-                <Plus size={15} strokeWidth={2} />
+                <Plus size={15} strokeWidth={1.6} />
                 첫 상품 등록하기
               </LinkButton>
             ) : undefined

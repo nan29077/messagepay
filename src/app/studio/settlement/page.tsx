@@ -52,25 +52,32 @@ function monthRange(ym: string) {
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
+const LEDGER_PAGE_SIZE = 50;
+
 export default async function StudioSettlementPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; tab?: string }>;
+  searchParams: Promise<{ month?: string; tab?: string; page?: string }>;
 }) {
   const { merchantId } = await requireMerchant();
   const sp = await searchParams;
   const activeTab: SettlementTab = TABS.some((t) => t.key === sp.tab) ? (sp.tab as SettlementTab) : 'overview';
   const range = monthRange(sp.month ?? kstMonthKey());
 
-  const [summary, feePolicy, ledger, requests, account, monthCharges, monthPayouts, upcoming, profile] = await Promise.all([
+  const pageRaw = Number(sp.page);
+  const ledgerPage = Number.isSafeInteger(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+
+  const [summary, feePolicy, ledger, ledgerTotal, requests, account, monthCharges, monthPayouts, upcoming, profile] = await Promise.all([
     getSettlementSummary(merchantId),
     resolveFeePolicy(merchantId),
     prisma.settlementLedger.findMany({
       where: { merchantId },
       orderBy: { occurredAt: 'desc' },
-      take: 50,
+      skip: (ledgerPage - 1) * LEDGER_PAGE_SIZE,
+      take: LEDGER_PAGE_SIZE,
       select: { id: true, entryType: true, amount: true, memo: true, occurredAt: true, settlementKey: true },
     }),
+    prisma.settlementLedger.count({ where: { merchantId } }),
     prisma.settlementRequest.findMany({
       where: { merchantId },
       orderBy: { requestedAt: 'desc' },
@@ -761,45 +768,85 @@ export default async function StudioSettlementPage({
             </section>
 
             <section>
-              <SectionTitle
-                title="정산 원장"
-                description="최근 50건입니다. 원장은 수정·삭제되지 않으며 정정은 반대 분개로 기록됩니다."
-              />
-              {ledger.length === 0 ? (
-                <EmptyState title="원장 기록이 없습니다" description="결제가 완료되면 자동으로 기록됩니다." />
-              ) : (
-                <Table>
-                  <thead>
-                    <tr>
-                      <Th>발생 시각</Th>
-                      <Th>구분</Th>
-                      <Th className="text-right">금액</Th>
-                      <Th>정산월</Th>
-                      <Th>메모</Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ledger.map((e) => (
-                      <tr key={e.id}>
-                        <Td className="whitespace-nowrap tabular-nums">{formatKst(e.occurredAt, false)}</Td>
-                        <Td className="whitespace-nowrap">{ledgerEntryLabel[e.entryType]}</Td>
-                        <Td
-                          className={
-                            e.amount < 0n
-                              ? 'whitespace-nowrap text-right font-semibold tabular-nums text-danger-500'
-                              : 'whitespace-nowrap text-right font-semibold tabular-nums text-success-500'
-                          }
-                        >
-                          {e.amount >= 0n ? '+' : ''}
-                          {formatWon(e.amount)}
-                        </Td>
-                        <Td className="whitespace-nowrap tabular-nums">{e.settlementKey}</Td>
-                        <Td>{e.memo ?? '-'}</Td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </Table>
-              )}
+              {(() => {
+                const ledgerTotalPages = Math.max(1, Math.ceil(ledgerTotal / LEDGER_PAGE_SIZE));
+                const buildLedgerHref = (p: number) =>
+                  `/studio/settlement?tab=ledger${sp.month ? `&month=${sp.month}` : ''}&page=${p}`;
+                return (
+                  <>
+                    <SectionTitle
+                      title="정산 원장"
+                      description={`전체 ${formatNumber(ledgerTotal)}건 · ${ledgerPage} / ${ledgerTotalPages} 페이지. 원장은 수정·삭제되지 않으며 정정은 반대 분개로 기록됩니다.`}
+                    />
+                    {ledger.length === 0 ? (
+                      <EmptyState title="원장 기록이 없습니다" description="결제가 완료되면 자동으로 기록됩니다." />
+                    ) : (
+                      <Table>
+                        <thead>
+                          <tr>
+                            <Th>발생 시각</Th>
+                            <Th>구분</Th>
+                            <Th className="text-right">금액</Th>
+                            <Th>정산월</Th>
+                            <Th>메모</Th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {ledger.map((e) => (
+                            <tr key={e.id}>
+                              <Td className="whitespace-nowrap tabular-nums">{formatKst(e.occurredAt, false)}</Td>
+                              <Td className="whitespace-nowrap">{ledgerEntryLabel[e.entryType]}</Td>
+                              <Td
+                                className={
+                                  e.amount < 0n
+                                    ? 'whitespace-nowrap text-right font-semibold tabular-nums text-danger-500'
+                                    : 'whitespace-nowrap text-right font-semibold tabular-nums text-success-500'
+                                }
+                              >
+                                {e.amount >= 0n ? '+' : ''}
+                                {formatWon(e.amount)}
+                              </Td>
+                              <Td className="whitespace-nowrap tabular-nums">{e.settlementKey}</Td>
+                              <Td>{e.memo ?? '-'}</Td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </Table>
+                    )}
+                    {ledgerTotalPages > 1 ? (
+                      <nav className="mt-3 flex items-center justify-center gap-2">
+                        {ledgerPage <= 1 ? (
+                          <span className="inline-flex h-9 items-center rounded-lg border border-ink-100 px-3 text-[13px] font-semibold text-ink-300">
+                            이전
+                          </span>
+                        ) : (
+                          <Link
+                            href={buildLedgerHref(ledgerPage - 1)}
+                            className="inline-flex h-9 items-center rounded-lg border border-ink-200 bg-white px-3 text-[13px] font-semibold text-ink-700 hover:bg-ink-50"
+                          >
+                            이전
+                          </Link>
+                        )}
+                        <span className="text-[13px] tabular-nums text-ink-500">
+                          {ledgerPage} / {ledgerTotalPages}
+                        </span>
+                        {ledgerPage >= ledgerTotalPages ? (
+                          <span className="inline-flex h-9 items-center rounded-lg border border-ink-100 px-3 text-[13px] font-semibold text-ink-300">
+                            다음
+                          </span>
+                        ) : (
+                          <Link
+                            href={buildLedgerHref(ledgerPage + 1)}
+                            className="inline-flex h-9 items-center rounded-lg border border-ink-200 bg-white px-3 text-[13px] font-semibold text-ink-700 hover:bg-ink-50"
+                          >
+                            다음
+                          </Link>
+                        )}
+                      </nav>
+                    ) : null}
+                  </>
+                );
+              })()}
             </section>
 
             <Card>

@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Info } from 'lucide-react';
 import {
   Badge, Card, CardTitle, DataRow, Field, Input, LinkButton, Notice, SectionTitle, Select, Textarea, cx,
 } from '@/components/ui';
@@ -971,6 +971,20 @@ export default async function StudioSettingsPage({
                 즉시형(DIRECT_TRIGGER)은 금융사 서면승인 등록 후 통합 관리자만 활성화할 수 있습니다. 문자 수신 즉시
                 출금이 일어나는 방식이므로, 서면승인 없이 사용하면 전자금융거래 관련 규정을 위반할 수 있습니다.
               </Notice>
+            </Card>
+
+            <Card>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <CardTitle>카드 결제 수단</CardTitle>
+                <Badge tone="neutral">준비 중</Badge>
+              </div>
+              <div className="flex items-start gap-2.5 rounded-xl border border-brand-200/60 bg-brand-50/50 px-4 py-3">
+                <Info size={16} strokeWidth={1.6} className="mt-0.5 shrink-0 text-brand-700" />
+                <p className="text-[13px] leading-relaxed text-ink-700">
+                  카드 결제 수단 연동은 현재 준비 중입니다. 현재는 계좌 빌링키(계좌이체) 방식만 지원합니다.
+                  카드 결제가 필요하시면 고객센터로 문의해 주세요.
+                </p>
+              </div>
             </Card>
           </section>
         ) : null}

@@ -152,7 +152,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={product.imageUrl} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
                   ) : isPhysical ? (
-                    <Package size={13} strokeWidth={2} className="shrink-0 opacity-70" />
+                    <Package size={13} strokeWidth={1.6} className="shrink-0 opacity-70" />
                   ) : null}
                   <span className="block text-[13.5px] font-bold leading-tight">{product.name}</span>
                 </span>
