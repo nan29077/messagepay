@@ -238,96 +238,120 @@ export default async function StudioProductsPage({
             return (
               <li key={p.id}>
                 <Card>
-                  <div className="flex flex-wrap items-start gap-3">
-                    {p.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={p.imageUrl}
-                        alt=""
-                        className="h-16 w-16 shrink-0 rounded-xl border border-ink-100 object-cover"
-                      />
-                    ) : (
-                      <span className="grid h-16 w-16 shrink-0 place-items-center rounded-xl border border-dashed border-ink-200 text-[10.5px] font-bold text-ink-300">
-                        이미지 없음
-                      </span>
-                    )}
+                  {/* 모바일: 세로 스택(정보→액션 바), sm 이상: 가로 한 줄 */}
+                  <div className="flex flex-col gap-0 sm:flex-row sm:items-start sm:gap-3">
+                    {/* 이미지 + 상품 정보 */}
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                      {p.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={p.imageUrl}
+                          alt=""
+                          className="h-16 w-16 shrink-0 rounded-xl border border-ink-100 object-cover"
+                        />
+                      ) : (
+                        <span className="grid h-16 w-16 shrink-0 place-items-center rounded-xl border border-dashed border-ink-200 text-[10.5px] font-bold text-ink-300">
+                          이미지 없음
+                        </span>
+                      )}
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {tab === 'archived' ? (
-                          <span className="text-[14px] font-bold text-ink-700">{p.name}</span>
-                        ) : (
-                          <Link
-                            href={`/studio/products/${p.id}`}
-                            className="text-[14px] font-bold text-ink-900 hover:text-brand-700 hover:underline"
-                          >
-                            {p.name}
-                          </Link>
-                        )}
-                        {p.kind === 'DIGITAL' ? (
-                          <Badge tone="brand">{digitalTypeLabel[p.digitalType ?? 'POINT']}</Badge>
-                        ) : p.kind === 'DOCUMENT' ? (
-                          <Badge tone="brand">문서</Badge>
-                        ) : null}
-                        {tab === 'archived' ? (
-                          <Badge tone="neutral">보관됨</Badge>
-                        ) : p.active ? (
-                          <Badge tone="success">노출 중</Badge>
-                        ) : (
-                          <Badge tone="neutral">숨김</Badge>
-                        )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {tab === 'archived' ? (
+                            <span className="text-[14px] font-bold text-ink-700">{p.name}</span>
+                          ) : (
+                            <Link
+                              href={`/studio/products/${p.id}`}
+                              className="text-[14px] font-bold text-ink-900 hover:text-brand-700 hover:underline"
+                            >
+                              {p.name}
+                            </Link>
+                          )}
+                          {p.kind === 'DIGITAL' ? (
+                            <Badge tone="brand">{digitalTypeLabel[p.digitalType ?? 'POINT']}</Badge>
+                          ) : p.kind === 'DOCUMENT' ? (
+                            <Badge tone="brand">문서</Badge>
+                          ) : null}
+                          {tab === 'archived' ? (
+                            <Badge tone="neutral">보관됨</Badge>
+                          ) : p.active ? (
+                            <Badge tone="success">노출 중</Badge>
+                          ) : (
+                            <Badge tone="neutral">숨김</Badge>
+                          )}
+                          {p.kind === 'PHYSICAL' ? (
+                            <Badge
+                              tone={
+                                p.stock !== null && p.stock <= 0
+                                  ? 'danger'
+                                  : p.stockAlert !== null && p.stock !== null && p.stock <= p.stockAlert
+                                    ? 'warning'
+                                    : 'neutral'
+                              }
+                            >
+                              {stock ?? '재고 무제한'}
+                            </Badge>
+                          ) : null}
+                          {p.taxFree ? <Badge tone="neutral">면세</Badge> : null}
+                        </div>
+
+                        {/* 가격 정보 — 실물 상품은 2줄로 나눠 가독성 확보 */}
                         {p.kind === 'PHYSICAL' ? (
-                          <Badge
-                            tone={
-                              p.stock !== null && p.stock <= 0
-                                ? 'danger'
-                                : p.stockAlert !== null && p.stock !== null && p.stock <= p.stockAlert
-                                  ? 'warning'
-                                  : 'neutral'
-                            }
-                          >
-                            {stock ?? '재고 무제한'}
-                          </Badge>
+                          <div className="mt-1 space-y-0.5 text-[12.5px] text-ink-500">
+                            <p>
+                              <span className="font-bold tabular-nums text-ink-900">{formatWon(p.amount)}</span>
+                              {p.sku ? (
+                                <span className="ml-1.5 font-mono text-[11px] text-ink-400">{p.sku}</span>
+                              ) : null}
+                            </p>
+                            <p>
+                              배송비{' '}
+                              {quote.fee === 0n ? (
+                                <span className="text-ink-400">무료</span>
+                              ) : (
+                                formatWon(quote.fee)
+                              )}{' '}
+                              · 결제{' '}
+                              <span className="font-bold tabular-nums text-ink-800">{formatWon(quote.total)}</span>
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="mt-1 text-[12.5px] text-ink-500">
+                            <span className="font-bold tabular-nums text-ink-900">{formatWon(p.amount)}</span>
+                            {p.kind === 'DOCUMENT' ? (
+                              <span className="ml-1.5">
+                                {p.documentTemplate ? `${p.documentTemplate.name} 작성` : '서식 미연결'}
+                              </span>
+                            ) : (
+                              <span className="ml-1.5">{giveText(p) ? `${giveText(p)} 지급` : ''}</span>
+                            )}
+                            {p.sku ? (
+                              <span className="ml-1.5 font-mono text-[11px] text-ink-400">{p.sku}</span>
+                            ) : null}
+                          </p>
+                        )}
+
+                        <p className="mt-0.5 text-[11.5px] text-ink-400">
+                          판매 {formatNumber(soldOf(p.id))}건
+                          {tab === 'archived' && p.archivedAt ? ` · 보관 ${formatKst(p.archivedAt, false)}` : ''}
+                        </p>
+
+                        {overLimit ? (
+                          <p className="mt-1 text-[11.5px] font-bold text-danger-500">
+                            배송비를 더하면 결제 한도({formatWon(effMax)})를 넘어 이용자가 결제할 수 없습니다.
+                          </p>
                         ) : null}
-                        {p.taxFree ? <Badge tone="neutral">면세</Badge> : null}
+
+                        {p.kind === 'DOCUMENT' && (!p.documentTemplate || !p.documentTemplate.active) ? (
+                          <p className="mt-1 text-[11.5px] font-bold text-danger-500">
+                            연결된 문서 서식이 없거나 중지 상태입니다. 이용자가 결제해도 작성할 문서가 없습니다.
+                          </p>
+                        ) : null}
                       </div>
-
-                      <p className="mt-1 text-[12.5px] text-ink-500">
-                        <span className="font-bold tabular-nums text-ink-900">{formatWon(p.amount)}</span>
-                        {p.kind === 'PHYSICAL' ? (
-                          <span className="ml-1.5">
-                            + 배송비 {quote.fee === 0n ? '무료' : formatWon(quote.fee)} = 결제{' '}
-                            <span className="font-bold tabular-nums text-ink-800">{formatWon(quote.total)}</span>
-                          </span>
-                        ) : p.kind === 'DOCUMENT' ? (
-                          <span className="ml-1.5">
-                            {p.documentTemplate ? `${p.documentTemplate.name} 작성` : '서식 미연결'}
-                          </span>
-                        ) : (
-                          <span className="ml-1.5">{giveText(p) ? `${giveText(p)} 지급` : ''}</span>
-                        )}
-                        {p.sku ? <span className="ml-1.5 font-mono text-[11px] text-ink-400">{p.sku}</span> : null}
-                      </p>
-
-                      <p className="mt-0.5 text-[11.5px] text-ink-400">
-                        판매 {formatNumber(soldOf(p.id))}건
-                        {tab === 'archived' && p.archivedAt ? ` · 보관 ${formatKst(p.archivedAt, false)}` : ''}
-                      </p>
-
-                      {overLimit ? (
-                        <p className="mt-1 text-[11.5px] font-bold text-danger-500">
-                          배송비를 더하면 결제 한도({formatWon(effMax)})를 넘어 이용자가 결제할 수 없습니다.
-                        </p>
-                      ) : null}
-
-                      {p.kind === 'DOCUMENT' && (!p.documentTemplate || !p.documentTemplate.active) ? (
-                        <p className="mt-1 text-[11.5px] font-bold text-danger-500">
-                          연결된 문서 서식이 없거나 중지 상태입니다. 이용자가 결제해도 작성할 문서가 없습니다.
-                        </p>
-                      ) : null}
                     </div>
 
-                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                    {/* 액션 버튼 — 모바일: 구분선 아래 가로 바 / sm 이상: 우측 정렬 */}
+                    <div className="mt-2.5 flex shrink-0 flex-wrap items-center gap-1.5 border-t border-ink-100 pt-2.5 sm:mt-0 sm:border-0 sm:pt-0">
                       {tab === 'archived' ? (
                         <InlineActionForm
                           action={restoreChargeProductAction}
@@ -338,7 +362,7 @@ export default async function StudioProductsPage({
                         />
                       ) : (
                         <>
-                          <div className="flex flex-col gap-0.5">
+                          <div className="flex gap-0.5">
                             <InlineActionForm
                               action={moveChargeProductAction}
                               submitLabel="위로"
