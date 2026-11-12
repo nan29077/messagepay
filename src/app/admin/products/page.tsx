@@ -38,7 +38,7 @@ export default async function AdminProductsPage({
   const sp = await searchParams;
   const page = parsePage(sp.page);
   const merchantId = (sp.merchantId ?? '').trim() || undefined;
-  const kind = sp.kind === 'DIGITAL' || sp.kind === 'PHYSICAL' ? sp.kind : undefined;
+  const kind = sp.kind === 'DIGITAL' || sp.kind === 'PHYSICAL' || sp.kind === 'DOCUMENT' ? sp.kind : undefined;
 
   const where: Prisma.ChargeProductWhereInput = {
     archivedAt: null,
@@ -251,6 +251,7 @@ export default async function AdminProductsPage({
               <option value="">전체</option>
               <option value="DIGITAL">비실물</option>
               <option value="PHYSICAL">실물</option>
+              <option value="DOCUMENT">문서</option>
             </AdminSelect>
           </AdminField>
         </FilterBar>

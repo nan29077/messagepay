@@ -59,6 +59,17 @@ export function serializeProduct(p: ChargeProduct) {
   };
 }
 
+/**
+ * 문서 상품(약정서·주문서)은 콘솔에서 서식을 연결해 만드는 상품이라 API 로 종류를 바꿀 수 없다.
+ * 종류만 DIGITAL 로 바뀌면 서식 연결이 남은 채 작성 링크가 더 이상 나가지 않아,
+ * 이용자는 결제만 하고 문서를 쓸 곳이 없어진다.
+ */
+export function documentKindChangeError(currentKind: string, data: Record<string, unknown>): string | null {
+  if (data.kind === undefined || data.kind === currentKind) return null;
+  if (currentKind === 'DOCUMENT') return '문서 상품은 API 로 종류를 바꿀 수 없습니다. 가맹점 콘솔에서 관리해 주세요.';
+  return null;
+}
+
 /** 입력 검증. 통과하면 Prisma 에 그대로 넘길 수 있는 값만 남는다. */
 export function validateProduct(
   input: ProductInput,
@@ -200,6 +211,8 @@ export async function syncPartnerProducts(
     const found = bySku.get(sku);
     const checked = validateProduct(item, { partial: Boolean(found) });
     if (!checked.ok) return { ok: false as const, message: `${sku}: ${checked.message}` };
+    const kindError = found ? documentKindChangeError(found.kind, checked.data) : null;
+    if (kindError) return { ok: false as const, message: `${sku}: ${kindError}` };
     plan.push({ sku, found, data: checked.data as Record<string, unknown> });
   }
 

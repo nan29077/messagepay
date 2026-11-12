@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Button, Notice, cx } from '@/components/ui';
 import { initialAdminState, type AdminActionState } from './state';
+import { dispatchWithoutReset, useResetOnSuccess } from '@/components/form-dispatch';
 
 /**
  * 관리자 화면 공용 액션 폼.
@@ -40,17 +41,21 @@ export function ActionForm({
   compact?: boolean;
 }) {
   const [state, formAction, pending] = React.useActionState(action, initialAdminState);
+  const formRef = React.useRef<HTMLFormElement>(null);
+  useResetOnSuccess(formRef, state);
 
   return (
     <form
+      ref={formRef}
       action={formAction}
-      onSubmit={
-        confirm
-          ? (e) => {
-              if (!window.confirm(confirm)) e.preventDefault();
-            }
-          : undefined
-      }
+      onSubmit={(e) => {
+        if (confirm && !window.confirm(confirm)) {
+          e.preventDefault();
+          return;
+        }
+        // 실패 시 입력값이 지워지지 않게 직접 디스패치한다(form-dispatch.ts 참고).
+        dispatchWithoutReset(e, formAction);
+      }}
       className={cx(compact ? 'flex flex-col items-start gap-1' : 'space-y-3', className)}
     >
       {children}
@@ -189,17 +194,21 @@ export function ActionFormWithDetail({
   disabled?: boolean;
 }) {
   const [state, formAction, pending] = React.useActionState(action, initialAdminState);
+  const formRef = React.useRef<HTMLFormElement>(null);
+  useResetOnSuccess(formRef, state);
 
   return (
     <form
+      ref={formRef}
       action={formAction}
-      onSubmit={
-        confirm
-          ? (e) => {
-              if (!window.confirm(confirm)) e.preventDefault();
-            }
-          : undefined
-      }
+      onSubmit={(e) => {
+        if (confirm && !window.confirm(confirm)) {
+          e.preventDefault();
+          return;
+        }
+        // 실패 시 입력값이 지워지지 않게 직접 디스패치한다(form-dispatch.ts 참고).
+        dispatchWithoutReset(e, formAction);
+      }}
       className="space-y-3"
     >
       {children}

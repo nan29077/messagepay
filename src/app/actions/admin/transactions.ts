@@ -100,10 +100,14 @@ export async function assignMoNumber(_prev: AdminActionState, fd: FormData): Pro
     if (!merchant) throw new Error('가맹점을 찾을 수 없습니다.');
     if (merchant.status !== 'APPROVED') throw new Error('승인된 가맹점에만 번호를 배정할 수 있습니다.');
 
-    await prisma.merchantMoNumber.update({
-      where: { id },
+    // 조건부 갱신으로 선점한다. 두 관리자가 같은 번호를 동시에 배정하면(가맹점 목록 인라인 배정이
+    // 생기면서 쉬워졌다) 확인 후 update 사이에 끼어든 쪽이 앞 배정을 조용히 덮어써,
+    // 이용자 문자가 엉뚱한 가맹점으로 라우팅된다.
+    const claimed = await prisma.merchantMoNumber.updateMany({
+      where: { id, status: before.status, merchantId: before.merchantId },
       data: { status: 'ASSIGNED', merchantId, assignedAt: new Date(), releasedAt: null },
     });
+    if (claimed.count === 0) throw new Error('다른 관리자가 먼저 이 번호를 변경했습니다. 새로고침 후 다시 시도해 주세요.');
     await writeAudit({
       adminUserId: admin.id,
       action: 'MO_NUMBER_ASSIGN',
@@ -113,6 +117,7 @@ export async function assignMoNumber(_prev: AdminActionState, fd: FormData): Pro
       after: { status: 'ASSIGNED', merchantId },
     });
     revalidatePath('/admin/mo-numbers');
+    revalidatePath('/admin/merchants');
     revalidatePath(`/admin/merchants/${merchantId}`);
     return `${before.phoneNumber} 번호를 ${merchant.displayName} 님에게 배정했습니다.`;
   });

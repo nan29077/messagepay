@@ -13,7 +13,7 @@ import {
 import { requireMerchant } from '@/server/auth';
 import { prisma } from '@/server/db';
 import {
-  DOCUMENT_LINK_TTL_DAYS, documentStatusLabel, documentTemplateTypeLabel, parseDocumentFields,
+  DOCUMENT_LINK_TTL_DAYS, documentStatusLabel, documentTemplateTypeLabel, submissionView,
 } from '@/server/services/documents';
 import { formatKst } from '@/lib/datetime';
 import { formatWon } from '@/lib/money';
@@ -47,7 +47,9 @@ export default async function DocumentSubmissionPage({ params }: { params: Promi
   });
   if (!row) notFound();
 
-  const fields = parseDocumentFields(row.template.fields);
+  // 제출된 문서는 제출 당시 항목·본문으로 그린다. 서식을 나중에 고쳐도 근거가 바뀌지 않게 한다.
+  const view = submissionView(row, row.template);
+  const fields = view.fields;
   const label = documentStatusLabel[row.status];
   const isDraft = row.status === 'DRAFT';
   const expired = isDraft && row.expiresAt < new Date();
@@ -63,7 +65,7 @@ export default async function DocumentSubmissionPage({ params }: { params: Promi
       </Link>
 
       <PageHeader
-        title={row.template.name}
+        title={view.templateName}
         description={`${documentTemplateTypeLabel[row.template.templateType].text} 서식 · ${label.text}`}
       />
 
@@ -117,15 +119,18 @@ export default async function DocumentSubmissionPage({ params }: { params: Promi
             </Card>
           ) : null}
 
-          {row.template.body ? (
+          {view.body ? (
             <Card>
               <CardTitle>문서 본문</CardTitle>
               <p className="mb-2 mt-0.5 text-[11.5px] leading-relaxed text-ink-400">
-                현재 저장된 서식 본문입니다. 서식을 고치면 이 내용도 바뀌므로, 제출 당시 본문이 필요하면 따로
-                보관해 두세요.
+                {view.fromSnapshot
+                  ? '이용자가 제출할 때 본 본문입니다. 그 뒤에 서식을 고쳐도 이 내용은 바뀌지 않습니다.'
+                  : isDraft
+                    ? '현재 저장된 서식 본문입니다. 이용자가 제출하는 순간의 본문이 함께 보관됩니다.'
+                    : '이 문서는 제출 당시 본문을 보관하기 전에 제출되어, 현재 서식 본문을 보여 줍니다.'}
               </p>
               <p className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-xl bg-ink-50 px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-700">
-                {row.template.body}
+                {view.body}
               </p>
             </Card>
           ) : null}

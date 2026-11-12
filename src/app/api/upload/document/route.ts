@@ -95,7 +95,10 @@ export async function POST(req: Request) {
 
   const name = newObjectName(kind.ext);
   // 확장자별 MIME 은 /api/media 가 붙인다. 저장 시점에는 일반 바이너리로 둔다.
-  const url = await putObject(name, buf, 'application/octet-stream');
+  await putObject(name, buf, 'application/octet-stream');
+  // 저장 드라이버가 S3 여도 주소는 자체 미디어 경로로 돌려준다. 공개 버킷 주소를 그대로 쓰면
+  // /api/media 가 붙이는 첨부 고정(Content-Disposition)·nosniff 를 거치지 않고 열린다.
+  const url = `/api/media/${name}`;
 
   // 이용자가 내려받을 때 보여 줄 이름. 경로 구분자는 지운다.
   const displayName = file.name.replace(/[\\/]/g, '').slice(0, 120) || `문서서식.${kind.ext}`;

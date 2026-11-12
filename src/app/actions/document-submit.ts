@@ -18,6 +18,12 @@ import { logger } from '@/lib/logger';
 export interface DocumentSubmitState {
   ok: boolean;
   message?: string;
+  /**
+   * 실패했을 때 이용자가 보낸 값. 화면이 입력칸에 다시 채운다(React 19 form action 은
+   * 제출 후 폼을 초기화하므로 이게 없으면 검증 실패 한 번에 작성 내용이 모두 지워진다).
+   * 본인이 방금 적은 값을 본인 화면에 돌려주는 것이라 마스킹하지 않는다.
+   */
+  values?: Record<string, string>;
 }
 
 /** 서명 data URL 길이 상한. 본문 검증은 documents.ts 가 매직바이트로 다시 한다. */
@@ -56,10 +62,10 @@ export async function submitDocumentAction(
 
   try {
     const res = await submitDocument({ token, values, signature, ip: ip ?? undefined, userAgent });
-    if (!res.ok) return { ok: false, message: res.message };
+    if (!res.ok) return { ok: false, message: res.message, values };
     return { ok: true, message: '제출이 완료되었습니다. 가맹점이 내용을 확인합니다.' };
   } catch (e) {
     logger.error('문서 제출 실패', { message: (e as Error).message });
-    return { ok: false, message: '제출 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.' };
+    return { ok: false, message: '제출 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.', values };
   }
 }

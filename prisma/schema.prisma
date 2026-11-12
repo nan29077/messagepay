@@ -888,6 +888,12 @@ model DocumentSubmission {
   valuesEnc    String? @map("values_enc")
   /// 자필 서명 이미지 주소. 이용자가 화면에서 그린 서명을 PNG 로 저장한다.
   signatureUrl String? @map("signature_url")
+  /// 제출 당시 서식의 입력 항목 정의(라벨·형식). 서식을 나중에 고쳐도 제출 내용을
+  /// 그때 이용자가 본 항목 이름 그대로 보여 주기 위해 함께 남긴다. 제출 전에는 null.
+  fieldsSnapshot Json?   @map("fields_snapshot")
+  /// 제출 당시 서식 이름·본문. 이용자가 동의한 문구의 근거다. 제출 전에는 null.
+  templateNameSnapshot String? @map("template_name_snapshot")
+  bodySnapshot         String? @map("body_snapshot")
 
   status      DocumentSubmissionStatus @default(DRAFT)
   submittedAt DateTime?                @map("submitted_at") @db.Timestamptz(3)

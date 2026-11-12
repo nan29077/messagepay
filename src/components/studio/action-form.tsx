@@ -6,6 +6,7 @@ import { Button, Notice, cx } from '@/components/ui';
 import { SecretBox } from '@/components/studio/copy';
 import { ConfirmDialog, useConfirmSubmit } from '@/components/studio/confirm-dialog';
 import type { StudioActionState } from '@/app/actions/studio';
+import { dispatchWithoutReset, useResetOnSuccess } from '@/components/form-dispatch';
 
 /**
  * 가맹점 관리자 공용 액션 폼.
@@ -70,13 +71,18 @@ export function ActionForm({
   const formRef = React.useRef<HTMLFormElement>(null);
   const confirm = useConfirmSubmit(formRef, state, pending);
   useActionRedirect(state);
+  useResetOnSuccess(formRef, state);
 
   return (
     <form
       ref={formRef}
       action={formAction}
       onSubmit={(e) => {
-        if (confirmMessage) confirm.onSubmit(e);
+        if (confirmMessage) {
+          confirm.onSubmit(e);
+          if (e.defaultPrevented) return;
+        }
+        dispatchWithoutReset(e, formAction);
       }}
       className={cx('space-y-3.5', className)}
     >

@@ -80,7 +80,7 @@ export function DocumentForm({
           </p>
           <div className="space-y-3">
             {fields.map((f) => (
-              <FieldInput key={f.id} field={f} />
+              <FieldInput key={f.id} field={f} value={state.values?.[f.id]} />
             ))}
           </div>
         </Card>
@@ -110,7 +110,12 @@ export function DocumentForm({
   );
 }
 
-function FieldInput({ field }: { field: FormField }) {
+/**
+ * 입력칸은 비제어 컴포넌트다. React 19 의 form action 은 제출이 끝나면 폼을 초기화하므로,
+ * 검증에 실패해 돌아왔을 때 이용자가 적은 내용이 전부 지워졌다. 서버가 돌려준 값을
+ * defaultValue 로 다시 넣어 초기화 뒤에도 남게 한다.
+ */
+function FieldInput({ field, value }: { field: FormField; value?: string }) {
   const name = `f_${field.id}`;
   const base =
     'h-12 w-full rounded-xl border border-ink-200 px-3.5 text-[14px] outline-none transition-colors focus:border-brand-400';
@@ -119,7 +124,13 @@ function FieldInput({ field }: { field: FormField }) {
     return (
       <label className="flex items-start gap-2 rounded-xl border border-ink-200 px-3.5 py-3">
         {/* 체크를 해제하면 값이 오지 않는다. 서버는 값 없음을 "동의 안 함" 으로 읽는다. */}
-        <input type="checkbox" name={name} value="on" className="mt-0.5 h-4 w-4 shrink-0" />
+        <input
+          type="checkbox"
+          name={name}
+          value="on"
+          defaultChecked={value === 'on'}
+          className="mt-0.5 h-4 w-4 shrink-0"
+        />
         <span className="text-[13px] font-semibold leading-relaxed text-ink-800">
           {field.label}
           {field.required ? <span className="ml-1 text-danger-500">*</span> : null}
@@ -140,24 +151,26 @@ function FieldInput({ field }: { field: FormField }) {
           name={name}
           rows={4}
           maxLength={2000}
+          defaultValue={value}
           placeholder={field.hint ?? ''}
           className="w-full rounded-xl border border-ink-200 px-3.5 py-2.5 text-[14px] leading-relaxed outline-none transition-colors focus:border-brand-400"
         />
       ) : field.type === 'DATE' ? (
-        <input type="date" name={name} className={base} />
+        <input type="date" name={name} defaultValue={value} className={base} />
       ) : field.type === 'NUMBER' ? (
-        <input type="text" name={name} inputMode="numeric" placeholder={field.hint ?? ''} className={cx(base, 'tabular-nums')} />
+        <input type="text" name={name} inputMode="numeric" defaultValue={value} placeholder={field.hint ?? ''} className={cx(base, 'tabular-nums')} />
       ) : field.type === 'PHONE' ? (
         <input
           type="tel"
           name={name}
           inputMode="tel"
           maxLength={20}
+          defaultValue={value}
           placeholder={field.hint ?? '010-0000-0000'}
           className={cx(base, 'tabular-nums')}
         />
       ) : (
-        <input type="text" name={name} maxLength={200} placeholder={field.hint ?? ''} className={base} />
+        <input type="text" name={name} maxLength={200} defaultValue={value} placeholder={field.hint ?? ''} className={base} />
       )}
     </div>
   );

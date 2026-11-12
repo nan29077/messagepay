@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@/server/db';
 import { requireMerchant, writeAudit } from '@/server/auth';
+import { consumeRateLimit } from '@/server/rate-limit';
+import { mediaUrl } from '@/server/uploads';
 import { newId } from '@/lib/id';
 import { logger } from '@/lib/logger';
 import { decrypt, generateToken, tokenHash } from '@/lib/crypto';
@@ -77,18 +79,17 @@ function revalidateDocuments(id?: string) {
 function safeFileUrl(raw: string): string | null {
   const value = raw.trim();
   if (!value) return null;
-  // 자체 업로드 경로
-  if (value.startsWith('/api/media/') && !value.includes('..')) return value;
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error('서식 파일 주소 형식이 올바르지 않습니다. 파일을 다시 올려 주세요.');
+  // 서식 파일은 /api/upload/document 로만 올라온다. 그 응답 형식(자체 미디어 경로)만 받는다.
+  // 예전에는 임의의 https 주소도 통과시켜, 위 주석이 막으려던 제3자 도메인 링크가 그대로 저장됐다.
+  // (이용자 화면은 이 주소 뒤에 ?name= 을 붙이므로 쿼리가 섞인 외부 주소는 링크도 깨진다.)
+  if (/^\/api\/media\/[a-f0-9]{32}\.(pdf|docx|doc|hwpx|hwp)$/i.test(value)) return value;
+  // S3 저장소 시절 업로드 응답(공개 버킷 주소)도 같은 파일이면 자체 경로로 바꿔 저장한다.
+  // 내려받기는 /api/media 를 거쳐야 첨부(Content-Disposition)로 고정된다.
+  const name = value.split('/').pop() ?? '';
+  if (/^[a-f0-9]{32}\.(pdf|docx|doc|hwpx|hwp)$/i.test(name) && value === mediaUrl(name)) {
+    return `/api/media/${name}`;
   }
-  if (url.protocol !== 'https:') {
-    throw new Error('서식 파일 주소는 https 만 쓸 수 있습니다.');
-  }
-  return url.toString();
+  throw new Error('서식 파일 주소 형식이 올바르지 않습니다. 파일을 다시 올려 주세요.');
 }
 
 // ===========================================================================
@@ -365,10 +366,12 @@ export async function markDocumentReviewedAction(
     if (row.status === 'DRAFT') return { ok: false, message: '아직 제출되지 않은 문서입니다.' };
     if (row.status === 'REVIEWED') return { ok: false, message: '이미 확인한 문서입니다.' };
 
-    await prisma.documentSubmission.update({
-      where: { id },
+    // 담당자 둘이 동시에 눌러도 확인 시각이 한 번만 찍히게 상태 조건으로 갱신한다.
+    const updated = await prisma.documentSubmission.updateMany({
+      where: { id, merchantId, status: 'SUBMITTED' },
       data: { status: 'REVIEWED', reviewedAt: new Date() },
     });
+    if (updated.count === 0) return { ok: false, message: '이미 확인한 문서입니다.' };
     revalidatePath('/studio/documents');
     revalidatePath(`/studio/documents/submissions/${id}`);
     return { ok: true, message: '확인 완료로 표시했습니다.' };
@@ -424,12 +427,22 @@ export async function resendDocumentLinkAction(
       return { ok: false, message: '서식이 보관·중지 상태입니다. 서식을 먼저 사용 상태로 바꿔 주세요.' };
     }
 
+    // 재발송은 이용자에게 문자가 가는 동작이다. 버튼을 연타하거나 반복 호출해 같은 사람에게
+    // 문자를 쏟아붓지 못하게 문서 한 건 기준으로 횟수를 제한한다.
+    const rl = await consumeRateLimit('doc-resend', id, 3, 3600);
+    if (!rl.ok) {
+      return { ok: false, message: '작성 링크는 한 시간에 3번까지 다시 보낼 수 있습니다. 잠시 후 다시 시도해 주세요.' };
+    }
+
     const token = generateToken(32);
     const expiresAt = addDays(new Date(), DOCUMENT_LINK_TTL_DAYS);
-    await prisma.documentSubmission.update({
-      where: { id },
+    // 확인과 교체 사이에 이용자가 제출하면, 제출된 문서의 링크를 갈아 끼워 이용자가 자기 제출본을
+    // 못 보게 되고 필요 없는 문자까지 나간다. 작성 대기일 때만 바꾼다.
+    const swapped = await prisma.documentSubmission.updateMany({
+      where: { id, merchantId, status: 'DRAFT' },
       data: { tokenHash: tokenHash(token), expiresAt },
     });
+    if (swapped.count === 0) return { ok: false, message: '이미 제출된 문서입니다.' };
 
     const sent = await sendMt({
       phone: decrypt(row.payerPhoneEnc),

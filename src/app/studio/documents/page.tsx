@@ -36,14 +36,48 @@ const TABS = [
 
 type Tab = (typeof TABS)[number]['key'];
 
+/** 제출된 문서 한 페이지 크기. 예전에는 최근 100건만 보여 그보다 오래된 문서는 목록에서 찾을 수 없었다. */
+const SUBMISSION_PAGE_SIZE = 50;
+
+const STATUS_FILTERS = [
+  { key: 'all', label: '전체' },
+  { key: 'SUBMITTED', label: '확인 대기' },
+  { key: 'DRAFT', label: '작성 대기' },
+  { key: 'REVIEWED', label: '확인 완료' },
+] as const;
+
+type StatusFilter = (typeof STATUS_FILTERS)[number]['key'];
+
+function submissionsHref(status: StatusFilter, page: number): string {
+  const q = new URLSearchParams({ tab: 'submissions' });
+  if (status !== 'all') q.set('status', status);
+  if (page > 1) q.set('page', String(page));
+  return `/studio/documents?${q.toString()}`;
+}
+
 export default async function StudioDocumentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; status?: string; page?: string }>;
 }) {
   const { merchantId } = await requireMerchant();
   const sp = await searchParams;
   const tab: Tab = TABS.some((t) => t.key === sp.tab) ? (sp.tab as Tab) : 'templates';
+  const statusFilter: StatusFilter = STATUS_FILTERS.some((f) => f.key === sp.status)
+    ? (sp.status as StatusFilter)
+    : 'all';
+  const submissionWhere = {
+    merchantId,
+    ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+  };
+  const filteredTotal = await prisma.documentSubmission.count({ where: submissionWhere });
+  const submissionPages = Math.max(1, Math.ceil(filteredTotal / SUBMISSION_PAGE_SIZE));
+  const pageRaw = Number(sp.page);
+  // 범위를 벗어난 페이지는 마지막 페이지로 붙인다. 빈 목록을 "문서가 없습니다" 로 보여 주지 않기 위함이다.
+  const submissionPage = Math.min(
+    submissionPages,
+    Number.isSafeInteger(pageRaw) && pageRaw > 0 ? pageRaw : 1,
+  );
 
   const [templates, archived, archivedTotal, submissions, submissionTotal, pendingCount, draftCount, productCounts] =
     await Promise.all([
@@ -59,9 +93,10 @@ export default async function StudioDocumentsPage({
       }),
       prisma.documentTemplate.count({ where: { merchantId, archivedAt: { not: null } } }),
       prisma.documentSubmission.findMany({
-        where: { merchantId },
-        orderBy: [{ createdAt: 'desc' }],
-        take: 100,
+        where: submissionWhere,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: (submissionPage - 1) * SUBMISSION_PAGE_SIZE,
+        take: SUBMISSION_PAGE_SIZE,
         include: {
           template: { select: { name: true } },
           charge: { select: { transactionNo: true, product: { select: { name: true } } } },
@@ -235,13 +270,30 @@ export default async function StudioDocumentsPage({
           <div className="mb-4">
             <SectionTitle
               title="제출된 문서"
-              description="최근 100건입니다. 제출자 성명·연락처와 입력 내용은 상세 화면에서 열람할 때마다 기록이 남습니다."
+              description={`${formatNumber(filteredTotal)}건 · ${submissionPage} / ${submissionPages} 페이지. 제출자 성명·연락처와 입력 내용은 상세 화면에서 열람할 때마다 기록이 남습니다.`}
             />
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {STATUS_FILTERS.map((f) => (
+                <Link
+                  key={f.key}
+                  href={submissionsHref(f.key, 1)}
+                  aria-current={statusFilter === f.key ? 'page' : undefined}
+                  className={cx(
+                    'inline-flex h-8 items-center rounded-full border px-3 text-[12px] font-bold',
+                    statusFilter === f.key
+                      ? 'border-brand-400 bg-brand-50 text-brand-700'
+                      : 'border-ink-100 bg-white text-ink-500 hover:bg-ink-50',
+                  )}
+                >
+                  {f.label}
+                </Link>
+              ))}
+            </div>
           </div>
 
           {submissions.length === 0 ? (
             <EmptyState
-              title="아직 제출된 문서가 없습니다"
+              title={statusFilter === 'all' ? '아직 제출된 문서가 없습니다' : '해당 상태의 문서가 없습니다'}
               description="문서 상품이 결제되면 이용자에게 작성 링크가 문자로 가고, 제출된 문서가 여기에 쌓입니다."
             />
           ) : (
@@ -294,6 +346,37 @@ export default async function StudioDocumentsPage({
                 </tbody>
             </Table>
           )}
+          {submissionPages > 1 ? (
+            <nav aria-label="제출된 문서 페이지" className="mt-3 flex items-center justify-center gap-2">
+              {submissionPage <= 1 ? (
+                <span className="inline-flex h-9 items-center rounded-lg border border-ink-100 px-3 text-[13px] font-semibold text-ink-300">
+                  이전
+                </span>
+              ) : (
+                <Link
+                  href={submissionsHref(statusFilter, submissionPage - 1)}
+                  className="inline-flex h-9 items-center rounded-lg border border-ink-200 bg-white px-3 text-[13px] font-semibold text-ink-700 hover:bg-ink-50"
+                >
+                  이전
+                </Link>
+              )}
+              <span className="text-[13px] tabular-nums text-ink-500">
+                {submissionPage} / {submissionPages}
+              </span>
+              {submissionPage >= submissionPages ? (
+                <span className="inline-flex h-9 items-center rounded-lg border border-ink-100 px-3 text-[13px] font-semibold text-ink-300">
+                  다음
+                </span>
+              ) : (
+                <Link
+                  href={submissionsHref(statusFilter, submissionPage + 1)}
+                  className="inline-flex h-9 items-center rounded-lg border border-ink-200 bg-white px-3 text-[13px] font-semibold text-ink-700 hover:bg-ink-50"
+                >
+                  다음
+                </Link>
+              )}
+            </nav>
+          ) : null}
         </>
       ) : null}
 

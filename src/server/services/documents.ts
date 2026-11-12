@@ -8,6 +8,7 @@ import {
 } from '@/lib/crypto';
 import { newObjectName, putObject } from '@/server/uploads';
 import type { DocumentSubmissionStatus, DocumentTemplateType } from '@/generated/prisma/enums';
+import type { Prisma } from '@/generated/prisma/client';
 import type { Tone } from '@/lib/labels';
 
 /**
@@ -138,9 +139,12 @@ export function parseDocumentFields(raw: unknown): DocumentField[] {
     const row = item as Record<string, unknown>;
     const label = String(row.label ?? '').trim().slice(0, 60);
     if (!label) continue;
-    let id = normalizeFieldId(String(row.id ?? label), i);
+    const base = normalizeFieldId(String(row.id ?? label), i);
     // 같은 id 가 둘이면 뒤엣것이 앞엣것의 값을 덮어쓴다. 제출 내용이 사라지므로 겹치지 않게 만든다.
-    while (used.has(id)) id = `${id}_${used.size + 1}`.slice(0, 34);
+    // 접미사는 기준 id 에 매번 새 번호로 붙인다. (예전에는 직전 결과에 덧붙이고 34자로 잘라,
+    // 잘린 결과가 이미 쓰인 id 와 같으면 같은 값이 반복되어 무한 루프에 빠질 수 있었다.)
+    let id = base;
+    for (let n = 2; used.has(id); n += 1) id = `${base.slice(0, 26)}_${n}`;
     used.add(id);
     out.push({
       id,
@@ -498,20 +502,21 @@ export async function loadDocumentContext(
     return { ok: false, reason: '작성 기간이 지났습니다. 가맹점에 문의해 주세요.' };
   }
 
-  const fields = parseDocumentFields(row.template.fields);
+  // 제출된 문서는 제출 당시의 항목·본문으로 보여 준다(그 뒤에 서식을 고쳐도 바뀌지 않는다).
+  const view = submissionView(row, row.template);
 
   return {
     ok: true,
     ctx: {
       submissionId: row.id,
       merchantName: row.merchant.displayName,
-      templateName: row.template.name,
+      templateName: view.templateName,
       templateType: row.template.templateType,
       description: row.template.description,
-      body: row.template.body,
+      body: view.body,
       fileUrl: row.template.fileUrl,
       fileName: row.template.fileName,
-      fields,
+      fields: view.fields,
       requireSignature: row.template.requireSignature,
       status: row.status,
       expiresAt: row.expiresAt,
@@ -521,6 +526,31 @@ export async function loadDocumentContext(
       values: row.status === 'DRAFT' ? {} : readValues(row.valuesEnc),
       signatureUrl: row.status === 'DRAFT' ? null : row.signatureUrl,
     },
+  };
+}
+
+/**
+ * 제출 기록을 화면에 그릴 때 쓸 서식 내용.
+ *
+ * 제출이 끝난 문서는 제출 당시 남긴 스냅숏을 쓴다. 스냅숏이 없는 건(작성 대기, 또는 이 컬럼이
+ * 생기기 전에 제출된 건)은 현재 서식으로 대신 그린다.
+ */
+export function submissionView(
+  submission: {
+    status: DocumentSubmissionStatus;
+    fieldsSnapshot?: unknown;
+    templateNameSnapshot?: string | null;
+    bodySnapshot?: string | null;
+  },
+  template: { name: string; body: string | null; fields: unknown },
+): { templateName: string; body: string | null; fields: DocumentField[]; fromSnapshot: boolean } {
+  const submitted = submission.status !== 'DRAFT';
+  const hasSnapshot = submitted && submission.fieldsSnapshot != null;
+  return {
+    templateName: (submitted && submission.templateNameSnapshot) || template.name,
+    body: hasSnapshot ? (submission.bodySnapshot ?? null) : template.body,
+    fields: parseDocumentFields(hasSnapshot ? submission.fieldsSnapshot : template.fields),
+    fromSnapshot: hasSnapshot,
   };
 }
 
@@ -665,6 +695,10 @@ export async function submitDocument(
       submittedAt: new Date(),
       valuesEnc: encrypt(JSON.stringify(checked.values)),
       signatureUrl,
+      // 검증에 쓴 항목 정의와 이용자가 읽은 본문을 그대로 남긴다.
+      fieldsSnapshot: fieldsToStorage(ctx.fields) as unknown as Prisma.InputJsonValue,
+      templateNameSnapshot: ctx.templateName,
+      bodySnapshot: ctx.body,
       submitIp: input.ip ?? null,
       submitAgent: input.userAgent?.slice(0, 300) ?? null,
     },

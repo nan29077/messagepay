@@ -65,9 +65,13 @@ export default async function StudioSettlementPage({
   const range = monthRange(sp.month ?? kstMonthKey());
 
   const pageRaw = Number(sp.page);
-  const ledgerPage = Number.isSafeInteger(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+  // 범위를 벗어난 페이지(?page=999)는 마지막 페이지로 붙인다.
+  // 그대로 두면 원장이 있는데도 "원장 기록이 없습니다" 가 떠서 기록이 사라진 것처럼 보인다.
+  const ledgerTotal = await prisma.settlementLedger.count({ where: { merchantId } });
+  const ledgerLastPage = Math.max(1, Math.ceil(ledgerTotal / LEDGER_PAGE_SIZE));
+  const ledgerPage = Math.min(ledgerLastPage, Number.isSafeInteger(pageRaw) && pageRaw > 0 ? pageRaw : 1);
 
-  const [summary, feePolicy, ledger, ledgerTotal, requests, account, monthCharges, monthPayouts, upcoming, profile] = await Promise.all([
+  const [summary, feePolicy, ledger, requests, account, monthCharges, monthPayouts, upcoming, profile] = await Promise.all([
     getSettlementSummary(merchantId),
     resolveFeePolicy(merchantId),
     prisma.settlementLedger.findMany({
@@ -77,7 +81,6 @@ export default async function StudioSettlementPage({
       take: LEDGER_PAGE_SIZE,
       select: { id: true, entryType: true, amount: true, memo: true, occurredAt: true, settlementKey: true },
     }),
-    prisma.settlementLedger.count({ where: { merchantId } }),
     prisma.settlementRequest.findMany({
       where: { merchantId },
       orderBy: { requestedAt: 'desc' },
@@ -769,9 +772,9 @@ export default async function StudioSettlementPage({
 
             <section>
               {(() => {
-                const ledgerTotalPages = Math.max(1, Math.ceil(ledgerTotal / LEDGER_PAGE_SIZE));
+                const ledgerTotalPages = ledgerLastPage;
                 const buildLedgerHref = (p: number) =>
-                  `/studio/settlement?tab=ledger${sp.month ? `&month=${sp.month}` : ''}&page=${p}`;
+                  `/studio/settlement?tab=ledger${sp.month ? `&month=${encodeURIComponent(sp.month)}` : ''}&page=${p}`;
                 return (
                   <>
                     <SectionTitle

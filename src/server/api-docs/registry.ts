@@ -434,7 +434,7 @@ export const API_CATEGORIES: ApiCategory[] = [
           { name: 'fulfillment', in: 'body', type: 'string', description: 'MANUAL | API | INSTANT' },
         ],
       },
-      { method: 'PATCH', path: '/products/{id}', summary: '상품 수정', status: 'LIVE', signed: true, description: '보낸 항목만 바꿉니다. 보내지 않은 항목은 그대로 둡니다.' },
+      { method: 'PATCH', path: '/products/{id}', summary: '상품 수정', status: 'LIVE', signed: true, description: '보낸 항목만 바꿉니다. 보내지 않은 항목은 그대로 둡니다.', notes: ['목록에는 콘솔에서 만든 문서 상품(kind=DOCUMENT)도 나옵니다. 문서 상품의 kind 는 API 로 바꿀 수 없습니다.'] },
       { method: 'DELETE', path: '/products/{id}', summary: '판매 중지(보관 처리)', status: 'LIVE', signed: true, notes: ['실제로 삭제하지 않습니다. 지난 주문에서는 그대로 보입니다.'] },
       {
         method: 'PATCH',

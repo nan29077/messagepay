@@ -1,6 +1,6 @@
 import { prisma } from '@/server/db';
 import { authenticatePartner } from '@/server/services/partner-auth';
-import { serializeProduct, validateProduct } from '@/server/services/partner-products';
+import { documentKindChangeError, serializeProduct, validateProduct } from '@/server/services/partner-products';
 import { authError, denyTestKey, jsonError, jsonOk, logPartnerCall } from '../../_shared';
 import type { Prisma } from '@/generated/prisma/client';
 
@@ -31,7 +31,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const { id } = await ctx.params;
   const owned = await prisma.chargeProduct.findFirst({
     where: { id, merchantId: auth.merchantId },
-    select: { id: true },
+    select: { id: true, kind: true },
   });
   if (!owned) {
     await logPartnerCall({ req, merchantId: auth.merchantId, keyId: auth.keyId, status: 404, errorCode: 'NOT_FOUND' });
@@ -49,6 +49,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (!checked.ok) {
     await logPartnerCall({ req, merchantId: auth.merchantId, keyId: auth.keyId, status: 400, errorCode: 'INVALID_PRODUCT' });
     return jsonError(400, 'INVALID_PRODUCT', checked.message);
+  }
+  const kindError = documentKindChangeError(owned.kind, checked.data);
+  if (kindError) {
+    await logPartnerCall({ req, merchantId: auth.merchantId, keyId: auth.keyId, status: 400, errorCode: 'INVALID_PRODUCT' });
+    return jsonError(400, 'INVALID_PRODUCT', kindError);
   }
 
   const row = await prisma.chargeProduct.update({
